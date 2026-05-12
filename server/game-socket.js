@@ -205,6 +205,7 @@ function buildOtherData(gameState, extraFields = {}) {
     ...(simulSubmittedKeys.length
       ? { simulSubmittedPlayerIds: simulSubmittedKeys.map(k => isNaN(k) ? k : Number(k)) }
       : {}),
+    ...(gameState.repositionPhase ? { repositionPhase: gameState.repositionPhase } : {}),
     ...extraFields
   });
 }
@@ -3892,6 +3893,12 @@ function initializeSocket(server) {
 
         gameState.status = 'ready';
 
+        // Initialize reposition phase if the game type requires it
+        const _repoCount3893 = gameState.gameType?.start_repositions || 0;
+        if (_repoCount3893 > 0) {
+          gameState.repositionPhase = { active: true, p1Remaining: _repoCount3893, p2Remaining: _repoCount3893, currentTurn: 1 };
+        }
+
         // Update DB
         await db_pool.query(
           `UPDATE games SET status = 'ready', pieces = ?, other_data = ? WHERE id = ?`,
@@ -4058,6 +4065,12 @@ function initializeSocket(server) {
         }
 
         gameState.status = 'ready';
+
+        // Initialize reposition phase if the game type requires it
+        const _repoCount4060 = gameState.gameType?.start_repositions || 0;
+        if (_repoCount4060 > 0) {
+          gameState.repositionPhase = { active: true, p1Remaining: _repoCount4060, p2Remaining: _repoCount4060, currentTurn: 1 };
+        }
 
         await db_pool.query(
           `UPDATE games SET status = 'ready', pieces = ?, other_data = ? WHERE id = ?`,
@@ -7627,6 +7640,84 @@ function initializeSocket(server) {
       }
     });
 
+    // Handle pre-game reposition phase
+    socket.on("submitReposition", async ({ gameId, userId, from, to, skip }) => {
+      try {
+        const gameIdStr = String(gameId);
+        const gameState = activeGames.get(gameIdStr);
+        if (!gameState) return socket.emit("error", { message: "Game not found" });
+
+        const phase = gameState.repositionPhase;
+        if (!phase || !phase.active) return socket.emit("error", { message: "Not in reposition phase" });
+
+        const player = gameState.players.find(p => p.id === userId);
+        if (!player) return socket.emit("error", { message: "Player not found" });
+        if (phase.currentTurn !== player.position) return socket.emit("error", { message: "Not your reposition turn" });
+
+        if (!skip) {
+          if (!from || to == null) return socket.emit("error", { message: "Missing from/to" });
+          const pieces = gameState.pieces;
+          const fromPiece = pieces.find(p => {
+            const owner = p.player_id != null ? Number(p.player_id) : Number(p.team);
+            return p.x === from.x && p.y === from.y && owner === player.position;
+          });
+          if (!fromPiece) return socket.emit("error", { message: "No own piece at source square" });
+
+          if (gameState.gameType?.reposition_key_pieces_only) {
+            if (!fromPiece.ends_game_on_capture && !fromPiece.ends_game_on_checkmate) {
+              return socket.emit("error", { message: "Only key pieces may be repositioned" });
+            }
+          }
+
+          const occupied = pieces.some(p => doesPieceOccupySquare(p, to.x, to.y));
+          if (occupied) return socket.emit("error", { message: "Target square is occupied" });
+
+          const impSet = collectImpassableSquares(gameState.gameType);
+          if (impSet && impSet.has(`${to.y},${to.x}`)) {
+            return socket.emit("error", { message: "Target square is impassable" });
+          }
+
+          const bw = gameState.gameType?.board_width || 8;
+          const bh = gameState.gameType?.board_height || 8;
+          if (to.x < 0 || to.x >= bw || to.y < 0 || to.y >= bh) {
+            return socket.emit("error", { message: "Target square out of bounds" });
+          }
+
+          fromPiece.x = to.x;
+          fromPiece.y = to.y;
+          if (player.position === 1) phase.p1Remaining--;
+          else phase.p2Remaining--;
+        } else {
+          if (player.position === 1) phase.p1Remaining = 0;
+          else phase.p2Remaining = 0;
+        }
+
+        // Advance or end the reposition phase
+        if (phase.p1Remaining === 0 && phase.p2Remaining === 0) {
+          phase.active = false;
+        } else {
+          const other = phase.currentTurn === 1 ? 2 : 1;
+          const otherRemaining = other === 1 ? phase.p1Remaining : phase.p2Remaining;
+          if (otherRemaining > 0) phase.currentTurn = other;
+          // else currentTurn stays (other player already done)
+        }
+
+        await db_pool.query(
+          "UPDATE games SET pieces = ?, other_data = ? WHERE id = ?",
+          [JSON.stringify(gameState.pieces), buildOtherData(gameState), gameIdStr]
+        );
+
+        io.to(`game-${gameIdStr}`).emit("repositionApplied", {
+          gameId,
+          pieces: gameState.pieces,
+          repositionPhase: gameState.repositionPhase,
+        });
+      } catch (err) {
+        console.error("Error in submitReposition:", err);
+        socket.emit("error", { message: "Failed to apply reposition" });
+      }
+    });
+
     // Skip a pending ranged capture action
     socket.on("skipRangedCaptureAction", async ({ gameId, userId }) => {
       try {
@@ -8394,6 +8485,7 @@ function initializeSocket(server) {
             initialPositionEval: otherData?.initialPositionEval || null,
             anonCorresPlayers: otherData?.anonCorresPlayers || null,
             guestName: otherData?.guestName || null,
+            repositionPhase: otherData?.repositionPhase || null,
           };
 
           // Check if current player is in check (if game is active)

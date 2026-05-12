@@ -4060,6 +4060,28 @@ const runMigrations = async () => {
     }
   }
 
+  {
+    const exists = await columnExists('game_types', 'start_repositions');
+    if (!exists) {
+      await runMigration(
+        `ALTER TABLE game_types ADD COLUMN start_repositions INT DEFAULT 0 COMMENT 'Number of pre-game repositions each player gets (0 = disabled, max 8)'`,
+        'Add game_types.start_repositions'
+      );
+      migrationsRun++;
+    }
+  }
+
+  {
+    const exists = await columnExists('game_types', 'reposition_key_pieces_only');
+    if (!exists) {
+      await runMigration(
+        `ALTER TABLE game_types ADD COLUMN reposition_key_pieces_only TINYINT(1) DEFAULT 0 COMMENT 'When true, only ends_game_on_capture / ends_game_on_checkmate pieces may be repositioned'`,
+        'Add game_types.reposition_key_pieces_only'
+      );
+      migrationsRun++;
+    }
+  }
+
   // ── Feature TODO list ────────────────────────────────────────────────────
   // Internal admin tool to track potential features (unstarted -> in_progress
   // -> completed | abandoned).

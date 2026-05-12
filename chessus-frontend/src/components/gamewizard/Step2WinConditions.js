@@ -448,6 +448,39 @@ const Step2WinConditions = ({ gameData, updateGameData }) => {
       />
 
       <ToggleRow
+        title="Pre-game Repositions"
+        tooltip="When enabled, before the game starts each player takes turns repositioning one of their own pieces to any empty, non-impassable square. Players alternate one reposition at a time. The game clock does not start until all repositions are complete."
+        checked={!!gameData.start_repositions && gameData.start_repositions > 0}
+        onChange={(val) => {
+          handleChange("start_repositions", val ? 1 : 0);
+          if (!val) handleChange("reposition_key_pieces_only", false);
+        }}
+      >
+        <div className={styles["sub-option-row"]} style={{ marginTop: '10px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <span className={styles["sub-option-label"]}>Repositions per player:</span>
+          <NumberInput
+            value={gameData.start_repositions || 1}
+            onChange={(val) => handleChange("start_repositions", Math.min(8, Math.max(1, Math.floor(Number(val)) || 1)))}
+            options={{ min: 1, max: 8 }}
+          />
+        </div>
+        {(gameData.capture_condition || gameData.mate_condition) && (
+          <div style={{ marginTop: '8px' }}>
+            <ToggleSwitch
+              checked={gameData.reposition_key_pieces_only === true}
+              onChange={(val) => handleChange("reposition_key_pieces_only", val)}
+              label={
+                <span>
+                  Restrict to key pieces only{' '}
+                  <InfoTooltip text="When enabled, only pieces flagged as capture targets (ends game on capture) or checkmate pieces (ends game on checkmate) may be repositioned. Useful for repositioning king-like pieces before the game starts." />
+                </span>
+              }
+            />
+          </div>
+        )}
+      </ToggleRow>
+
+      <ToggleRow
         title="Forced Capture"
         tooltip="When enabled, if any of your pieces can make a capturing move on your turn, you MUST make a capture (any capture). Used in Checkers-style and anti-chess games. Non-capture moves will be rejected when captures are available."
         checked={gameData.forced_capture_condition === true}

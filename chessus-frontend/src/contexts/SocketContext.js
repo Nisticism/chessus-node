@@ -776,6 +776,18 @@ export const SocketProvider = ({ children }) => {
     });
   }, [socket, connected, getAnonPlayerId]);
 
+  // Submit a pre-game reposition (or skip remaining repositions)
+  const submitReposition = useCallback((gameId, { from, to, skip } = {}) => {
+    if (!socket || !connected) return;
+    socket.emit('submitReposition', {
+      gameId,
+      userId: getAnonPlayerId(gameId),
+      from: from || null,
+      to: to || null,
+      skip: skip || false,
+    });
+  }, [socket, connected, getAnonPlayerId]);
+
   // Subscribe to game events
   const onGameEvent = useCallback((event, callback) => {
     if (!socket) return () => {};
@@ -815,6 +827,7 @@ export const SocketProvider = ({ children }) => {
     promotePiece,
     skipCaptureAction,
     skipRangedCaptureAction,
+    submitReposition,
     onGameEvent,
     pauseDisconnectTimer,
     resumeDisconnectTimer,

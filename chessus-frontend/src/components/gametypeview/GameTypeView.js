@@ -2374,6 +2374,15 @@ const GameTypeView = () => {
       mechanicsContent.push(placeDesc);
     }
 
+    if (game.start_repositions > 0) {
+      const n = game.start_repositions;
+      let repoDesc = `**Pre-game Repositions**\nBefore the game begins, each player gets **${n} reposition${n > 1 ? 's' : ''}**. Players alternate, repositioning one of their own pieces to any empty square on the board (impassable squares are excluded). The game clock does not start until all repositions are complete.`;
+      if (game.reposition_key_pieces_only) {
+        repoDesc += `\n• **Key pieces only**: Only pieces that end the game on capture or checkmate may be repositioned.`;
+      }
+      mechanicsContent.push(repoDesc);
+    }
+
     if (otherData.flanking_captures) {
       let flankDesc = `**Flanking Captures**\nWhen a piece is placed, any opponent pieces that are flanked (enclosed in a straight line between two of the placing player's pieces) are captured and converted to the placing player's side.`;
       if (otherData.must_flank) {

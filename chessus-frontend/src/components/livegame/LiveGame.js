@@ -171,6 +171,7 @@ const LiveGame = () => {
     promotePiece,
     skipCaptureAction,
     skipRangedCaptureAction,
+    submitReposition,
     onGameEvent,
     spectateGame,
     pauseDisconnectTimer,
@@ -1536,7 +1537,14 @@ const LiveGame = () => {
       setCheckedPieces(newState.checkedPieces || []);
     });
 
+    const unsubscribeReposition = onGameEvent("repositionApplied", ({ gameId: rGameId, pieces, repositionPhase }) => {
+      if (parseInt(rGameId) === parseInt(gameId)) {
+        setGameState(prev => ({ ...prev, pieces: [...pieces], repositionPhase }));
+      }
+    });
+
     return () => {
+      unsubscribeReposition();
       unsubscribeBotThinking();
       unsubscribeMove();
       unsubscribeCheck();
@@ -1603,6 +1611,8 @@ const LiveGame = () => {
   // Check if it's the current user's turn
   const isMyTurn = useMemo(() => {
     if (!currentPlayer || !gameState) return false;
+    // During reposition phase, isMyTurn is false so normal moves are blocked
+    if (gameState.repositionPhase?.active) return false;
     // Simultaneous turns: a player is "on turn" any time they haven't yet
     // submitted their move for the current round. The board locks once
     // simulSubmittedThisRound is set, regardless of currentTurn.
@@ -1611,6 +1621,12 @@ const LiveGame = () => {
     }
     return currentPlayer.position === gameState.currentTurn;
   }, [currentPlayer, gameState, simulSubmittedThisRound]);
+
+  const isMyRepositionTurn = useMemo(() => {
+    if (!currentPlayer || !gameState) return false;
+    const rp = gameState.repositionPhase;
+    return !!(rp?.active && rp.currentTurn === currentPlayer.position);
+  }, [currentPlayer, gameState]);
 
   // Clear premove when it becomes your turn (premove didn't execute or was cancelled)
   // In bot games, don't clear — premove persists until bot moves and server executes it
@@ -3617,6 +3633,19 @@ const LiveGame = () => {
       return;
     }
 
+    // Reposition phase: intercept drops to move own pieces to empty squares
+    if (gameState?.repositionPhase?.active && isMyRepositionTurn) {
+      const from = { x: draggedPiece.x, y: draggedPiece.y };
+      const to = { x: targetX, y: targetY };
+      // Don't submit if dropping on the same square
+      if (from.x !== to.x || from.y !== to.y) {
+        submitReposition(parseInt(gameId), { from, to });
+      }
+      setDraggedPiece(null);
+      setDragValidMoves([]);
+      return;
+    }
+
     // Adjust drop coordinates for multi-tile grab offset
     const grabOffset = dragGrabOffsetRef.current;
     const anchorX = targetX - (grabOffset.x || 0);
@@ -3740,7 +3769,7 @@ const LiveGame = () => {
     setValidMoves([]);
     setDraggedPiece(null);
     setDragValidMoves([]);
-  }, [draggedPiece, dragValidMoves, isMyTurn, gameState, submitMove, sendPremove, gameId, inCheck, currentPlayer, soundEnabledRef, calculateValidMoves]);
+  }, [draggedPiece, dragValidMoves, isMyTurn, isMyRepositionTurn, gameState, submitMove, submitReposition, sendPremove, gameId, inCheck, currentPlayer, soundEnabledRef, calculateValidMoves]);
 
   // Check if board should be flipped (player 2 sees board from their perspective)
   const shouldFlipBoard = useMemo(() => {
@@ -5431,6 +5460,34 @@ const LiveGame = () => {
                   <span style={{ marginLeft: 8, fontSize: '0.85em', opacity: 0.85 }}>
                     Cancellations: {simulCancellationCount}/{gameState.gameType.simul_turns_draw_after_cancellations}
                   </span>
+                )}
+              </>
+            ) : gameState?.repositionPhase?.active ? (
+              <>
+                {isMyRepositionTurn ? (
+                  <>
+                    <span className={styles["your-turn"]}>
+                      Reposition Phase &mdash; drag a piece to a new square
+                      {' '}({currentPlayer?.position === 1 ? gameState.repositionPhase.p1Remaining : gameState.repositionPhase.p2Remaining} remaining)
+                    </span>
+                    <button
+                      onClick={() => submitReposition(parseInt(gameId), { skip: true })}
+                      style={{
+                        marginLeft: 10,
+                        background: 'transparent',
+                        color: '#fff',
+                        border: '1px solid rgba(255,255,255,0.45)',
+                        padding: '4px 10px',
+                        borderRadius: 5,
+                        cursor: 'pointer',
+                        fontSize: '0.85rem',
+                      }}
+                    >
+                      Skip remaining
+                    </button>
+                  </>
+                ) : (
+                  <span className={styles["waiting-turn"]}>Waiting for opponent to reposition...</span>
                 )}
               </>
             ) : isMyTurn ? (
