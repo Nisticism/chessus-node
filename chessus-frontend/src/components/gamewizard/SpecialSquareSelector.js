@@ -583,7 +583,7 @@ const SpecialSquareSelector = ({
                   />
                   {customCombo.restrictPiecePlacement && (
                     <div className={styles["player-selection"]} style={{ marginTop: '8px', marginBottom: 0 }}>
-                      <label>Who can place pieces on this square:</label>
+                      <label>Who is <strong>blocked</strong> from placing pieces on this square:</label>
                       <div className={styles["player-radio-group"]}>
                         <label className={styles["player-radio-label"]}>
                           <input

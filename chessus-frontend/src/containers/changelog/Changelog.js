@@ -15,6 +15,9 @@ const changelogData = [
       "The Rust training engine (v1.2.9) now correctly enforces all hop abilities during self-play: attack-specific hop flags, directional-hop-only restriction, exact-ratio-hop-only restriction, and stop-at-occupied for capture repeats.",
       "The easy/medium/hard computer player now accurately values pieces that have hop ability modifiers (exact-ratio-hop-only and directional-hop restrictions now reduce a piece's estimated value as expected).",
       "Pre-game repositions: game creators can now give each player 1–8 repositions before the game starts. Players alternate repositioning one of their own pieces to any empty square; the clock doesn't start until all repositions are complete. An option to restrict repositioning to key pieces (capture/checkmate targets) is available when applicable win conditions are set.",
+      "Computer player now makes smart repositions during the pre-game reposition phase: it evaluates each possible piece+square combination using static board evaluation (piece safety, center control) and picks the move that most improves its position, or skips if no reposition helps.",
+      "Admin dashboard — Users tab: Username and Last Active column headers are now clickable to sort the table. Clicking again toggles ascending/descending order.",
+      "Wizard fix: the 'Restrict Piece Placement' custom square option now correctly labels the player selection as who is blocked from placing (not who is allowed), matching the actual in-game behavior.",
     ],
   },
   {

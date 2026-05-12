@@ -30,6 +30,7 @@ const AdminDashboard = () => {
   const [aiPanelInitialGameTypeId] = useState(gameTypeIdFromUrl ? parseInt(gameTypeIdFromUrl, 10) : null);
   const [data, setData] = useState([]);
   const [pagination, setPagination] = useState({ page: 1, limit: 10, total: 0, totalPages: 0 });
+  const [userSort, setUserSort] = useState({ sortBy: 'id', sortOrder: 'DESC' });
   const [loading, setLoading] = useState(true);
   const [editingItem, setEditingItem] = useState(null);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -193,12 +194,14 @@ const AdminDashboard = () => {
     return () => clearTimeout(timer);
   }, [showAlert]);
 
-  const fetchData = useCallback(async (tab, page = 1) => {
+  const fetchData = useCallback(async (tab, page = 1, sortOverride) => {
     setLoading(true);
     try {
       const limit = pagination?.limit || 10;
+      const sort = sortOverride || userSort;
+      const sortParams = tab === 'users' ? `&sortBy=${sort.sortBy}&sortOrder=${sort.sortOrder}` : '';
       const response = await axios.get(
-        `${API_URL}admin/${tab}?page=${page}&limit=${limit}`,
+        `${API_URL}admin/${tab}?page=${page}&limit=${limit}${sortParams}`,
         { headers: authHeader() }
       );
       setData(response.data.data);
@@ -222,7 +225,7 @@ const AdminDashboard = () => {
     } finally {
       setLoading(false);
     }
-  }, [pagination?.limit, navigate]);
+  }, [pagination?.limit, navigate, userSort]);
 
   useEffect(() => {
     if (activeTab === 'featured') {
@@ -1018,19 +1021,40 @@ const AdminDashboard = () => {
     }
   };
 
+  const handleUserSort = (field) => {
+    const newSort = userSort.sortBy === field
+      ? { sortBy: field, sortOrder: userSort.sortOrder === 'ASC' ? 'DESC' : 'ASC' }
+      : { sortBy: field, sortOrder: field === 'username' ? 'ASC' : 'DESC' };
+    setUserSort(newSort);
+    fetchData('users', 1, newSort);
+  };
+
+  const sortArrow = (field) => {
+    if (userSort.sortBy !== field) return <span style={{ opacity: 0.3, fontSize: '0.75em' }}> ↕</span>;
+    return <span style={{ fontSize: '0.75em' }}> {userSort.sortOrder === 'ASC' ? '↑' : '↓'}</span>;
+  };
+
   const renderUsersTable = () => (
     <div className={styles["table-container"]}>
       <table className={styles["data-table"]}>
         <thead>
           <tr>
             <th>ID</th>
-            <th>Username</th>
+            <th
+              onClick={() => handleUserSort('username')}
+              style={{ cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}
+              title="Sort by username"
+            >Username{sortArrow('username')}</th>
             <th>Email</th>
             <th>Name</th>
             <th>Role</th>
             <th>Status</th>
             <th>ELO</th>
-            <th>Last Active</th>
+            <th
+              onClick={() => handleUserSort('last_active_at')}
+              style={{ cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}
+              title="Sort by last active"
+            >Last Active{sortArrow('last_active_at')}</th>
             <th>Actions</th>
           </tr>
         </thead>

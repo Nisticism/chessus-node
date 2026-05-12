@@ -11307,11 +11307,16 @@ app.get("/api/admin/users", authenticateAdmin, async (req, res) => {
     const limit = parseInt(req.query.limit) || 10;
     const offset = (page - 1) * limit;
 
+    const allowedSortFields = ['id', 'username', 'last_active_at', 'elo'];
+    const sortBy = allowedSortFields.includes(req.query.sortBy) ? req.query.sortBy : 'id';
+    const sortOrder = req.query.sortOrder === 'ASC' ? 'ASC' : 'DESC';
+
     const [users] = await db_pool.query(
       `SELECT id, username, email, first_name, last_name, bio, role, profile_picture, 
-       last_active_at, timezone, lang, country, light_square_color, dark_square_color, elo
+       last_active_at, timezone, lang, country, light_square_color, dark_square_color, elo,
+       banned, ban_reason, ban_expires_at
        FROM users 
-       ORDER BY id DESC 
+       ORDER BY ${sortBy} ${sortOrder}
        LIMIT ? OFFSET ?`,
       [limit, offset]
     );
