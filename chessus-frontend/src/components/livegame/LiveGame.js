@@ -1537,9 +1537,14 @@ const LiveGame = () => {
       setCheckedPieces(newState.checkedPieces || []);
     });
 
-    const unsubscribeReposition = onGameEvent("repositionApplied", ({ gameId: rGameId, pieces, repositionPhase }) => {
+    const unsubscribeReposition = onGameEvent("repositionApplied", ({ gameId: rGameId, pieces, repositionPhase, gameStatus }) => {
       if (parseInt(rGameId) === parseInt(gameId)) {
-        setGameState(prev => ({ ...prev, pieces: [...pieces], repositionPhase }));
+        setGameState(prev => ({
+          ...prev,
+          pieces: [...pieces],
+          repositionPhase,
+          ...(gameStatus ? { status: gameStatus } : {}),
+        }));
       }
     });
 

@@ -3210,6 +3210,15 @@ function initializeSocket(server) {
           gameState.status = 'ready';
           gameState.rated = false; // Bot games are never rated
 
+          // Initialize reposition phase if the game type requires it.
+          // Bot immediately skips all of its own reposition turns.
+          const _repoBotCount = gameState.gameType?.start_repositions || 0;
+          if (_repoBotCount > 0) {
+            gameState.repositionPhase = { active: true, p1Remaining: _repoBotCount, p2Remaining: _repoBotCount, currentTurn: 1 };
+            const _phaseEndedAtStart = processBotRepositions(gameState);
+            console.log(`[Bot] Reposition phase initialized for game ${gameId}: ${_repoBotCount} per player. Bot (P${botPosition}) skipped immediately. Phase still active: ${!_phaseEndedAtStart}`);
+          }
+
           // Apply randomized starting positions if the host enabled them.
           // (Standard human-vs-human games run this in the joinGame handler,
           // but bot games skip joinGame, so do it here.)
@@ -3276,8 +3285,9 @@ function initializeSocket(server) {
             return; // Skip the bot's first turn — the game is already over.
           }
 
-          // If bot is Player 1, it moves first — start the game and trigger bot turn
-          if (botPosition === 1) {
+          // If bot is Player 1, it moves first — start the game and trigger bot turn.
+          // But only if there is no active reposition phase (human may need to reposition first).
+          if (botPosition === 1 && !(gameState.repositionPhase?.active)) {
             gameState.status = 'active';
             gameState.startTime = Date.now();
             if (!gameState.initialPieces) {
@@ -4607,6 +4617,11 @@ function initializeSocket(server) {
         // logic runs. The resolver handles its own validation and DB writes.
         if (isSimulTurns(gameState)) {
           return await handleSimulMoveSubmission(io, socket, gameState, gameId, userId, move);
+        }
+
+        // Block normal moves during the pre-game reposition phase
+        if (gameState.repositionPhase?.active) {
+          return socket.emit("error", { message: "Game is still in the pre-game reposition phase" });
         }
 
         // Verify it's this player's turn
@@ -7702,16 +7717,46 @@ function initializeSocket(server) {
           // else currentTurn stays (other player already done)
         }
 
-        await db_pool.query(
-          "UPDATE games SET pieces = ?, other_data = ? WHERE id = ?",
-          [JSON.stringify(gameState.pieces), buildOtherData(gameState), gameIdStr]
-        );
+        // For bot games: auto-skip any bot reposition turns before emitting
+        if (phase.active && gameState.botPlayer) {
+          processBotRepositions(gameState);
+        }
+
+        // For bot games: if phase just ended, activate the game
+        if (!phase.active && gameState.botPlayer) {
+          gameState.status = 'active';
+          gameState.startTime = Date.now();
+          if (!gameState.initialPieces) {
+            gameState.initialPieces = JSON.parse(JSON.stringify(gameState.pieces));
+          }
+          initializeCastlingPartners(gameState);
+          const startTimeStr = new Date().toISOString().slice(0, 19).replace('T', ' ');
+          await db_pool.query(
+            "UPDATE games SET status = 'active', start_time = ?, other_data = ? WHERE id = ?",
+            [startTimeStr, buildOtherData(gameState, { isBotGame: true, botDifficulty: gameState.botPlayer.difficulty }), gameIdStr]
+          );
+          if (gameState.gameTypeId) {
+            try { await db_pool.query("UPDATE game_types SET last_played_at = ? WHERE id = ?", [startTimeStr, gameState.gameTypeId]); } catch (_) {}
+          }
+          startGameTimer(io, gameIdStr);
+        } else {
+          await db_pool.query(
+            "UPDATE games SET pieces = ?, other_data = ? WHERE id = ?",
+            [JSON.stringify(gameState.pieces), buildOtherData(gameState), gameIdStr]
+          );
+        }
 
         io.to(`game-${gameIdStr}`).emit("repositionApplied", {
           gameId,
           pieces: gameState.pieces,
           repositionPhase: gameState.repositionPhase,
+          ...(gameState.botPlayer && !phase.active ? { gameStatus: 'active' } : {}),
         });
+
+        // Trigger bot's first move if phase ended and it's the bot's turn
+        if (!phase.active && gameState.botPlayer && gameState.currentTurn === gameState.botPlayer.position) {
+          processBotTurn(io, gameIdStr, gameState);
+        }
       } catch (err) {
         console.error("Error in submitReposition:", err);
         socket.emit("error", { message: "Failed to apply reposition" });
@@ -15617,8 +15662,32 @@ function runBotInWorker(gameState, botPosition, difficulty) {
  * This mirrors the makeMove handler but is streamlined for bot play (no premoves,
  * no socket error handling, auto-promotion, auto-chain-capture).
  */
+/**
+ * Immediately skip all reposition turns belonging to the bot player.
+ * Called after the phase is initialized (at game creation) and after every
+ * human reposition submission (in case the phase advanced to the bot's turn).
+ * Mutates gameState.repositionPhase in place; returns true if the phase ended.
+ */
+function processBotRepositions(gameState) {
+  const phase = gameState.repositionPhase;
+  if (!phase || !phase.active || !gameState.botPlayer) return false;
+  const botPos = gameState.botPlayer.position;
+  while (phase.active && phase.currentTurn === botPos) {
+    if (botPos === 1) phase.p1Remaining = 0;
+    else phase.p2Remaining = 0;
+    if (phase.p1Remaining === 0 && phase.p2Remaining === 0) {
+      phase.active = false;
+    } else {
+      const other = phase.currentTurn === 1 ? 2 : 1;
+      const otherRemaining = other === 1 ? phase.p1Remaining : phase.p2Remaining;
+      if (otherRemaining > 0) phase.currentTurn = other;
+      else phase.active = false;
+    }
+  }
+  return !phase.active;
+}
+
 async function processBotTurn(io, gameId, gameState) {
-  const botPlayer = gameState.botPlayer;
   if (!botPlayer) { console.log(`[Bot] No botPlayer in game ${gameId}`); return; }
   if (gameState.currentTurn !== botPlayer.position) { console.log(`[Bot] Not bot's turn in game ${gameId}`); return; }
   if (gameState.status === 'completed') { console.log(`[Bot] Game ${gameId} already completed`); return; }
