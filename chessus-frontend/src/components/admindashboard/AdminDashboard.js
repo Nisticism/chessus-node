@@ -1039,7 +1039,11 @@ const AdminDashboard = () => {
       <table className={styles["data-table"]}>
         <thead>
           <tr>
-            <th>ID</th>
+            <th
+              onClick={() => handleUserSort('id')}
+              style={{ cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}
+              title="Sort by ID"
+            >ID{sortArrow('id')}</th>
             <th
               onClick={() => handleUserSort('username')}
               style={{ cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}

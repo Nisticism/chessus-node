@@ -5851,13 +5851,17 @@ app.get("/api/admin/users", authenticateToken, async (req, res) => {
     const limit = parseInt(req.query.limit) || 10;
     const offset = (page - 1) * limit;
 
+    const allowedSortFields = ['id', 'username', 'last_active_at', 'elo'];
+    const sortBy = allowedSortFields.includes(req.query.sortBy) ? req.query.sortBy : 'id';
+    const sortOrder = req.query.sortOrder === 'ASC' ? 'ASC' : 'DESC';
+
     const [[users], [[{ total }]]] = await Promise.all([
       db_pool.query(
         `SELECT id, username, email, first_name, last_name, role, elo, profile_picture, bio,
                 banned, ban_reason, banned_at, banned_by, ban_expires_at, last_active_at,
                 total_donations
          FROM users
-         ORDER BY id DESC
+         ORDER BY ${sortBy} ${sortOrder}
          LIMIT ? OFFSET ?`,
         [limit, offset]
       ),
@@ -11297,46 +11301,6 @@ setInterval(() => {
     }
   }
 }, 60 * 60 * 1000);
-
-// ----------------------- Admin Dashboard Routes ------------------------------
-
-// Get all users with pagination
-app.get("/api/admin/users", authenticateAdmin, async (req, res) => {
-  try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const offset = (page - 1) * limit;
-
-    const allowedSortFields = ['id', 'username', 'last_active_at', 'elo'];
-    const sortBy = allowedSortFields.includes(req.query.sortBy) ? req.query.sortBy : 'id';
-    const sortOrder = req.query.sortOrder === 'ASC' ? 'ASC' : 'DESC';
-
-    const [users] = await db_pool.query(
-      `SELECT id, username, email, first_name, last_name, bio, role, profile_picture, 
-       last_active_at, timezone, lang, country, light_square_color, dark_square_color, elo,
-       banned, ban_reason, ban_expires_at
-       FROM users 
-       ORDER BY ${sortBy} ${sortOrder}
-       LIMIT ? OFFSET ?`,
-      [limit, offset]
-    );
-
-    const [[{ total }]] = await db_pool.query("SELECT COUNT(*) as total FROM users");
-
-    res.json({
-      data: users,
-      pagination: {
-        page,
-        limit,
-        total,
-        totalPages: Math.ceil(total / limit)
-      }
-    });
-  } catch (err) {
-    console.error("Error in /api/admin/users:", err);
-    res.status(500).send({ message: "Failed to fetch users", err: err.message });
-  }
-});
 
 // Get all pieces with pagination (includes movement and attack data)
 app.get("/api/admin/pieces", authenticateAdmin, async (req, res) => {
