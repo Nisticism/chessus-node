@@ -163,6 +163,16 @@ function applyMove(state, move) {
       hasMoved: true,
       moveCount: 1,
     });
+    // Apply flanking captures for Othello-style games so the search tree
+    // evaluates the correct board state (flipped pieces change piece counts).
+    if (otherData.flanking_captures) {
+      try {
+        const { applyFlankingCaptures: afc } = getGameSocket();
+        if (typeof afc === 'function') {
+          silent(() => afc(state, move.to.x, move.to.y, playerToMove));
+        }
+      } catch (_) { /* ignore — search tree flanking is best-effort */ }
+    }
     state.currentTurn = state.currentTurn === 1 ? 2 : 1;
     state.moveCount = (state.moveCount || 0) + 1;
     state.gamePly = (state.gamePly ?? 0) + 1;
@@ -555,9 +565,22 @@ function getMovesForSearch(state, playerPosition) {
         occupiedSet.add(`${p.x},${p.y}`);
       }
 
+      // For must_flank games, restrict to valid flanking squares only
+      let validFlankSet = null;
+      if (otherData.flanking_captures && otherData.must_flank) {
+        try {
+          const { getValidFlankingPlacements: gvfp } = getGameSocket();
+          if (typeof gvfp === 'function') {
+            const validSquares = silent(() => gvfp(state, playerPosition)) || [];
+            validFlankSet = new Set(validSquares.map(sq => `${sq.x},${sq.y}`));
+          }
+        } catch (_) { /* fall back to all empty squares */ }
+      }
+
       for (let y = 0; y < boardHeight; y++) {
         for (let x = 0; x < boardWidth; x++) {
           if (occupiedSet.has(`${x},${y}`)) continue;
+          if (validFlankSet !== null && !validFlankSet.has(`${x},${y}`)) continue;
           for (const pt of piecesToPlace) {
             moves.push({
               type: 'place',
