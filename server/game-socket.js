@@ -15801,6 +15801,7 @@ async function processBotRepositions(gameState) {
 }
 
 async function processBotTurn(io, gameId, gameState) {
+  const botPlayer = gameState.botPlayer;
   if (!botPlayer) { console.log(`[Bot] No botPlayer in game ${gameId}`); return; }
   if (gameState.currentTurn !== botPlayer.position) { console.log(`[Bot] Not bot's turn in game ${gameId}`); return; }
   if (gameState.status === 'completed') { console.log(`[Bot] Game ${gameId} already completed`); return; }
