@@ -3211,12 +3211,12 @@ function initializeSocket(server) {
           gameState.rated = false; // Bot games are never rated
 
           // Initialize reposition phase if the game type requires it.
-          // Bot immediately skips all of its own reposition turns.
+          // Bot immediately processes its own reposition turns (using static eval to find improvements).
           const _repoBotCount = gameState.gameType?.start_repositions || 0;
           if (_repoBotCount > 0) {
             gameState.repositionPhase = { active: true, p1Remaining: _repoBotCount, p2Remaining: _repoBotCount, currentTurn: 1 };
-            const _phaseEndedAtStart = processBotRepositions(gameState);
-            console.log(`[Bot] Reposition phase initialized for game ${gameId}: ${_repoBotCount} per player. Bot (P${botPosition}) skipped immediately. Phase still active: ${!_phaseEndedAtStart}`);
+            const _phaseEndedAtStart = await processBotRepositions(gameState);
+            console.log(`[Bot] Reposition phase initialized for game ${gameId}: ${_repoBotCount} per player. Bot (P${botPosition}) done. Phase still active: ${!_phaseEndedAtStart}`);
           }
 
           // Apply randomized starting positions if the host enabled them.
@@ -7717,9 +7717,9 @@ function initializeSocket(server) {
           // else currentTurn stays (other player already done)
         }
 
-        // For bot games: auto-skip any bot reposition turns before emitting
+        // For bot games: process bot reposition turns (static-eval search for best move)
         if (phase.active && gameState.botPlayer) {
-          processBotRepositions(gameState);
+          await processBotRepositions(gameState);
         }
 
         // For bot games: if phase just ended, activate the game
@@ -7732,8 +7732,8 @@ function initializeSocket(server) {
           initializeCastlingPartners(gameState);
           const startTimeStr = new Date().toISOString().slice(0, 19).replace('T', ' ');
           await db_pool.query(
-            "UPDATE games SET status = 'active', start_time = ?, other_data = ? WHERE id = ?",
-            [startTimeStr, buildOtherData(gameState, { isBotGame: true, botDifficulty: gameState.botPlayer.difficulty }), gameIdStr]
+            "UPDATE games SET status = 'active', start_time = ?, pieces = ?, other_data = ? WHERE id = ?",
+            [startTimeStr, JSON.stringify(gameState.pieces), buildOtherData(gameState, { isBotGame: true, botDifficulty: gameState.botPlayer.difficulty }), gameIdStr]
           );
           if (gameState.gameTypeId) {
             try { await db_pool.query("UPDATE game_types SET last_played_at = ? WHERE id = ?", [startTimeStr, gameState.gameTypeId]); } catch (_) {}
@@ -15663,18 +15663,127 @@ function runBotInWorker(gameState, botPosition, difficulty) {
  * no socket error handling, auto-promotion, auto-chain-capture).
  */
 /**
- * Immediately skip all reposition turns belonging to the bot player.
- * Called after the phase is initialized (at game creation) and after every
- * human reposition submission (in case the phase advanced to the bot's turn).
- * Mutates gameState.repositionPhase in place; returns true if the phase ended.
+ * Find the best reposition for the bot using static evaluation.
+ * Returns { piece, to: {x,y}, delta } or null if no improvement found.
  */
-function processBotRepositions(gameState) {
+function findBestBotReposition(gameState, botPos) {
+  try {
+    const aiEngine = require('./ai/ai-engine');
+    const bw = gameState.gameType?.board_width || 8;
+    const bh = gameState.gameType?.board_height || 8;
+    const keyOnly = !!gameState.gameType?.reposition_key_pieces_only;
+
+    // Pieces the bot may reposition
+    const candidates = gameState.pieces.filter(p => {
+      const owner = p.team != null ? Number(p.team) : Number(p.player_id);
+      if (owner !== botPos) return false;
+      if (keyOnly && !p.ends_game_on_capture && !p.ends_game_on_checkmate) return false;
+      return true;
+    });
+    if (candidates.length === 0) return null;
+
+    const impSet = collectImpassableSquares(gameState.gameType);
+
+    // Build set of all squares currently occupied (by all pieces)
+    const buildOccupied = () => {
+      const s = new Set();
+      for (const p of gameState.pieces) {
+        const pw = p.piece_width || 1;
+        const ph = p.piece_height || 1;
+        for (let dx = 0; dx < pw; dx++) {
+          for (let dy = 0; dy < ph; dy++) {
+            s.add(`${p.y + dy},${p.x + dx}`);
+          }
+        }
+      }
+      return s;
+    };
+
+    // Baseline score before any reposition
+    const evalState = { pieces: gameState.pieces, gameType: gameState.gameType, moveCount: 0 };
+    const baseScore = aiEngine.evaluatePosition(evalState, botPos);
+
+    let bestDelta = 0;
+    let bestReposition = null;
+
+    for (const piece of candidates) {
+      const pw = piece.piece_width || 1;
+      const ph = piece.piece_height || 1;
+      const origX = piece.x;
+      const origY = piece.y;
+
+      // Build occupied set excluding this piece's current squares
+      const occupied = buildOccupied();
+      for (let dx = 0; dx < pw; dx++) {
+        for (let dy = 0; dy < ph; dy++) {
+          occupied.delete(`${origY + dy},${origX + dx}`);
+        }
+      }
+
+      for (let ty = 0; ty <= bh - ph; ty++) {
+        for (let tx = 0; tx <= bw - pw; tx++) {
+          if (tx === origX && ty === origY) continue;
+          // Check all squares the piece would cover at (tx,ty)
+          let valid = true;
+          for (let dx = 0; dx < pw && valid; dx++) {
+            for (let dy = 0; dy < ph && valid; dy++) {
+              const k = `${ty + dy},${tx + dx}`;
+              if (occupied.has(k)) valid = false;
+              if (impSet && impSet.has(k)) valid = false;
+            }
+          }
+          if (!valid) continue;
+
+          // Temporarily apply and evaluate
+          piece.x = tx;
+          piece.y = ty;
+          const newScore = aiEngine.evaluatePosition(evalState, botPos);
+          const delta = newScore - baseScore;
+          if (delta > bestDelta) {
+            bestDelta = delta;
+            bestReposition = { piece, to: { x: tx, y: ty }, delta };
+          }
+          // Restore
+          piece.x = origX;
+          piece.y = origY;
+        }
+      }
+    }
+
+    return bestReposition;
+  } catch (err) {
+    console.error('[Bot] findBestBotReposition error:', err);
+    return null;
+  }
+}
+
+/**
+ * Process bot reposition turns: search for beneficial repositions using static
+ * evaluation, apply the best one found, and skip remaining turns if no
+ * improvement exists.  Mutates gameState.repositionPhase in place.
+ * Returns true if the phase ended.
+ */
+async function processBotRepositions(gameState) {
   const phase = gameState.repositionPhase;
   if (!phase || !phase.active || !gameState.botPlayer) return false;
   const botPos = gameState.botPlayer.position;
+
   while (phase.active && phase.currentTurn === botPos) {
-    if (botPos === 1) phase.p1Remaining = 0;
-    else phase.p2Remaining = 0;
+    const best = findBestBotReposition(gameState, botPos);
+    if (best) {
+      best.piece.x = best.to.x;
+      best.piece.y = best.to.y;
+      console.log(`[Bot] Reposition "${best.piece.piece_name}" to (${best.to.x},${best.to.y}) in game ${gameState.id || '?'} (eval delta: ${best.delta.toFixed(1)})`);
+      if (botPos === 1) phase.p1Remaining--;
+      else phase.p2Remaining--;
+    } else {
+      // No beneficial reposition — skip all remaining bot turns
+      console.log(`[Bot] No beneficial reposition in game ${gameState.id || '?'}, skipping remaining`);
+      if (botPos === 1) phase.p1Remaining = 0;
+      else phase.p2Remaining = 0;
+    }
+
+    // Advance or end the phase
     if (phase.p1Remaining === 0 && phase.p2Remaining === 0) {
       phase.active = false;
     } else {
@@ -15683,7 +15792,11 @@ function processBotRepositions(gameState) {
       if (otherRemaining > 0) phase.currentTurn = other;
       else phase.active = false;
     }
+
+    // After a skip-all, exit — don't re-enter for this bot (remaining already 0)
+    if (!best) break;
   }
+
   return !phase.active;
 }
 
