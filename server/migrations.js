@@ -4060,6 +4060,46 @@ const runMigrations = async () => {
     }
   }
 
+  // Backfill: copy movement-hop flags to attack-hop equivalents for all pieces
+  // that have movement hopping enabled but no explicit attack-hop settings.
+  // This is idempotent — only updates rows where src=1 AND dst=0.
+  {
+    try {
+      const hopPairs = [
+        ['can_hop_over_allies',      'can_hop_attack_over_allies'],
+        ['can_hop_over_enemies',     'can_hop_attack_over_enemies'],
+        ['exact_ratio_hop_only',     'exact_ratio_hop_only_attack'],
+        ['directional_hop_disabled', 'directional_hop_disabled_attack'],
+        ['hop_stop_at_occupied',     'hop_stop_at_occupied_attack'],
+        ['directional_hop_only',     'directional_hop_only_attack'],
+      ];
+      let totalUpdated = 0;
+      console.log('[backfill] Checking hop-flags-to-attack backfill...');
+      for (const [src, dst] of hopPairs) {
+        const srcExists = await columnExists('pieces', src);
+        const dstExists = await columnExists('pieces', dst);
+        if (!srcExists || !dstExists) {
+          console.log(`[backfill] SKIP ${src} -> ${dst} (column missing)`);
+          continue;
+        }
+        const [result] = await db_pool.query(
+          `UPDATE pieces SET \`${dst}\` = 1 WHERE \`${src}\` = 1 AND (\`${dst}\` IS NULL OR \`${dst}\` = 0)`
+        );
+        if (result.affectedRows > 0) {
+          console.log(`[backfill] ${src} -> ${dst}: updated ${result.affectedRows} piece(s)`);
+          totalUpdated += result.affectedRows;
+        }
+      }
+      if (totalUpdated === 0) {
+        console.log('[backfill] hop-flags-to-attack: all pieces already up to date');
+      } else {
+        console.log(`[backfill] hop-flags-to-attack: backfilled ${totalUpdated} total piece row(s)`);
+      }
+    } catch (backfillErr) {
+      console.error('[backfill] hop-flags-to-attack failed:', backfillErr.message);
+    }
+  }
+
   {
     const exists = await columnExists('game_types', 'start_repositions');
     if (!exists) {
