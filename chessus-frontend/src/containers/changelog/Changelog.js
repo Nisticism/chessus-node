@@ -18,6 +18,13 @@ const changelogData = [
       "Computer player now makes smart repositions during the pre-game reposition phase: it evaluates each possible piece+square combination using static board evaluation (piece safety, center control) and picks the move that most improves its position, or skips if no reposition helps.",
       "Admin dashboard — Users tab: Username and Last Active column headers are now clickable to sort the table. Clicking again toggles ascending/descending order.",
       "Wizard fix: the 'Restrict Piece Placement' custom square option now correctly labels the player selection as who is blocked from placing (not who is allowed), matching the actual in-game behavior.",
+      "New custom square ability: 'Allow Ranged Attacks Outside Zone'. When a Restriction Zone square has this enabled, zone-restricted ranged pieces standing on it can fire ranged attacks to squares outside the zone — even though they still cannot physically move there.",
+      "Fixed (reposition phase): movement arrows no longer appear on any piece during the pre-game reposition phase.",
+      "Fixed (reposition phase): dragging a piece during the reposition phase now correctly picks up the piece image and shows it following the mouse. Previously the piece appeared to stay in place while dragging.",
+      "Fixed (reposition phase): the computer player no longer repositions its royal pieces (capture/checkmate targets) to squares that are under attack by an enemy piece.",
+      "Fixed (placement games vs computer): the computer player no longer freezes when it has no valid flanking placements. It now correctly skips its turn and returns control to the human player, or ends the game if both players are blocked.",
+      "Fixed (placement games vs computer): the computer player now correctly flips opponent pieces when it makes a flanking placement. Previously a placement ordering bug meant flanking captures were never applied.",
+      "Fixed (placement games vs computer): the computer player's search now only considers valid flanking squares in must-flank games, and correctly applies flanking flips to the board during its thinking. This gives it a much more accurate evaluation of Othello-style positions.",
     ],
   },
   {
