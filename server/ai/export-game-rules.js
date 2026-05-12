@@ -11,7 +11,7 @@ const db_pool = require('../../configs/db');
 
 // This must match Cargo.toml [package] version in ai-engine-rs/.
 // Bump both together whenever a protocol.rs change breaks compatibility.
-const TRAINER_VERSION = '1.2.8';
+const TRAINER_VERSION = '1.2.9';
 // Minimum binary version that can still train and upload. Bump this only when
 // a protocol-breaking change requires users to get a new binary. As long as
 // you only add optional fields, leave this at 1.0.0 so existing binaries keep
@@ -301,6 +301,15 @@ async function exportGameRules(gameTypeId) {
         can_en_passant: toBool(tpl.can_en_passant),
         can_control_squares: false,
         hop_stop_at_occupied: tpl.hop_stop_at_occupied != null ? toBool(tpl.hop_stop_at_occupied) : true,
+        directional_hop_only: toBool(tpl.directional_hop_only),
+        exact_ratio_hop_only: toBool(tpl.exact_ratio_hop_only),
+        can_hop_attack_over_allies: toBool(tpl.can_hop_attack_over_allies),
+        can_hop_attack_over_enemies: toBool(tpl.can_hop_attack_over_enemies),
+        directional_hop_disabled_attack: toBool(tpl.directional_hop_disabled_attack),
+        directional_hop_only_attack: toBool(tpl.directional_hop_only_attack),
+        exact_ratio_hop_only_attack: toBool(tpl.exact_ratio_hop_only_attack),
+        hop_stop_at_occupied_attack: tpl.hop_stop_at_occupied_attack != null ? toBool(tpl.hop_stop_at_occupied_attack) : true,
+        chain_hop_allies: toBool(tpl.chain_hop_allies),
         capture_points_gain: 0,
         capture_points_loss: 0,
         hit_points: intOr(tpl.hit_points, 1) || 1,
@@ -467,6 +476,15 @@ async function exportGameRules(gameTypeId) {
       can_hop_over_enemies: toBool(p.can_hop_over_enemies),
       hop_stop_at_occupied: p.hop_stop_at_occupied != null ? toBool(p.hop_stop_at_occupied) : true,
       directional_hop_disabled: toBool(p.directional_hop_disabled),
+      directional_hop_only: toBool(p.directional_hop_only),
+      exact_ratio_hop_only: toBool(p.exact_ratio_hop_only),
+      can_hop_attack_over_allies: toBool(p.can_hop_attack_over_allies),
+      can_hop_attack_over_enemies: toBool(p.can_hop_attack_over_enemies),
+      directional_hop_disabled_attack: toBool(p.directional_hop_disabled_attack),
+      directional_hop_only_attack: toBool(p.directional_hop_only_attack),
+      exact_ratio_hop_only_attack: toBool(p.exact_ratio_hop_only_attack),
+      hop_stop_at_occupied_attack: p.hop_stop_at_occupied_attack != null ? toBool(p.hop_stop_at_occupied_attack) : true,
+      chain_hop_allies: toBool(p.chain_hop_allies),
       ghostwalk: toBool(p.ghostwalk),
       min_turns_per_move: intOr(p.min_turns_per_move, 0),
 

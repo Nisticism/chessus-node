@@ -206,14 +206,36 @@ fn cannot_be_captured(rules: &Rules, target: &PieceOnBoard) -> bool {
     rules.piece(target.piece_id).map(|t| t.cannot_be_captured).unwrap_or(false)
 }
 
+/// Returns whether `mover` can hop over `target` as an intermediate blocker.
+/// `is_capture` selects attack-specific hop flags (for capture moves)
+/// vs. movement hop flags (for non-captures). For mixed-direction paths where
+/// the final destination type is unknown, pass `false` and rely on the caller
+/// to use the union of both flag sets.
 fn can_hop_over(
     target: &PieceOnBoard,
     mover_player: i32,
     mover: &PieceTemplate,
+    is_capture: bool,
 ) -> bool {
     if mover.ghostwalk { return true; }
     let same = target.player == mover_player;
-    if same { mover.can_hop_over_allies } else { mover.can_hop_over_enemies }
+    if is_capture {
+        if same { mover.can_hop_attack_over_allies } else { mover.can_hop_attack_over_enemies }
+    } else {
+        if same { mover.can_hop_over_allies } else { mover.can_hop_over_enemies }
+    }
+}
+
+/// Like `can_hop_over` but returns true when EITHER the movement OR attack hop
+/// flags allow hopping — used for mixed-direction sliding where the final
+/// destination type (capture vs. movement) is not yet known.
+fn can_hop_over_either(
+    target: &PieceOnBoard,
+    mover_player: i32,
+    mover: &PieceTemplate,
+) -> bool {
+    can_hop_over(target, mover_player, mover, false)
+        || can_hop_over(target, mover_player, mover, true)
 }
 
 fn is_path_clear(
@@ -224,6 +246,7 @@ fn is_path_clear(
     to_x: i32, to_y: i32,
     allow_hop: bool,
     effective_player: i32,
+    is_capture: bool,
 ) -> bool {
     if tpl.ghostwalk { return true; }
     let pw = tpl.piece_width.max(1);
@@ -242,9 +265,13 @@ fn is_path_clear(
                     return false;
                 }
                 if let Some(blocker) = piece_occupying_excluding(board, rules, x, y, mover.id) {
-                    if !allow_hop || !can_hop_over(blocker, effective_player, tpl) {
-                        return false;
-                    }
+                    let can_pass = if is_capture {
+                        allow_hop && can_hop_over(blocker, effective_player, tpl, true)
+                    } else {
+                        // Mixed direction: allow if either hop set permits
+                        allow_hop && can_hop_over_either(blocker, effective_player, tpl)
+                    };
+                    if !can_pass { return false; }
                 }
                 x += step_x;
                 y += step_y;
@@ -370,9 +397,16 @@ pub fn moves_for(board: &Board, rules: &Rules, mover: &PieceOnBoard) -> Vec<Move
             dir_name.map(|n| directional_capture(&tpl, n) != 0).unwrap_or(true)
         };
 
-        let dir_hop_allowed = tpl.ghostwalk
+        // Hop flags for movement (non-capture) and attack (capture) directions.
+        let dir_hop_move = tpl.ghostwalk
             || ((tpl.can_hop_over_allies || tpl.can_hop_over_enemies)
                 && (!tpl.directional_hop_disabled || exact_flag));
+        let dir_hop_capture = tpl.ghostwalk
+            || ((tpl.can_hop_attack_over_allies || tpl.can_hop_attack_over_enemies)
+                && (!tpl.directional_hop_disabled_attack || exact_flag));
+        // Capture-only directions use attack flags; mixed directions use union
+        // (allow hop if either set permits — the correct set is used per-blocker below).
+        let dir_hop_allowed = if capture_only { dir_hop_capture } else { dir_hop_move || dir_hop_capture };
 
         let abs_md = max_dist_signed.unsigned_abs() as i32;
         let limit = if max_dist_signed == 99 { bw.max(bh) } else { abs_md };
@@ -388,7 +422,7 @@ pub fn moves_for(board: &Board, rules: &Rules, mover: &PieceOnBoard) -> Vec<Move
                 && !rules.impassable_squares.is_empty()
                 && rules.impassable_squares.contains(&(tx, ty))
             { break; }
-            if !is_path_clear(board, rules, mover, &tpl, tx, ty, dir_hop_allowed, effective_player) { break; }
+            if !is_path_clear(board, rules, mover, &tpl, tx, ty, dir_hop_allowed, effective_player, capture_only) { break; }
 
             if let Some(target) = piece_occupying(board, rules, tx, ty) {
                 let is_landing = if exact_flag {
@@ -406,7 +440,14 @@ pub fn moves_for(board: &Board, rules: &Rules, mover: &PieceOnBoard) -> Vec<Move
                         push(out, tx, ty, Some(target.id));
                     }
                 }
-                if !dir_hop_allowed || !can_hop_over(target, effective_player, &tpl) { break; }
+                // Decide whether to continue sliding past this piece.
+                // For capture-only directions use attack flags; for mixed use union.
+                let can_continue = dir_hop_allowed && if capture_only {
+                    can_hop_over(target, effective_player, &tpl, true)
+                } else {
+                    can_hop_over_either(target, effective_player, &tpl)
+                };
+                if !can_continue { break; }
             } else {
                 let is_landing = if exact_flag {
                     if repeating { exact_dist != 0 && dist % exact_dist == 0 }
@@ -512,13 +553,30 @@ pub fn moves_for(board: &Board, rules: &Rules, mover: &PieceOnBoard) -> Vec<Move
             (r1, r2), (r1, -r2), (-r1, r2), (-r1, -r2),
             (r2, r1), (r2, -r1), (-r2, r1), (-r2, -r1),
         ];
-        let no_hop = !tpl.ghostwalk && !tpl.can_hop_over_allies && !tpl.can_hop_over_enemies;
+        // directional_hop_only: hop flags only apply to directional (sliding) moves,
+        // NOT to ratio (knight-like) jumps. Force no-hop for ratio when set.
+        let no_hop_move = !tpl.ghostwalk
+            && (!tpl.can_hop_over_allies && !tpl.can_hop_over_enemies
+                || tpl.directional_hop_only);
+        let no_hop_capture = !tpl.ghostwalk
+            && (!tpl.can_hop_attack_over_allies && !tpl.can_hop_attack_over_enemies
+                || tpl.directional_hop_only_attack);
+        // Path-check intermediates using union (allow hop if either set permits).
+        let no_hop_union = no_hop_move && no_hop_capture;
         for (dx, dy) in ratio_offsets.iter().copied() {
             let tx = mover.x + dx;
             let ty = mover.y + dy;
             if !in_bounds(tx, ty) { continue; }
-            if !ratio_path_ok(board, rules, mover, &tpl, dx, dy, tx, ty, no_hop, effective_player) { continue; }
+            if !ratio_path_ok(board, rules, mover, &tpl, dx, dy, tx, ty, no_hop_union, effective_player) { continue; }
             if let Some(target) = piece_occupying(board, rules, tx, ty) {
+                // Capture: re-check with capture-specific hop flags if they differ.
+                if no_hop_capture != no_hop_union
+                    && !ratio_path_ok(board, rules, mover, &tpl, dx, dy, tx, ty, no_hop_capture, effective_player)
+                { continue; }
+                // exact_ratio_hop_only_attack: only valid when something was hopped.
+                if tpl.exact_ratio_hop_only_attack
+                    && !ratio_has_any_hop(board, rules, mover, dx, dy, tx, ty)
+                { continue; }
                 if !cannot_be_captured(rules, target) {
                     if target.player != effective_player && tpl.can_capture_enemy_on_move {
                         push(&mut out, tx, ty, Some(target.id));
@@ -527,6 +585,14 @@ pub fn moves_for(board: &Board, rules: &Rules, mover: &PieceOnBoard) -> Vec<Move
                     }
                 }
             } else {
+                // Non-capture: re-check with movement-specific hop flags if they differ.
+                if no_hop_move != no_hop_union
+                    && !ratio_path_ok(board, rules, mover, &tpl, dx, dy, tx, ty, no_hop_move, effective_player)
+                { continue; }
+                // exact_ratio_hop_only: only valid when something was hopped.
+                if tpl.exact_ratio_hop_only
+                    && !ratio_has_any_hop(board, rules, mover, dx, dy, tx, ty)
+                { continue; }
                 push(&mut out, tx, ty, None);
             }
         }
@@ -554,8 +620,11 @@ pub fn moves_for(board: &Board, rules: &Rules, mover: &PieceOnBoard) -> Vec<Move
                             }
                         }
                         if !intermediates_clear { break; }
-                        // hop_stop_at_occupied: if k-1 multiple is occupied, stop.
-                        if tpl.hop_stop_at_occupied && k > 2 {
+                        // hop_stop_at_occupied / hop_stop_at_occupied_attack:
+                        // if the k-1 multiple is occupied, stop the repeating sequence.
+                        // Use either flag (both govern intermediate hop positions).
+                        let stop_at_occ = tpl.hop_stop_at_occupied || tpl.hop_stop_at_occupied_attack;
+                        if stop_at_occ && k > 2 {
                             let px = mover.x + dx * (k - 1);
                             let py = mover.y + dy * (k - 1);
                             if piece_occupying_excluding(board, rules, px, py, mover.id).is_some() {
@@ -1332,7 +1401,58 @@ fn promotion_count_exceeds_original(
     current >= original
 }
 
-fn ratio_path_ok(    board: &Board,
+/// Returns true if there is at least one piece occupying any square on
+/// either L-shaped path from `mover` toward `(target_x, target_y)`,
+/// excluding the mover itself and the destination square. Used to implement
+/// `exact_ratio_hop_only` / `exact_ratio_hop_only_attack`.
+fn ratio_has_any_hop(
+    board: &Board,
+    rules: &Rules,
+    mover: &PieceOnBoard,
+    dx: i32, dy: i32,
+    target_x: i32, target_y: i32,
+) -> bool {
+    let abs_dx = dx.abs();
+    let abs_dy = dy.abs();
+    let primary_is_x = abs_dx > abs_dy;
+    let primary_amt = abs_dx.max(abs_dy);
+    let secondary_amt = abs_dx.min(abs_dy);
+    let primary_dir = if primary_is_x { dx.signum() } else { 0 };
+    let secondary_dir = if primary_is_x { 0 } else { dy.signum() };
+    let tertiary_dir = if primary_is_x { dy.signum() } else { dx.signum() };
+
+    let occupied_intermediate = |x: i32, y: i32| -> bool {
+        if x == target_x && y == target_y { return false; }
+        piece_occupying_excluding(board, rules, x, y, mover.id).is_some()
+    };
+
+    // Path 1: primary direction first
+    for i in 1..=primary_amt {
+        let cx = mover.x + if primary_is_x { primary_dir * i } else { 0 };
+        let cy = mover.y + if primary_is_x { 0 } else { secondary_dir * i };
+        if occupied_intermediate(cx, cy) { return true; }
+    }
+    for i in 1..=secondary_amt {
+        let cx = mover.x + if primary_is_x { primary_dir * primary_amt } else { tertiary_dir * i };
+        let cy = mover.y + if primary_is_x { tertiary_dir * i } else { secondary_dir * primary_amt };
+        if occupied_intermediate(cx, cy) { return true; }
+    }
+    // Path 2: secondary direction first
+    for i in 1..=secondary_amt {
+        let cx = mover.x + if primary_is_x { 0 } else { tertiary_dir * i };
+        let cy = mover.y + if primary_is_x { tertiary_dir * i } else { 0 };
+        if occupied_intermediate(cx, cy) { return true; }
+    }
+    for i in 1..=primary_amt {
+        let cx = mover.x + if primary_is_x { primary_dir * i } else { tertiary_dir * secondary_amt };
+        let cy = mover.y + if primary_is_x { tertiary_dir * secondary_amt } else { secondary_dir * i };
+        if occupied_intermediate(cx, cy) { return true; }
+    }
+    false
+}
+
+fn ratio_path_ok(
+    board: &Board,
     rules: &Rules,
     mover: &PieceOnBoard,
     tpl: &PieceTemplate,
@@ -1353,7 +1473,8 @@ fn ratio_path_ok(    board: &Board,
     let blocked = |x: i32, y: i32| -> bool {
         if let Some(b) = piece_occupying_excluding(board, rules, x, y, mover.id) {
             if no_hop_ability { return true; }
-            return !can_hop_over(b, effective_player, tpl);
+            // Use the union of movement and attack hop flags for ratio path intermediates.
+            return !can_hop_over_either(b, effective_player, tpl);
         }
         false
     };

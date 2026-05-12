@@ -239,6 +239,50 @@ pub struct PieceTemplate {
     #[serde(default = "default_true")]
     pub hop_stop_at_occupied: bool,
     pub directional_hop_disabled: bool,
+    /// When true, hopping (can_hop_over_allies/enemies) only applies to
+    /// directional (sliding) moves — not to ratio (knight-like) jumps.
+    /// Mirrors `directional_hop_only` in pieces table.
+    #[serde(default)]
+    pub directional_hop_only: bool,
+    /// When true, ratio/exact moves are only valid if the piece actually hops
+    /// over at least one piece along the path. "Must hop" restriction.
+    /// Mirrors `exact_ratio_hop_only` in pieces table.
+    #[serde(default)]
+    pub exact_ratio_hop_only: bool,
+
+    // ---- Attack-specific hopping (capture moves) ----
+    /// Whether this piece can hop over allied pieces when making a capture move.
+    /// Mirrors `can_hop_attack_over_allies` in pieces table.
+    #[serde(default)]
+    pub can_hop_attack_over_allies: bool,
+    /// Whether this piece can hop over enemy pieces when making a capture move.
+    /// Mirrors `can_hop_attack_over_enemies` in pieces table.
+    #[serde(default)]
+    pub can_hop_attack_over_enemies: bool,
+    /// Disables directional hopping on capture (attack) moves even when attack
+    /// hop flags are set. Mirrors `directional_hop_disabled_attack`.
+    #[serde(default)]
+    pub directional_hop_disabled_attack: bool,
+    /// Like `directional_hop_only` but for captures: attack hopping only applies
+    /// to directional capture moves, not ratio captures.
+    /// Mirrors `directional_hop_only_attack` in pieces table.
+    #[serde(default)]
+    pub directional_hop_only_attack: bool,
+    /// Like `exact_ratio_hop_only` but for captures: ratio captures are only
+    /// valid when the piece hops over at least one piece.
+    /// Mirrors `exact_ratio_hop_only_attack` in pieces table.
+    #[serde(default)]
+    pub exact_ratio_hop_only_attack: bool,
+    /// Like `hop_stop_at_occupied` but for repeating ratio captures: stop at a
+    /// further multiple if any earlier multiple is occupied.
+    /// Default true (mirrors `hop_stop_at_occupied_attack` in pieces table).
+    #[serde(default = "default_true")]
+    pub hop_stop_at_occupied_attack: bool,
+    /// During checkers-style chain captures, the piece may hop over allied pieces
+    /// to continue the chain. Mirrors `chain_hop_allies` in pieces table.
+    #[serde(default)]
+    pub chain_hop_allies: bool,
+
     pub ghostwalk: bool,
 
     // ---- Capture / movement gating ----
@@ -471,6 +515,15 @@ impl Default for PieceTemplate {
             can_hop_over_enemies: false,
             hop_stop_at_occupied: true,
             directional_hop_disabled: false,
+            directional_hop_only: false,
+            exact_ratio_hop_only: false,
+            can_hop_attack_over_allies: false,
+            can_hop_attack_over_enemies: false,
+            directional_hop_disabled_attack: false,
+            directional_hop_only_attack: false,
+            exact_ratio_hop_only_attack: false,
+            hop_stop_at_occupied_attack: true,
+            chain_hop_allies: false,
             ghostwalk: false,
             can_capture_enemy_on_move: true,
             can_capture_allies: false,

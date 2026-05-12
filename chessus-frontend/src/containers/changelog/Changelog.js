@@ -12,6 +12,8 @@ const changelogData = [
       "The piece detail page now shows a grouped Hopping section inside the Movement Details area, listing movement-hop and attack-hop settings together instead of scattering them across different sections.",
       "The game detail page now lists all hop-related abilities together (Hop Capture, Movement Hopping, Attack Hopping) for easier reading.",
       "Migration script added: run 'node scripts/migrate-hop-flags-to-attack.js' once on the server to copy existing movement-hop settings to their attack equivalents for all pieces created before attack hopping was added.",
+      "The Rust training engine (v1.2.9) now correctly enforces all hop abilities during self-play: attack-specific hop flags, directional-hop-only restriction, exact-ratio-hop-only restriction, and stop-at-occupied for capture repeats.",
+      "The easy/medium/hard computer player now accurately values pieces that have hop ability modifiers (exact-ratio-hop-only and directional-hop restrictions now reduce a piece's estimated value as expected).",
     ],
   },
   {

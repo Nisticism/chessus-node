@@ -831,11 +831,20 @@ function getPieceValue(piece, boardSize) {
   if (piece.cannot_be_captured)                       internal *= 1.6;
   if (piece.die_on_capture || piece.dies_on_capture)  internal *= 0.8;
 
-  // Hop bonus
+  // Hop bonus / penalty
   const canHopAllies  = !!(piece.can_hop_over_allies);
   const canHopEnemies = !!(piece.can_hop_over_enemies);
   if (canHopAllies && canHopEnemies) internal *= 1.15;
   else if (canHopAllies || canHopEnemies) internal *= 1.1;
+  // exact_ratio_hop_only: piece can only use ratio/exact moves when hopping over
+  // something — a significant restriction that reduces practical mobility.
+  if (piece.exact_ratio_hop_only) internal *= 0.8;
+  // directional_hop_disabled: hopping is disabled for directional (sliding) moves,
+  // reducing the piece's ability to pass through blockers.
+  if (piece.directional_hop_disabled) internal *= 0.92;
+  // directional_hop_only: hopping only works on directional moves, not on ratio
+  // (knight-like) moves. Modest penalty since ratio hops are a niche case.
+  if (piece.directional_hop_only) internal *= 0.96;
 
   // Additional wizard-level attack/mobility features
   const captureActionsPerTurn = piece.capture_actions_per_turn || 1;
@@ -859,6 +868,8 @@ function getPieceValue(piece, boardSize) {
     const canHopAtkEnemies = !!(piece.can_hop_attack_over_enemies);
     if (canHopAtkAllies || canHopAtkEnemies)
       internal *= (canHopAtkAllies && canHopAtkEnemies) ? 1.15 : 1.1;
+    if (piece.exact_ratio_hop_only_attack) internal *= 0.8;
+    if (piece.directional_hop_disabled_attack) internal *= 0.92;
   }
   const minTurns = piece.min_turns_per_move || piece.min_turns_until_movement || 0;
   if (minTurns > 0) internal *= Math.max(0.5, 1 - minTurns * 0.1);
