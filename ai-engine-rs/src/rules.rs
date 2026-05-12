@@ -199,6 +199,34 @@ fn parse_flagged_set(game: &GameType, flag: &str) -> HashSet<(i32, i32)> {
         .unwrap_or_default()
 }
 
+/// Build a set of (x, y) squares where BOTH `flag_a` AND `flag_b` are true
+/// in `special_squares_string`.
+fn parse_dual_flagged_set(game: &GameType, flag_a: &str, flag_b: &str) -> HashSet<(i32, i32)> {
+    let ss = match game.special_squares_string.as_deref().filter(|s| !s.is_empty()) {
+        Some(s) => s,
+        None => return HashSet::new(),
+    };
+    let map: serde_json::Value = match serde_json::from_str(ss) {
+        Ok(v) => v,
+        Err(_) => return HashSet::new(),
+    };
+    let obj = match map.as_object() {
+        Some(o) => o,
+        None => return HashSet::new(),
+    };
+    let mut set = HashSet::new();
+    for (key, val) in obj {
+        let a = val.get(flag_a).and_then(|v| v.as_bool()).unwrap_or(false);
+        let b = val.get(flag_b).and_then(|v| v.as_bool()).unwrap_or(false);
+        if a && b {
+            if let Some((x, y)) = parse_yx_key(key) {
+                set.insert((x, y));
+            }
+        }
+    }
+    set
+}
+
 // ---------------------------------------------------------------------------
 // Rules struct
 // ---------------------------------------------------------------------------
@@ -234,6 +262,11 @@ pub struct Rules {
     /// A piece with `cannot_move_outside_zone` that is currently on one of
     /// these may only move to other restriction-zone squares.
     pub restriction_zone_squares: HashSet<(i32, i32)>,
+    /// Squares where BOTH `asRestrictionZone` and `allowRangedOutsideZone` are
+    /// true in `special_squares_string`.  When a zone-restricted piece stands
+    /// on one of these squares it may still fire ranged attacks to squares
+    /// outside the restriction zone (though it cannot physically move there).
+    pub allow_ranged_outside_zone_squares: HashSet<(i32, i32)>,
     /// Squares where `disableFirstMoveHere == true`. First-N-move abilities
     /// are blocked when the piece stands on any of these squares.
     pub disable_first_move_here_squares: HashSet<(i32, i32)>,
@@ -258,6 +291,8 @@ impl Rules {
         let range_square_bonuses = parse_range_bonuses(&doc.game);
         let impassable_squares = parse_flagged_set(&doc.game, "impassable");
         let restriction_zone_squares = parse_flagged_set(&doc.game, "asRestrictionZone");
+        let allow_ranged_outside_zone_squares =
+            parse_dual_flagged_set(&doc.game, "asRestrictionZone", "allowRangedOutsideZone");
         let disable_first_move_here_squares = parse_flagged_set(&doc.game, "disableFirstMoveHere");
         let restrict_first_move_to_custom_squares =
             parse_flagged_set(&doc.game, "restrictFirstMoveToCustom");
@@ -274,6 +309,7 @@ impl Rules {
             range_square_bonuses,
             impassable_squares,
             restriction_zone_squares,
+            allow_ranged_outside_zone_squares,
             disable_first_move_here_squares,
             restrict_first_move_to_custom_squares,
         }

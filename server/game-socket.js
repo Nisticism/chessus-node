@@ -5444,6 +5444,11 @@ function initializeSocket(server) {
               if (t.cannot_be_captured) return false;
               if (!canRangedAttackTo(rangedPiece.y, rangedPiece.x, t.y, t.x, rangedPiece, rangedOwner, gameState.gameType)) return false;
               if (!isRangedPathClear(rangedPiece.x, rangedPiece.y, t.x, t.y, rangedPiece, gameState.pieces, rangedOwner, gameState.gameType)) return false;
+              // Restriction zone: cannot ranged-attack outside the zone when on a zone square.
+              if (rangedPiece.cannot_move_outside_zone) {
+                const zones = collectRestrictionZoneSquares(gameState.gameType);
+                if (zones && zones.has(`${rangedPiece.y},${rangedPiece.x}`) && !zones.has(`${t.y},${t.x}`)) return false;
+              }
               return true;
             });
 
@@ -10822,6 +10827,19 @@ async function validateAndApplyMove(gameState, move, options = {}) {
       }
     }
 
+    // Restriction zone: a piece with cannot_move_outside_zone on a zone square
+    // cannot ranged-attack a target outside the zone, unless the current zone
+    // square also has allowRangedOutsideZone enabled.
+    if (piece.cannot_move_outside_zone && gameState.gameType) {
+      const zones = collectRestrictionZoneSquares(gameState.gameType);
+      if (zones && zones.has(`${piece.y},${piece.x}`) && !zones.has(`${to.y},${to.x}`)) {
+        const allowRangedSet = collectAllowRangedOutsideZoneSquares(gameState.gameType);
+        if (!allowRangedSet || !allowRangedSet.has(`${piece.y},${piece.x}`)) {
+          return { valid: false, reason: "This piece cannot attack outside its restricted zone" };
+        }
+      }
+    }
+
     // Cannot capture pieces with cannot_be_captured flag
     if (destPiece.cannot_be_captured) {
       return { valid: false, reason: "That piece cannot be captured" };
@@ -12494,6 +12512,17 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces, gameType) {
     if (impSet && impSet.has(`${targetY},${targetX}`)) return false;
   }
 
+  // Restriction zone: a piece with cannot_move_outside_zone that is standing on
+  // a zone square may not threaten (movement-based attack/check) squares outside
+  // the zone. Ranged attacks (can_capture_enemy_via_range) are governed separately
+  // and may be exempted per-square via allowRangedOutsideZone.
+  if (piece.cannot_move_outside_zone && gameType) {
+    const zones = collectRestrictionZoneSquares(gameType);
+    if (zones && zones.has(`${piece.y},${piece.x}`) && !zones.has(`${targetY},${targetX}`)) {
+      return false;
+    }
+  }
+
   const dx = targetX - piece.x;
   const dy = targetY - piece.y;
   const absDx = Math.abs(dx);
@@ -13779,6 +13808,28 @@ function collectRestrictionZoneSquares(gameType) {
 }
 
 /**
+ * Collect all restriction-zone squares that also have `allowRangedOutsideZone === true`.
+ * Pieces standing on any of these squares may fire ranged attacks to squares outside the
+ * restriction zone, even if they cannot physically move there.
+ * Returns a Set of "row,col" keys, or null when no such squares exist.
+ */
+function collectAllowRangedOutsideZoneSquares(gameType) {
+  if (!gameType || !gameType.special_squares_string) return null;
+  let customSquares;
+  try {
+    customSquares = typeof gameType.special_squares_string === 'string'
+      ? JSON.parse(gameType.special_squares_string)
+      : gameType.special_squares_string;
+  } catch (e) { return null; }
+  if (!customSquares || typeof customSquares !== 'object') return null;
+  const set = new Set();
+  for (const [key, cfg] of Object.entries(customSquares)) {
+    if (cfg && cfg.asRestrictionZone && cfg.allowRangedOutsideZone) set.add(key);
+  }
+  return set.size > 0 ? set : null;
+}
+
+/**
  * Collect all squares marked as impassable from the game type's special_squares_string.
  * Returns a Set of "row,col" keys, or null when no impassable squares exist.
  */
@@ -14970,6 +15021,14 @@ function findAvailableCaptureForPlayer(gameState, playerPosition) {
         if (target.cannot_be_captured) continue;
         if (!canRangedAttackTo(piece.y, piece.x, target.y, target.x, piece, playerPosition, gameType)) continue;
         if (!isRangedPathClear(piece.x, piece.y, target.x, target.y, piece, pieces, playerPosition, gameType)) continue;
+        // Restriction zone: skip out-of-zone targets unless allowRangedOutsideZone is set.
+        if (piece.cannot_move_outside_zone) {
+          const zones = collectRestrictionZoneSquares(gameType);
+          if (zones && zones.has(`${piece.y},${piece.x}`) && !zones.has(`${target.y},${target.x}`)) {
+            const allowSet = collectAllowRangedOutsideZoneSquares(gameType);
+            if (!allowSet || !allowSet.has(`${piece.y},${piece.x}`)) continue;
+          }
+        }
         // unless mate_condition + the attacker itself is the king and would still be in check;
         // since the attacker doesn't move, an existing check would have been rejected upstream.
         // We still respect mate_condition by leaving check filtering to validateAndApplyMove.
@@ -15066,6 +15125,17 @@ function getAllLegalMovesForPlayer(gameState, playerPosition) {
     // it removes the checking piece. We approximate this by simulating the
     // attack and re-running the check test.
     if (piece.can_capture_enemy_via_range) {
+      // Restriction zone: cache per-piece so we don't parse JSON for every target.
+      let _zoneRangedAllowed = null; // null = not computed; false = blocked; true = allowed outside
+      const isRangedOutsideZoneAllowed = () => {
+        if (_zoneRangedAllowed !== null) return _zoneRangedAllowed;
+        if (!piece.cannot_move_outside_zone) { _zoneRangedAllowed = true; return true; }
+        const zones = collectRestrictionZoneSquares(gameType);
+        if (!zones || !zones.has(`${piece.y},${piece.x}`)) { _zoneRangedAllowed = true; return true; }
+        const allowSet = collectAllowRangedOutsideZoneSquares(gameType);
+        _zoneRangedAllowed = !!(allowSet && allowSet.has(`${piece.y},${piece.x}`));
+        return _zoneRangedAllowed;
+      };
       for (const target of pieces) {
         if (target.id === piece.id) continue;
         const targetOwner = target.team || target.player_id;
@@ -15073,6 +15143,13 @@ function getAllLegalMovesForPlayer(gameState, playerPosition) {
         if (target.cannot_be_captured) continue;
         if (!canRangedAttackTo(piece.y, piece.x, target.y, target.x, piece, playerPosition, gameType)) continue;
         if (!isRangedPathClear(piece.x, piece.y, target.x, target.y, piece, pieces, playerPosition, gameType)) continue;
+        // Restriction zone: skip out-of-zone targets unless allowRangedOutsideZone is set.
+        if (piece.cannot_move_outside_zone) {
+          const zones = collectRestrictionZoneSquares(gameType);
+          if (zones && zones.has(`${piece.y},${piece.x}`) && !zones.has(`${target.y},${target.x}`)) {
+            if (!isRangedOutsideZoneAllowed()) continue;
+          }
+        }
 
         const rangedMove = {
           pieceId: piece.id,
@@ -15684,6 +15761,20 @@ function findBestBotReposition(gameState, botPos) {
 
     const impSet = collectImpassableSquares(gameState.gameType);
 
+    // Enemy pieces used to check attacked squares for royal pieces
+    const enemyPieces = gameState.pieces.filter(p => {
+      const owner = p.team != null ? Number(p.team) : Number(p.player_id);
+      return owner !== botPos;
+    });
+
+    // Returns true if (tx, ty) is attacked by any enemy piece (used for royal safety).
+    const isSquareAttackedByEnemy = (tx, ty) => {
+      for (const enemy of enemyPieces) {
+        if (canPieceAttackSquare(enemy, tx, ty, gameState.pieces, gameState.gameType)) return true;
+      }
+      return false;
+    };
+
     // Build set of all squares currently occupied (by all pieces)
     const buildOccupied = () => {
       const s = new Set();
@@ -15707,6 +15798,7 @@ function findBestBotReposition(gameState, botPos) {
     let bestReposition = null;
 
     for (const piece of candidates) {
+      const isRoyal = piece.ends_game_on_capture || piece.ends_game_on_checkmate;
       const pw = piece.piece_width || 1;
       const ph = piece.piece_height || 1;
       const origX = piece.x;
@@ -15733,6 +15825,16 @@ function findBestBotReposition(gameState, botPos) {
             }
           }
           if (!valid) continue;
+
+          // Safety: do not reposition royal pieces into squares under enemy attack.
+          if (isRoyal) {
+            piece.x = tx;
+            piece.y = ty;
+            const attacked = isSquareAttackedByEnemy(tx, ty);
+            piece.x = origX;
+            piece.y = origY;
+            if (attacked) continue;
+          }
 
           // Temporarily apply and evaluate
           piece.x = tx;
@@ -15941,6 +16043,71 @@ async function processBotTurn(io, gameId, gameState) {
         }
       }
       if (!bestMove) {
+        // ── PLACEMENT GAME: bot has no valid moves → handle skip-turn or game-end ──
+        const noMoveOtherData = gameState.otherGameData || {};
+        if (
+          noMoveOtherData.place_pieces_action &&
+          noMoveOtherData.flanking_captures &&
+          noMoveOtherData.must_flank &&
+          noMoveOtherData.skip_turn_no_flank
+        ) {
+          const humanPosition = botPlayer.position === 1 ? 2 : 1;
+          const humanValid = getValidFlankingPlacements(gameState, humanPosition);
+          if (humanValid.length === 0) {
+            // Both players are blocked — end game by piece count
+            const p1Count = gameState.pieces.filter(p => (p.team || p.player_id) === 1).length;
+            const p2Count = gameState.pieces.filter(p => (p.team || p.player_id) === 2).length;
+            let skipWinnerId = null;
+            if (gameState.gameType?.piece_count_condition) {
+              if (p1Count > p2Count) skipWinnerId = gameState.players.find(p => p.position === 1)?.id;
+              else if (p2Count > p1Count) skipWinnerId = gameState.players.find(p => p.position === 2)?.id;
+            }
+            console.log(`[Bot] Both players blocked in game ${gameId} — ending by piece count (P1:${p1Count} P2:${p2Count})`);
+            io.to(`game-${gameId}`).emit('botThinking', { gameId, thinking: false });
+            await finishBotGame(io, gameId, gameState,
+              { gameOver: true, winner: skipWinnerId, reason: 'piece_count' },
+              null,
+              { player1Score: p1Count, player2Score: p2Count }
+            );
+            clearTimeout(safetyTimer);
+            return;
+          }
+          // Only bot is blocked — skip bot's turn, give control to human
+          console.log(`[Bot] No valid flanking placements in game ${gameId} — skipping bot turn`);
+          gameState.currentTurn = humanPosition;
+          try {
+            await db_pool.query(
+              'UPDATE games SET player_turn = ?, pieces = ?, other_data = ? WHERE id = ?',
+              [gameState.currentTurn, JSON.stringify(gameState.pieces), buildOtherData(gameState), gameId]
+            );
+          } catch (dbErr) {
+            console.error('[Bot] DB update failed after placement skip:', dbErr);
+          }
+          io.to(`game-${gameId}`).emit('botThinking', { gameId, thinking: false });
+          io.to(`game-${gameId}`).emit('moveMade', {
+            gameId,
+            move: {
+              type: 'place',
+              player: botPlayer.id,
+              position: botPlayer.position,
+              timestamp: Date.now(),
+              isBot: true,
+            },
+            gameState: {
+              status: gameState.status,
+              pieces: gameState.pieces,
+              currentTurn: gameState.currentTurn,
+              playerTimes: gameState.playerTimes,
+              moveHistory: gameState.moveHistory,
+              actionsThisTurn: gameState.actionsThisTurn || 0,
+              actionsPerTurn: gameState.gameType?.actions_per_turn || 1,
+            },
+            skippedTurn: true,
+          });
+          clearTimeout(safetyTimer);
+          return;
+        }
+        // ── END PLACEMENT GAME NO-MOVES ────────────────────────────────────────
         console.log(`[Bot] No moves available in game ${gameId}`);
         io.to(`game-${gameId}`).emit("botThinking", { gameId, thinking: false });
         clearTimeout(safetyTimer);
@@ -15999,6 +16166,14 @@ async function processBotTurn(io, gameId, gameState) {
           ? getImageUrlForPlayer(botPlaceImageLocation, gameState.currentTurn)
           : (pieceTemplate.image_url || null);
 
+        // Check flanking validity BEFORE pushing the piece (the square must still be empty
+        // for getValidFlankingPlacements to recognise it as a valid placement target).
+        let botIsValidFlanking = false;
+        if (otherData.flanking_captures) {
+          const validPlacements = getValidFlankingPlacements(gameState, gameState.currentTurn);
+          botIsValidFlanking = validPlacements.some(vp => vp.x === placeX && vp.y === placeY);
+        }
+
         // Build and push the new piece — spread template so movement/capture rules are preserved
         const botNewPiece = {
           ...pieceTemplate,
@@ -16019,14 +16194,10 @@ async function processBotTurn(io, gameId, gameState) {
         };
         gameState.pieces.push(botNewPiece);
 
-        // Flanking captures (Othello-style)
+        // Apply flanking captures (Othello-style)
         let botFlippedPieces = [];
-        if (otherData.flanking_captures) {
-          const validPlacements = getValidFlankingPlacements(gameState, gameState.currentTurn);
-          const isValid = validPlacements.some(vp => vp.x === placeX && vp.y === placeY);
-          if (isValid) {
-            botFlippedPieces = applyFlankingCaptures(gameState, placeX, placeY, gameState.currentTurn);
-          }
+        if (otherData.flanking_captures && botIsValidFlanking) {
+          botFlippedPieces = applyFlankingCaptures(gameState, placeX, placeY, gameState.currentTurn);
         }
 
         // Record the placement
@@ -16844,6 +17015,13 @@ async function processBotTurn(io, gameId, gameState) {
               // Check if there are actually valid targets before setting up the action state
               let pmHasTargets = false;
               if (pmIsRanged) {
+                const _pmAllowRangedOutside = (() => {
+                  if (!pmCapPiece || !pmCapPiece.cannot_move_outside_zone) return true;
+                  const zones = collectRestrictionZoneSquares(gameState.gameType);
+                  if (!zones || !zones.has(`${pmCapPiece.y},${pmCapPiece.x}`)) return true;
+                  const allowSet = collectAllowRangedOutsideZoneSquares(gameState.gameType);
+                  return !!(allowSet && allowSet.has(`${pmCapPiece.y},${pmCapPiece.x}`));
+                })();
                 pmHasTargets = !!(pmCapPiece && pmCapPiece.can_capture_enemy_via_range &&
                   gameState.pieces.some(t => {
                     if (t.id === pmCapPiece.id) return false;
@@ -16852,6 +17030,13 @@ async function processBotTurn(io, gameId, gameState) {
                     if (t.cannot_be_captured) return false;
                     if (!canRangedAttackTo(pmCapPiece.y, pmCapPiece.x, t.y, t.x, pmCapPiece, pmCapOwner, gameState.gameType)) return false;
                     if (!isRangedPathClear(pmCapPiece.x, pmCapPiece.y, t.x, t.y, pmCapPiece, gameState.pieces, pmCapOwner, gameState.gameType)) return false;
+                    // Restriction zone: skip out-of-zone targets unless allowRangedOutsideZone is set.
+                    if (pmCapPiece.cannot_move_outside_zone) {
+                      const zones = collectRestrictionZoneSquares(gameState.gameType);
+                      if (zones && zones.has(`${pmCapPiece.y},${pmCapPiece.x}`) && !zones.has(`${t.y},${t.x}`)) {
+                        if (!_pmAllowRangedOutside) return false;
+                      }
+                    }
                     return true;
                   }));
               } else {
@@ -17826,6 +18011,8 @@ module.exports = {
   doesPieceOccupySquare,
   canRangedAttackTo,
   isRangedPathClear,
+  getValidFlankingPlacements,
+  applyFlankingCaptures,
   // Initial-state validation
   evaluateInitialPosition,
   buildSyntheticInitialState,

@@ -3220,9 +3220,24 @@ const LiveGame = () => {
     
     // Check for ranged attack targets
     if (piece.can_capture_enemy_via_range) {
+      // Restriction zone: if the piece is on a zone square, only ranged attacks
+      // to other zone squares are legal — unless the current zone square also
+      // has allowRangedOutsideZone enabled.
+      const zoneSquares = piece.cannot_move_outside_zone
+        ? Object.entries(customSquareMap)
+            .filter(([, cfg]) => cfg && cfg.asRestrictionZone)
+            .map(([key]) => key)
+        : null;
+      const pieceZoneKey = `${piece.y},${piece.x}`;
+      const pieceIsOnZone = zoneSquares && zoneSquares.includes(pieceZoneKey);
+      const rangedOutsideAllowed = pieceIsOnZone
+        && !!(customSquareMap[pieceZoneKey]?.allowRangedOutsideZone);
+
       for (let toY = 0; toY < boardHeight; toY++) {
         for (let toX = 0; toX < boardWidth; toX++) {
           if (toX === piece.x && toY === piece.y) continue;
+          // Restriction zone: skip ranged attacks that exit the zone (unless exempted).
+          if (pieceIsOnZone && !rangedOutsideAllowed && !zoneSquares.includes(`${toY},${toX}`)) continue;
           const targetPiece = findPieceAtSquare(pieces, toX, toY);
           const targetTeam = targetPiece?.player_id || targetPiece?.team;
           // Skip friendly pieces - in simul-turns games, self-sacrifice is allowed
@@ -3539,6 +3554,14 @@ const LiveGame = () => {
       return;
     }
 
+    // During reposition phase, suppress movement arrows for pieces that cannot be repositioned.
+    // Even for repositionable pieces, movement arrows are irrelevant — just don't show anything.
+    if (gameState?.repositionPhase?.active) {
+      setHoveredPiece(null);
+      setHoveredMoves([]);
+      return;
+    }
+
     const pieces = parsePieces(gameState.pieces);
     const moves = calculateValidMoves(
       piece, 
@@ -3563,7 +3586,28 @@ const LiveGame = () => {
 
     const pieceTeam = piece.player_id || piece.team;
     const isOwnPiece = currentPlayer && (pieceTeam === currentPlayer.position || piece.is_neutral);
-    
+
+    // Reposition phase: allow dragging eligible pieces; skip normal move calculation
+    if (gameState?.repositionPhase?.active) {
+      const repoKeyOnly = !!gameState?.gameType?.reposition_key_pieces_only;
+      const canReposition = isMyRepositionTurn && isOwnPiece &&
+        (!repoKeyOnly || piece.ends_game_on_capture || piece.ends_game_on_checkmate);
+      if (!canReposition) {
+        e.preventDefault();
+        return;
+      }
+      setDraggedPiece(piece);
+      setDragValidMoves([]);
+      setValidMoves([]);
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', String(piece.id));
+      const pieceEl = e.currentTarget;
+      const rect = pieceEl.getBoundingClientRect();
+      e.dataTransfer.setDragImage(pieceEl, rect.width / 2, rect.height / 2);
+      e.currentTarget.style.opacity = '0.5';
+      return;
+    }
+
     // Allow dragging own pieces during your turn OR for premoves during opponent's turn
     const canDragForMove = isMyTurn && (gameState?.status === 'active' || gameState?.status === 'ready') && isOwnPiece;
     const canDragForPremove = !isMyTurn && (gameState?.status === 'active' || gameState?.status === 'ready') && gameState?.allowPremoves !== false && isOwnPiece;
@@ -3859,6 +3903,20 @@ const LiveGame = () => {
 
     const pieceTeam = piece.player_id || piece.team;
     const isOwnPiece = currentPlayer && (pieceTeam === currentPlayer.position || piece.is_neutral);
+
+    // Reposition phase: allow touch-dragging eligible pieces
+    if (gameState?.repositionPhase?.active) {
+      const repoKeyOnly = !!gameState?.gameType?.reposition_key_pieces_only;
+      const canReposition = isMyRepositionTurn && isOwnPiece &&
+        (!repoKeyOnly || piece.ends_game_on_capture || piece.ends_game_on_checkmate);
+      if (!canReposition) return;
+      const touch = e.touches[0];
+      touchDragRef.current = { piece, moves: [], startX: touch.clientX, startY: touch.clientY, isDragging: false, grabOffset: { x: 0, y: 0 }, isReposition: true };
+      setSelectedPiece(piece);
+      setValidMoves([]);
+      return;
+    }
+
     const canDragForMove = isMyTurn && (gameState?.status === 'active' || gameState?.status === 'ready') && isOwnPiece;
     const canDragForPremove = !isMyTurn && (gameState?.status === 'active' || gameState?.status === 'ready') && gameState?.allowPremoves !== false && isOwnPiece;
 
@@ -3900,7 +3958,7 @@ const LiveGame = () => {
     touchDragRef.current = { piece, moves, startX: touch.clientX, startY: touch.clientY, isDragging: false, grabOffset };
     setSelectedPiece(piece);
     setValidMoves(moves);
-  }, [isMyTurn, gameState, currentPlayer, calculateValidMoves, pendingMove, captureActionPieceId, showIllegalMoveWarning]);
+  }, [isMyTurn, isMyRepositionTurn, gameState, currentPlayer, calculateValidMoves, pendingMove, captureActionPieceId, showIllegalMoveWarning]);
 
   const handleTouchMove = useCallback((e) => {
     const td = touchDragRef.current;
@@ -3951,6 +4009,21 @@ const LiveGame = () => {
       if (anchorX >= 0 && anchorX < boardWidth && anchorY >= 0 && anchorY < boardHeight) {
         const piece = td.piece;
         const moves = td.moves;
+
+        // Reposition phase: submit reposition instead of normal move
+        if (td.isReposition) {
+          const from = { x: piece.x, y: piece.y };
+          const to = { x: anchorX, y: anchorY };
+          if (from.x !== to.x || from.y !== to.y) {
+            submitReposition(parseInt(gameId), { from, to });
+          }
+          touchDragRef.current = { piece: null, moves: [], startX: 0, startY: 0, isDragging: false, grabOffset: { x: 0, y: 0 } };
+          setTouchDragPiece(null);
+          setTouchDragPos(null);
+          setSelectedPiece(null);
+          setValidMoves([]);
+          return;
+        }
 
         const pw = piece.piece_width || 1;
         const ph = piece.piece_height || 1;
@@ -4050,7 +4123,7 @@ const LiveGame = () => {
       setSelectedPiece(null);
       setValidMoves([]);
     }
-  }, [gameState, shouldFlipBoard, isMyTurn, submitMove, sendPremove, gameId, inCheck, currentPlayer, soundEnabledRef, calculateValidMoves]);
+  }, [gameState, shouldFlipBoard, isMyTurn, isMyRepositionTurn, submitMove, submitReposition, sendPremove, gameId, inCheck, currentPlayer, soundEnabledRef, calculateValidMoves]);
 
   // Handle right-click mousedown for ranged attack drag detection.
   // Global listeners are added synchronously here (not via a state-gated useEffect)
@@ -4914,6 +4987,9 @@ const LiveGame = () => {
               const isOwnPiece = currentPlayer && (pieceTeam === currentPlayer.position || piece.is_neutral);
               const canDragForMove = isMyTurn && (gameState?.status === 'active' || gameState?.status === 'ready') && isOwnPiece;
               const canDragForPremove = !isMyTurn && (gameState?.status === 'active' || gameState?.status === 'ready') && gameState?.allowPremoves !== false && isOwnPiece;
+              const _repoKeyOnly = !!gameState?.gameType?.reposition_key_pieces_only;
+              const _canReposition = isMyRepositionTurn && isOwnPiece &&
+                (!_repoKeyOnly || piece.ends_game_on_capture || piece.ends_game_on_checkmate);
               
               const pw = piece.piece_width || 1;
               const ph = piece.piece_height || 1;
@@ -4964,7 +5040,7 @@ const LiveGame = () => {
                     ...multiTileStyle,
                     ...(isTouchDragging ? { opacity: 0 } : {})
                   }}
-                  draggable={canDragForMove || canDragForPremove}
+                  draggable={canDragForMove || canDragForPremove || _canReposition}
                   onDragStart={(e) => handleDragStart(e, piece)}
                   onDragEnd={handleDragEnd}
                   onTouchStart={(e) => handleTouchStart(e, piece)}

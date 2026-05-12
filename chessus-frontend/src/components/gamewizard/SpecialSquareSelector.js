@@ -48,6 +48,7 @@ const SpecialSquareSelector = ({
     promotionAppliesToPlayer: 'all',
     asControl: false,
     asRestrictionZone: false,
+    allowRangedOutsideZone: false,
     restrictFirstMoveToCustom: false,
     disableFirstMoveHere: false,
     impassable: false,
@@ -99,6 +100,7 @@ const SpecialSquareSelector = ({
         promotionAppliesToPlayer: (() => { const raw = currentConfig.promotionAppliesToPlayer || 'all'; return raw === 'both' ? 'all' : raw; })(),
         asControl: !!currentConfig.asControl,
         asRestrictionZone: !!currentConfig.asRestrictionZone,
+        allowRangedOutsideZone: !!currentConfig.allowRangedOutsideZone,
         restrictFirstMoveToCustom: !!currentConfig.restrictFirstMoveToCustom,
         disableFirstMoveHere: !!currentConfig.disableFirstMoveHere,
         impassable: !!currentConfig.impassable,
@@ -162,6 +164,7 @@ const SpecialSquareSelector = ({
         asControl: !!customCombo.asControl,
         controlConfig: customCombo.asControl ? controlConfig : null,
         asRestrictionZone: !!customCombo.asRestrictionZone,
+        allowRangedOutsideZone: !!customCombo.allowRangedOutsideZone,
         restrictFirstMoveToCustom: !!customCombo.restrictFirstMoveToCustom,
         disableFirstMoveHere: !!customCombo.disableFirstMoveHere,
         impassable: !!customCombo.impassable,
@@ -540,6 +543,18 @@ const SpecialSquareSelector = ({
                   tooltip={<InfoTooltip text="Marks this square as part of the Restriction Zone. Pieces with 'Cannot Move Outside Zone' enabled in Step 4 may only move to squares that are part of a Restriction Zone. Useful for limiting a piece to a specific region of the board." />}
                 />
               </div>
+
+              {/* Allow Ranged Attacks Outside Zone — only meaningful on zone squares */}
+              {!!customCombo.asRestrictionZone && (
+                <div className={styles["control-config-row"]} style={{ marginLeft: '16px' }}>
+                  <ToggleSwitch
+                    checked={!!customCombo.allowRangedOutsideZone}
+                    onChange={(v) => handleCustomComboChange('allowRangedOutsideZone', v)}
+                    label="Allow Ranged Attacks Outside Zone"
+                    tooltip={<InfoTooltip text="When enabled, zone-restricted pieces standing on this square may fire ranged attacks to squares outside the Restriction Zone, even though they cannot physically move there. Without this, ranged attacks are also confined to the zone." />}
+                  />
+                </div>
+              )}
 
               {/* First-Move Ability Restrictions — mutually exclusive */}
               <div className={styles["control-config-row"]}>

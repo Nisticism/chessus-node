@@ -2086,6 +2086,7 @@ const GameTypeView = () => {
         }
         if (cfg?.asControl) parts.push('Control');
         if (cfg?.asRestrictionZone) parts.push('Restriction Zone');
+        if (cfg?.asRestrictionZone && cfg?.allowRangedOutsideZone) parts.push('Ranged attacks allowed outside zone');
         if (cfg?.restrictFirstMoveToCustom) parts.push('First-move abilities allowed only on these squares');
         if (cfg?.disableFirstMoveHere) parts.push('First-move abilities disabled while standing here');
         if (cfg?.impassable) parts.push('Impassable');
@@ -2118,6 +2119,7 @@ const GameTypeView = () => {
           promotionAppliesToPlayer: cfg?.asPromotion ? (() => { const r = cfg?.promotionAppliesToPlayer || 'all'; return r === 'both' ? 'all' : r; })() : 'all',
           asControl: !!cfg?.asControl,
           asRestrictionZone: !!cfg?.asRestrictionZone,
+          allowRangedOutsideZone: !!cfg?.allowRangedOutsideZone,
           restrictFirstMoveToCustom: !!cfg?.restrictFirstMoveToCustom,
           disableFirstMoveHere: !!cfg?.disableFirstMoveHere,
           impassable: !!cfg?.impassable,
@@ -2134,7 +2136,7 @@ const GameTypeView = () => {
         return `• ${coordList} — ${labelFor(cfg)}`;
       });
       specialRulesContent.push(
-        `**Custom Squares**\nCustom squares can combine any of the other special-square behaviors (Range Boost, Promotion, Control) on a single square, and can also act as a **Restriction Zone** (pieces with "Cannot Move Outside Zone" enabled are bound to these squares), gate piece **first-move abilities** — either restricting "first move only" / "available for first N moves" abilities so they only work while standing on these squares, or disabling them while a piece is standing here — be marked as **Impassable** (pieces cannot land on or move through these squares; pieces with Ghostwalk can still pass through; hopping pieces can hop over but cannot land; ranged attacks cannot fire through), or **restrict per-turn piece placement** (limit which player can use this square when placing pieces each turn). Squares with the same configuration are grouped together below.\n\n${lines.join('\n')}\n\nSquares listed with no combined behavior are visual placeholders only.`
+        `**Custom Squares**\nCustom squares can combine any of the other special-square behaviors (Range Boost, Promotion, Control) on a single square, and can also act as a **Restriction Zone** (pieces with "Cannot Move Outside Zone" enabled are bound to these squares — they cannot move or attack outside the zone; **Allow Ranged Attacks Outside Zone** further lets ranged pieces on that square fire beyond the zone while still being unable to physically move there), gate piece **first-move abilities** — either restricting "first move only" / "available for first N moves" abilities so they only work while standing on these squares, or disabling them while a piece is standing here — be marked as **Impassable** (pieces cannot land on or move through these squares; pieces with Ghostwalk can still pass through; hopping pieces can hop over but cannot land; ranged attacks cannot fire through), or **restrict per-turn piece placement** (limit which player can use this square when placing pieces each turn). Squares with the same configuration are grouped together below.\n\n${lines.join('\n')}\n\nSquares listed with no combined behavior are visual placeholders only.`
       );
     }
 

@@ -1066,9 +1066,18 @@ pub fn moves_for(board: &Board, rules: &Rules, mover: &PieceOnBoard) -> Vec<Move
     if tpl.can_capture_enemy_via_range {
         let is_p2 = effective_player == 2;
         let atk_dmg = tpl.attack_damage.max(1);
+        // Restriction zone: if the attacker is on a zone square, only allow ranged
+        // attacks to other zone squares — unless the current zone square also has
+        // allowRangedOutsideZone, in which case attacks to any square are permitted.
+        let attacker_on_zone = tpl.cannot_move_outside_zone
+            && !rules.restriction_zone_squares.is_empty()
+            && rules.restriction_zone_squares.contains(&(mover.x, mover.y));
+        let ranged_outside_allowed = attacker_on_zone
+            && rules.allow_ranged_outside_zone_squares.contains(&(mover.x, mover.y));
         let targets: Vec<(u32, i32, i32, i64, i32)> = board.pieces.iter()
             .filter(|t| t.player != effective_player && t.id != mover.id)
             .filter(|t| !rules.piece(t.piece_id).map(|r| r.cannot_be_captured).unwrap_or(false))
+            .filter(|t| !attacker_on_zone || ranged_outside_allowed || rules.restriction_zone_squares.contains(&(t.x, t.y)))
             .map(|t| (t.id, t.x, t.y, t.piece_id, t.current_hp))
             .collect();
 
@@ -1554,6 +1563,7 @@ fn pseudo_moves_no_castle(board: &Board, rules: &Rules, p: &PieceOnBoard) -> Vec
                 range_square_bonuses: rules.range_square_bonuses.clone(),
                 impassable_squares: rules.impassable_squares.clone(),
                 restriction_zone_squares: rules.restriction_zone_squares.clone(),
+                allow_ranged_outside_zone_squares: rules.allow_ranged_outside_zone_squares.clone(),
                 disable_first_move_here_squares: rules.disable_first_move_here_squares.clone(),
                 restrict_first_move_to_custom_squares: rules.restrict_first_move_to_custom_squares.clone(),
             };
