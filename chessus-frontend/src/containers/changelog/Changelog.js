@@ -4,6 +4,18 @@ import styles from "./changelog.module.scss";
 
 const changelogData = [
   {
+    date: "May 13, 2026",
+    title: "Computer AI: instant captures/escapes for obvious moves, early exit on clear decisions, opening variety, deeper search",
+    items: [
+      "Computer player now instantly captures high-value opponent pieces that are left undefended (or barely defended), without spending 30 seconds searching. Example: if your Chancellor is defended only by a pawn, the computer takes it immediately.",
+      "Computer player now instantly rescues its own major pieces (Chancellor, Archbishop, Queen) that are under a winning attack, rather than ignoring them for many turns.",
+      "Computer player now exits the search early when the best move is clearly dominant — preventing it from spending the full 30-second budget on positions where there is one obvious answer.",
+      "Hard computer now searches at depth 8 (was depth 5) with a 25-second budget per move (was 12 seconds), making it much stronger in complex positions.",
+      "Computer opening play now varies between games: small position-based adjustments ensure the computer doesn't play the exact same sequence every time from the opening.",
+      "Penalty for making bad captures (taking a defended piece with a more valuable piece) has been raised, making it less likely to blunder a Knight for a defended Pawn.",
+    ],
+  },
+  {
     date: "May 12, 2026",
     title: "Hop abilities: all 6 movement and attack hop types now enforced in-game; piece detail shows grouped hop section; game detail page lists all hop types together",
     items: [

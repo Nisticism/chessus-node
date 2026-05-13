@@ -1,3 +1,5 @@
+console.log('[AI] ai-engine loaded -- threat-first build (getTacticalCandidates active)');
+
 /**
  * AI Engine for SquareStrat
  * 
@@ -22,13 +24,13 @@ const SCORE_LOSS = -100000;
 const SCORE_DRAW = 0;
 
 const DIFFICULTY = {
-  easy:   { depth: 1, timeLimit: 1000,  randomness: 0.35, thinkDelay: 600, quiescenceDepth: 0 },
-  medium: { depth: 4, timeLimit: 8000, randomness: 0.03, thinkDelay: 400, quiescenceDepth: 3 },
-  hard:   { depth: 5, timeLimit: 12000, randomness: 0.00, thinkDelay: 200, quiescenceDepth: 5 },
+  easy:   { depth: 3, timeLimit: 2000,  randomness: 0.35, thinkDelay: 600, quiescenceDepth: 1 },
+  medium: { depth: 5, timeLimit: 10000, randomness: 0.03, thinkDelay: 400, quiescenceDepth: 4 },
+  hard:   { depth: 8, timeLimit: 25000, randomness: 0.00, thinkDelay: 200, quiescenceDepth: 6 },
   // Baseline for "adaptive" — should always be at least as strong as
   // hard (we hide it from the UI when no training data exists, so this
   // baseline is only ever reached as a defensive fallback).
-  adaptive: { depth: 5, timeLimit: 12000, randomness: 0, thinkDelay: 200, quiescenceDepth: 5 },
+  adaptive: { depth: 8, timeLimit: 25000, randomness: 0, thinkDelay: 200, quiescenceDepth: 6 },
 };
 
 /**
@@ -477,6 +479,120 @@ function checkTerminalFull(state) {
 }
 
 // =============================================
+// Tactical Candidate Generation
+// =============================================
+
+/**
+ * Scan the position for immediate tactical threats and opportunities.
+ *
+ * Returns:
+ *   hasTactics   – true if any immediate threat / free capture exists
+ *   hangingMyPieces – array of {piece, see, value} where opponent wins exchange (SEE > 0.5)
+ *   freeCaptures    – array of {piece: opPiece, attackerId, atkValue, see} where we win exchange
+ *
+ * Both lists are sorted by urgency (largest SEE first).
+ */
+function getTacticalCandidates(state, player, bs) {
+  const opponent = player === 1 ? 2 : 1;
+  const hangingMyPieces = [];
+  const freeCaptures = [];
+
+  for (const p of state.pieces) {
+    const owner = p.team || p.player_id;
+    if (owner !== player && owner !== opponent) continue;
+    const pVal = getPieceValue(p, bs);
+    if (pVal === 0) continue;
+
+    if (owner === player) {
+      // Check if one of our pieces is under a winning attack
+      const attackers = getAttackersTo(state, p.x, p.y, opponent, bs);
+      if (attackers.length === 0) continue;
+      let see;
+      if (p.is_royal || p.ends_game_on_capture || p.ends_game_on_checkmate) {
+        see = pVal + 20;
+      } else {
+        see = staticExchangeEval(state, p.x, p.y,
+          attackers[0].piece.id, attackers[0].value, pVal, opponent, bs);
+      }
+      if (see > 0.5) hangingMyPieces.push({ piece: p, see, value: pVal });
+    } else {
+      // Check if an opponent piece is vulnerable to a winning capture by us
+      const ourAttackers = getAttackersTo(state, p.x, p.y, player, bs);
+      if (ourAttackers.length === 0) continue;
+      const see = staticExchangeEval(state, p.x, p.y,
+        ourAttackers[0].piece.id, ourAttackers[0].value, pVal, player, bs);
+      if (see > 0.5) {
+        freeCaptures.push({ piece: p, attackerId: ourAttackers[0].piece.id, atkValue: ourAttackers[0].value, see });
+      }
+    }
+  }
+
+  hangingMyPieces.sort((a, b) => b.see - a.see);
+  freeCaptures.sort((a, b) => b.see - a.see);
+
+  return {
+    hasTactics: hangingMyPieces.length > 0 || freeCaptures.length > 0,
+    hangingMyPieces,
+    freeCaptures,
+  };
+}
+
+/**
+ * Build a focused candidate list from tactical threats/opportunities.
+ * Only includes legal moves that directly address the most urgent tactics:
+ *   - Escape moves for each hanging piece (move it away)
+ *   - Captures of the cheapest attacker threatening a hanging piece
+ *   - The specific winning capture(s) of hanging opponent pieces
+ *
+ * Falls back to full legalMoves if no focused candidates can be found.
+ */
+function buildTacticalCandidates(legalMoves, tactics, state, player, bs) {
+  const seen = new Set();
+  const candidates = [];
+
+  const add = (m) => {
+    const key = `${m.pieceId}:${m.to.x},${m.to.y}`;
+    if (!seen.has(key)) { seen.add(key); candidates.push(m); }
+  };
+
+  // 1. For each hanging piece: add its legal escapes and captures of its cheapest attacker
+  for (const { piece, see } of tactics.hangingMyPieces) {
+    // Escape moves: legal moves by the threatened piece itself
+    for (const m of legalMoves) {
+      if (m.pieceId === piece.id) add(m);
+    }
+
+    // Capture moves that take the piece's cheapest attacker
+    const attackers = getAttackersTo(state, piece.x, piece.y, player === 1 ? 2 : 1, bs);
+    if (attackers.length > 0) {
+      const cheapest = attackers[0].piece;
+      for (const m of legalMoves) {
+        if (m.to.x === cheapest.x && m.to.y === cheapest.y) {
+          const target = state.pieces.find(p =>
+            p.x === m.to.x && p.y === m.to.y && (p.team || p.player_id) !== player
+          );
+          if (target) add(m);
+        }
+      }
+    }
+  }
+
+  // 2. Add winning captures of hanging opponent pieces
+  for (const { piece } of tactics.freeCaptures) {
+    for (const m of legalMoves) {
+      if (m.to.x === piece.x && m.to.y === piece.y) {
+        const target = state.pieces.find(p =>
+          p.x === m.to.x && p.y === m.to.y && (p.team || p.player_id) !== player
+        );
+        if (target) add(m);
+      }
+    }
+  }
+
+  return candidates;
+}
+
+// =============================================
 // Move Generation for Search
 // =============================================
 
@@ -868,6 +984,11 @@ function getPieceValue(piece, boardSize) {
   // directional_hop_only: hopping only works on directional moves, not on ratio
   // (knight-like) moves. Modest penalty since ratio hops are a niche case.
   if (piece.directional_hop_only) internal *= 0.96;
+  // max_directional_hop_pieces: limits pieces that can be hopped per directional move — restriction
+  const maxDirHopPieces = piece.max_directional_hop_pieces;
+  if (maxDirHopPieces === 1) internal *= 0.88;
+  else if (maxDirHopPieces === 2) internal *= 0.93;
+  else if (maxDirHopPieces === 3) internal *= 0.96;
 
   // Additional wizard-level attack/mobility features
   const captureActionsPerTurn = piece.capture_actions_per_turn || 1;
@@ -881,7 +1002,13 @@ function getPieceValue(piece, boardSize) {
     internal *= 1 + extra * 0.07;
   }
   if (piece.capture_on_hop && (canHopAllies || canHopEnemies)) internal *= 1.1;
-  if (piece.chain_capture_enabled) internal *= 1.1;
+  if (piece.chain_capture_enabled) {
+    internal *= 1.1;
+    // max_chain_hops limits chain-capture hops per turn — restriction reduces practical value
+    const maxChainHops = piece.max_chain_hops;
+    if (maxChainHops === 1) internal *= 0.90;
+    else if (maxChainHops === 2) internal *= 0.94;
+  }
   if (piece.can_capture_enemy_via_range) {
     const canFireOverAllies  = !!(piece.can_fire_over_allies);
     const canFireOverEnemies = !!(piece.can_fire_over_enemies);
@@ -893,6 +1020,13 @@ function getPieceValue(piece, boardSize) {
       internal *= (canHopAtkAllies && canHopAtkEnemies) ? 1.15 : 1.1;
     if (piece.exact_ratio_hop_only_attack) internal *= 0.8;
     if (piece.directional_hop_disabled_attack) internal *= 0.92;
+    // directional_hop_only_attack: directional attacks require hopping — significant restriction
+    if (piece.directional_hop_only_attack) internal *= 0.88;
+    // max_directional_hop_pieces_attack: limits pieces hopped per directional attack
+    const maxDirHopAtk = piece.max_directional_hop_pieces_attack;
+    if (maxDirHopAtk === 1) internal *= 0.88;
+    else if (maxDirHopAtk === 2) internal *= 0.93;
+    else if (maxDirHopAtk === 3) internal *= 0.96;
   }
   const minTurns = piece.min_turns_per_move || piece.min_turns_until_movement || 0;
   if (minTurns > 0) internal *= Math.max(0.5, 1 - minTurns * 0.1);
@@ -1077,10 +1211,16 @@ function orderMoves(moves, state) {
       const victimValB = isNeutralB ? 0 : getPieceValue(targetB, bs);
       const attackerValA = attackerA ? getPieceValue(attackerA, bs) : 0;
       const attackerValB = attackerB ? getPieceValue(attackerB, bs) : 0;
-      // MVV-LVA: maximize (victim value - attacker value)
-      const scoreA = victimValA - attackerValA;
-      const scoreB = victimValB - attackerValB;
-      return scoreB - scoreA;
+      // SEE-based ordering: winning captures first, losing captures last.
+      // Falls back to MVV-LVA for neutral targets or missing piece data.
+      const currentTurn = state.currentTurn;
+      const seeA = !isNeutralA && attackerA && targetA
+        ? staticExchangeEval(state, a.to.x, a.to.y, attackerA.id, attackerValA, victimValA, currentTurn, bs)
+        : (victimValA - attackerValA);
+      const seeB = !isNeutralB && attackerB && targetB
+        ? staticExchangeEval(state, b.to.x, b.to.y, attackerB.id, attackerValB, victimValB, currentTurn, bs)
+        : (victimValB - attackerValB);
+      return seeB - seeA;
     }
 
     // Among non-captures, prefer moves toward center
@@ -1089,6 +1229,216 @@ function orderMoves(moves, state) {
     const distB = Math.abs(b.to.x - cx) + Math.abs(b.to.y - cy);
     return distA - distB;
   });
+}
+
+// =============================================
+// Attacker Enumeration & Static Exchange Evaluation (SEE)
+// =============================================
+
+/**
+ * Return all pieces belonging to `player` that can capture the square (tx, ty).
+ * Covers directional 8-way captures, can_capture_enemy_on_move movement-as-capture,
+ * ratio/knight jumps, step-by-step captures, and special_scenario_captures JSON.
+ * Results are sorted cheapest-attacker-first for SEE iteration.
+ *
+ * @param {object} state   - Game state (.pieces, .gameType)
+ * @param {number} tx, ty  - Target square coordinates
+ * @param {number} player  - Player whose attackers to enumerate (1 or 2)
+ * @param {number} bs      - Board size hint (Math.max(boardWidth, boardHeight))
+ * @returns {{ piece: object, value: number }[]}  sorted cheapest first
+ */
+function getAttackersTo(state, tx, ty, player, bs) {
+  const bw = state.gameType?.board_width || bs || 8;
+  const bh = state.gameType?.board_height || bs || 8;
+
+  // Build position map for path-blocking checks (supports multi-tile pieces)
+  const posMap = new Map();
+  for (const p of state.pieces) {
+    const pw = p.piece_width || 1;
+    const ph = p.piece_height || 1;
+    for (let dy = 0; dy < ph; dy++) {
+      for (let dx = 0; dx < pw; dx++) {
+        posMap.set(`${p.x + dx},${p.y + dy}`, p);
+      }
+    }
+  }
+
+  const attackers = [];
+
+  for (const piece of state.pieces) {
+    const owner = piece.team || piece.player_id;
+    if (owner !== player) continue;
+    if (piece.x === tx && piece.y === ty) continue; // already on the target square
+
+    const flipY = owner === 2 ? -1 : 1;
+    let canAttack = false;
+
+    // --- Directional captures + movement-as-capture ---
+    // For each of the 8 directions, use the MAX of dedicated capture range and
+    // (if can_capture_enemy_on_move) the movement range, so pieces that can capture
+    // via movement are never underestimated when they also have a shorter capture range.
+    const _ceim = piece.can_capture_enemy_on_move || piece.attacks_like_movement;
+    // directional_hop_disabled_attack: can_hop_over_* only applies to ratio jumps, not directional
+    // sliding (matching game-socket.js: canHopDirAtk = canHopBase && (!dirHopDisabledAtk || exactFlag))
+    const _dhda = !!(piece.directional_hop_disabled_attack === 1 || piece.directional_hop_disabled_attack === true);
+    const dirDefs = [
+      [0, -1, Math.max(piece.up_capture    || 0, _ceim ? (piece.up_movement    || 0) : 0), !!(piece.up_capture_exact    || (_ceim && piece.up_movement_exact))],
+      [0,  1, Math.max(piece.down_capture  || 0, _ceim ? (piece.down_movement  || 0) : 0), !!(piece.down_capture_exact  || (_ceim && piece.down_movement_exact))],
+      [-1, 0, Math.max(piece.left_capture  || 0, _ceim ? (piece.left_movement  || 0) : 0), !!(piece.left_capture_exact  || (_ceim && piece.left_movement_exact))],
+      [1,  0, Math.max(piece.right_capture || 0, _ceim ? (piece.right_movement || 0) : 0), !!(piece.right_capture_exact || (_ceim && piece.right_movement_exact))],
+      [-1,-1, Math.max(piece.up_left_capture    || 0, _ceim ? (piece.up_left_movement    || 0) : 0), !!(piece.up_left_capture_exact    || (_ceim && piece.up_left_movement_exact))],
+      [1, -1, Math.max(piece.up_right_capture   || 0, _ceim ? (piece.up_right_movement   || 0) : 0), !!(piece.up_right_capture_exact   || (_ceim && piece.up_right_movement_exact))],
+      [-1, 1, Math.max(piece.down_left_capture  || 0, _ceim ? (piece.down_left_movement  || 0) : 0), !!(piece.down_left_capture_exact  || (_ceim && piece.down_left_movement_exact))],
+      [1,  1, Math.max(piece.down_right_capture || 0, _ceim ? (piece.down_right_movement || 0) : 0), !!(piece.down_right_capture_exact || (_ceim && piece.down_right_movement_exact))],
+    ];
+
+    for (const [ddx, ddy, range, exactFlag] of dirDefs) {
+      if (canAttack) break;
+      if (!range) continue;
+      const limit = range === 99 ? Math.max(bw, bh) : range;
+      const dyA = ddy * flipY;
+      for (let dist = 1; dist <= limit; dist++) {
+        const cx = piece.x + ddx * dist;
+        const cy = piece.y + dyA * dist;
+        if (cx < 0 || cx >= bw || cy < 0 || cy >= bh) break;
+        if (cx === tx && cy === ty) { canAttack = true; break; }
+        const blocker = posMap.get(`${cx},${cy}`);
+        if (blocker && !piece.ghostwalk) {
+          const blockerIsAlly = (blocker.team || blocker.player_id) === player;
+          const baseCanHop = blockerIsAlly ? !!piece.can_hop_over_allies : !!piece.can_hop_over_enemies;
+          if (!(baseCanHop && (!_dhda || exactFlag))) break;
+        }
+      }
+    }
+
+    // --- Ratio / knight-like jumps ---
+    if (!canAttack) {
+      const rc1 = piece.ratio_capture_1 || piece.ratio_movement_1 || 0;
+      const rc2 = piece.ratio_capture_2 || piece.ratio_movement_2 || 0;
+      if (rc1 > 0 && rc2 > 0) {
+        const jumps = [
+          [rc1, rc2], [rc1, -rc2], [-rc1, rc2], [-rc1, -rc2],
+          [rc2, rc1], [rc2, -rc1], [-rc2, rc1], [-rc2, -rc1],
+        ];
+        for (const [jdx, jdy] of jumps) {
+          if (piece.x + jdx === tx && piece.y + jdy === ty) { canAttack = true; break; }
+        }
+      }
+    }
+
+    // --- Step-by-step captures ---
+    if (!canAttack) {
+      const stepStyle = piece.step_by_step_movement_style || piece.step_movement_style;
+      if (stepStyle && (piece.can_capture_enemy_on_move || piece.step_capture_value != null)) {
+        const rawVal = piece.step_capture_value ?? piece.step_by_step_movement_value ?? piece.step_movement_value ?? 0;
+        const stepVal = Number(rawVal);
+        if (!isNaN(stepVal) && stepVal !== 0) {
+          const maxS = Math.abs(stepVal);
+          const ddxS = tx - piece.x, ddyS = ty - piece.y;
+          const dist = stepVal < 0
+            ? Math.abs(ddxS) + Math.abs(ddyS)
+            : Math.max(Math.abs(ddxS), Math.abs(ddyS));
+          if (dist > 0 && dist <= maxS) canAttack = true;
+        }
+      }
+    }
+
+    // --- special_scenario_captures JSON ---
+    if (!canAttack && piece.special_scenario_captures) {
+      try {
+        const ssc = typeof piece.special_scenario_captures === 'string'
+          ? JSON.parse(piece.special_scenario_captures)
+          : piece.special_scenario_captures;
+        if (ssc?.additionalCaptures) {
+          const dmap = {
+            up: [0,-1], down: [0,1], left: [-1,0], right: [1,0],
+            up_left: [-1,-1], up_right: [1,-1], down_left: [-1,1], down_right: [1,1],
+          };
+          outer: for (const [dir, opts] of Object.entries(ssc.additionalCaptures)) {
+            const dd = dmap[dir];
+            if (!dd) continue;
+            const [ddx2, ddy2] = dd;
+            const dyB = ddy2 * flipY;
+            for (const opt of (Array.isArray(opts) ? opts : [])) {
+              let maxD = opt.value || 0;
+              if (opt.infinite) maxD = 99;
+              const limit = maxD === 99 ? Math.max(bw, bh) : maxD;
+              for (let dist = 1; dist <= limit; dist++) {
+                const cx = piece.x + ddx2 * dist;
+                const cy = piece.y + dyB * dist;
+                if (cx < 0 || cx >= bw || cy < 0 || cy >= bh) break;
+                if (cx === tx && cy === ty) { canAttack = true; break outer; }
+                if (!opt.canJump) {
+                  const blocker = posMap.get(`${cx},${cy}`);
+                  if (blocker) break;
+                }
+              }
+            }
+          }
+        }
+      } catch (_) {}
+    }
+
+    if (canAttack) {
+      attackers.push({ piece, value: getPieceValue(piece, bs) });
+    }
+  }
+
+  // Cheapest attacker first (essential for correct SEE backward induction)
+  attackers.sort((a, b) => a.value - b.value);
+  return attackers;
+}
+
+/**
+ * Static Exchange Evaluation.
+ *
+ * Simulates the full capture-recapture chain on square (toX, toY), starting
+ * with `firstPlayer` capturing a piece worth `capturedValue` using their piece
+ * identified by `firstAttackerId` (value `firstAttackerValue`).
+ *
+ * Both sides always use their cheapest available attacker next, and either side
+ * can decline to recapture if it would lose material (backward induction).
+ *
+ * @returns {number} Net material gain for firstPlayer.
+ *                   Positive = winning exchange, negative = losing exchange.
+ */
+function staticExchangeEval(state, toX, toY, firstAttackerId, firstAttackerValue, capturedValue, firstPlayer, bs) {
+  const opponent = firstPlayer === 1 ? 2 : 1;
+
+  // All remaining attackers for each side (cheapest first).
+  // The first attacker is already committed — exclude it from the "my remaining" list.
+  const myAtks = getAttackersTo(state, toX, toY, firstPlayer, bs)
+    .filter(a => a.piece.id !== firstAttackerId);
+  const opAtks = getAttackersTo(state, toX, toY, opponent, bs);
+
+  // gains[i] = value of the piece captured on exchange step i.
+  // gains[0] = capturedValue (the initial capture, already decided).
+  // After step 0, firstAttacker (worth firstAttackerValue) sits on the square.
+  // gains[1] = firstAttackerValue if opponent recaptures, etc.
+  const gains = [capturedValue];
+  let lastVal = firstAttackerValue;
+  let myIdx = 0, opIdx = 0;
+  let side = opponent; // opponent replies to the initial capture
+
+  for (let step = 0; step < 32; step++) {
+    const atks = side === firstPlayer ? myAtks : opAtks;
+    const idx  = side === firstPlayer ? myIdx  : opIdx;
+    if (idx >= atks.length) break;            // this side has no more attackers
+
+    gains.push(lastVal);                      // capture the piece now on the square
+    lastVal = atks[idx].value;                // that attacker is now the next capturable
+
+    if (side === firstPlayer) myIdx++; else opIdx++;
+    side = side === firstPlayer ? opponent : firstPlayer;
+  }
+
+  // Backward induction: each side can choose not to recapture if it would be a loss.
+  // Starting from the last potential capture, work backward: max(0, gains[i] - score).
+  let score = 0;
+  for (let i = gains.length - 1; i >= 1; i--) {
+    score = Math.max(0, gains[i] - score);
+  }
+  return gains[0] - score;
 }
 
 // =============================================
@@ -1151,24 +1501,27 @@ function evaluatePosition(state, perspective) {
   // --- Piece count ---
   score += (myPieces.length - opPieces.length) * 5;
 
-  // --- Center control (strong weight) ---
-  // Award more points for pieces near the center, especially high-value ones
+  // --- Center control (reduced weight) ---
+  // Pieces near the center score slightly better, but this is a weak signal
+  // that cannot compete with material safety. Max ~2 pts per piece.
+  const _totalMoves = state.moveCount || 0;
   for (const piece of myPieces) {
     const dist = Math.sqrt(
       Math.pow(piece.x - centerX, 2) + Math.pow(piece.y - centerY, 2)
     );
-    const proximity = 1 - dist / maxDist; // 0 to 1
-    const pieceImportance = Math.min(getPieceValue(piece, bs), 10) / 10; // normalized
-    // Higher value pieces get bigger center bonus
-    score += proximity * (4 + pieceImportance * 4);
+    const proximity = 1 - dist / maxDist;
+    const pv = getPieceValue(piece, bs);
+    const pieceImportance = Math.min(pv, 10) / 10;
+    score += proximity * (1 + pieceImportance * 1);
   }
   for (const piece of opPieces) {
     const dist = Math.sqrt(
       Math.pow(piece.x - centerX, 2) + Math.pow(piece.y - centerY, 2)
     );
     const proximity = 1 - dist / maxDist;
-    const pieceImportance = Math.min(getPieceValue(piece, bs), 10) / 10;
-    score -= proximity * (4 + pieceImportance * 4);
+    const pv = getPieceValue(piece, bs);
+    const pieceImportance = Math.min(pv, 10) / 10;
+    score -= proximity * (1 + pieceImportance * 1);
   }
 
   // --- Piece safety: penalize pieces that can be captured by lower-value enemies ---
@@ -1214,6 +1567,7 @@ function evaluatePosition(state, perspective) {
     // Flip directions for player 2
     const opOwner = opPiece.team || opPiece.player_id;
     const flipY = opOwner === 2 ? -1 : 1;
+    const _dhdaOp = !!(opPiece.directional_hop_disabled_attack === 1 || opPiece.directional_hop_disabled_attack === true);
     
     for (const [ddx, ddy, range] of capDirs) {
       const limit = range === 99 ? Math.max(bw, bh) : Math.min(range, Math.max(bw, bh));
@@ -1227,12 +1581,16 @@ function evaluatePosition(state, perspective) {
           const targetOwner = target.team || target.player_id;
           if (targetOwner === perspective) {
             const existing = threatenedByOpponent.get(target.id);
-            if (existing === undefined || opAttackerValue < existing) {
-              threatenedByOpponent.set(target.id, opAttackerValue);
+            if (existing === undefined || opAttackerValue < existing.value) {
+              threatenedByOpponent.set(target.id, { attackerId: opPiece.id, value: opAttackerValue });
             }
           }
-          // Path blocked (unless hopping)
-          if (!opPiece.can_hop_over_allies && !opPiece.can_hop_over_enemies && !opPiece.ghostwalk) break;
+          // Path blocked unless hop flags permit AND directional_hop_disabled_attack is not set.
+          if (!opPiece.ghostwalk) {
+            const blockerIsAlly = targetOwner === opOwner;
+            const baseCanHop = blockerIsAlly ? !!opPiece.can_hop_over_allies : !!opPiece.can_hop_over_enemies;
+            if (!(baseCanHop && !_dhdaOp)) break;
+          }
         }
       }
     }
@@ -1251,8 +1609,8 @@ function evaluatePosition(state, perspective) {
           const target = pieceAtSquare.get(`${tx},${ty}`);
           if (target && (target.team || target.player_id) === perspective) {
             const existing = threatenedByOpponent.get(target.id);
-            if (existing === undefined || opAttackerValue < existing) {
-              threatenedByOpponent.set(target.id, opAttackerValue);
+            if (existing === undefined || opAttackerValue < existing.value) {
+              threatenedByOpponent.set(target.id, { attackerId: opPiece.id, value: opAttackerValue });
             }
           }
         }
@@ -1260,60 +1618,31 @@ function evaluatePosition(state, perspective) {
     }
   }
   
-  // Penalize our threatened pieces heavily
-  // Also check if the piece is defended (another friendly piece can recapture)
+  // Penalize our threatened pieces using SEE — this correctly accounts for the full
+  // capture-recapture chain, so defending with a lower-value piece still scores correctly.
   for (const myPiece of myPieces) {
     if (!threatenedByOpponent.has(myPiece.id)) continue;
     const myValue = getPieceValue(myPiece, bs);
     if (myPiece.is_royal || myPiece.ends_game_on_capture || myPiece.ends_game_on_checkmate) {
       score -= 60; // Royal piece under attack
     } else {
-      // Check if the piece is defended by any ally
-      let isDefended = false;
-      for (const ally of myPieces) {
-        if (ally.id === myPiece.id) continue;
-        // Quick check: can this ally reach the threatened piece's square?
-        const adx = Math.abs(ally.x - myPiece.x);
-        const ady = Math.abs(ally.y - myPiece.y);
-        // Ratio movement (knight-like) defense
-        const ar1 = ally.ratio_capture_1 || ally.ratio_movement_1 || 0;
-        const ar2 = ally.ratio_capture_2 || ally.ratio_movement_2 || 0;
-        if (ar1 > 0 && ar2 > 0) {
-          if ((adx === ar1 && ady === ar2) || (adx === ar2 && ady === ar1)) {
-            isDefended = true; break;
-          }
-        }
-        // Directional defense (1-square check for simplicity)
-        if (adx <= 1 && ady <= 1 && (adx + ady) > 0) {
-          // Check if ally has a capture direction covering that offset
-          const hasCap = ally.up_capture || ally.down_capture || ally.left_capture ||
-            ally.right_capture || ally.up_left_capture || ally.up_right_capture ||
-            ally.down_left_capture || ally.down_right_capture ||
-            ally.can_capture_enemy_on_move;
-          if (hasCap) { isDefended = true; break; }
-        }
+      const { attackerId, value: atkValue } = threatenedByOpponent.get(myPiece.id);
+      // SEE from opponent's perspective: positive means opponent wins the exchange
+      const see = staticExchangeEval(state, myPiece.x, myPiece.y,
+        attackerId, atkValue, myValue, opponentPos, bs);
+      if (see > 0.5) {
+        // Opponent wins the exchange — penalize proportionally to material loss
+        score -= see * 30;
+      } else if (see > -0.5) {
+        // Roughly even exchange — mild penalty for being under pressure
+        score -= myValue;
       }
-      if (isDefended) {
-        // Defended: evaluate the exchange quality
-        // If attacker is lower value, we lose the value difference in a trade
-        const attackerValue = threatenedByOpponent.get(myPiece.id) || 0;
-        const exchangeLoss = myValue - attackerValue;
-        if (exchangeLoss > 0) {
-          // Bad trade — we'd lose more material. Penalize proportional to loss.
-          score -= exchangeLoss * 8 + myValue * 2;
-        } else {
-          // Favorable or equal trade — mild penalty for being under attack
-          score -= myValue * 2;
-        }
-      } else {
-        // Undefended piece under attack — very severe
-        score -= myValue * 12;
-      }
+      // If see < -0.5: exchange favors us (opponent loses material) — no penalty
     }
   }
   
   // Repeat for our attacks on opponent
-  // Map: threatened piece id -> minimum attacker value (for exchange evaluation)
+  // Map: threatened piece id -> { attackerId, value } of our cheapest attacker
   const threatenedByUs = new Map();
   for (const myPiece of myPieces) {
     const myAttackerValue = getPieceValue(myPiece, bs);
@@ -1338,6 +1667,7 @@ function evaluatePosition(state, perspective) {
     }
     const myOwner = myPiece.team || myPiece.player_id;
     const flipY = myOwner === 2 ? -1 : 1;
+    const _dhdaMy = !!(myPiece.directional_hop_disabled_attack === 1 || myPiece.directional_hop_disabled_attack === true);
     
     for (const [ddx, ddy, range] of capDirs) {
       const limit = range === 99 ? Math.max(bw, bh) : Math.min(range, Math.max(bw, bh));
@@ -1351,11 +1681,15 @@ function evaluatePosition(state, perspective) {
           const targetOwner = target.team || target.player_id;
           if (targetOwner === opponentPos) {
             const existing = threatenedByUs.get(target.id);
-            if (existing === undefined || myAttackerValue < existing) {
-              threatenedByUs.set(target.id, myAttackerValue);
+            if (existing === undefined || myAttackerValue < existing.value) {
+              threatenedByUs.set(target.id, { attackerId: myPiece.id, value: myAttackerValue });
             }
           }
-          if (!myPiece.can_hop_over_allies && !myPiece.can_hop_over_enemies && !myPiece.ghostwalk) break;
+          if (!myPiece.ghostwalk) {
+            const blockerIsAlly = (target.team || target.player_id) === myOwner;
+            const baseCanHop = blockerIsAlly ? !!myPiece.can_hop_over_allies : !!myPiece.can_hop_over_enemies;
+            if (!(baseCanHop && !_dhdaMy)) break;
+          }
         }
       }
     }
@@ -1373,8 +1707,8 @@ function evaluatePosition(state, perspective) {
           const target = pieceAtSquare.get(`${tx},${ty}`);
           if (target && (target.team || target.player_id) === opponentPos) {
             const existing = threatenedByUs.get(target.id);
-            if (existing === undefined || myAttackerValue < existing) {
-              threatenedByUs.set(target.id, myAttackerValue);
+            if (existing === undefined || myAttackerValue < existing.value) {
+              threatenedByUs.set(target.id, { attackerId: myPiece.id, value: myAttackerValue });
             }
           }
         }
@@ -1382,22 +1716,27 @@ function evaluatePosition(state, perspective) {
     }
   }
   
-  // Bonus for threatening opponent pieces
+  // Bonus for threatening opponent pieces — use SEE to confirm the threat is real.
+  // A big bonus only fires when our capture would win material; an even exchange still
+  // scores positive (puts pressure); a losing capture scores nothing.
   for (const opPiece of opPieces) {
     if (!threatenedByUs.has(opPiece.id)) continue;
     const opValue = getPieceValue(opPiece, bs);
     if (opPiece.is_royal || opPiece.ends_game_on_capture || opPiece.ends_game_on_checkmate) {
       score += 30;
     } else {
-      // Factor in exchange quality: trading a low-value piece for a high-value one is great
-      const ourAttackerValue = threatenedByUs.get(opPiece.id) || 0;
-      const tradeAdvantage = opValue - ourAttackerValue;
-      if (tradeAdvantage > 0) {
-        // We can trade up — big bonus proportional to the gain
-        score += opValue * 2 + tradeAdvantage * 6;
-      } else {
+      const { attackerId, value: atkValue } = threatenedByUs.get(opPiece.id);
+      // SEE from our perspective: positive means we win the exchange
+      const see = staticExchangeEval(state, opPiece.x, opPiece.y,
+        attackerId, atkValue, opValue, perspective, bs);
+      if (see > 0.5) {
+        // Winning capture available — reward proportionally
+        score += see * 30;
+      } else if (see > -0.5) {
+        // Roughly even exchange — still a mild bonus (puts opponent under pressure)
         score += opValue * 2;
       }
+      // If see < -0.5: capturing would lose material — no bonus (SEE root filter at call site handles it)
     }
   }
 
@@ -1407,8 +1746,8 @@ function evaluatePosition(state, perspective) {
     if (lastPiece && lastPiece.moveCount >= 2) {
       const lastOwner = lastPiece.team || lastPiece.player_id;
       const pValue = getPieceValue(lastPiece, bs);
-      // Stronger penalty for low-value pieces (pawns shuffling), smaller for high-value
-      const penalty = pValue < 5 ? 8 : 4;
+      // Stronger penalty for low-value pieces shuffling, smaller for high-value
+      const penalty = pValue < 4 ? 12 : 7;
       score += (lastOwner === perspective ? -penalty : penalty);
     }
   }
@@ -1420,7 +1759,7 @@ function evaluatePosition(state, perspective) {
       const lastOwner = lastPiece.team || lastPiece.player_id;
       // Check if the piece just moved back to where it came from
       if (lastPiece.x === state.lastMoveFrom.x && lastPiece.y === state.lastMoveFrom.y) {
-        score += (lastOwner === perspective ? -12 : 12);
+        score += (lastOwner === perspective ? -22 : 22);
       }
     }
   }
@@ -1495,9 +1834,9 @@ function evaluatePosition(state, perspective) {
       if (myMoves.length === 0) {
         score += SCORE_LOSS / 2; // Near-loss: we're in checkmate
       } else {
-        score -= 15;
+        score -= 30;
         // Fewer escape moves = more dangerous
-        if (myMoves.length <= 2) score -= 15;
+        if (myMoves.length <= 2) score -= 25;
       }
     }
 
@@ -1532,134 +1871,28 @@ function evaluatePosition(state, perspective) {
     }
   }
 
-  // --- Royal piece pawn-shield bonus ---
-  // Reward having friendly pieces immediately adjacent to royal pieces (defenders).
-  // Threat detection is handled by the ray-casting section above.
-  for (const myPiece of myPieces) {
-    if (!myPiece.is_royal && !myPiece.ends_game_on_capture && !myPiece.ends_game_on_checkmate) continue;
-    let nearbyAllies = 0;
-    for (const ally of myPieces) {
-      if (ally.id === myPiece.id) continue;
-      const dx = Math.abs(ally.x - myPiece.x);
-      const dy = Math.abs(ally.y - myPiece.y);
-      if (dx <= 1 && dy <= 1) nearbyAllies++;
-    }
-    score += nearbyAllies * 3;
-  }
-  for (const opPiece of opPieces) {
-    if (!opPiece.is_royal && !opPiece.ends_game_on_capture && !opPiece.ends_game_on_checkmate) continue;
-    let nearbyAllies = 0;
-    for (const ally of opPieces) {
-      if (ally.id === opPiece.id) continue;
-      const dx = Math.abs(ally.x - opPiece.x);
-      const dy = Math.abs(ally.y - opPiece.y);
-      if (dx <= 1 && dy <= 1) nearbyAllies++;
-    }
-    score -= nearbyAllies * 3;
-  }
+  // --- Mobility signal (small weight) ---
+  score += threatenedByUs.size * 0.5;
+  score -= threatenedByOpponent.size * 0.5;
 
-  // --- Forward development bonus ---
-  // Encourage advancing pieces (especially pawns/low-value) toward the opponent's side.
-  // Also give small mobility bonus from the threat sets already computed.
-  score += threatenedByUs.size * 1.5;    // More squares we threaten = better mobility
-  score -= threatenedByOpponent.size * 1.5;
-
-  // --- Pawn promotion incentive ---
-  // Reward promotable pieces for advancing toward promotion squares.
-  // Bonus scales with proximity; extra bonus if the path is clear.
-  if (gameType?.promotion_squares_string) {
-    let promoSquares = null;
-    try { promoSquares = JSON.parse(gameType.promotion_squares_string); } catch {}
-    if (promoSquares && typeof promoSquares === 'object') {
-      const promoCoords = Object.keys(promoSquares).map(k => {
-        const [py, px] = k.split(',').map(Number);
-        return { x: px, y: py };
-      });
-
-      if (promoCoords.length > 0) {
-        const maxBoardDist = bw + bh;
-        for (const myPiece of myPieces) {
-          if (!myPiece.can_promote) continue;
-          let minDist = maxBoardDist;
-          for (const sq of promoCoords) {
-            const d = Math.abs(myPiece.x - sq.x) + Math.abs(myPiece.y - sq.y);
-            if (d < minDist) minDist = d;
-          }
-          // Scale: the closer, the higher the bonus (max ~15 when 1 step away)
-          const proximityBonus = Math.max(0, (maxBoardDist - minDist) / maxBoardDist) * 8;
-          score += proximityBonus;
-
-          // Extra bonus if the file ahead is clear (no blocking pieces)
-          if (minDist > 0) {
-            const targetPromo = promoCoords.reduce((best, sq) => {
-              const d = Math.abs(myPiece.x - sq.x) + Math.abs(myPiece.y - sq.y);
-              return d < best.d ? { sq, d } : best;
-            }, { sq: null, d: maxBoardDist });
-            if (targetPromo.sq && myPiece.x === targetPromo.sq.x) {
-              // Same file — check if path is clear
-              const dy = targetPromo.sq.y > myPiece.y ? 1 : -1;
-              let pathClear = true;
-              for (let cy = myPiece.y + dy; cy !== targetPromo.sq.y; cy += dy) {
-                if (pieces.some(p => p.x === myPiece.x && p.y === cy && !p.captured)) {
-                  pathClear = false;
-                  break;
-                }
-              }
-              if (pathClear) score += 6;
-            }
-          }
-        }
-        for (const opPiece of opPieces) {
-          if (!opPiece.can_promote) continue;
-          let minDist = maxBoardDist;
-          for (const sq of promoCoords) {
-            const d = Math.abs(opPiece.x - sq.x) + Math.abs(opPiece.y - sq.y);
-            if (d < minDist) minDist = d;
-          }
-          const proximityBonus = Math.max(0, (maxBoardDist - minDist) / maxBoardDist) * 8;
-          score -= proximityBonus;
-          if (minDist > 0) {
-            const targetPromo = promoCoords.reduce((best, sq) => {
-              const d = Math.abs(opPiece.x - sq.x) + Math.abs(opPiece.y - sq.y);
-              return d < best.d ? { sq, d } : best;
-            }, { sq: null, d: maxBoardDist });
-            if (targetPromo.sq && opPiece.x === targetPromo.sq.x) {
-              const dy = targetPromo.sq.y > opPiece.y ? 1 : -1;
-              let pathClear = true;
-              for (let cy = opPiece.y + dy; cy !== targetPromo.sq.y; cy += dy) {
-                if (pieces.some(p => p.x === opPiece.x && p.y === cy && !p.captured)) {
-                  pathClear = false;
-                  break;
-                }
-              }
-              if (pathClear) score -= 6;
-            }
-          }
-        }
-      }
-    }
-  }
-
-  // --- Opening development: penalize unmoved minor/pawn pieces in early game ---
-  // Encourage moving different pieces rather than shuffling the same few
-  const totalMoves = state.moveCount || 0;
+  // --- Opening development: penalise unmoved minor pieces and reward good development ---
+  // Uses value tiers (not hardcoded piece names) so it generalises across all game types.
+  const totalMoves = _totalMoves;
   if (totalMoves < 20) {
     const openingWeight = Math.max(0, (20 - totalMoves) / 20);
     for (const myPiece of myPieces) {
       if (myPiece.ends_game_on_checkmate || myPiece.ends_game_on_capture || myPiece.is_royal) continue;
       const pValue = getPieceValue(myPiece, bs);
-      if (pValue > 20) continue; // Skip very high-value pieces
+      if (pValue > 20) continue;
       if (!myPiece.hasMoved && (myPiece.moveCount || 0) === 0) {
-        // Undeveloped piece penalty: stronger in early game
         score -= 3 * openingWeight;
       }
-      // Bonus for pawns that advanced 2 squares in the opening (controlling center better)
-      if (myPiece.can_promote && (myPiece.moveCount || 0) === 1 && myPiece.hasMoved) {
-        const startRow = perspective === 1 ? bh - 2 : 1;
-        const distFromStart = Math.abs(myPiece.y - startRow);
-        if (distFromStart >= 2) {
-          score += 4 * openingWeight; // Double-pushed pawn bonus
-        }
+      // Low-value piece tier: permanent edge-file penalty, small center reward
+      if (pValue < 4 && (myPiece.moveCount || 0) >= 1) {
+        const edgeDist = Math.min(myPiece.x, bw - 1 - myPiece.x);
+        if (edgeDist === 0) score -= 10;
+        else if (edgeDist === 1) score -= 5;
+        else if (edgeDist >= Math.floor(bw / 4)) score += 2 * openingWeight;
       }
     }
     for (const opPiece of opPieces) {
@@ -1669,12 +1902,11 @@ function evaluatePosition(state, perspective) {
       if (!opPiece.hasMoved && (opPiece.moveCount || 0) === 0) {
         score += 3 * openingWeight;
       }
-      if (opPiece.can_promote && (opPiece.moveCount || 0) === 1 && opPiece.hasMoved) {
-        const startRow = opponentPos === 1 ? bh - 2 : 1;
-        const distFromStart = Math.abs(opPiece.y - startRow);
-        if (distFromStart >= 2) {
-          score -= 4 * openingWeight;
-        }
+      if (pValue < 4 && (opPiece.moveCount || 0) >= 1) {
+        const edgeDist = Math.min(opPiece.x, bw - 1 - opPiece.x);
+        if (edgeDist === 0) score += 10;
+        else if (edgeDist === 1) score += 5;
+        else if (edgeDist >= Math.floor(bw / 4)) score -= 2 * openingWeight;
       }
     }
   }
@@ -1733,9 +1965,26 @@ function quiescence(state, alpha, beta, perspective, startTime, timeLimit, qDept
 
   orderMoves(captureMoves, state);
 
+  // SEE filter: skip captures with a negative static exchange to avoid wasting
+  // quiescence depth on clearly losing trades (e.g. queen takes defended pawn).
+  // If no captures pass the filter, fall back to the full list so forced recaptures
+  // in losing positions are still considered.
+  const bsQ = Math.max(state.gameType?.board_width || 8, state.gameType?.board_height || 8);
+  const goodCaptures = captureMoves.filter(m => {
+    if (m.isRangedAttack) return true; // ranged attacks: always consider
+    const attacker = state.pieces.find(p => p.id === m.pieceId);
+    const target = posMap.get(`${m.to.x},${m.to.y}`);
+    if (!attacker || !target) return true; // incomplete data — keep
+    if ((target.team || target.player_id) === currentPlayer) return false; // ally — skip
+    const see = staticExchangeEval(state, m.to.x, m.to.y,
+      attacker.id, getPieceValue(attacker, bsQ), getPieceValue(target, bsQ), currentPlayer, bsQ);
+    return see >= 0;
+  });
+  const capturesToSearch = goodCaptures.length > 0 ? goodCaptures : captureMoves;
+
   if (maximizing) {
     let maxScore = standPat;
-    for (const move of captureMoves) {
+    for (const move of capturesToSearch) {
       const child = cloneState(state);
       applyMove(child, move);
       const result = quiescence(child, alpha, beta, perspective, startTime, timeLimit, qDepth - 1);
@@ -1747,7 +1996,7 @@ function quiescence(state, alpha, beta, perspective, startTime, timeLimit, qDept
     return { score: maxScore };
   } else {
     let minScore = standPat;
-    for (const move of captureMoves) {
+    for (const move of capturesToSearch) {
       const child = cloneState(state);
       applyMove(child, move);
       const result = quiescence(child, alpha, beta, perspective, startTime, timeLimit, qDepth - 1);
@@ -2063,9 +2312,10 @@ function getBestMoveSync(gameState, botPosition, difficulty, settingsOverride) {
   const gameTimeControl = gameState.timeControl; // minutes (null = unlimited)
 
   if (botTimeRemaining != null && gameTimeControl) {
-    // We want to spend at most a fraction of remaining time per move.
-    // Target: use ~3 % of remaining time, capped by the base timeLimit.
-    // On very low time (< 10 s) drop to depth 1 with a hard 500 ms cap.
+    // Budget per move = a fraction of remaining time, targeting ~8 moves worth of
+    // thinking before the clock runs out. Minimum 1s, maximum = base timeLimit.
+    // The 1/8 fraction is more generous than the old 3%, letting the hard bot
+    // actually reach depth 7-8 on long time controls.
     const remainingMs = botTimeRemaining * 1000;
     if (remainingMs < 5000) {
       // Under 5 seconds — absolute emergency, instant move
@@ -2083,9 +2333,9 @@ function getBestMoveSync(gameState, botPosition, difficulty, settingsOverride) {
       settings.depth = Math.min(settings.depth, 3);
       settings.quiescenceDepth = Math.min(settings.quiescenceDepth, 2);
     } else {
-      // Healthy clock: cap to 3 % of remaining time so moves don't eat
-      // disproportionate chunks on long games.
-      const timeCap = Math.max(1000, Math.min(remainingMs * 0.03, settings.timeLimit));
+      // Healthy clock: spend at most 1/8 of remaining time this move,
+      // capped at base timeLimit. Leaves plenty of time for the rest of the game.
+      const timeCap = Math.max(1000, Math.min(remainingMs / 8, settings.timeLimit));
       settings.timeLimit = Math.round(timeCap);
     }
   } else if (gameTimeControl && gameTimeControl <= 1) {
@@ -2134,16 +2384,143 @@ function getBestMoveSync(gameState, botPosition, difficulty, settingsOverride) {
   // Iterative deepening with time limit
   let bestMove = legalMoves[0];
   let bestScore = -Infinity;
+  // Board size constant for SEE calls at root (computed once, used in inner loop)
+  const bsRoot = Math.max(gameState.gameType?.board_width || 8, gameState.gameType?.board_height || 8);
+
+  // Opening variation seed: a per-game integer used inside the depth loop to add
+  // tiny deterministic jitter to positional move scores in the opening.  Seeded
+  // from game ID + bot position so it differs each game but is stable within one
+  // game's move sequence.  Multiplied by a fraction so the jitter stays ±4 units
+  // (negligible vs. tactical scores of 100+, but enough to break equal-score ties
+  // and explore different openings between games).
+  const gameIdSeed = (typeof gameState.gameId === 'number'
+    ? gameState.gameId
+    : String(gameState.gameId || '').split('').reduce((h, c) => h * 31 + c.charCodeAt(0), 17)) | 0;
+  const openingVariationSeed = (gameIdSeed * 1000003 + botPosition * 7919) | 0;
+
+  // --- Tactical priority ordering ---
+  // Scan for immediate threats and opportunities. Tactical moves are sorted to the FRONT
+  // of the search at every depth iteration so alpha-beta quickly establishes a tight window
+  // from the most critical moves. Non-tactical moves are still searched — the bot needs them
+  // for indirect defenses (blocking, developing defenders) that pure-escape enumeration misses.
+  // With good moves first, alpha-beta prunes most non-tactical moves automatically.
+  const tactics = getTacticalCandidates(gameState, botPosition, bsRoot);
+  const tacticalCandidates = tactics.hasTactics
+    ? buildTacticalCandidates(legalMoves, tactics, gameState, botPosition, bsRoot)
+    : [];
+
+  // --- Instant bailouts for unambiguous tactical situations ---
+  // When there is a clearly winning capture or a major piece about to be lost
+  // for free, return the obvious move immediately without spending the full
+  // time budget on search.  The thresholds are intentionally conservative
+  // (≥ 5 pawn-equivalents at stake) so the bailout never fires on ambiguous
+  // tactical positions.  randomness > 0 (easy/medium) is excluded so those
+  // bots still make occasional mistakes.
+  if (settings.randomness === 0) {
+    const INSTANT_THRESHOLD = 5.0;
+    const opponent = botPosition === 1 ? 2 : 1;
+    const urgentCapture = tactics.freeCaptures.length > 0 ? tactics.freeCaptures[0] : null;
+    const urgentHang    = tactics.hangingMyPieces.length > 0 ? tactics.hangingMyPieces[0] : null;
+
+    // Bailout A — instant free capture:
+    // We have a winning capture worth ≥ 5 pawns AND no hanging piece of ours
+    // has a HIGHER urgency (if we're about to lose something more valuable,
+    // escaping it is higher priority than capturing).
+    if (urgentCapture && urgentCapture.see >= INSTANT_THRESHOLD) {
+      const hangUrgency = urgentHang ? urgentHang.see : 0;
+      if (hangUrgency < urgentCapture.see + 1.0) {
+        // Find legal moves that land on the target square
+        const capMoves = legalMoves.filter(m => {
+          if (m.to.x !== urgentCapture.piece.x || m.to.y !== urgentCapture.piece.y) return false;
+          const atk = gameState.pieces.find(p => p.id === m.pieceId);
+          return atk && (atk.team || atk.player_id) === botPosition;
+        });
+        if (capMoves.length > 0) {
+          // Among valid capturers, prefer the cheapest attacker (best SEE)
+          capMoves.sort((a, b) => {
+            const av = getPieceValue(gameState.pieces.find(p => p.id === a.pieceId), bsRoot);
+            const bv = getPieceValue(gameState.pieces.find(p => p.id === b.pieceId), bsRoot);
+            return av - bv;
+          });
+          const chosen = capMoves[0];
+          console.log(`[AI] Instant capture: target (${urgentCapture.piece.x},${urgentCapture.piece.y}) SEE=${urgentCapture.see.toFixed(1)}`);
+          return chosen;
+        }
+      }
+    }
+
+    // Bailout B — instant escape:
+    // A piece of ours is about to be lost with SEE ≥ threshold.
+    // Applies even when multiple pieces are hanging — focus on the most urgent.
+    // Skip if a free capture has equal or higher priority (taking it first
+    // offsets the material and keeps the tempo advantage).
+    if (urgentHang && urgentHang.see >= INSTANT_THRESHOLD) {
+      const capPriority = urgentCapture ? urgentCapture.see : 0;
+      if (capPriority < urgentHang.see - 1.0) {
+        const { piece: hungPiece, see: hungSee } = urgentHang;
+        const escapeMoves = legalMoves.filter(m => m.pieceId === hungPiece.id);
+        if (escapeMoves.length > 0) {
+          // Pick the destination with lowest opponent threat (best SEE for us)
+          let bestEscape = escapeMoves[0];
+          let bestEscapeSee = -Infinity;
+          for (const em of escapeMoves) {
+            const movedPieces = gameState.pieces.map(p =>
+              p.id === hungPiece.id ? { ...p, x: em.to.x, y: em.to.y } : p
+            );
+            const oppAtks = getAttackersTo(
+              { ...gameState, pieces: movedPieces },
+              em.to.x, em.to.y, opponent, bsRoot
+            );
+            const destSee = oppAtks.length === 0 ? 0 :
+              -staticExchangeEval(gameState, em.to.x, em.to.y,
+                oppAtks[0].piece.id, oppAtks[0].value, hungSee, opponent, bsRoot);
+            if (destSee > bestEscapeSee) { bestEscapeSee = destSee; bestEscape = em; }
+          }
+          console.log(`[AI] Instant escape: piece ${hungPiece.id} SEE=${hungSee.toFixed(1)} -> (${bestEscape.to.x},${bestEscape.to.y})`);
+          return bestEscape;
+        }
+      }
+    }
+  }
+
+  const tacticalSet = tacticalCandidates.length > 0
+    ? new Set(tacticalCandidates.map(m => `${m.pieceId}:${m.to.x},${m.to.y}`))
+    : null;
+
+  if (tactics.hasTactics) {
+    console.log(`[AI-TACTICAL] hang=${tactics.hangingMyPieces.length} freecap=${tactics.freeCaptures.length} priority=${tacticalCandidates.length}/${legalMoves.length} depth=${settings.depth}`);
+  }
 
   for (let depth = 1; depth <= settings.depth; depth++) {
     // Don't start a new depth if 75% of time budget is used
     if (Date.now() - startTime > settings.timeLimit * 0.75) break;
 
-    const orderedMoves = [...legalMoves];
-    orderMoves(orderedMoves, gameState);
+    // Build ordered move list: tactical candidates first (sorted by standard ordering),
+    // then the remaining legal moves (also sorted). Alpha-beta sees the best tactical
+    // moves first, sets a tight window, and prunes non-tactical moves cheaply.
+    let orderedMoves;
+    if (tacticalSet) {
+      const tacticalFirst = legalMoves.filter(m => tacticalSet.has(`${m.pieceId}:${m.to.x},${m.to.y}`));
+      const rest = legalMoves.filter(m => !tacticalSet.has(`${m.pieceId}:${m.to.x},${m.to.y}`));
+      orderMoves(tacticalFirst, gameState);
+      orderMoves(rest, gameState);
+      orderedMoves = [...tacticalFirst, ...rest];
+    } else {
+      orderedMoves = [...legalMoves];
+      orderMoves(orderedMoves, gameState);
+    }
+
+    // Opening variation: in the first 16 plies add a tiny game-seed jitter to
+    // positional (non-capture) move scores so the bot explores different openings
+    // each game.  Tactical scores are hundreds of units — a ±8 jitter is invisible
+    // there but enough to break ties between equal positional moves.
+    const currentPly = gameState.gamePly ?? (gameState.totalHalfMoves || 0);
+    const openingJitter = (currentPly < 16 && settings.randomness === 0)
+      ? openingVariationSeed : 0;
 
     let depthBestMove = null;
     let depthBestScore = -Infinity;
+    let depthSecondScore = -Infinity;
     let timedOut = false;
 
     for (const move of orderedMoves) {
@@ -2160,15 +2537,28 @@ function getBestMoveSync(gameState, botPosition, difficulty, settingsOverride) {
 
       let moveScore = result.score;
 
+      // Opening jitter: tiny per-move hash perturbation so the bot explores
+      // different openings between games.  Only applied in the first 16 plies
+      // and only for non-capture positional moves so tactics are unaffected.
+      if (openingJitter !== 0) {
+        const isCapture = !!gameState.pieces.find(p =>
+          p.x === move.to.x && p.y === move.to.y && (p.team || p.player_id) !== botPosition
+        );
+        if (!isCapture) {
+          // Deterministic hash per move so the same position always gets the
+          // same jitter within this search, but varies across games via seed.
+          const moveSig = (move.pieceId.charCodeAt ? move.pieceId.charCodeAt(0) : move.pieceId) +
+            move.to.x * 13 + move.to.y * 97;
+          moveScore += ((moveSig * openingJitter) % 8) - 4; // range ±4 units
+        }
+      }
+
       // Penalize moving the same piece as last bot move (encourages developing different pieces)
       if (lastBotMove && move.pieceId === lastBotMove.pieceId && !lastBotMove.captured) {
         const piece = gameState.pieces.find(p => p.id === move.pieceId);
         if (piece) {
-          const pValue = getPieceValue(piece, Math.max(
-            gameState.gameType?.board_width || 8,
-            gameState.gameType?.board_height || 8
-          ));
-          const penalty = pValue < 5 ? 15 : 6;
+          const pValue = getPieceValue(piece, bsRoot);
+          const penalty = pValue < 4 ? 25 : 12;
           moveScore -= penalty;
         }
       }
@@ -2178,7 +2568,7 @@ function getBestMoveSync(gameState, botPosition, difficulty, settingsOverride) {
       if (positions) {
         for (const pos of positions) {
           if (pos.x === move.to.x && pos.y === move.to.y) {
-            moveScore -= 25; // Strong penalty for reverting to a recent position
+            moveScore -= 40;
             break;
           }
         }
@@ -2187,19 +2577,54 @@ function getBestMoveSync(gameState, botPosition, difficulty, settingsOverride) {
       // Extra penalty for undoing the last move exactly (A→B then B→A)
       if (lastBotMove && lastBotMove.from && move.pieceId === lastBotMove.pieceId &&
           move.to.x === lastBotMove.from.x && move.to.y === lastBotMove.from.y) {
-        moveScore -= 30;
+        moveScore -= 50;
+      }
+
+      // SEE root penalty: strongly penalize losing captures so the bot never sacrifices
+      // a high-value piece for a defended low-value target (e.g. queen for a defended pawn).
+      if (move.to) {
+        const attackerPiece = gameState.pieces.find(p => p.id === move.pieceId);
+        const targetPiece = gameState.pieces.find(p =>
+          p.x === move.to.x && p.y === move.to.y && (p.team || p.player_id) !== botPosition
+        );
+        if (attackerPiece && targetPiece) {
+          const see = staticExchangeEval(gameState, move.to.x, move.to.y,
+            attackerPiece.id, getPieceValue(attackerPiece, bsRoot),
+            getPieceValue(targetPiece, bsRoot), botPosition, bsRoot);
+          if (see < -1.0) {
+            moveScore += see * 25; // raised from ×15: bigger penalty for losing captures
+          }
+        }
       }
 
       if (moveScore > depthBestScore) {
+        depthSecondScore = depthBestScore; // track runner-up for early-exit check
         depthBestScore = moveScore;
         depthBestMove = move;
+      } else if (moveScore > depthSecondScore) {
+        depthSecondScore = moveScore;
       }
     }
 
     if (depthBestMove && !timedOut) {
-      bestMove = depthBestMove;
+      const prevBestId  = bestMove ? `${bestMove.pieceId}:${bestMove.to?.x},${bestMove.to?.y}` : null;
+      const thisBestId  = `${depthBestMove.pieceId}:${depthBestMove.to?.x},${depthBestMove.to?.y}`;
+      const prevScore   = bestScore;
+      bestMove  = depthBestMove;
       bestScore = depthBestScore;
-      console.log(`[AI] Depth ${depth} complete: score=${bestScore} (${Date.now() - startTime}ms)`);
+      console.log(`[AI] Depth ${depth} complete: score=${bestScore} margin=${(depthBestScore - depthSecondScore).toFixed(1)} (${Date.now() - startTime}ms)`);
+
+      // Early termination: if the best move has been stable for 2 consecutive depths
+      // and it wins by a large margin over the 2nd best, there is no point searching
+      // deeper — the extra depth will almost certainly confirm the same choice.
+      // Only apply at depth ≥ 3 to avoid stopping on shallow flukes.
+      if (depth >= 3 && thisBestId === prevBestId) {
+        const margin = depthBestScore - depthSecondScore;
+        if (margin > 80) {
+          console.log(`[AI] Early exit at depth ${depth}: stable move, margin=${margin.toFixed(1)}`);
+          break;
+        }
+      }
     }
   }
 
@@ -2242,8 +2667,10 @@ module.exports = {
   getPieceValue,
   DIFFICULTY,
   cloneState,
-  // Exposed for testing
+  // Exposed for testing / analysis scripts
   getMovesForSearch,
   checkTerminal,
-  applyMove
+  applyMove,
+  getAttackersTo,
+  staticExchangeEval,
 };
