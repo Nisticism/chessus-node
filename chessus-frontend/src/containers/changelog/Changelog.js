@@ -32,7 +32,6 @@ const changelogData = [
       "Fixed (reposition phase): if a player ends up in checkmate after repositioning, the game now ends immediately in favor of their opponent with no ELO change. If both players somehow end up in simultaneous checkmate, the game ends as a draw — shown as 'Draw — Simultaneous Checkmate' in the game-over screen and match history.",
       "Piece wizard: you can now set a maximum number of pieces a piece may hop over per directional move (1–4, or unlimited). A separate limit can be set for directional attacks. Both limits are enforced in live games (hover highlights now correctly exclude squares that would exceed the limit) and shown on the piece and game detail pages.",
       "Piece wizard: reordered the hopping option toggles in Steps 2 and 3 for a clearer progression.",
-      "Fixed: if only a movement hop limit was set (no separate attack limit), the limit now also applies to directional attacks — including check and checkmate detection. Previously the attack-specific hop limit defaulted to unlimited when not explicitly set.",
     ],
   },
   {

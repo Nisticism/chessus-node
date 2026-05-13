@@ -3088,11 +3088,8 @@ const LiveGame = () => {
         }
 
         // max_directional_hop_pieces_attack: limit how many pieces may be hopped over per directional attack
-        // Falls back to max_directional_hop_pieces when no attack-specific limit is set
-        const effectiveMaxHopAtk = (piece.max_directional_hop_pieces_attack != null && piece.max_directional_hop_pieces_attack > 0)
-          ? piece.max_directional_hop_pieces_attack
-          : (piece.max_directional_hop_pieces != null && piece.max_directional_hop_pieces > 0 ? piece.max_directional_hop_pieces : null);
-        if (!forPremove && isValidMove && (isCapture || isPotentialCapture) && !isHopCapture && effectiveMaxHopAtk != null) {
+        if (!forPremove && isValidMove && (isCapture || isPotentialCapture) && !isHopCapture &&
+            piece.max_directional_hop_pieces_attack != null && piece.max_directional_hop_pieces_attack > 0) {
           const xDiff = toX - piece.x;
           const yDiff = toY - piece.y;
           if (xDiff === 0 || yDiff === 0 || Math.abs(xDiff) === Math.abs(yDiff)) {
@@ -3106,7 +3103,7 @@ const LiveGame = () => {
               cx += dx;
               cy += dy;
             }
-            if (hopCount > effectiveMaxHopAtk) isValidMove = false;
+            if (hopCount > piece.max_directional_hop_pieces_attack) isValidMove = false;
           }
         }
         
