@@ -12597,7 +12597,14 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces, gameType) {
   const exactRatioHopOnlyAtk = piece.exact_ratio_hop_only_attack === 1 || piece.exact_ratio_hop_only_attack === true;
   const hopStopAtOccupiedAtk = piece.hop_stop_at_occupied_attack === 1 || piece.hop_stop_at_occupied_attack === true;
   const directionalHopOnlyAtk = piece.directional_hop_only_attack === 1 || piece.directional_hop_only_attack === true;
-  const maxHopPiecesAtk = (piece.max_directional_hop_pieces_attack != null && piece.max_directional_hop_pieces_attack > 0) ? parseInt(piece.max_directional_hop_pieces_attack) : null;
+  // Fall back to movement hop limit when no attack-specific hop limit is set
+  const maxHopPiecesAtk = (() => {
+    if (piece.max_directional_hop_pieces_attack != null && piece.max_directional_hop_pieces_attack > 0)
+      return parseInt(piece.max_directional_hop_pieces_attack);
+    if (piece.max_directional_hop_pieces != null && piece.max_directional_hop_pieces > 0)
+      return parseInt(piece.max_directional_hop_pieces);
+    return null;
+  })();
   // Returns true if any intermediate exact-distance multiple between piece and target is occupied
   // Used for hop_stop_at_occupied_attack when repeating exact directional capture is active
   const hasOccupiedExactMultipleAtk = (exactDist) => {
