@@ -2823,7 +2823,7 @@ const GameTypeView = () => {
                   zIndex: 2
                 }} />}
                 {/* Checkmate piece indicator - upper right, styled for player */}
-                {showDetails && placement.ends_game_on_checkmate && (
+                {showDetails && !!placement.ends_game_on_checkmate && (
                   <div style={{
                     position: 'absolute',
                     top: '1px',
@@ -2838,7 +2838,7 @@ const GameTypeView = () => {
                   </div>
                 )}
                 {/* Capture piece indicator - upper left */}
-                {showDetails && placement.ends_game_on_capture && (
+                {showDetails && !!placement.ends_game_on_capture && (
                   <div style={{
                     position: 'absolute',
                     top: '2px',

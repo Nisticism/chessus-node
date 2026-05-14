@@ -329,6 +329,25 @@ const PieceView = () => {
       repeating_ratio_capture: !!piece.repeating_ratio_capture,
       hop_stop_at_occupied_attack: !!piece.hop_stop_at_occupied_attack,
       chain_hop_allies: !!piece.chain_hop_allies,
+      // Direction change boolean fields
+      directional_movement_change: !!piece.directional_movement_change,
+      repeating_movement_change: !!piece.repeating_movement_change,
+      require_empty_via_movement: !!piece.require_empty_via_movement,
+      require_direction_change: !!piece.require_direction_change,
+      directional_capture_change: !!piece.directional_capture_change,
+      repeating_capture_change: !!piece.repeating_capture_change,
+      require_empty_via_capture: !!piece.require_empty_via_capture,
+      require_direction_change_capture: !!piece.require_direction_change_capture,
+      // Special ability boolean fields (DEFAULT 0 in DB)
+      can_promote: !!piece.can_promote,
+      can_castle: !!piece.can_castle,
+      can_en_passant: !!piece.can_en_passant,
+      capture_on_hop: !!piece.capture_on_hop,
+      chain_capture_enabled: !!piece.chain_capture_enabled,
+      can_capture_allies: !!piece.can_capture_allies,
+      must_move_if_able: !!piece.must_move_if_able,
+      die_on_capture: !!piece.die_on_capture,
+      die_on_capture_grants_win: !!piece.die_on_capture_grants_win,
       piece_image_previews: orderedPieceImages,
       // Use database field names directly for PieceBoardPreview
       special_scenario_moves: piece.special_scenario_moves || "",
@@ -1111,7 +1130,7 @@ const PieceView = () => {
                 Inactive for first {pieceToDisplay.min_turns_per_move} turn{pieceToDisplay.min_turns_per_move !== 1 ? 's' : ''}
               </div>
             )}
-            {pieceToDisplay.max_turns_per_move != null && (
+            {pieceToDisplay.max_turns_per_move != null && pieceToDisplay.max_turns_per_move > 0 && (
               <div className={styles["modifier-badge"]}>
                 <span className={styles["modifier-icon"]}>⏱️</span>
                 Max {pieceToDisplay.max_turns_per_move} turn{pieceToDisplay.max_turns_per_move !== 1 ? 's' : ''} per move
