@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useRef, useCallback, useEffect } from "react";
 import styles from "./piecewizard.module.scss";
 import { applySvgStretchBackground } from "../../helpers/svgStretchUtils";
-import { getSquareHighlightStyle } from "../../helpers/pieceMovementUtils";
+import { getSquareHighlightStyle, getDirectionChangeMoves } from "../../helpers/pieceMovementUtils";
 import BoardLegend from "../common/BoardLegend";
 import SquareHighlightOverlay from "../common/SquareHighlightOverlay";
 
@@ -1079,6 +1079,18 @@ const PieceBoardPreview = ({ pieceData, showAttack = true, showLegend = true }) 
     const isAnimating = !!animState;
     // During paused animation or dragging, hide piece from anchor; show on overlay instead
     const hidePieceOnAnchor = animState === 'paused' || isDragging;
+
+    // Precompute direction-change reachable squares for hover display (open-board assumption)
+    let dcMoveSet = null;
+    let dcCaptureSet = null;
+    if (isHovering && (pieceData.directional_movement_change || pieceData.directional_capture_change)) {
+      dcMoveSet = new Set();
+      dcCaptureSet = new Set();
+      const dcMovement = getDirectionChangeMoves(pieceData, anchorCol, anchorRow, 1, boardWidth, boardHeight, 'movement');
+      const dcCapture = getDirectionChangeMoves(pieceData, anchorCol, anchorRow, 1, boardWidth, boardHeight, 'capture');
+      for (const m of dcMovement) dcMoveSet.add(`${m.y},${m.x}`);
+      for (const m of dcCapture) dcCaptureSet.add(`${m.y},${m.x}`);
+    }
     
     for (let row = -phantomPad; row < boardHeight + phantomPad; row++) {
       for (let col = -phantomPad; col < boardWidth + phantomPad; col++) {
@@ -1115,6 +1127,10 @@ const PieceBoardPreview = ({ pieceData, showAttack = true, showLegend = true }) 
         const canCaptureOnMove = captureInfo.allowed;
         const isCaptureFirstOnly = captureInfo.isFirstMoveOnly;
         const isCustomAttack = captureInfo.isCustomOnly || false;
+
+        const squareKey = `${row},${col}`;
+        const canMoveDirectionChange = !isCenter && isHovering && !!dcMoveSet?.has(squareKey);
+        const canCaptureDirectionChange = !isCenter && isHovering && !!dcCaptureSet?.has(squareKey);
         
         const isClickable = !isAnimating && !isCenter && (canMove || canCaptureOnMove);
         
@@ -1129,7 +1145,7 @@ const PieceBoardPreview = ({ pieceData, showAttack = true, showLegend = true }) 
         
         // Use shared highlight style utility
         const { style: highlightStyle, icon: highlightIcon } = (!isCenter)
-          ? getSquareHighlightStyle(canMove, isMoveFirstOnly, canCaptureOnMove, isCaptureFirstOnly, canRangedAttack, isLight, isCustomMove, isCustomAttack)
+          ? getSquareHighlightStyle(canMove, isMoveFirstOnly, canCaptureOnMove, isCaptureFirstOnly, canRangedAttack, isLight, isCustomMove, isCustomAttack, canMoveDirectionChange, canCaptureDirectionChange)
           : { style: {}, icon: null };
         
         // Inline styles for user color preferences
@@ -1328,6 +1344,8 @@ const PieceBoardPreview = ({ pieceData, showAttack = true, showLegend = true }) 
           showHopCapture={showAttack && !!pieceData.capture_on_hop}
           showCustomMove={!!pieceData.custom_movement_squares}
           showCustomAttack={showAttack && !!pieceData.custom_attack_squares}
+          showDCMove={!!pieceData.directional_movement_change}
+          showDCCapture={showAttack && !!pieceData.directional_capture_change}
           labelStyle="descriptive"
           title="Legend (hover over piece to see):"
         />

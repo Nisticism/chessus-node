@@ -714,7 +714,7 @@ export const canHopCaptureToUtil = (fromRow, fromCol, toRow, toCol, pieceData, p
  * @param {boolean} isLight - Whether this is a light square (for icon styling)
  * @returns {{ style: Object, icon: string|null }}
  */
-export const getSquareHighlightStyle = (canMove, isMoveFirstOnly, canCapture, isCaptureFirstOnly, canRangedAttack, isLight = true, isCustomMove = false, isCustomAttack = false) => {
+export const getSquareHighlightStyle = (canMove, isMoveFirstOnly, canCapture, isCaptureFirstOnly, canRangedAttack, isLight = true, isCustomMove = false, isCustomAttack = false, canMoveDirectionChange = false, canCaptureDirectionChange = false) => {
   let style = {};
   let icon = null;
 
@@ -733,6 +733,10 @@ export const getSquareHighlightStyle = (canMove, isMoveFirstOnly, canCapture, is
   const captureBg = isCustomAttack ? customAttackBg : (isCaptureFirstOnly ? 'rgba(233, 30, 99, 0.25)' : 'rgba(255, 152, 0, 0.25)');
   const rangedColor = 'rgba(244, 67, 54, 0.55)';
   const rangedBg = 'rgba(244, 67, 54, 0.25)';
+  const dcMoveColor = 'rgba(13, 71, 161, 0.65)';
+  const dcMoveBg = 'rgba(13, 71, 161, 0.25)';
+  const dcCaptureColor = 'rgba(183, 84, 0, 0.65)';
+  const dcCaptureBg = 'rgba(183, 84, 0, 0.25)';
 
   // Priority: Combined states > Single states
   if (canMove && canCapture && canRangedAttack) {
@@ -796,6 +800,26 @@ export const getSquareHighlightStyle = (canMove, isMoveFirstOnly, canCapture, is
       background: rangedBg
     };
     icon = '💥';
+  } else if (canMoveDirectionChange && canCaptureDirectionChange) {
+    style = {
+      borderTop: `3px solid ${dcMoveColor}`,
+      borderLeft: `3px solid ${dcMoveColor}`,
+      borderBottom: `3px solid ${dcCaptureColor}`,
+      borderRight: `3px solid ${dcCaptureColor}`,
+      background: `linear-gradient(135deg, ${dcMoveBg} 0%, ${dcMoveBg} 50%, ${dcCaptureBg} 50%, ${dcCaptureBg} 100%)`
+    };
+  } else if (canMoveDirectionChange) {
+    style = {
+      outline: `3px solid ${dcMoveColor}`,
+      outlineOffset: '-3px',
+      background: dcMoveBg
+    };
+  } else if (canCaptureDirectionChange) {
+    style = {
+      outline: `3px solid ${dcCaptureColor}`,
+      outlineOffset: '-3px',
+      background: dcCaptureBg
+    };
   }
 
   return { style, icon };
@@ -896,6 +920,187 @@ export const rowToRank = (row) => {
  */
 export const toChessNotation = (col, row) => {
   return colToFile(col) + rowToRank(row);
+};
+
+/**
+ * Returns true if (dx1,dy1) and (dx2,dy2) are parallel (same or opposite direction).
+ * Uses cross product: parallel when dx1*dy2 - dy1*dx2 === 0.
+ */
+const isSameOrOppositeDirectionClient = (dx1, dy1, dx2, dy2) => (dx1 * dy2 - dy1 * dx2) === 0;
+
+/**
+ * Compute all reachable squares via a direction-change move for client-side preview.
+ * Returns an array of { x, y, via: {x, y}, isDirectionChange: true, isFirstMoveOnly, isCapture }.
+ * Assumes open board (no blocking pieces) for preview purposes.
+ *
+ * @param {Object} piece - Piece data with direction change fields
+ * @param {number} fromX - Starting column (0-based)
+ * @param {number} fromY - Starting row (0-based)
+ * @param {number} playerPosition - 1 or 2
+ * @param {number} boardWidth - Board width
+ * @param {number} boardHeight - Board height
+ * @param {'movement'|'capture'} type - Which type to compute
+ */
+export const getDirectionChangeMoves = (piece, fromX, fromY, playerPosition, boardWidth, boardHeight, type = 'movement', pieces = null) => {
+  const isP2 = playerPosition === 2;
+  const results = [];
+
+  // 8 canonical direction vectors (from P1 perspective; P2 flips dy)
+  const DIRS = {
+    up:         { dx: 0,  dy: -1 },
+    down:       { dx: 0,  dy:  1 },
+    left:       { dx: -1, dy:  0 },
+    right:      { dx: 1,  dy:  0 },
+    up_left:    { dx: -1, dy: -1 },
+    up_right:   { dx: 1,  dy: -1 },
+    down_left:  { dx: -1, dy:  1 },
+    down_right: { dx: 1,  dy:  1 },
+  };
+
+  const applyFlip = (dx, dy) => isP2 ? { dx, dy: -dy } : { dx, dy };
+
+  // Determine if this piece type uses movement or capture direction change
+  const useMoveChange = type === 'movement'
+    ? !!piece.directional_movement_change
+    : (piece.attacks_like_movement ? !!piece.directional_movement_change : !!piece.directional_capture_change);
+
+  if (!useMoveChange) return results;
+
+  const suffix = (type === 'capture' && !piece.attacks_like_movement) ? '_capture_change' : '_movement_change';
+  const masterKey = (type === 'capture' && !piece.attacks_like_movement) ? 'directional_capture_change' : 'directional_movement_change';
+  if (!piece[masterKey]) return results;
+
+  // Determine hopping: if piece can hop, via square may be occupied (unless require_empty_via_* overrides)
+  const canHopAllies = piece.can_hop_over_allies === 1 || piece.can_hop_over_allies === true;
+  const canHopEnemies = piece.can_hop_over_enemies === 1 || piece.can_hop_over_enemies === true;
+  const canHop = (canHopAllies || canHopEnemies) && !piece.directional_hop_disabled;
+  const requireEmptyVia = type === 'capture'
+    ? (!!piece.require_empty_via_capture)
+    : (!!piece.require_empty_via_movement);
+  const viaCanBeOccupied = canHop && !requireEmptyVia;
+
+  const pieceOwner = piece.player_id != null ? Number(piece.player_id) : Number(piece.team);
+
+  // Board-aware helpers (only active when pieces array is provided)
+  const findAt = (x, y) => pieces ? pieces.find(p => p.id !== piece.id && doesPieceOccupySquare(p, x, y)) : null;
+  const canHopOver = (blocker) => {
+    if (!blocker) return true;
+    const blockerOwner = blocker.player_id != null ? Number(blocker.player_id) : Number(blocker.team);
+    return blockerOwner === pieceOwner ? canHopAllies : canHopEnemies;
+  };
+  // Returns true if the straight path from (x1,y1) to (x2,y2) is clear (exclusive of endpoints)
+  const isLegPathClear = (x1, y1, x2, y2) => {
+    if (!pieces) return true; // open-board mode
+    const stepX = x2 > x1 ? 1 : x2 < x1 ? -1 : 0;
+    const stepY = y2 > y1 ? 1 : y2 < y1 ? -1 : 0;
+    let cx = x1 + stepX, cy = y1 + stepY;
+    while (cx !== x2 || cy !== y2) {
+      const blocker = findAt(cx, cy);
+      if (blocker && !canHopOver(blocker)) return false;
+      cx += stepX;
+      cy += stepY;
+    }
+    return true;
+  };
+
+  // First-leg direction keys come from the piece's standard directional movement/capture columns
+  const firstLegSuffix = type === 'capture' ? '_capture' : '_movement';
+
+  // Iterate over each first-leg direction
+  for (const [dirName, baseVec] of Object.entries(DIRS)) {
+    const firstLegKey = `${dirName}${firstLegSuffix}`;
+    const firstLegDist = parseInt(piece[firstLegKey]) || 0;
+    if (!firstLegDist) continue;
+
+    const { dx: fdx, dy: fdy } = applyFlip(baseVec.dx, baseVec.dy);
+    const maxFirst = firstLegDist === 99 ? Math.max(boardWidth, boardHeight) : firstLegDist;
+
+    // Walk first leg — find valid via squares
+    for (let step1 = 1; step1 <= maxFirst; step1++) {
+      const viaX = fromX + fdx * step1;
+      const viaY = fromY + fdy * step1;
+      if (viaX < 0 || viaX >= boardWidth || viaY < 0 || viaY >= boardHeight) break;
+
+      // For exact first-leg: only the exact endpoint is a valid via
+      const firstExactKey = `${dirName}${firstLegSuffix}_exact`;
+      if (piece[firstExactKey] && step1 !== firstLegDist) continue;
+
+      // Board-aware: check path to via square
+      if (pieces) {
+        if (!isLegPathClear(fromX, fromY, viaX, viaY)) break; // path blocked — stop this direction
+        const viaOccupant = findAt(viaX, viaY);
+        if (viaOccupant) {
+          if (!viaCanBeOccupied) break; // via must be empty and it's not
+          // Via occupied + hopping allowed — can still proceed to second leg
+        }
+      }
+
+      // Iterate second-leg directions
+      for (const [dir2Name, baseVec2] of Object.entries(DIRS)) {
+        const secondLegKey = `${dir2Name}${suffix}`;
+        const secondLegDist = parseInt(piece[secondLegKey]) || 0;
+        if (!secondLegDist) continue;
+
+        const { dx: sdx, dy: sdy } = applyFlip(baseVec2.dx, baseVec2.dy);
+
+        // Skip same or opposite direction
+        if (isSameOrOppositeDirectionClient(fdx, fdy, sdx, sdy)) continue;
+
+        const secondExactKey = `${dir2Name}${suffix}_exact`;
+        const secondAvailKey = `${dir2Name}${suffix}_available_for`;
+        const availFor = piece[secondAvailKey] ? parseInt(piece[secondAvailKey]) : null;
+        const isFirstMoveOnly = availFor != null;
+        const maxSecond = secondLegDist === 99 ? Math.max(boardWidth, boardHeight) : secondLegDist;
+
+        for (let step2 = 1; step2 <= maxSecond; step2++) {
+          if (piece[secondExactKey] && step2 !== secondLegDist) continue;
+
+          const toX = viaX + sdx * step2;
+          const toY = viaY + sdy * step2;
+          if (toX < 0 || toX >= boardWidth || toY < 0 || toY >= boardHeight) break;
+
+          // Board-aware: check second-leg path and destination
+          if (pieces) {
+            if (!isLegPathClear(viaX, viaY, toX, toY)) break; // second leg blocked
+            const destOccupant = findAt(toX, toY);
+            if (destOccupant) {
+              const destOwner = destOccupant.player_id != null ? Number(destOccupant.player_id) : Number(destOccupant.team);
+              if (type === 'capture' || piece.can_capture_enemy_on_move) {
+                // Can land here only if it's an enemy (or can_capture_allies)
+                if (destOwner !== pieceOwner || piece.can_capture_allies) {
+                  results.push({
+                    x: toX, y: toY,
+                    via: { x: viaX, y: viaY, viaCanBeOccupied },
+                    isDirectionChange: true,
+                    isFirstMoveOnly,
+                    isCapture: true,
+                  });
+                }
+              }
+              break; // destination occupied — stop second leg
+            } else if (type === 'capture') {
+              break; // capture type but destination empty — skip (not a valid capture)
+            }
+          }
+
+          results.push({
+            x: toX,
+            y: toY,
+            via: { x: viaX, y: viaY, viaCanBeOccupied },
+            isDirectionChange: true,
+            isFirstMoveOnly,
+            isCapture: type === 'capture',
+          });
+
+          if (piece[secondExactKey]) break; // exact: only that one square
+        }
+      }
+
+      if (piece[firstExactKey]) break; // exact first leg: stop after exact distance
+    }
+  }
+
+  return results;
 };
 
 /**

@@ -84,6 +84,8 @@ const BoardLegend = ({
   showHopCapture = true,
   showCustomMove = false,
   showCustomAttack = false,
+  showDCMove = false,
+  showDCCapture = false,
   showCheckmate = false,
   showCaptureLoss = false,
   players = null,
@@ -106,6 +108,8 @@ const BoardLegend = ({
   if (showHopCapture) items.push({ key: 'hopCapture', type: 'hopCapture', label: labels.hopCapture });
   if (showCustomMove) items.push({ key: 'customMove', type: 'customMove', label: labels.customMove });
   if (showCustomAttack) items.push({ key: 'customAttack', type: 'customAttack', label: labels.customAttack });
+  if (showDCMove) items.push({ key: 'dcMove', type: 'dcMove', label: labels.dcMove || 'Direction Change Move' });
+  if (showDCCapture) items.push({ key: 'dcCapture', type: 'dcCapture', label: labels.dcCapture || 'Direction Change Capture' });
 
   // Game condition items
   if (showCheckmate) items.push({ key: 'checkmate', type: 'checkmate', label: labels.checkmate });
@@ -158,6 +162,10 @@ const BoardLegend = ({
         return <div className={styles.swatch} style={{ outline: '3px solid rgba(0, 188, 150, 0.55)', outlineOffset: '-3px', background: 'rgba(0, 188, 150, 0.25)' }} />;
       case 'customAttack':
         return <div className={styles.swatch} style={{ outline: '3px solid rgba(255, 183, 77, 0.55)', outlineOffset: '-3px', background: 'rgba(255, 183, 77, 0.25)' }} />;
+      case 'dcMove':
+        return <div className={styles.swatch} style={{ outline: '3px solid rgba(13, 71, 161, 0.65)', outlineOffset: '-3px', background: 'rgba(13, 71, 161, 0.25)' }} />;
+      case 'dcCapture':
+        return <div className={styles.swatch} style={{ outline: '3px solid rgba(183, 84, 0, 0.65)', outlineOffset: '-3px', background: 'rgba(183, 84, 0, 0.25)' }} />;
       case 'checkmate':
         return (
           <span className={styles.iconSwatch}>

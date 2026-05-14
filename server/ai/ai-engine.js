@@ -618,6 +618,8 @@ function getMovesForSearch(state, playerPosition) {
         from: { x: piece.x, y: piece.y },
         to: toSquare
       };
+      // Direction-change moves carry a via square — hoist it to top-level for validateAndApplyMove
+      if (toSquare.via) move.via = toSquare.via;
 
       if (state.gameType?.mate_condition) {
         const illegal = silent(() =>
