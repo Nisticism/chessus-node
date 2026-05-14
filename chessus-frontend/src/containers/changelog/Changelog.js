@@ -5,14 +5,21 @@ import styles from "./changelog.module.scss";
 const changelogData = [
   {
     date: "May 13, 2026",
-    title: "Computer AI: instant captures/escapes for obvious moves, early exit on clear decisions, opening variety, deeper search",
+    title: "Direction change piece ability: full game support; computer AI improvements",
     items: [
+      "Direction change piece ability is now fully playable in live games — pieces with this ability can turn corners mid-move as designed.",
+      "Via squares (turning points) for direction-change pieces are now highlighted with a thick border when a direction-change piece is selected or hovered over.",
+      "Direction change movement grid in the piece wizard redesigned with a 3-column layout matching regular movement for consistency.",
+      "Copy movement to attack now includes all direction change settings.",
+      "Direction change preview colors updated to darker blue and orange for better clarity.",
       "Computer player now instantly captures high-value opponent pieces that are left undefended (or barely defended), without spending 30 seconds searching. Example: if your Chancellor is defended only by a pawn, the computer takes it immediately.",
       "Computer player now instantly rescues its own major pieces (Chancellor, Archbishop, Queen) that are under a winning attack, rather than ignoring them for many turns.",
       "Computer player now exits the search early when the best move is clearly dominant — preventing it from spending the full 30-second budget on positions where there is one obvious answer.",
       "Hard computer now searches at depth 8 (was depth 5) with a 25-second budget per move (was 12 seconds), making it much stronger in complex positions.",
       "Computer opening play now varies between games: small position-based adjustments ensure the computer doesn't play the exact same sequence every time from the opening.",
       "Penalty for making bad captures (taking a defended piece with a more valuable piece) has been raised, making it less likely to blunder a Knight for a defended Pawn.",
+      "New piece option: 'Direction change is mandatory' — when enabled on a piece with the direction change ability, the piece must turn mid-move and cannot stop on straight-line squares. An independent version is available for movement and for capturing (Step 2 and Step 3 of the piece wizard).",
+      "Via (turning) squares for direction-change pieces now show a thicker border highlight. The border is much darker on light squares and much lighter on dark squares for better visibility.",
     ],
   },
   {
