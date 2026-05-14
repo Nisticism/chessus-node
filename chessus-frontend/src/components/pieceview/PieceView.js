@@ -12,6 +12,8 @@ import { parseServerDate } from "../../helpers/date-formatter";
 import authHeader from "../../services/auth-header";
 import { renderContent } from "../../helpers/render-content";
 
+const EMPTY_PIECE_VALUE_CACHE = {};
+
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";
 const API_URL = (process.env.REACT_APP_API_URL || "") + "/api/";
 
@@ -20,7 +22,7 @@ const PieceView = () => {
   const navigate = useNavigate();
   const { user: currentUser } = useSelector((state) => state.authReducer);
   const dispatch = useDispatch();
-  const pieceValueCache = useSelector((state) => state.pieces?.pieceValueCache || {});
+  const pieceValueCache = useSelector((state) => state.pieces?.pieceValueCache || EMPTY_PIECE_VALUE_CACHE);
   const [piece, setPiece] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -365,9 +367,14 @@ const PieceView = () => {
     if (!piece) return null;
     const id = piece.piece_id;
     if (pieceValueCache[id] !== undefined) return pieceValueCache[id];
-    const val = estimatePieceValue(piece, 9, 9);
-    dispatch(setPieceValueCache(id, val));
-    return val;
+    return estimatePieceValue(piece, 9, 9);
+  }, [piece, pieceValueCache]);
+
+  useEffect(() => {
+    if (!piece) return;
+    const id = piece.piece_id;
+    if (pieceValueCache[id] !== undefined) return;
+    dispatch(setPieceValueCache(id, estimatePieceValue(piece, 9, 9)));
   }, [piece, pieceValueCache, dispatch]);
 
   // Helper to get additional movements from special_scenario_moves
@@ -628,6 +635,18 @@ const PieceView = () => {
       hop_stop_at_occupied: piece.hop_stop_at_occupied !== undefined ? !!piece.hop_stop_at_occupied : true,
       hop_stop_at_occupied_attack: !!piece.hop_stop_at_occupied_attack,
       chain_hop_allies: !!piece.chain_hop_allies,
+      // Direction change boolean fields
+      directional_movement_change: !!piece.directional_movement_change,
+      repeating_movement_change: !!piece.repeating_movement_change,
+      require_empty_via_movement: !!piece.require_empty_via_movement,
+      require_direction_change: !!piece.require_direction_change,
+      directional_capture_change: !!piece.directional_capture_change,
+      repeating_capture_change: !!piece.repeating_capture_change,
+      require_empty_via_capture: !!piece.require_empty_via_capture,
+      require_direction_change_capture: !!piece.require_direction_change_capture,
+      // Die-on-capture boolean fields
+      die_on_capture: !!piece.die_on_capture,
+      die_on_capture_grants_win: !!piece.die_on_capture_grants_win,
     };
   }, [piece]);
 
