@@ -12,7 +12,8 @@ import {
   canCaptureOnMoveTo as canCaptureOnMoveToUtil,
   canRangedAttackTo as canRangedAttackToUtil,
   canHopCaptureToUtil,
-  getSquareHighlightStyle
+  getSquareHighlightStyle,
+  getDirectionChangeMoves
 } from "../../helpers/pieceMovementUtils";
 
 import { applySvgStretchBackground } from "../../helpers/svgStretchUtils";
@@ -166,7 +167,34 @@ const describePieceMovement = (pieceData) => {
     }
     movements.push(hopText);
   }
-  
+
+  // Direction change (movement)
+  if (pieceData.directional_movement_change) {
+    const dirNames = [
+      { key: 'up_left', label: 'up-left' }, { key: 'up', label: 'up' }, { key: 'up_right', label: 'up-right' },
+      { key: 'right', label: 'right' }, { key: 'down_right', label: 'down-right' }, { key: 'down', label: 'down' },
+      { key: 'down_left', label: 'down-left' }, { key: 'left', label: 'left' },
+    ];
+    const dcDirs = dirNames
+      .map(({ key, label }) => {
+        const dist = pieceData[`${key}_movement_change`];
+        if (!dist) return null;
+        const exact = pieceData[`${key}_movement_change_exact`];
+        const avail = pieceData[`${key}_movement_change_available_for`];
+        let s = `${label} ${dist === 99 ? 'any distance' : (exact ? 'exactly ' : 'up to ') + dist}`;
+        if (avail) s += ` (first ${avail} moves only)`;
+        return s;
+      })
+      .filter(Boolean);
+    if (dcDirs.length > 0) {
+      let dcText = `can change direction after initial leg: second leg may go ${dcDirs.join(', ')}`;
+      if (pieceData.repeating_movement_change) dcText += ' (exact second-leg distances repeat)';
+      if (pieceData.require_direction_change) dcText += '; direction change is mandatory (cannot move straight)';
+      dcText += '; same or opposite direction not allowed';
+      movements.push(dcText);
+    }
+  }
+
   return movements.join('; ');
 };
 
@@ -389,7 +417,41 @@ const describePieceCapture = (pieceData) => {
   if (captures.length === 0 && (pieceData.attacks_like_movement || pieceData.can_capture_enemy_on_move)) {
     return "captures the same way it moves";
   }
-  
+
+  // Direction change (capture) — shown when directional_capture_change is set,
+  // or when attacks_like_movement and directional_movement_change is set
+  const showCaptureChange = pieceData.directional_capture_change ||
+    (pieceData.attacks_like_movement && pieceData.directional_movement_change);
+  if (showCaptureChange) {
+    const useMovementCols = pieceData.attacks_like_movement && !pieceData.directional_capture_change;
+    const dirNames = [
+      { key: 'up_left', label: 'up-left' }, { key: 'up', label: 'up' }, { key: 'up_right', label: 'up-right' },
+      { key: 'right', label: 'right' }, { key: 'down_right', label: 'down-right' }, { key: 'down', label: 'down' },
+      { key: 'down_left', label: 'down-left' }, { key: 'left', label: 'left' },
+    ];
+    const suffix = useMovementCols ? '_movement_change' : '_capture_change';
+    const dcDirs = dirNames
+      .map(({ key, label }) => {
+        const dist = pieceData[`${key}${suffix}`];
+        if (!dist) return null;
+        const exact = pieceData[`${key}${suffix}_exact`];
+        const avail = pieceData[`${key}${suffix}_available_for`];
+        let s = `${label} ${dist === 99 ? 'any distance' : (exact ? 'exactly ' : 'up to ') + dist}`;
+        if (avail) s += ` (first ${avail} moves only)`;
+        return s;
+      })
+      .filter(Boolean);
+    if (dcDirs.length > 0) {
+      const repeatKey = useMovementCols ? 'repeating_movement_change' : 'repeating_capture_change';
+      const reqDCKey = useMovementCols ? 'require_direction_change' : 'require_direction_change_capture';
+      let dcText = `can change direction after initial leg: second leg may go ${dcDirs.join(', ')}`;
+      if (pieceData[repeatKey]) dcText += ' (exact second-leg distances repeat)';
+      if (pieceData[reqDCKey]) dcText += '; direction change is mandatory (cannot capture straight)';
+      dcText += '; same or opposite direction not allowed';
+      captures.push(dcText);
+    }
+  }
+
   return captures.join('; ');
 };
 
@@ -2568,6 +2630,18 @@ const GameTypeView = () => {
         };
 
         // Get highlight style — hop capture green is additive (separate overlay)
+        const squareDcMoveKey = `${row},${col}`;
+        let canMoveDirectionChange = false;
+        let canCaptureDirectionChange = false;
+        if (hoveredPiecePosition) {
+          const pieceData = pieceDataMap[hoveredPiecePosition.pieceId];
+          if (pieceData && (pieceData.directional_movement_change || pieceData.directional_capture_change)) {
+            const dcMoves = getDirectionChangeMoves(pieceData, hoveredPiecePosition.col, hoveredPiecePosition.row, hoveredPiecePosition.playerId, game.board_width, game.board_height, 'movement');
+            const dcCaptures = getDirectionChangeMoves(pieceData, hoveredPiecePosition.col, hoveredPiecePosition.row, hoveredPiecePosition.playerId, game.board_width, game.board_height, 'capture');
+            canMoveDirectionChange = dcMoves.some(m => `${m.y},${m.x}` === squareDcMoveKey);
+            canCaptureDirectionChange = dcCaptures.some(m => `${m.y},${m.x}` === squareDcMoveKey);
+          }
+        }
         const { style: highlightStyle, icon: highlightIcon } = getSquareHighlightStyle(
           moveInfo.allowed,
           moveInfo.isFirstMoveOnly,
@@ -2576,7 +2650,9 @@ const GameTypeView = () => {
           canRanged,
           isLight,
           moveInfo.isCustomOnly || false,
-          captureInfo.isCustomOnly || false
+          captureInfo.isCustomOnly || false,
+          canMoveDirectionChange,
+          canCaptureDirectionChange
         );
         
         board.push(

@@ -328,7 +328,89 @@ const PieceStep3Attack = ({ pieceData, updatePieceData }) => {
       hop_stop_at_occupied_attack: pieceData.hop_stop_at_occupied,
       directional_hop_only_attack: pieceData.directional_hop_only,
       max_directional_hop_pieces_attack: pieceData.max_directional_hop_pieces,
+      // Copy direction change (movement) settings to capture
+      directional_capture_change: pieceData.directional_movement_change,
+      up_left_capture_change: pieceData.up_left_movement_change,
+      up_capture_change: pieceData.up_movement_change,
+      up_right_capture_change: pieceData.up_right_movement_change,
+      right_capture_change: pieceData.right_movement_change,
+      down_right_capture_change: pieceData.down_right_movement_change,
+      down_capture_change: pieceData.down_movement_change,
+      down_left_capture_change: pieceData.down_left_movement_change,
+      left_capture_change: pieceData.left_movement_change,
+      up_left_capture_change_exact: pieceData.up_left_movement_change_exact,
+      up_capture_change_exact: pieceData.up_movement_change_exact,
+      up_right_capture_change_exact: pieceData.up_right_movement_change_exact,
+      right_capture_change_exact: pieceData.right_movement_change_exact,
+      down_right_capture_change_exact: pieceData.down_right_movement_change_exact,
+      down_capture_change_exact: pieceData.down_movement_change_exact,
+      down_left_capture_change_exact: pieceData.down_left_movement_change_exact,
+      left_capture_change_exact: pieceData.left_movement_change_exact,
+      up_left_capture_change_available_for: pieceData.up_left_movement_change_available_for,
+      up_capture_change_available_for: pieceData.up_movement_change_available_for,
+      up_right_capture_change_available_for: pieceData.up_right_movement_change_available_for,
+      right_capture_change_available_for: pieceData.right_movement_change_available_for,
+      down_right_capture_change_available_for: pieceData.down_right_movement_change_available_for,
+      down_capture_change_available_for: pieceData.down_movement_change_available_for,
+      down_left_capture_change_available_for: pieceData.down_left_movement_change_available_for,
+      left_capture_change_available_for: pieceData.left_movement_change_available_for,
+      repeating_capture_change: pieceData.repeating_movement_change,
+      require_empty_via_capture: pieceData.require_empty_via_movement,
+      require_direction_change_capture: pieceData.require_direction_change,
     });
+  };
+
+  const renderDCCaptureCell = (dirKey, label) => {
+    const distKey = `${dirKey}_capture_change`;
+    const exactKey = `${dirKey}_capture_change_exact`;
+    const availKey = `${dirKey}_capture_change_available_for`;
+    const dist = pieceData[distKey] || 0;
+    return (
+      <div className={styles["direction-input"]}>
+        <label>{label}</label>
+        <NumberInput
+          value={dist === 99 ? '\u221e' : dist}
+          onChange={(val) => {
+            const updates = { [distKey]: val };
+            if (val === 99) updates[exactKey] = false;
+            updatePieceData(updates);
+          }}
+          options={{ disabled: dist === 99 }}
+        />
+        <ToggleSwitch inline size="small"
+          checked={!!pieceData[exactKey]}
+          onChange={(v) => {
+            const updates = { [exactKey]: v };
+            if (v && dist === 99) updates[distKey] = 0;
+            updatePieceData(updates);
+          }}
+          label="Exact"
+          disabled={dist === 99}
+        />
+        <ToggleSwitch inline size="small"
+          checked={dist === 99}
+          onChange={(v) => updatePieceData({ [distKey]: v ? 99 : 0, [exactKey]: false })}
+          label="Infinite"
+        />
+        <div className={styles["available-for-moves-group"]}>
+          <ToggleSwitch inline size="small"
+            checked={!!pieceData[availKey]}
+            onChange={(v) => updatePieceData({ [availKey]: v ? 1 : null })}
+            label={PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}
+          />
+          {pieceData[availKey] && (
+            <>
+              <NumberInput
+                value={pieceData[availKey] || 1}
+                onChange={(val) => updatePieceData({ [availKey]: val })}
+                options={{ min: 1, max: 99, className: styles["tiny-input"] }}
+              />
+              <span>{PIECE_WIZARD_TEXT.MOVES_LABEL}</span>
+            </>
+          )}
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -734,6 +816,75 @@ const PieceStep3Attack = ({ pieceData, updatePieceData }) => {
                   label="Repeating exact capture"
                   tooltip={<InfoTooltip text="When enabled with exact captures, the piece can repeat its exact capture distance pattern infinitely along that direction, landing on every Nth square. For example, a piece with Exact 2 capture could capture on squares 2, 4, 6, 8, etc." />}
                 />
+              </div>
+            )}
+
+            {/* Direction Change (Capture) */}
+            {!pieceData.attacks_like_movement && (
+              <div className={styles["sub-field"]}>
+                <ToggleSwitch
+                  checked={!!pieceData.directional_capture_change}
+                  onChange={(v) => updatePieceData({ directional_capture_change: v })}
+                  label="Allow direction change"
+                  tooltip={<InfoTooltip text="When enabled, the piece travels a first capture leg in one of the chosen directions, then must turn and capture at the end of a second leg in a different (non-opposite, non-same) direction. The piece cannot stop at the first-leg endpoint." />}
+                />
+              </div>
+            )}
+
+            {!pieceData.attacks_like_movement && pieceData.directional_capture_change && (
+              <div className={styles["sub-fields"]}>
+                <p className={styles["sub-field-description"]}>
+                  Set the second-leg distances for each capture direction. Same or opposite directions are not allowed as second legs.
+                </p>
+                <div className={styles["directional-grid"]}>
+                  <div className={styles["direction-row"]}>
+                    {renderDCCaptureCell('up_left', '\u2196 Up-Left')}
+                    {renderDCCaptureCell('up', '\u2191 Up')}
+                    {renderDCCaptureCell('up_right', '\u2197 Up-Right')}
+                  </div>
+                  <div className={styles["direction-row"]}>
+                    {renderDCCaptureCell('left', '\u2190 Left')}
+                    <div className={styles["direction-center"]}>
+                      <div className={styles["center-piece"]}>
+                        {pieceData.piece_image_previews?.[0] ? (
+                          <img src={pieceData.piece_image_previews[0]} alt="Piece" />
+                        ) : "?"}
+                      </div>
+                    </div>
+                    {renderDCCaptureCell('right', '\u2192 Right')}
+                  </div>
+                  <div className={styles["direction-row"]}>
+                    {renderDCCaptureCell('down_left', '\u2199 Down-Left')}
+                    {renderDCCaptureCell('down', '\u2193 Down')}
+                    {renderDCCaptureCell('down_right', '\u2198 Down-Right')}
+                  </div>
+                </div>
+                <div className={styles["sub-field"]}>
+                  <ToggleSwitch
+                    checked={!!pieceData.repeating_capture_change}
+                    onChange={(v) => updatePieceData({ repeating_capture_change: v })}
+                    label="Repeating exact direction change"
+                    tooltip={<InfoTooltip text="When enabled with exact second-leg capture distances, the second leg can repeat infinitely." />}
+                  />
+                </div>
+                {(pieceData.can_hop_over_allies || pieceData.can_hop_over_enemies || pieceData.can_hop_attack_over_allies || pieceData.can_hop_attack_over_enemies) && (
+                  <div className={styles["sub-field"]}>
+                    <ToggleSwitch
+                      checked={!!pieceData.require_empty_via_capture}
+                      onChange={(v) => updatePieceData({ require_empty_via_capture: v })}
+                      label="Require turn square to be empty"
+                      tooltip={<InfoTooltip text="Normally a hopping piece can turn on an occupied square. Enable this to require the turn square to be empty even when the piece has hopping abilities." />}
+                    />
+                  </div>
+                )}
+                <div className={styles["sub-field"]}>
+                  <ToggleSwitch
+                    checked={!!pieceData.require_direction_change_capture}
+                    onChange={(v) => updatePieceData({ require_direction_change_capture: v })}
+                    label="Direction change is mandatory"
+                    tooltip={<InfoTooltip text="When enabled, this piece MUST make a direction change when capturing — it cannot capture on straight-line squares. If a straight-line capture destination also happens to be a direction-change capture destination, that square is still accessible." />}
+                  />
+                </div>
               </div>
             )}
 

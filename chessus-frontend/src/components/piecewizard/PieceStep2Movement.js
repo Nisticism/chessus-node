@@ -236,6 +236,59 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
     );
   };
 
+  const renderDCMoveCell = (dirKey, label) => {
+    const distKey = `${dirKey}_movement_change`;
+    const exactKey = `${dirKey}_movement_change_exact`;
+    const availKey = `${dirKey}_movement_change_available_for`;
+    const dist = pieceData[distKey] || 0;
+    return (
+      <div className={styles["direction-input"]}>
+        <label>{label}</label>
+        <NumberInput
+          value={dist === 99 ? '\u221e' : dist}
+          onChange={(val) => {
+            const updates = { [distKey]: val };
+            if (val === 99) updates[exactKey] = false;
+            updatePieceData(updates);
+          }}
+          options={{ disabled: dist === 99 }}
+        />
+        <ToggleSwitch inline size="small"
+          checked={!!pieceData[exactKey]}
+          onChange={(v) => {
+            const updates = { [exactKey]: v };
+            if (v && dist === 99) updates[distKey] = 0;
+            updatePieceData(updates);
+          }}
+          label="Exact"
+          disabled={dist === 99}
+        />
+        <ToggleSwitch inline size="small"
+          checked={dist === 99}
+          onChange={(v) => updatePieceData({ [distKey]: v ? 99 : 0, [exactKey]: false })}
+          label="Infinite"
+        />
+        <div className={styles["available-for-moves-group"]}>
+          <ToggleSwitch inline size="small"
+            checked={!!pieceData[availKey]}
+            onChange={(v) => updatePieceData({ [availKey]: v ? 1 : null })}
+            label={PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}
+          />
+          {pieceData[availKey] && (
+            <>
+              <NumberInput
+                value={pieceData[availKey] || 1}
+                onChange={(val) => updatePieceData({ [availKey]: val })}
+                options={{ min: 1, max: 99, className: styles["tiny-input"] }}
+              />
+              <span>{PIECE_WIZARD_TEXT.MOVES_LABEL}</span>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className={styles["step-container"]}>
       <h2>Movement Configuration</h2>
@@ -584,6 +637,73 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
                 tooltip={<InfoTooltip text="When enabled with exact movements, the piece can repeat its exact distance pattern infinitely along that direction, landing on every Nth square. For example, a piece with Exact 2 could land on squares 2, 4, 6, 8, etc." />}
               />
             </div>
+
+            {/* Direction Change */}
+            <div className={styles["sub-field"]}>
+              <ToggleSwitch
+                checked={!!pieceData.directional_movement_change}
+                onChange={(v) => updatePieceData({ directional_movement_change: v })}
+                label="Allow direction change"
+                tooltip={<InfoTooltip text="When enabled, the piece travels a first leg in one of the chosen directions, then must turn and travel a second leg in a different (non-opposite, non-same) direction. The piece cannot stop at the first-leg endpoint — the full two-leg move is required." />}
+              />
+            </div>
+
+            {pieceData.directional_movement_change && (
+              <div className={styles["sub-fields"]}>
+                <p className={styles["sub-field-description"]}>
+                  Set the second-leg distances for each direction. The piece travels its normal first-leg distance, then turns and continues the configured second-leg distance. Same or opposite directions are not allowed as second legs.
+                </p>
+                <div className={styles["directional-grid"]}>
+                  <div className={styles["direction-row"]}>
+                    {renderDCMoveCell('up_left', '\u2196 Up-Left')}
+                    {renderDCMoveCell('up', '\u2191 Up')}
+                    {renderDCMoveCell('up_right', '\u2197 Up-Right')}
+                  </div>
+                  <div className={styles["direction-row"]}>
+                    {renderDCMoveCell('left', '\u2190 Left')}
+                    <div className={styles["direction-center"]}>
+                      <div className={styles["center-piece"]}>
+                        {pieceData.piece_image_previews?.[0] ? (
+                          <img src={pieceData.piece_image_previews[0]} alt="Piece" />
+                        ) : "?"}
+                      </div>
+                    </div>
+                    {renderDCMoveCell('right', '\u2192 Right')}
+                  </div>
+                  <div className={styles["direction-row"]}>
+                    {renderDCMoveCell('down_left', '\u2199 Down-Left')}
+                    {renderDCMoveCell('down', '\u2193 Down')}
+                    {renderDCMoveCell('down_right', '\u2198 Down-Right')}
+                  </div>
+                </div>
+                <div className={styles["sub-field"]}>
+                  <ToggleSwitch
+                    checked={!!pieceData.repeating_movement_change}
+                    onChange={(v) => updatePieceData({ repeating_movement_change: v })}
+                    label="Repeating exact direction change"
+                    tooltip={<InfoTooltip text="When enabled with exact second-leg distances, the second leg can repeat infinitely (landing on every Nth square along the second direction)." />}
+                  />
+                </div>
+                {(pieceData.can_hop_over_allies || pieceData.can_hop_over_enemies) && (
+                  <div className={styles["sub-field"]}>
+                    <ToggleSwitch
+                      checked={!!pieceData.require_empty_via_movement}
+                      onChange={(v) => updatePieceData({ require_empty_via_movement: v })}
+                      label="Require turn square to be empty"
+                      tooltip={<InfoTooltip text="Normally a hopping piece can turn on an occupied square. Enable this to require the turn square to be empty even when the piece has hopping abilities." />}
+                    />
+                  </div>
+                )}
+                <div className={styles["sub-field"]}>
+                  <ToggleSwitch
+                    checked={!!pieceData.require_direction_change}
+                    onChange={(v) => updatePieceData({ require_direction_change: v })}
+                    label="Direction change is mandatory"
+                    tooltip={<InfoTooltip text="When enabled, this piece MUST make a direction change when moving — it cannot stop on straight-line squares. If a straight-line destination also happens to be a direction-change destination, that square is still accessible." />}
+                  />
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

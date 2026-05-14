@@ -449,6 +449,39 @@ const PieceView = () => {
     return directions.filter(d => d.value != null && d.value !== 0);
   };
 
+  // Helper to get DC second-leg direction details for movement
+  const getDCMovementDetails = () => {
+    if (!piece) return [];
+    const directions = [
+      { name: 'Up', value: piece.up_movement_change, exact: !!piece.up_movement_change_exact, availableFor: piece.up_movement_change_available_for },
+      { name: 'Down', value: piece.down_movement_change, exact: !!piece.down_movement_change_exact, availableFor: piece.down_movement_change_available_for },
+      { name: 'Left', value: piece.left_movement_change, exact: !!piece.left_movement_change_exact, availableFor: piece.left_movement_change_available_for },
+      { name: 'Right', value: piece.right_movement_change, exact: !!piece.right_movement_change_exact, availableFor: piece.right_movement_change_available_for },
+      { name: 'Up-Left', value: piece.up_left_movement_change, exact: !!piece.up_left_movement_change_exact, availableFor: piece.up_left_movement_change_available_for },
+      { name: 'Up-Right', value: piece.up_right_movement_change, exact: !!piece.up_right_movement_change_exact, availableFor: piece.up_right_movement_change_available_for },
+      { name: 'Down-Left', value: piece.down_left_movement_change, exact: !!piece.down_left_movement_change_exact, availableFor: piece.down_left_movement_change_available_for },
+      { name: 'Down-Right', value: piece.down_right_movement_change, exact: !!piece.down_right_movement_change_exact, availableFor: piece.down_right_movement_change_available_for },
+    ];
+    return directions.filter(d => d.value != null && d.value !== 0);
+  };
+
+  // Helper to get DC second-leg direction details for capture
+  const getDCCaptureDetails = () => {
+    if (!piece) return [];
+    const useMov = piece.attacks_like_movement && !piece.directional_capture_change;
+    const directions = [
+      { name: 'Up', value: useMov ? piece.up_movement_change : piece.up_capture_change, exact: !!(useMov ? piece.up_movement_change_exact : piece.up_capture_change_exact), availableFor: useMov ? piece.up_movement_change_available_for : piece.up_capture_change_available_for },
+      { name: 'Down', value: useMov ? piece.down_movement_change : piece.down_capture_change, exact: !!(useMov ? piece.down_movement_change_exact : piece.down_capture_change_exact), availableFor: useMov ? piece.down_movement_change_available_for : piece.down_capture_change_available_for },
+      { name: 'Left', value: useMov ? piece.left_movement_change : piece.left_capture_change, exact: !!(useMov ? piece.left_movement_change_exact : piece.left_capture_change_exact), availableFor: useMov ? piece.left_movement_change_available_for : piece.left_capture_change_available_for },
+      { name: 'Right', value: useMov ? piece.right_movement_change : piece.right_capture_change, exact: !!(useMov ? piece.right_movement_change_exact : piece.right_capture_change_exact), availableFor: useMov ? piece.right_movement_change_available_for : piece.right_capture_change_available_for },
+      { name: 'Up-Left', value: useMov ? piece.up_left_movement_change : piece.up_left_capture_change, exact: !!(useMov ? piece.up_left_movement_change_exact : piece.up_left_capture_change_exact), availableFor: useMov ? piece.up_left_movement_change_available_for : piece.up_left_capture_change_available_for },
+      { name: 'Up-Right', value: useMov ? piece.up_right_movement_change : piece.up_right_capture_change, exact: !!(useMov ? piece.up_right_movement_change_exact : piece.up_right_capture_change_exact), availableFor: useMov ? piece.up_right_movement_change_available_for : piece.up_right_capture_change_available_for },
+      { name: 'Down-Left', value: useMov ? piece.down_left_movement_change : piece.down_left_capture_change, exact: !!(useMov ? piece.down_left_movement_change_exact : piece.down_left_capture_change_exact), availableFor: useMov ? piece.down_left_movement_change_available_for : piece.down_left_capture_change_available_for },
+      { name: 'Down-Right', value: useMov ? piece.down_right_movement_change : piece.down_right_capture_change, exact: !!(useMov ? piece.down_right_movement_change_exact : piece.down_right_capture_change_exact), availableFor: useMov ? piece.down_right_movement_change_available_for : piece.down_right_capture_change_available_for },
+    ];
+    return directions.filter(d => d.value != null && d.value !== 0);
+  };
+
   const parseCustomSquares = (squareData) => {
     if (!squareData) return [];
 
@@ -1144,6 +1177,55 @@ const PieceView = () => {
           })()}
         </div>
 
+        {/* Direction Change Movement */}
+        {pieceToDisplay.directional_movement_change && getDCMovementDetails().length > 0 && (
+          <div className={styles["section"]}>
+            <div className={styles["ability-card"]}>
+              <div className={styles["ability-header"]}>
+                <span className={styles["ability-icon"]}>↩️</span>
+                <h3>Direction Change Movement</h3>
+              </div>
+              <p style={{ margin: '0 0 8px', fontSize: '0.9rem', opacity: 0.8 }}>
+                This piece can turn at a via square mid-move. After traveling its normal first leg in any enabled direction, it pivots and continues along a second leg in one of the directions below (same or opposite direction not allowed).
+              </p>
+              <div className={styles["direction-list"]}>
+                {getDCMovementDetails().map(dir => (
+                  <div key={dir.name} className={styles["direction-item"]}>
+                    <span className={styles["direction-name"]}>
+                      <span className={styles["direction-arrow"]}>{getDirectionArrow(dir.name)}</span>
+                      {dir.name}
+                    </span>
+                    <span className={styles["direction-value"]}>
+                      {dir.exact ? 'Exactly ' : ''}{formatMovementValue(dir.value)}
+                      {dir.availableFor && <span className={styles["first-move-badge"]}> (1st {dir.availableFor} move{dir.availableFor !== 1 ? 's' : ''})</span>}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <div className={styles["ability-properties"]}>
+                {pieceToDisplay.repeating_movement_change && (
+                  <div className={styles["property-tag"]}>
+                    <span className={styles["property-icon"]}>🔄</span>
+                    Exact second-leg distances repeat infinitely
+                  </div>
+                )}
+                {pieceToDisplay.require_empty_via_movement && (
+                  <div className={styles["property-tag"]}>
+                    <span className={styles["property-icon"]}>⬜</span>
+                    Via (turning) square must be empty
+                  </div>
+                )}
+                {pieceToDisplay.require_direction_change && (
+                  <div className={styles["property-tag"]}>
+                    <span className={styles["property-icon"]}>⚠️</span>
+                    Direction change is mandatory — must turn mid-move
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className={styles["section"]}>
           <h2>Special Abilities</h2>
           <div className={styles["abilities-grid"]}>
@@ -1484,9 +1566,57 @@ const PieceView = () => {
             </div>
           )}
 
+          {/* Direction Change Capture */}
+          {(pieceToDisplay.directional_capture_change || (pieceToDisplay.attacks_like_movement && pieceToDisplay.directional_movement_change)) && getDCCaptureDetails().length > 0 && (
+            <div className={styles["ability-card"]}>
+              <div className={styles["ability-header"]}>
+                <span className={styles["ability-icon"]}>↩️</span>
+                <h3>Direction Change Attack</h3>
+              </div>
+              <p style={{ margin: '0 0 8px', fontSize: '0.9rem', opacity: 0.8 }}>
+                This piece can turn at a via square mid-attack. After traveling its normal first leg, it pivots and continues in one of the directions below to reach its capture target (same or opposite direction not allowed).
+              </p>
+              <div className={styles["direction-list"]}>
+                {getDCCaptureDetails().map(dir => (
+                  <div key={dir.name} className={styles["direction-item"]}>
+                    <span className={styles["direction-name"]}>
+                      <span className={styles["direction-arrow"]}>{getDirectionArrow(dir.name)}</span>
+                      {dir.name}
+                    </span>
+                    <span className={styles["direction-value"]}>
+                      {dir.exact ? 'Exactly ' : ''}{formatMovementValue(dir.value)}
+                      {dir.availableFor && <span className={styles["first-move-badge"]}> (1st {dir.availableFor} move{dir.availableFor !== 1 ? 's' : ''})</span>}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <div className={styles["ability-properties"]}>
+                {(pieceToDisplay.repeating_capture_change || (pieceToDisplay.attacks_like_movement && pieceToDisplay.repeating_movement_change)) && (
+                  <div className={styles["property-tag"]}>
+                    <span className={styles["property-icon"]}>🔄</span>
+                    Exact second-leg distances repeat infinitely
+                  </div>
+                )}
+                {(pieceToDisplay.require_empty_via_capture || (pieceToDisplay.attacks_like_movement && pieceToDisplay.require_empty_via_movement)) && (
+                  <div className={styles["property-tag"]}>
+                    <span className={styles["property-icon"]}>⬜</span>
+                    Via (turning) square must be empty
+                  </div>
+                )}
+                {(pieceToDisplay.require_direction_change_capture || (pieceToDisplay.attacks_like_movement && pieceToDisplay.require_direction_change)) && (
+                  <div className={styles["property-tag"]}>
+                    <span className={styles["property-icon"]}>⚠️</span>
+                    Direction change is mandatory — must turn mid-attack
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {!pieceToDisplay.can_capture_enemy_via_range && 
            !pieceToDisplay.capture_on_hop && !pieceToDisplay.can_capture_allies &&
            customAttackSquares.length === 0 &&
+           !(pieceToDisplay.directional_capture_change || (pieceToDisplay.attacks_like_movement && pieceToDisplay.directional_movement_change)) &&
            (!pieceToDisplay.can_capture_enemy_on_move || (
              getDirectionalCaptureDetails().length === 0 &&
              !pieceToDisplay.ratio_one_capture && !pieceToDisplay.ratio_two_capture &&

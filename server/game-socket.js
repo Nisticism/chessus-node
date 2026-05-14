@@ -1541,7 +1541,12 @@ function applySimulMovement(gameState, proposal, playerId, safelyMovingPieceIds)
       // applies even if the escaping piece is itself capturing something
       // at its destination. Mutual swaps (both going to each other's source)
       // are handled atomically before this code runs and never reach here.
-      if (safelyMovingPieceIds && safelyMovingPieceIds.has(String(occupant.id))) {
+      // IMPORTANT: only treat the occupant as "vacated" if its recorded source
+      // was the destination square being attacked. If the occupant moved TO this
+      // square from elsewhere (e.g. the trap mechanic: opponent arrives just
+      // before the trapper), the piece is present and must be capturable.
+      const safelyMovingSrc = safelyMovingPieceIds && safelyMovingPieceIds.get(String(occupant.id));
+      if (safelyMovingSrc && safelyMovingSrc.sourceX === proposal.destX && safelyMovingSrc.sourceY === proposal.destY) {
         // occupant vacated this square; attacker still moves but captures nothing
       } else {
         captured.push(occupant);
@@ -1752,19 +1757,20 @@ async function resolveSimulRound(io, gameId, gameState) {
   }
   const moveRecords = [];
   const allCapturedPieces = [];
-  // Build the set of piece ids that are "safely moving away" from their
-  // current square. Any piece that is moving this round — whether it is
-  // escaping or also capturing at its destination — cannot be captured at
-  // the square it is leaving. This set is consulted inside applySimulMovement
-  // when the attacker's destination contains one of these pieces: if the
-  // occupant is in this set it means the occupant has already vacated that
-  // square and the attacker misses.
+  // Build a map of piece ids that are moving away from their source square
+  // this round, recording the square they are leaving. When applySimulMovement
+  // encounters one of these pieces as an occupant at the attacker's destination,
+  // it only treats the piece as "vacated" if the occupant's recorded source
+  // matches the attacker's destination — i.e., the occupant genuinely moved
+  // AWAY from that square. If the occupant moved TO that square from elsewhere
+  // (e.g. the simul-trap scenario: opponent arrives at the trap square just
+  // before the trapper), the piece is present and should be capturable.
   // NOTE: mutual direct-swap captures (A→Bsrc, B→Asrc) are detected and
   // applied atomically above (appliedSwap), so they never reach this path.
-  const safelyMovingPieceIds = new Set(
+  const safelyMovingPieceIds = new Map(
     survivorMoves
       .filter(p => !p.isPlace && p.kind !== 'ranged')
-      .map(p => String(p.sourcePieceId))
+      .map(p => [String(p.sourcePieceId), { sourceX: p.sourceX, sourceY: p.sourceY }])
   );
   if (appliedSwap) {
     for (const sv of survivorMoves) {
@@ -3042,6 +3048,64 @@ function initializeSocket(server) {
               attack_radius: piece.attack_radius ?? fullPieceData.attack_radius,
               custom_movement_squares: fullPieceData.custom_movement_squares,
               custom_attack_squares: fullPieceData.custom_attack_squares,
+              // Direction change - movement
+              directional_movement_change: fullPieceData.directional_movement_change,
+              up_left_movement_change: fullPieceData.up_left_movement_change,
+              up_movement_change: fullPieceData.up_movement_change,
+              up_right_movement_change: fullPieceData.up_right_movement_change,
+              right_movement_change: fullPieceData.right_movement_change,
+              down_right_movement_change: fullPieceData.down_right_movement_change,
+              down_movement_change: fullPieceData.down_movement_change,
+              down_left_movement_change: fullPieceData.down_left_movement_change,
+              left_movement_change: fullPieceData.left_movement_change,
+              up_left_movement_change_exact: fullPieceData.up_left_movement_change_exact,
+              up_movement_change_exact: fullPieceData.up_movement_change_exact,
+              up_right_movement_change_exact: fullPieceData.up_right_movement_change_exact,
+              right_movement_change_exact: fullPieceData.right_movement_change_exact,
+              down_right_movement_change_exact: fullPieceData.down_right_movement_change_exact,
+              down_movement_change_exact: fullPieceData.down_movement_change_exact,
+              down_left_movement_change_exact: fullPieceData.down_left_movement_change_exact,
+              left_movement_change_exact: fullPieceData.left_movement_change_exact,
+              up_left_movement_change_available_for: fullPieceData.up_left_movement_change_available_for,
+              up_movement_change_available_for: fullPieceData.up_movement_change_available_for,
+              up_right_movement_change_available_for: fullPieceData.up_right_movement_change_available_for,
+              right_movement_change_available_for: fullPieceData.right_movement_change_available_for,
+              down_right_movement_change_available_for: fullPieceData.down_right_movement_change_available_for,
+              down_movement_change_available_for: fullPieceData.down_movement_change_available_for,
+              down_left_movement_change_available_for: fullPieceData.down_left_movement_change_available_for,
+              left_movement_change_available_for: fullPieceData.left_movement_change_available_for,
+              repeating_movement_change: fullPieceData.repeating_movement_change,
+              require_empty_via_movement: fullPieceData.require_empty_via_movement,
+              // Direction change - capture
+              directional_capture_change: fullPieceData.directional_capture_change,
+              up_left_capture_change: fullPieceData.up_left_capture_change,
+              up_capture_change: fullPieceData.up_capture_change,
+              up_right_capture_change: fullPieceData.up_right_capture_change,
+              right_capture_change: fullPieceData.right_capture_change,
+              down_right_capture_change: fullPieceData.down_right_capture_change,
+              down_capture_change: fullPieceData.down_capture_change,
+              down_left_capture_change: fullPieceData.down_left_capture_change,
+              left_capture_change: fullPieceData.left_capture_change,
+              up_left_capture_change_exact: fullPieceData.up_left_capture_change_exact,
+              up_capture_change_exact: fullPieceData.up_capture_change_exact,
+              up_right_capture_change_exact: fullPieceData.up_right_capture_change_exact,
+              right_capture_change_exact: fullPieceData.right_capture_change_exact,
+              down_right_capture_change_exact: fullPieceData.down_right_capture_change_exact,
+              down_capture_change_exact: fullPieceData.down_capture_change_exact,
+              down_left_capture_change_exact: fullPieceData.down_left_capture_change_exact,
+              left_capture_change_exact: fullPieceData.left_capture_change_exact,
+              up_left_capture_change_available_for: fullPieceData.up_left_capture_change_available_for,
+              up_capture_change_available_for: fullPieceData.up_capture_change_available_for,
+              up_right_capture_change_available_for: fullPieceData.up_right_capture_change_available_for,
+              right_capture_change_available_for: fullPieceData.right_capture_change_available_for,
+              down_right_capture_change_available_for: fullPieceData.down_right_capture_change_available_for,
+              down_capture_change_available_for: fullPieceData.down_capture_change_available_for,
+              down_left_capture_change_available_for: fullPieceData.down_left_capture_change_available_for,
+              left_capture_change_available_for: fullPieceData.left_capture_change_available_for,
+              repeating_capture_change: fullPieceData.repeating_capture_change,
+              require_empty_via_capture: fullPieceData.require_empty_via_capture,
+              require_direction_change: fullPieceData.require_direction_change,
+              require_direction_change_capture: fullPieceData.require_direction_change_capture,
               // Must-move-if-able (e.g., Duck Chess)
               must_move_if_able: !!fullPieceData.must_move_if_able,
               must_move_uses_action: !!fullPieceData.must_move_uses_action,
@@ -3624,6 +3688,64 @@ function initializeSocket(server) {
               attack_radius: piece.attack_radius ?? fullPieceData.attack_radius,
               custom_movement_squares: fullPieceData.custom_movement_squares,
               custom_attack_squares: fullPieceData.custom_attack_squares,
+              // Direction change - movement
+              directional_movement_change: fullPieceData.directional_movement_change,
+              up_left_movement_change: fullPieceData.up_left_movement_change,
+              up_movement_change: fullPieceData.up_movement_change,
+              up_right_movement_change: fullPieceData.up_right_movement_change,
+              right_movement_change: fullPieceData.right_movement_change,
+              down_right_movement_change: fullPieceData.down_right_movement_change,
+              down_movement_change: fullPieceData.down_movement_change,
+              down_left_movement_change: fullPieceData.down_left_movement_change,
+              left_movement_change: fullPieceData.left_movement_change,
+              up_left_movement_change_exact: fullPieceData.up_left_movement_change_exact,
+              up_movement_change_exact: fullPieceData.up_movement_change_exact,
+              up_right_movement_change_exact: fullPieceData.up_right_movement_change_exact,
+              right_movement_change_exact: fullPieceData.right_movement_change_exact,
+              down_right_movement_change_exact: fullPieceData.down_right_movement_change_exact,
+              down_movement_change_exact: fullPieceData.down_movement_change_exact,
+              down_left_movement_change_exact: fullPieceData.down_left_movement_change_exact,
+              left_movement_change_exact: fullPieceData.left_movement_change_exact,
+              up_left_movement_change_available_for: fullPieceData.up_left_movement_change_available_for,
+              up_movement_change_available_for: fullPieceData.up_movement_change_available_for,
+              up_right_movement_change_available_for: fullPieceData.up_right_movement_change_available_for,
+              right_movement_change_available_for: fullPieceData.right_movement_change_available_for,
+              down_right_movement_change_available_for: fullPieceData.down_right_movement_change_available_for,
+              down_movement_change_available_for: fullPieceData.down_movement_change_available_for,
+              down_left_movement_change_available_for: fullPieceData.down_left_movement_change_available_for,
+              left_movement_change_available_for: fullPieceData.left_movement_change_available_for,
+              repeating_movement_change: fullPieceData.repeating_movement_change,
+              require_empty_via_movement: fullPieceData.require_empty_via_movement,
+              // Direction change - capture
+              directional_capture_change: fullPieceData.directional_capture_change,
+              up_left_capture_change: fullPieceData.up_left_capture_change,
+              up_capture_change: fullPieceData.up_capture_change,
+              up_right_capture_change: fullPieceData.up_right_capture_change,
+              right_capture_change: fullPieceData.right_capture_change,
+              down_right_capture_change: fullPieceData.down_right_capture_change,
+              down_capture_change: fullPieceData.down_capture_change,
+              down_left_capture_change: fullPieceData.down_left_capture_change,
+              left_capture_change: fullPieceData.left_capture_change,
+              up_left_capture_change_exact: fullPieceData.up_left_capture_change_exact,
+              up_capture_change_exact: fullPieceData.up_capture_change_exact,
+              up_right_capture_change_exact: fullPieceData.up_right_capture_change_exact,
+              right_capture_change_exact: fullPieceData.right_capture_change_exact,
+              down_right_capture_change_exact: fullPieceData.down_right_capture_change_exact,
+              down_capture_change_exact: fullPieceData.down_capture_change_exact,
+              down_left_capture_change_exact: fullPieceData.down_left_capture_change_exact,
+              left_capture_change_exact: fullPieceData.left_capture_change_exact,
+              up_left_capture_change_available_for: fullPieceData.up_left_capture_change_available_for,
+              up_capture_change_available_for: fullPieceData.up_capture_change_available_for,
+              up_right_capture_change_available_for: fullPieceData.up_right_capture_change_available_for,
+              right_capture_change_available_for: fullPieceData.right_capture_change_available_for,
+              down_right_capture_change_available_for: fullPieceData.down_right_capture_change_available_for,
+              down_capture_change_available_for: fullPieceData.down_capture_change_available_for,
+              down_left_capture_change_available_for: fullPieceData.down_left_capture_change_available_for,
+              left_capture_change_available_for: fullPieceData.left_capture_change_available_for,
+              repeating_capture_change: fullPieceData.repeating_capture_change,
+              require_empty_via_capture: fullPieceData.require_empty_via_capture,
+              require_direction_change: fullPieceData.require_direction_change,
+              require_direction_change_capture: fullPieceData.require_direction_change_capture,
               // Must-move-if-able (e.g., Duck Chess)
               must_move_if_able: !!fullPieceData.must_move_if_able,
               must_move_uses_action: !!fullPieceData.must_move_uses_action,
@@ -4355,7 +4477,65 @@ function initializeSocket(server) {
                   die_on_capture_grants_win: piece.die_on_capture_grants_win || fullPieceData.die_on_capture_grants_win,
                   attack_radius: piece.attack_radius ?? fullPieceData.attack_radius,
                   custom_movement_squares: fullPieceData.custom_movement_squares,
-                  custom_attack_squares: fullPieceData.custom_attack_squares
+                  custom_attack_squares: fullPieceData.custom_attack_squares,
+                  // Direction change - movement
+                  directional_movement_change: fullPieceData.directional_movement_change,
+                  up_left_movement_change: fullPieceData.up_left_movement_change,
+                  up_movement_change: fullPieceData.up_movement_change,
+                  up_right_movement_change: fullPieceData.up_right_movement_change,
+                  right_movement_change: fullPieceData.right_movement_change,
+                  down_right_movement_change: fullPieceData.down_right_movement_change,
+                  down_movement_change: fullPieceData.down_movement_change,
+                  down_left_movement_change: fullPieceData.down_left_movement_change,
+                  left_movement_change: fullPieceData.left_movement_change,
+                  up_left_movement_change_exact: fullPieceData.up_left_movement_change_exact,
+                  up_movement_change_exact: fullPieceData.up_movement_change_exact,
+                  up_right_movement_change_exact: fullPieceData.up_right_movement_change_exact,
+                  right_movement_change_exact: fullPieceData.right_movement_change_exact,
+                  down_right_movement_change_exact: fullPieceData.down_right_movement_change_exact,
+                  down_movement_change_exact: fullPieceData.down_movement_change_exact,
+                  down_left_movement_change_exact: fullPieceData.down_left_movement_change_exact,
+                  left_movement_change_exact: fullPieceData.left_movement_change_exact,
+                  up_left_movement_change_available_for: fullPieceData.up_left_movement_change_available_for,
+                  up_movement_change_available_for: fullPieceData.up_movement_change_available_for,
+                  up_right_movement_change_available_for: fullPieceData.up_right_movement_change_available_for,
+                  right_movement_change_available_for: fullPieceData.right_movement_change_available_for,
+                  down_right_movement_change_available_for: fullPieceData.down_right_movement_change_available_for,
+                  down_movement_change_available_for: fullPieceData.down_movement_change_available_for,
+                  down_left_movement_change_available_for: fullPieceData.down_left_movement_change_available_for,
+                  left_movement_change_available_for: fullPieceData.left_movement_change_available_for,
+                  repeating_movement_change: fullPieceData.repeating_movement_change,
+                  require_empty_via_movement: fullPieceData.require_empty_via_movement,
+                  // Direction change - capture
+                  directional_capture_change: fullPieceData.directional_capture_change,
+                  up_left_capture_change: fullPieceData.up_left_capture_change,
+                  up_capture_change: fullPieceData.up_capture_change,
+                  up_right_capture_change: fullPieceData.up_right_capture_change,
+                  right_capture_change: fullPieceData.right_capture_change,
+                  down_right_capture_change: fullPieceData.down_right_capture_change,
+                  down_capture_change: fullPieceData.down_capture_change,
+                  down_left_capture_change: fullPieceData.down_left_capture_change,
+                  left_capture_change: fullPieceData.left_capture_change,
+                  up_left_capture_change_exact: fullPieceData.up_left_capture_change_exact,
+                  up_capture_change_exact: fullPieceData.up_capture_change_exact,
+                  up_right_capture_change_exact: fullPieceData.up_right_capture_change_exact,
+                  right_capture_change_exact: fullPieceData.right_capture_change_exact,
+                  down_right_capture_change_exact: fullPieceData.down_right_capture_change_exact,
+                  down_capture_change_exact: fullPieceData.down_capture_change_exact,
+                  down_left_capture_change_exact: fullPieceData.down_left_capture_change_exact,
+                  left_capture_change_exact: fullPieceData.left_capture_change_exact,
+                  up_left_capture_change_available_for: fullPieceData.up_left_capture_change_available_for,
+                  up_capture_change_available_for: fullPieceData.up_capture_change_available_for,
+                  up_right_capture_change_available_for: fullPieceData.up_right_capture_change_available_for,
+                  right_capture_change_available_for: fullPieceData.right_capture_change_available_for,
+                  down_right_capture_change_available_for: fullPieceData.down_right_capture_change_available_for,
+                  down_capture_change_available_for: fullPieceData.down_capture_change_available_for,
+                  down_left_capture_change_available_for: fullPieceData.down_left_capture_change_available_for,
+                  left_capture_change_available_for: fullPieceData.left_capture_change_available_for,
+                  repeating_capture_change: fullPieceData.repeating_capture_change,
+                  require_empty_via_capture: fullPieceData.require_empty_via_capture,
+                  require_direction_change: fullPieceData.require_direction_change,
+                  require_direction_change_capture: fullPieceData.require_direction_change_capture
                 };
               }
               return piece;
@@ -5030,6 +5210,30 @@ function initializeSocket(server) {
             processBotTurn(io, gameId, gameState);
           }
           return; // Placement handled, exit early
+        }
+
+        // must_move_if_able (free, no action cost): if actions are already exhausted and a
+        // free-must-move piece hasn't moved yet, only allow moves from those required pieces.
+        {
+          const fmmActionsPerTurn = gameState.gameType?.actions_per_turn || 1;
+          const fmmActionsNow = gameState.actionsThisTurn || 0;
+          const fmmAlreadyExhausted = fmmActionsNow >= fmmActionsPerTurn;
+          if (fmmAlreadyExhausted) {
+            const moverPos = gameState.currentTurn;
+            const freeMustMovePending = gameState.pieces.filter(p => {
+              if (!p.must_move_if_able || p.must_move_uses_action) return false;
+              if ((p.player_id || p.team) !== moverPos) return false;
+              if (gameState.mustMovedThisTurn instanceof Set && gameState.mustMovedThisTurn.has(p.id)) return false;
+              return getPossibleMovesForPiece(p, gameState.pieces, gameState.gameType, gameState.totalHalfMoves || 0).length > 0;
+            });
+            if (freeMustMovePending.length > 0 && !freeMustMovePending.some(p => p.id === move.pieceId)) {
+              return socket.emit("error", {
+                message: `You must move ${freeMustMovePending.map(p => p.piece_name || 'piece').join(', ')} — it is required to move this turn.`,
+                code: 'MUST_MOVE_REQUIRED',
+                pieceIds: freeMustMovePending.map(p => p.id)
+              });
+            }
+          }
         }
 
         // must_move_if_able (action-costing): if this would be the last action and a
@@ -8437,6 +8641,64 @@ function initializeSocket(server) {
                     attack_radius: piece.attack_radius ?? fullPieceData.attack_radius,
                     custom_movement_squares: fullPieceData.custom_movement_squares,
                     custom_attack_squares: fullPieceData.custom_attack_squares,
+                    // Direction change - movement
+                    directional_movement_change: fullPieceData.directional_movement_change,
+                    up_left_movement_change: fullPieceData.up_left_movement_change,
+                    up_movement_change: fullPieceData.up_movement_change,
+                    up_right_movement_change: fullPieceData.up_right_movement_change,
+                    right_movement_change: fullPieceData.right_movement_change,
+                    down_right_movement_change: fullPieceData.down_right_movement_change,
+                    down_movement_change: fullPieceData.down_movement_change,
+                    down_left_movement_change: fullPieceData.down_left_movement_change,
+                    left_movement_change: fullPieceData.left_movement_change,
+                    up_left_movement_change_exact: fullPieceData.up_left_movement_change_exact,
+                    up_movement_change_exact: fullPieceData.up_movement_change_exact,
+                    up_right_movement_change_exact: fullPieceData.up_right_movement_change_exact,
+                    right_movement_change_exact: fullPieceData.right_movement_change_exact,
+                    down_right_movement_change_exact: fullPieceData.down_right_movement_change_exact,
+                    down_movement_change_exact: fullPieceData.down_movement_change_exact,
+                    down_left_movement_change_exact: fullPieceData.down_left_movement_change_exact,
+                    left_movement_change_exact: fullPieceData.left_movement_change_exact,
+                    up_left_movement_change_available_for: fullPieceData.up_left_movement_change_available_for,
+                    up_movement_change_available_for: fullPieceData.up_movement_change_available_for,
+                    up_right_movement_change_available_for: fullPieceData.up_right_movement_change_available_for,
+                    right_movement_change_available_for: fullPieceData.right_movement_change_available_for,
+                    down_right_movement_change_available_for: fullPieceData.down_right_movement_change_available_for,
+                    down_movement_change_available_for: fullPieceData.down_movement_change_available_for,
+                    down_left_movement_change_available_for: fullPieceData.down_left_movement_change_available_for,
+                    left_movement_change_available_for: fullPieceData.left_movement_change_available_for,
+                    repeating_movement_change: fullPieceData.repeating_movement_change,
+                    require_empty_via_movement: fullPieceData.require_empty_via_movement,
+                    // Direction change - capture
+                    directional_capture_change: fullPieceData.directional_capture_change,
+                    up_left_capture_change: fullPieceData.up_left_capture_change,
+                    up_capture_change: fullPieceData.up_capture_change,
+                    up_right_capture_change: fullPieceData.up_right_capture_change,
+                    right_capture_change: fullPieceData.right_capture_change,
+                    down_right_capture_change: fullPieceData.down_right_capture_change,
+                    down_capture_change: fullPieceData.down_capture_change,
+                    down_left_capture_change: fullPieceData.down_left_capture_change,
+                    left_capture_change: fullPieceData.left_capture_change,
+                    up_left_capture_change_exact: fullPieceData.up_left_capture_change_exact,
+                    up_capture_change_exact: fullPieceData.up_capture_change_exact,
+                    up_right_capture_change_exact: fullPieceData.up_right_capture_change_exact,
+                    right_capture_change_exact: fullPieceData.right_capture_change_exact,
+                    down_right_capture_change_exact: fullPieceData.down_right_capture_change_exact,
+                    down_capture_change_exact: fullPieceData.down_capture_change_exact,
+                    down_left_capture_change_exact: fullPieceData.down_left_capture_change_exact,
+                    left_capture_change_exact: fullPieceData.left_capture_change_exact,
+                    up_left_capture_change_available_for: fullPieceData.up_left_capture_change_available_for,
+                    up_capture_change_available_for: fullPieceData.up_capture_change_available_for,
+                    up_right_capture_change_available_for: fullPieceData.up_right_capture_change_available_for,
+                    right_capture_change_available_for: fullPieceData.right_capture_change_available_for,
+                    down_right_capture_change_available_for: fullPieceData.down_right_capture_change_available_for,
+                    down_capture_change_available_for: fullPieceData.down_capture_change_available_for,
+                    down_left_capture_change_available_for: fullPieceData.down_left_capture_change_available_for,
+                    left_capture_change_available_for: fullPieceData.left_capture_change_available_for,
+                    repeating_capture_change: fullPieceData.repeating_capture_change,
+                    require_empty_via_capture: fullPieceData.require_empty_via_capture,
+                    require_direction_change: fullPieceData.require_direction_change,
+                    require_direction_change_capture: fullPieceData.require_direction_change_capture,
                     // Must-move-if-able (e.g., Duck Chess)
                     must_move_if_able: !!fullPieceData.must_move_if_able,
                     must_move_uses_action: !!fullPieceData.must_move_uses_action,
@@ -10719,6 +10981,48 @@ async function validateAndApplyMove(gameState, move, options = {}) {
     }
   }
 
+  // Direction-change via square validation
+  if (move.via) {
+    const via = move.via;
+    const boardWidth = gameState.gameType?.board_width || 8;
+    const boardHeight = gameState.gameType?.board_height || 8;
+    if (via.x < 0 || via.x >= boardWidth || via.y < 0 || via.y >= boardHeight) {
+      return { valid: false, reason: "Direction-change via square is out of bounds" };
+    }
+    // Validate that the via is on the first-leg path (collinear with from→via)
+    const fdx = via.x - from.x;
+    const fdy = via.y - from.y;
+    if (fdx !== 0 || fdy !== 0) {
+      // via square must be on the first leg path; second leg must not be same/opposite direction
+      const sdx = to.x - via.x;
+      const sdy = to.y - via.y;
+      const crossProduct = fdx * sdy - fdy * sdx;
+      if (crossProduct === 0) {
+        return { valid: false, reason: "Direction-change second leg cannot be same or opposite to first leg" };
+      }
+    }
+    // Via square piece check: check hopping ability
+    const canHopDC = (piece.can_hop_over_allies || piece.can_hop_over_enemies) && !piece.directional_hop_disabled;
+    const requireEmptyVia = move.isCapture ? !!piece.require_empty_via_capture : !!piece.require_empty_via_movement;
+    if (!canHopDC || requireEmptyVia) {
+      const viaPiece = pieces.find(p => p.id !== pieceId && doesPieceOccupySquare(p, via.x, via.y));
+      if (viaPiece) {
+        return { valid: false, reason: "Direction-change via square must be empty" };
+      }
+    }
+    // Full DC move validation: verify the (to + via) pair is in the generated move list.
+    // canPieceMoveToSquare / canPieceAttackSquare do not understand direction-change paths.
+    const dcAllMoves = getPossibleMovesForPiece(originalPiece, pieces, gameState.gameType, gameState.totalHalfMoves || 0);
+    const dcMoveValid = dcAllMoves.some(m =>
+      m.isDirectionChange &&
+      m.x === to.x && m.y === to.y &&
+      m.via && m.via.x === via.x && m.via.y === via.y
+    );
+    if (!dcMoveValid) {
+      return { valid: false, reason: "Direction-change move is not valid" };
+    }
+  }
+
   // Multi-tile board fit check
   const pw = piece.piece_width || 1;
   const ph = piece.piece_height || 1;
@@ -10938,10 +11242,13 @@ async function validateAndApplyMove(gameState, move, options = {}) {
     capturedPiece = destPiece;
     
     // Important: Validate that the piece can actually capture to this square
-    // This is critical for premoves that become captures
-    const canCapture = canPieceAttackSquare(piece, to.x, to.y, pieces);
-    if (!canCapture) {
-      return { valid: false, reason: "Piece cannot capture to that square" };
+    // This is critical for premoves that become captures.
+    // Skip for direction-change moves — they were already validated against the full move list above.
+    if (!move.via) {
+      const canCapture = canPieceAttackSquare(piece, to.x, to.y, pieces);
+      if (!canCapture) {
+        return { valid: false, reason: "Piece cannot capture to that square" };
+      }
     }
   } else {
     // No piece at destination - check for en passant capture first
@@ -10976,9 +11283,10 @@ async function validateAndApplyMove(gameState, move, options = {}) {
       }
     }
     
-    if (!isEnPassantCapture) {
+    if (!isEnPassantCapture && !move.via) {
       // Validate this is a legal non-capture move
       // Use canPieceMoveToSquare which checks movement rules only (not capture rules)
+      // Skip for direction-change moves — they were validated against the full move list above.
       const canMove = canPieceMoveToSquare(piece, to.x, to.y, pieces, gameState.gameType);
       if (!canMove) {
         return { valid: false, reason: "Piece cannot move to that square" };
@@ -11807,6 +12115,64 @@ async function applyPromotionToPiece(gameState, pieceId, promoteToPieceId) {  co
     attack_radius: fullPieceData.attack_radius,
     custom_movement_squares: fullPieceData.custom_movement_squares,
     custom_attack_squares: fullPieceData.custom_attack_squares,
+    // Direction change - movement
+    directional_movement_change: fullPieceData.directional_movement_change,
+    up_left_movement_change: fullPieceData.up_left_movement_change,
+    up_movement_change: fullPieceData.up_movement_change,
+    up_right_movement_change: fullPieceData.up_right_movement_change,
+    right_movement_change: fullPieceData.right_movement_change,
+    down_right_movement_change: fullPieceData.down_right_movement_change,
+    down_movement_change: fullPieceData.down_movement_change,
+    down_left_movement_change: fullPieceData.down_left_movement_change,
+    left_movement_change: fullPieceData.left_movement_change,
+    up_left_movement_change_exact: fullPieceData.up_left_movement_change_exact,
+    up_movement_change_exact: fullPieceData.up_movement_change_exact,
+    up_right_movement_change_exact: fullPieceData.up_right_movement_change_exact,
+    right_movement_change_exact: fullPieceData.right_movement_change_exact,
+    down_right_movement_change_exact: fullPieceData.down_right_movement_change_exact,
+    down_movement_change_exact: fullPieceData.down_movement_change_exact,
+    down_left_movement_change_exact: fullPieceData.down_left_movement_change_exact,
+    left_movement_change_exact: fullPieceData.left_movement_change_exact,
+    up_left_movement_change_available_for: fullPieceData.up_left_movement_change_available_for,
+    up_movement_change_available_for: fullPieceData.up_movement_change_available_for,
+    up_right_movement_change_available_for: fullPieceData.up_right_movement_change_available_for,
+    right_movement_change_available_for: fullPieceData.right_movement_change_available_for,
+    down_right_movement_change_available_for: fullPieceData.down_right_movement_change_available_for,
+    down_movement_change_available_for: fullPieceData.down_movement_change_available_for,
+    down_left_movement_change_available_for: fullPieceData.down_left_movement_change_available_for,
+    left_movement_change_available_for: fullPieceData.left_movement_change_available_for,
+    repeating_movement_change: fullPieceData.repeating_movement_change,
+    require_empty_via_movement: fullPieceData.require_empty_via_movement,
+    // Direction change - capture
+    directional_capture_change: fullPieceData.directional_capture_change,
+    up_left_capture_change: fullPieceData.up_left_capture_change,
+    up_capture_change: fullPieceData.up_capture_change,
+    up_right_capture_change: fullPieceData.up_right_capture_change,
+    right_capture_change: fullPieceData.right_capture_change,
+    down_right_capture_change: fullPieceData.down_right_capture_change,
+    down_capture_change: fullPieceData.down_capture_change,
+    down_left_capture_change: fullPieceData.down_left_capture_change,
+    left_capture_change: fullPieceData.left_capture_change,
+    up_left_capture_change_exact: fullPieceData.up_left_capture_change_exact,
+    up_capture_change_exact: fullPieceData.up_capture_change_exact,
+    up_right_capture_change_exact: fullPieceData.up_right_capture_change_exact,
+    right_capture_change_exact: fullPieceData.right_capture_change_exact,
+    down_right_capture_change_exact: fullPieceData.down_right_capture_change_exact,
+    down_capture_change_exact: fullPieceData.down_capture_change_exact,
+    down_left_capture_change_exact: fullPieceData.down_left_capture_change_exact,
+    left_capture_change_exact: fullPieceData.left_capture_change_exact,
+    up_left_capture_change_available_for: fullPieceData.up_left_capture_change_available_for,
+    up_capture_change_available_for: fullPieceData.up_capture_change_available_for,
+    up_right_capture_change_available_for: fullPieceData.up_right_capture_change_available_for,
+    right_capture_change_available_for: fullPieceData.right_capture_change_available_for,
+    down_right_capture_change_available_for: fullPieceData.down_right_capture_change_available_for,
+    down_capture_change_available_for: fullPieceData.down_capture_change_available_for,
+    down_left_capture_change_available_for: fullPieceData.down_left_capture_change_available_for,
+    left_capture_change_available_for: fullPieceData.left_capture_change_available_for,
+    repeating_capture_change: fullPieceData.repeating_capture_change,
+    require_empty_via_capture: fullPieceData.require_empty_via_capture,
+    require_direction_change: fullPieceData.require_direction_change,
+    require_direction_change_capture: fullPieceData.require_direction_change_capture,
     moveCount: 0,
     hasMoved: false,
     // Reset per-placement promotion flags so they cannot carry over from the
@@ -14045,7 +14411,7 @@ function applyRangeSquareBonus(piece, gameType) {  if (!gameType) return piece;
  * @returns {Array} - Array of {x, y} positions the piece can move to
  */
 function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
-  const moves = [];
+  let moves = [];
   const boardWidth = gameType.board_width || 8;
   const boardHeight = gameType.board_height || 8;
 
@@ -14167,6 +14533,8 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
   
   // Helper to check directional moves
   // captureOnly: only generate moves where an enemy can be captured (no empty square moves)
+  const isSameOrOppositeDirection = (dx1, dy1, dx2, dy2) => (dx1 * dy2 - dy1 * dx2) === 0;
+
   const checkDirectionalMoves = (dx, dy, maxDist, directionName = null, isFirstMoveOnly = false, exactFlag = false, repeating = false, captureOnly = false) => {
     if (!maxDist || maxDist === 0) return;
     
@@ -14351,7 +14719,134 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
     if (piece.left_capture && !piece.left_movement) checkDirectionalMoves(-1, 0, piece.left_capture, null, false, piece.left_capture_exact, repC && piece.left_capture_exact, true);
     if (piece.right_capture && !piece.right_movement) checkDirectionalMoves(1, 0, piece.right_capture, null, false, piece.right_capture_exact, repC && piece.right_capture_exact, true);
   }
-  
+
+  // --- Direction Change moves ---
+  // Canonical P1 direction vectors (dy flipped for P2 below)
+  const dcDirDefs = {
+    up:         { dx: 0,  dy: -1 },
+    down:       { dx: 0,  dy:  1 },
+    left:       { dx: -1, dy:  0 },
+    right:      { dx: 1,  dy:  0 },
+    up_left:    { dx: -1, dy: -1 },
+    up_right:   { dx: 1,  dy: -1 },
+    down_left:  { dx: -1, dy:  1 },
+    down_right: { dx: 1,  dy:  1 },
+  };
+  const dcApplyFlip = (dx, dy) => isPlayer2 ? { dx, dy: -dy } : { dx, dy };
+
+  const generateDirectionChangeMoves = (type) => {
+    // type: 'movement' or 'capture'
+    const masterKey = type === 'capture' ? 'directional_capture_change' : 'directional_movement_change';
+    const useMovColsForCapture = type === 'capture' && piece.attacks_like_movement && !piece[masterKey];
+    const effectiveMaster = useMovColsForCapture ? 'directional_movement_change' : masterKey;
+    if (!piece[effectiveMaster]) return;
+
+    const firstLegSuffix = type === 'capture' ? '_capture' : '_movement';
+    const secondLegSuffix = useMovColsForCapture ? '_movement_change' : `_${type}_change`;
+    const requireEmptyVia = type === 'capture' ? !!piece.require_empty_via_capture : !!piece.require_empty_via_movement;
+    const canHop = (canHopAlliesGen || canHopEnemiesGen) && !dirHopDisabledGen;
+    const viaCanBeOccupied = canHop && !requireEmptyVia;
+    const repeatingDC = type === 'capture'
+      ? (useMovColsForCapture ? !!piece.repeating_movement_change : !!piece.repeating_capture_change)
+      : !!piece.repeating_movement_change;
+    const pieceOwner = piece.team || piece.player_id;
+
+    for (const [dir1Name, baseVec1] of Object.entries(dcDirDefs)) {
+      const firstLegKey = `${dir1Name}${firstLegSuffix}`;
+      const firstLegDist = parseInt(piece[firstLegKey]) || 0;
+      if (!firstLegDist) continue;
+
+      const { dx: fdx, dy: fdy } = dcApplyFlip(baseVec1.dx, baseVec1.dy);
+      const firstExactKey = `${dir1Name}${firstLegSuffix}_exact`;
+      const firstExact = !!piece[firstExactKey];
+      const maxFirst = firstLegDist === 99 ? Math.max(boardWidth, boardHeight) : firstLegDist;
+
+      // Walk first leg to each possible via square
+      for (let step1 = 1; step1 <= maxFirst; step1++) {
+        if (firstExact && step1 !== firstLegDist) continue;
+
+        const viaX = piece.x + fdx * step1;
+        const viaY = piece.y + fdy * step1;
+        if (!isValidSquare(viaX, viaY)) break;
+
+        // Path to via must be clear (unless hopping)
+        if (!isPathClear(piece.x, piece.y, viaX, viaY, canHop)) break;
+
+        // Via square itself must be empty (unless hopping allows occupancy and requireEmptyVia is false)
+        const viaPiece = findPieceAtSquare(allPieces, viaX, viaY);
+        if (viaPiece) {
+          if (!viaCanBeOccupied) break; // via occupied and we need it empty
+          // If hopping and via occupied, we can turn here; but don't break — continue to second leg
+        }
+
+        // Walk second leg from via
+        for (const [dir2Name, baseVec2] of Object.entries(dcDirDefs)) {
+          const secondLegKey = `${dir2Name}${secondLegSuffix}`;
+          const secondLegDist = parseInt(piece[secondLegKey]) || 0;
+          if (!secondLegDist) continue;
+
+          const { dx: sdx, dy: sdy } = dcApplyFlip(baseVec2.dx, baseVec2.dy);
+
+          // Forbid same or opposite direction
+          if (isSameOrOppositeDirection(fdx, fdy, sdx, sdy)) continue;
+
+          const secondExactKey = `${dir2Name}${secondLegSuffix}_exact`;
+          const secondExact = !!piece[secondLegKey + '_exact'] || !!piece[secondExactKey];
+          const secondAvailKey = `${dir2Name}${secondLegSuffix}_available_for`;
+          const availFor = piece[secondAvailKey] ? parseInt(piece[secondAvailKey]) : null;
+          const isFirstMoveOnly = availFor != null && piece.moveCount < availFor ? false : (availFor != null);
+
+          // Check direction-specific availableFor restriction
+          if (availFor != null && piece.moveCount >= availFor) continue;
+
+          const maxSecond = secondLegDist === 99 ? Math.max(boardWidth, boardHeight) : secondLegDist;
+          const exactDistSecond = secondExact ? Math.abs(secondLegDist) : 0;
+          const maxIterSecond = (secondExact && repeatingDC) ? Math.max(boardWidth, boardHeight) : maxSecond;
+
+          for (let step2 = 1; step2 <= maxIterSecond; step2++) {
+            const isLandingSecond = secondExact
+              ? (repeatingDC ? step2 % exactDistSecond === 0 : step2 === exactDistSecond)
+              : true;
+
+            const toX = viaX + sdx * step2;
+            const toY = viaY + sdy * step2;
+            if (!isValidSquare(toX, toY)) break;
+
+            // Path from via to landing must be clear
+            if (!isPathClear(viaX, viaY, toX, toY, canHop)) break;
+
+            const targetPiece = findPieceAtSquare(allPieces, toX, toY);
+            if (targetPiece) {
+              const targetOwner = targetPiece.team || targetPiece.player_id;
+              if (isLandingSecond && !targetPiece.cannot_be_captured) {
+                if (type === 'capture' || piece.can_capture_enemy_on_move) {
+                  if (targetOwner !== pieceOwner) {
+                    moves.push({ x: toX, y: toY, via: { x: viaX, y: viaY }, isFirstMoveOnly, isDirectionChange: true });
+                  } else if (piece.can_capture_allies) {
+                    moves.push({ x: toX, y: toY, via: { x: viaX, y: viaY }, isFirstMoveOnly, isDirectionChange: true });
+                  }
+                }
+              }
+              break; // blocked — stop second leg
+            } else if (isLandingSecond && type !== 'capture') {
+              moves.push({ x: toX, y: toY, via: { x: viaX, y: viaY }, isFirstMoveOnly, isDirectionChange: true });
+              if (secondExact && !repeatingDC) break;
+            } else if (isLandingSecond) {
+              // capture type but empty square — not a valid capture
+              if (secondExact && !repeatingDC) break;
+            }
+          }
+        }
+        if (firstExact) break;
+      }
+    }
+  };
+
+  if (piece.directional_movement_change) generateDirectionChangeMoves('movement');
+  if (piece.directional_capture_change || (piece.attacks_like_movement && piece.directional_movement_change)) {
+    generateDirectionChangeMoves('capture');
+  }
+
   // Ratio movements (knight-like)
   const ratio1 = piece.ratio_movement_1 || 0;
   const ratio2 = piece.ratio_movement_2 || 0;
@@ -14902,6 +15397,32 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
     if (zones && zones.has(`${piece.y},${piece.x}`)) {
       return moves.filter(m => zones.has(`${m.y},${m.x}`));
     }
+  }
+
+  // Enforce require_direction_change (movement) and require_direction_change_capture:
+  // when set, straight-line destinations only accessible if they also appear as a DC destination.
+  const requireDCMov = !!(piece.require_direction_change && piece.directional_movement_change);
+  const requireDCCap = !!(piece.require_direction_change_capture &&
+    (piece.directional_capture_change || (piece.attacks_like_movement && piece.directional_movement_change)));
+  if (requireDCMov || requireDCCap) {
+    const pieceOwnerDC = piece.team || piece.player_id;
+    const dcMoveDests = new Set();
+    const dcCapDests = new Set();
+    for (const m of moves) {
+      if (!m.isDirectionChange) continue;
+      const dp = findPieceAtSquare(allPieces, m.x, m.y);
+      const isEnemy = dp && (dp.team || dp.player_id) !== pieceOwnerDC;
+      if (isEnemy) dcCapDests.add(`${m.x},${m.y}`);
+      else dcMoveDests.add(`${m.x},${m.y}`);
+    }
+    moves = moves.filter(m => {
+      if (m.isDirectionChange) return true;
+      const dp = findPieceAtSquare(allPieces, m.x, m.y);
+      const isEnemy = dp && (dp.team || dp.player_id) !== pieceOwnerDC;
+      if (isEnemy && requireDCCap) return dcCapDests.has(`${m.x},${m.y}`);
+      if (!isEnemy && requireDCMov) return dcMoveDests.has(`${m.x},${m.y}`);
+      return true;
+    });
   }
 
   return moves;

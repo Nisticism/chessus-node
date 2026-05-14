@@ -24,7 +24,8 @@ import {
   doesPieceOccupySquare,
   doesPieceFitOnBoard,
   isDestinationClear,
-  replayToMove
+  replayToMove,
+  getDirectionChangeMoves
 } from "../../helpers/pieceMovementUtils";
 import { totalMaterialValue } from "../../utils/pieceValueEstimator";
 import { getFallbackPieceImage } from "../../utils/pieceFallback";
@@ -2695,7 +2696,7 @@ const LiveGame = () => {
     // Apply range square bonus
     piece = applyRangeSquareBonus(piece);
 
-    const moves = [];
+    let moves = [];
     const pieceTeam = piece.player_id || piece.team;
     const pw = piece.piece_width || 1;
     const ph = piece.piece_height || 1;
@@ -3332,6 +3333,40 @@ const LiveGame = () => {
       }
     }
     
+    // Check for direction-change moves
+    if (piece.directional_movement_change || piece.directional_capture_change ||
+        (piece.attacks_like_movement && piece.directional_movement_change)) {
+      const dcMovement = getDirectionChangeMoves(piece, piece.x, piece.y, pieceTeam, boardWidth, boardHeight, 'movement', pieces);
+      const dcCapture = getDirectionChangeMoves(piece, piece.x, piece.y, pieceTeam, boardWidth, boardHeight, 'capture', pieces);
+      for (const dcMove of [...dcMovement, ...dcCapture]) {
+        // Deduplicate by coordinate + via (same destination reachable via different via squares = distinct moves)
+        if (!moves.some(m => m.isDirectionChange && m.x === dcMove.x && m.y === dcMove.y && !!m.isCapture === !!dcMove.isCapture && m.via?.x === dcMove.via?.x && m.via?.y === dcMove.via?.y)) {
+          moves.push(dcMove);
+        }
+      }
+    }
+
+    // Enforce require_direction_change (movement) and require_direction_change_capture:
+    // when set, straight-line destinations only accessible if they also appear as a DC destination.
+    const requireDCMov = !!(piece.directional_movement_change && piece.require_direction_change);
+    const requireDCCap = !!(piece.require_direction_change_capture &&
+      (piece.directional_capture_change || (piece.attacks_like_movement && piece.directional_movement_change)));
+    if (requireDCMov || requireDCCap) {
+      const dcMovDests = new Set();
+      const dcCapDests = new Set();
+      for (const m of moves) {
+        if (!m.isDirectionChange) continue;
+        if (m.isCapture) dcCapDests.add(`${m.x},${m.y}`);
+        else dcMovDests.add(`${m.x},${m.y}`);
+      }
+      moves = moves.filter(m => {
+        if (m.isDirectionChange) return true;
+        if (m.isCapture && requireDCCap) return dcCapDests.has(`${m.x},${m.y}`);
+        if (!m.isCapture && requireDCMov) return dcMovDests.has(`${m.x},${m.y}`);
+        return true;
+      });
+    }
+
     // Filter out moves that would leave the player in check (if mate_condition is enabled and not skipped)
     if (!skipCheckFilter && gameState?.gameType?.mate_condition && currentPlayer) {
       // Don't filter ranged attacks through check filter (they don't move the piece)
@@ -3496,6 +3531,10 @@ const LiveGame = () => {
         if (move.isHopCapture) {
           moveData.isHopCapture = true;
           moveData.hopCapturedPieceIds = move.hopCapturedPieceIds;
+        }
+        // Include direction-change via square
+        if (move.via) {
+          moveData.via = move.via;
         }
         submitMove(parseInt(gameId), moveData);
         setSelectedPiece(null);
@@ -3850,6 +3889,10 @@ const LiveGame = () => {
         if (validMove.isRangedAttack) {
           moveData.isRangedAttack = true;
         }
+        // Include direction-change via square
+        if (validMove.via) {
+          moveData.via = validMove.via;
+        }
         submitMove(parseInt(gameId), moveData);
       } else if (canMakePremove) {
         const premoveData = {
@@ -4124,6 +4167,9 @@ const LiveGame = () => {
               if (validMove.isHopCapture) {
                 moveData.isHopCapture = true;
                 moveData.hopCapturedPieceIds = validMove.hopCapturedPieceIds;
+              }
+              if (validMove.via) {
+                moveData.via = validMove.via;
               }
               submitMove(parseInt(gameId), moveData);
             } else if (canMakePremove) {
@@ -4457,6 +4503,9 @@ const LiveGame = () => {
           moveData.isCastling = true;
           moveData.castlingWith = move.castlingWith;
           moveData.castlingDirection = move.castlingDirection;
+        }
+        if (move.via) {
+          moveData.via = move.via;
         }
         submitMove(parseInt(gameId), moveData);
         setSelectedPiece(null);
@@ -4859,6 +4908,20 @@ const LiveGame = () => {
           ? hoveredMoves.find(m => m.x === gameX && m.y === gameY && m.isRangedAttack) 
           : null;
 
+        // DC via squares: squares that are turning points for direction-change moves
+        const isViaForDcMove = !inSelectedFootprint && validMoves.some(
+          m => m.isDirectionChange && m.via && m.via.x === gameX && m.via.y === gameY && !m.isCapture
+        );
+        const isViaForDcCapture = !inSelectedFootprint && validMoves.some(
+          m => m.isDirectionChange && m.via && m.via.x === gameX && m.via.y === gameY && !!m.isCapture
+        );
+        const isHoverViaForDcMove = showHelpers && hoveredPiece && !selectedPiece && hoveredMoves.some(
+          m => m.isDirectionChange && m.via && m.via.x === gameX && m.via.y === gameY && !m.isCapture
+        );
+        const isHoverViaForDcCapture = showHelpers && hoveredPiece && !selectedPiece && hoveredMoves.some(
+          m => m.isDirectionChange && m.via && m.via.x === gameX && m.via.y === gameY && !!m.isCapture
+        );
+
         // Check if this piece is in check
         const isInCheck = piece && inCheck && checkedPieces.some(cp => cp.id === piece.id);
 
@@ -4963,6 +5026,10 @@ const LiveGame = () => {
               ${attackRadiusSplashSquares.has(`${gameX},${gameY}`) ? styles["hover-attack-radius"] : ''}
               ${isRangedDragTarget || isRangedSelectedTarget ? styles["ranged-drag-target"] : ''}
               ${isRangedSelectedSource ? styles["selected"] : ''}
+              ${isViaForDcMove ? styles["dc-via-move"] : ''}
+              ${isViaForDcCapture ? styles["dc-via-capture"] : ''}
+              ${isHoverViaForDcMove ? styles["hover-dc-via-move"] : ''}
+              ${isHoverViaForDcCapture ? styles["hover-dc-via-capture"] : ''}
               ${isLastMoveFrom ? (isLight ? styles["last-move-from-light"] : styles["last-move-from-dark"]) : ''}
               ${isLastMoveTo ? styles["last-move-to"] : ''}
               ${isFadingLastMoveFrom ? `${isLight ? styles["last-move-from-light"] : styles["last-move-from-dark"]} ${styles["last-move-fading"]}` : ''}

@@ -535,7 +535,26 @@ const getPieceById = async (pieceId) => {
       p.max_directional_hop_pieces,
       p.max_directional_hop_pieces_attack,
       p.moderation_status,
-      p.created_at
+      p.created_at,
+      -- Direction change (movement)
+      p.directional_movement_change,
+      p.up_left_movement_change, p.up_movement_change, p.up_right_movement_change, p.right_movement_change,
+      p.down_right_movement_change, p.down_movement_change, p.down_left_movement_change, p.left_movement_change,
+      p.up_left_movement_change_exact, p.up_movement_change_exact, p.up_right_movement_change_exact, p.right_movement_change_exact,
+      p.down_right_movement_change_exact, p.down_movement_change_exact, p.down_left_movement_change_exact, p.left_movement_change_exact,
+      p.up_left_movement_change_available_for, p.up_movement_change_available_for, p.up_right_movement_change_available_for, p.right_movement_change_available_for,
+      p.down_right_movement_change_available_for, p.down_movement_change_available_for, p.down_left_movement_change_available_for, p.left_movement_change_available_for,
+      p.repeating_movement_change, p.require_empty_via_movement,
+      -- Direction change (capture)
+      p.directional_capture_change,
+      p.up_left_capture_change, p.up_capture_change, p.up_right_capture_change, p.right_capture_change,
+      p.down_right_capture_change, p.down_capture_change, p.down_left_capture_change, p.left_capture_change,
+      p.up_left_capture_change_exact, p.up_capture_change_exact, p.up_right_capture_change_exact, p.right_capture_change_exact,
+      p.down_right_capture_change_exact, p.down_capture_change_exact, p.down_left_capture_change_exact, p.left_capture_change_exact,
+      p.up_left_capture_change_available_for, p.up_capture_change_available_for, p.up_right_capture_change_available_for, p.right_capture_change_available_for,
+      p.down_right_capture_change_available_for, p.down_capture_change_available_for, p.down_left_capture_change_available_for, p.left_capture_change_available_for,
+      p.repeating_capture_change, p.require_empty_via_capture,
+      p.require_direction_change, p.require_direction_change_capture
     FROM chessusnode.pieces p
     LEFT JOIN chessusnode.users u ON p.creator_id = u.id
     WHERE p.id = ?
