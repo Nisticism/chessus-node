@@ -2645,6 +2645,8 @@ const GameTypeView = () => {
         const squareDcMoveKey = `${row},${col}`;
         let canMoveDirectionChange = false;
         let canCaptureDirectionChange = false;
+        let requireDCMov = false;
+        let requireDCCap = false;
         if (hoveredPiecePosition) {
           const pieceData = pieceDataMap[hoveredPiecePosition.pieceId];
           if (pieceData && (pieceData.directional_movement_change || pieceData.directional_capture_change)) {
@@ -2652,12 +2654,15 @@ const GameTypeView = () => {
             const dcCaptures = getDirectionChangeMoves(pieceData, hoveredPiecePosition.col, hoveredPiecePosition.row, hoveredPiecePosition.playerId, game.board_width, game.board_height, 'capture');
             canMoveDirectionChange = dcMoves.some(m => `${m.y},${m.x}` === squareDcMoveKey);
             canCaptureDirectionChange = dcCaptures.some(m => `${m.y},${m.x}` === squareDcMoveKey);
+            requireDCMov = !!(pieceData.directional_movement_change && pieceData.require_direction_change);
+            requireDCCap = !!(pieceData.require_direction_change_capture &&
+              (pieceData.directional_capture_change || (pieceData.attacks_like_movement && pieceData.directional_movement_change)));
           }
         }
         const { style: highlightStyle, icon: highlightIcon } = getSquareHighlightStyle(
-          moveInfo.allowed,
+          requireDCMov ? false : moveInfo.allowed,
           moveInfo.isFirstMoveOnly,
-          captureInfo.allowed,
+          requireDCCap ? false : captureInfo.allowed,
           captureInfo.isFirstMoveOnly,
           canRanged,
           isLight,

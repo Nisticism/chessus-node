@@ -8,7 +8,8 @@ import {
   canCaptureOnMoveTo as canCaptureOnMoveToUtil,
   canRangedAttackTo as canRangedAttackToUtil,
   canHopCaptureToUtil,
-  getSquareHighlightStyle
+  getSquareHighlightStyle,
+  getDirectionChangeMoves
 } from "../../helpers/pieceMovementUtils";
 
 import { applySvgStretchBackground } from "../../helpers/svgStretchUtils";
@@ -1182,6 +1183,35 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
           }
         }
         
+        // Compute direction-change highlight sets and mandatory suppression
+        let canMoveDirectionChange = false;
+        let canCaptureDirectionChange = false;
+        let requireDCMov = false;
+        let requireDCCap = false;
+        if (draggedPiece && draggedPiecePosition) {
+          const dcPieceData = pieceDataMap[draggedPiece.data.piece_id];
+          if (dcPieceData && (dcPieceData.directional_movement_change || dcPieceData.directional_capture_change)) {
+            const dcMoves = getDirectionChangeMoves(dcPieceData, draggedPiecePosition.col, draggedPiecePosition.row, draggedPiece.data.player_id, gameData.board_width, gameData.board_height, 'movement');
+            const dcCaptures = getDirectionChangeMoves(dcPieceData, draggedPiecePosition.col, draggedPiecePosition.row, draggedPiece.data.player_id, gameData.board_width, gameData.board_height, 'capture');
+            canMoveDirectionChange = dcMoves.some(m => m.y === row && m.x === col);
+            canCaptureDirectionChange = dcCaptures.some(m => m.y === row && m.x === col);
+            requireDCMov = !!(dcPieceData.directional_movement_change && dcPieceData.require_direction_change);
+            requireDCCap = !!(dcPieceData.require_direction_change_capture &&
+              (dcPieceData.directional_capture_change || (dcPieceData.attacks_like_movement && dcPieceData.directional_movement_change)));
+          }
+        } else if (hoveredPiecePosition && !draggedPiece) {
+          const dcPieceData = pieceDataMap[hoveredPiecePosition.pieceId];
+          if (dcPieceData && (dcPieceData.directional_movement_change || dcPieceData.directional_capture_change)) {
+            const dcMoves = getDirectionChangeMoves(dcPieceData, hoveredPiecePosition.col, hoveredPiecePosition.row, hoveredPiecePosition.playerId, gameData.board_width, gameData.board_height, 'movement');
+            const dcCaptures = getDirectionChangeMoves(dcPieceData, hoveredPiecePosition.col, hoveredPiecePosition.row, hoveredPiecePosition.playerId, gameData.board_width, gameData.board_height, 'capture');
+            canMoveDirectionChange = dcMoves.some(m => m.y === row && m.x === col);
+            canCaptureDirectionChange = dcCaptures.some(m => m.y === row && m.x === col);
+            requireDCMov = !!(dcPieceData.directional_movement_change && dcPieceData.require_direction_change);
+            requireDCCap = !!(dcPieceData.require_direction_change_capture &&
+              (dcPieceData.directional_capture_change || (dcPieceData.attacks_like_movement && dcPieceData.directional_movement_change)));
+          }
+        }
+
         let squareStyle = {
           background: isLight ? lightSquareColor : darkSquareColor,
           position: 'relative',
@@ -1191,14 +1221,16 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
         
         // Get highlight style using the utility function
         const { style: highlightStyle, icon: highlightIcon } = getSquareHighlightStyle(
-          moveInfo.allowed,
+          requireDCMov ? false : moveInfo.allowed,
           moveInfo.isFirstMoveOnly,
-          captureInfo.allowed,
+          requireDCCap ? false : captureInfo.allowed,
           captureInfo.isFirstMoveOnly,
           canRanged,
           isLight,
           moveInfo.isCustomOnly || false,
-          captureInfo.isCustomOnly || false
+          captureInfo.isCustomOnly || false,
+          canMoveDirectionChange,
+          canCaptureDirectionChange
         );
         
         // Highlight is rendered as a separate overlay via SquareHighlightOverlay

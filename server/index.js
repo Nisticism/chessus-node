@@ -516,12 +516,9 @@ function dedupeUploadedFile(file) {
 //  -----------  Auto-create Tables and Run Migrations on Startup -----------------
 
 const { runMigrations } = require("./migrations");
-const { backfillGameTypePieces } = require("../scripts/backfill-game-type-pieces");
 
-// Run migrations to add any missing columns, then backfill game_type_pieces
+// Run migrations to add any missing columns
 runMigrations().then(() => {
-  return backfillGameTypePieces();
-}).then(() => {
   // After migrations, mark any orphaned AI training jobs as interrupted.
   try {
     const trainingManager = require('./ai/training-manager');

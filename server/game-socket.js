@@ -205,6 +205,14 @@ function buildOtherData(gameState, extraFields = {}) {
     ...(simulSubmittedKeys.length
       ? { simulSubmittedPlayerIds: simulSubmittedKeys.map(k => isNaN(k) ? k : Number(k)) }
       : {}),
+    // Persist the actual pending simul-turns moves so they survive a server restart.
+    // Without this, if one player submits and the server restarts before the opponent
+    // submits, the submitted move is lost and the round never resolves.
+    ...(simulSubmittedKeys.length
+      ? { pendingSimulMoves: gameState.pendingSimulMoves }
+      : {}),
+    // Persist the pending draw offer so it survives a server restart.
+    ...(gameState.pendingDrawOffer ? { pendingDrawOffer: gameState.pendingDrawOffer } : {}),
     ...(gameState.repositionPhase ? { repositionPhase: gameState.repositionPhase } : {}),
     ...extraFields
   });
@@ -8825,6 +8833,10 @@ function initializeSocket(server) {
             anonCorresPlayers: otherData?.anonCorresPlayers || null,
             guestName: otherData?.guestName || null,
             repositionPhase: otherData?.repositionPhase || null,
+            // Restore pending draw offer and simul-turns moves that were persisted
+            // before a server restart so in-flight state is not silently lost.
+            pendingDrawOffer: otherData?.pendingDrawOffer || null,
+            pendingSimulMoves: otherData?.pendingSimulMoves || {},
           };
 
           // Check if current player is in check (if game is active)
@@ -9009,6 +9021,12 @@ function initializeSocket(server) {
 
         console.log(`Draw offered by ${gameState.players[playerIdx].username} in game ${gameId}`);
 
+        // Persist the draw offer to DB so it survives a server restart.
+        db_pool.query(
+          "UPDATE games SET other_data = ? WHERE id = ?",
+          [buildOtherData(gameState), gameId]
+        ).catch(e => console.error('[draw] Failed to persist draw offer:', e));
+
         // If playing against a bot, auto-accept the draw immediately
         if (gameState.botPlayer) {
           console.log(`Auto-accepting draw offer against bot in game ${gameId}`);
@@ -9165,6 +9183,11 @@ function initializeSocket(server) {
 
         // Clear the pending draw offer
         gameState.pendingDrawOffer = null;
+        // Persist the cleared offer so it doesn't resurface after a restart.
+        db_pool.query(
+          "UPDATE games SET other_data = ? WHERE id = ?",
+          [buildOtherData(gameState), gameId]
+        ).catch(e => console.error('[draw] Failed to clear draw offer on decline:', e));
 
         // Notify all players
         io.to(`game-${gameId}`).emit("drawDeclined", {
@@ -9203,6 +9226,11 @@ function initializeSocket(server) {
         console.log(`Draw offer cancelled by ${gameState.players[playerIdx]?.username} in game ${gameId}`);
 
         gameState.pendingDrawOffer = null;
+        // Persist the cleared offer so it doesn't resurface after a restart.
+        db_pool.query(
+          "UPDATE games SET other_data = ? WHERE id = ?",
+          [buildOtherData(gameState), gameId]
+        ).catch(e => console.error('[draw] Failed to clear draw offer on cancel:', e));
 
         io.to(`game-${gameId}`).emit("drawCancelled", {
           gameId,
@@ -15691,7 +15719,9 @@ function getAllLegalMovesForPlayer(gameState, playerPosition) {
         from: { x: piece.x, y: piece.y },
         to: toSquare
       };
-      
+      // Hoist via for direction-change moves — validateAndApplyMove checks move.via (top-level)
+      if (toSquare.via) move.via = toSquare.via;
+
       // If mate_condition is enabled, verify this move doesn't leave player in check
       if (gameType && gameType.mate_condition) {
         if (!wouldMoveLeaveInCheck(gameState, move, playerPosition)) {
@@ -16599,6 +16629,8 @@ async function processBotTurn(io, gameId, gameState) {
           if (forceMoves.length > 0) {
             const chosen = forceMoves[Math.floor(Math.random() * forceMoves.length)];
             bestMove = { pieceId: forcePiece.id, from: { x: forcePiece.x, y: forcePiece.y }, to: chosen };
+            // Hoist via for direction-change moves — validateAndApplyMove checks move.via (top-level)
+            if (chosen.via) bestMove.via = chosen.via;
             console.log(`[Bot] Forced must-move for piece "${forcePiece.piece_name}" (id=${forcePiece.id}) to (${chosen.x},${chosen.y}) in game ${gameId}`);
           }
         }

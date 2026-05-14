@@ -4,6 +4,15 @@ import styles from "./changelog.module.scss";
 
 const changelogData = [
   {
+    date: "May 14, 2026",
+    title: "Bug fixes: draw offers and submitted moves now survive server restarts; deleted game types no longer cause console error loops",
+    items: [
+      "Fixed: draw offers in simultaneous-turns games were lost if the server restarted before the opponent responded — the offer is now saved to the database immediately and restored when the server comes back up.",
+      "Fixed: in simultaneous-turns games, a submitted move was lost if the server restarted before both players submitted — the move data is now persisted to the database so the round resolves correctly after a restart.",
+      "Fixed: navigating to the Play page with a URL or bookmark pointing to a deleted game type caused a flood of repeated 404 errors in the background. The stale game type is now quietly removed from the URL and from your last-played history the first time the 404 is detected.",
+    ],
+  },
+  {
     date: "May 13, 2026",
     title: "Direction change piece ability: full game support; computer AI improvements",
     items: [

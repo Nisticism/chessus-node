@@ -1131,8 +1131,16 @@ const PieceBoardPreview = ({ pieceData, showAttack = true, showLegend = true }) 
         const squareKey = `${row},${col}`;
         const canMoveDirectionChange = !isCenter && isHovering && !!dcMoveSet?.has(squareKey);
         const canCaptureDirectionChange = !isCenter && isHovering && !!dcCaptureSet?.has(squareKey);
-        
-        const isClickable = !isAnimating && !isCenter && (canMove || canCaptureOnMove);
+
+        // When direction change is mandatory, suppress straight-line highlights so only
+        // DC-style highlights appear (or no highlight if DC can't reach the square).
+        const requireDCMov = !!(pieceData.directional_movement_change && pieceData.require_direction_change);
+        const requireDCCap = !!(pieceData.require_direction_change_capture &&
+          (pieceData.directional_capture_change || (pieceData.attacks_like_movement && pieceData.directional_movement_change)));
+        const effectiveCanMove = requireDCMov ? false : canMove;
+        const effectiveCanCaptureOnMove = requireDCCap ? false : canCaptureOnMove;
+
+        const isClickable = !isAnimating && !isCenter && (effectiveCanMove || effectiveCanCaptureOnMove || canMoveDirectionChange || canCaptureDirectionChange);
         
         let squareClass = `${styles["board-square"]} ${isLight ? styles["light"] : styles["dark"]}`;
         
@@ -1145,7 +1153,7 @@ const PieceBoardPreview = ({ pieceData, showAttack = true, showLegend = true }) 
         
         // Use shared highlight style utility
         const { style: highlightStyle, icon: highlightIcon } = (!isCenter)
-          ? getSquareHighlightStyle(canMove, isMoveFirstOnly, canCaptureOnMove, isCaptureFirstOnly, canRangedAttack, isLight, isCustomMove, isCustomAttack, canMoveDirectionChange, canCaptureDirectionChange)
+          ? getSquareHighlightStyle(effectiveCanMove, isMoveFirstOnly, effectiveCanCaptureOnMove, isCaptureFirstOnly, canRangedAttack, isLight, isCustomMove, isCustomAttack, canMoveDirectionChange, canCaptureDirectionChange)
           : { style: {}, icon: null };
         
         // Inline styles for user color preferences

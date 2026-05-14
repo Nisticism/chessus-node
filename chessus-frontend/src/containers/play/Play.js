@@ -300,6 +300,17 @@ const Play = () => {
         }
       } catch (loadError) {
         if (!ignore) {
+          // Game not found — remove the stale gameTypeId from the URL so we don't
+          // keep retrying and flooding the console with repeated 404 errors.
+          if (loadError?.response?.status === 404) {
+            const nextParams = new URLSearchParams(searchParams);
+            nextParams.delete('gameTypeId');
+            setSearchParams(nextParams, { replace: true });
+            // Also clear from localStorage if it points to the same deleted game.
+            if (parseInt(localStorage.getItem('lastPlayedGameType'), 10) === requestedGameTypeId) {
+              localStorage.removeItem('lastPlayedGameType');
+            }
+          }
           setSelectedGameType(null);
         }
       }
@@ -345,7 +356,9 @@ const Play = () => {
           setSelectedGameType(lastPlayedGameType);
         }
       } catch {
-        // Ignore stale last-played IDs.
+        // Stale last-played ID (e.g. game was deleted) — clear it so we don't
+        // keep retrying on every render cycle.
+        localStorage.removeItem('lastPlayedGameType');
       }
     };
 
