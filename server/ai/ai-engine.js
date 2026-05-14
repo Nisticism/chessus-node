@@ -318,7 +318,17 @@ function applyMove(state, move) {
       if (!state.controlSquareTracking) state.controlSquareTracking = {};
       if (!state.controlSquareTracking.bySquare) state.controlSquareTracking.bySquare = {};
       if (!state.controlSquareTracking.byPlayer) state.controlSquareTracking.byPlayer = {};
-      const playersControlling = new Set();
+
+      const consecutiveTurns = !!(Object.values(controlSquares)[0]?.consecutiveTurns);
+      const squaresApplicableTo = (playerPosition) =>
+        Object.values(controlSquares).filter(cfg => {
+          const ap = cfg?.appliesToPlayer || 'both';
+          return ap === 'both' || ap === 'all' || ap === `p${playerPosition}`;
+        }).length;
+
+      const squaresHeld = {};
+      for (const player of (state.players || [])) squaresHeld[player.position] = 0;
+
       for (const [squareKey, config] of Object.entries(controlSquares)) {
         const [row, col] = squareKey.split(',').map(Number);
         const requireSpecific = !!config?.requireSpecificPiece;
@@ -328,20 +338,28 @@ function applyMove(state, move) {
           : piecesOnSquare[0];
         if (controllingPiece) {
           const owner = parseInt(controllingPiece.team || controllingPiece.player_id);
-          playersControlling.add(owner);
+          const appliesToPlayer = config?.appliesToPlayer || 'both';
+          const squareApplies = appliesToPlayer === 'both' || appliesToPlayer === 'all'
+            || appliesToPlayer === `p${owner}`;
+          if (squareApplies && squaresHeld[owner] !== undefined) squaresHeld[owner]++;
           state.controlSquareTracking.bySquare[squareKey] = { playerId: owner };
         } else {
           delete state.controlSquareTracking.bySquare[squareKey];
         }
       }
+
       for (const player of (state.players || [])) {
         const pos = player.position;
-        if (playersControlling.has(pos)) {
+        const held = squaresHeld[pos] || 0;
+        const needed = state.gameType?.squares_count
+          ? Math.min(state.gameType.squares_count, Object.keys(controlSquares).length)
+          : Math.max(1, squaresApplicableTo(pos));
+        if (held >= needed) {
           if (!state.controlSquareTracking.byPlayer[pos]) {
             state.controlSquareTracking.byPlayer[pos] = { halfTurns: 0 };
           }
           state.controlSquareTracking.byPlayer[pos].halfTurns++;
-        } else {
+        } else if (consecutiveTurns) {
           delete state.controlSquareTracking.byPlayer[pos];
         }
       }
@@ -442,7 +460,7 @@ function checkTerminalFull(state) {
       }
     } catch (_) {}
     if (Object.keys(controlSquares).length > 0 && state.controlSquareTracking?.byPlayer) {
-      const turnsRequired = Object.values(controlSquares)[0]?.turnsRequired || 1;
+      const turnsRequired = Math.max(1, ...Object.values(controlSquares).map(cfg => cfg?.turnsRequired || 1));
       const halfTurnsRequired = turnsRequired * 2;
       for (const [playerPosStr, tracking] of Object.entries(state.controlSquareTracking.byPlayer)) {
         if (tracking.halfTurns >= halfTurnsRequired) {

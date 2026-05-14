@@ -99,33 +99,68 @@ pub struct ControlSquare {
 /// Parse control_squares_string (keyed "y,x") into a list of ControlSquare and
 /// compute how many consecutive half-turns a player must hold enough of those
 /// squares to win.
+/// Also merges custom squares from special_squares_string where `asControl === true`.
 fn parse_control_squares(game: &GameType) -> (Vec<ControlSquare>, u32) {
-    let s = match game.control_squares_string.as_deref() {
-        Some(s) if !s.is_empty() => s,
-        _ => return (vec![], 2),
-    };
-    let parsed: serde_json::Value = match serde_json::from_str(s) {
-        Ok(v) => v,
-        Err(_) => return (vec![], 2),
-    };
-    let obj = match parsed.as_object() {
-        Some(o) => o,
-        None => return (vec![], 2),
-    };
-    let mut squares: Vec<ControlSquare> = Vec::with_capacity(obj.len());
+    let mut squares: Vec<ControlSquare> = Vec::new();
     let mut max_turns_required: u32 = 1;
-    for (key, val) in obj.iter() {
-        if let Some((x, y)) = parse_yx_key(key) {
-            let require_specific_piece = val
-                .get("requireSpecificPiece")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false);
-            squares.push(ControlSquare { x, y, require_specific_piece });
-        }
-        if let Some(tr) = val.get("turnsRequired").and_then(|v| v.as_u64()) {
-            max_turns_required = max_turns_required.max(tr as u32);
+
+    // --- Primary: control_squares_string ---
+    if let Some(s) = game.control_squares_string.as_deref().filter(|s| !s.is_empty()) {
+        if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(s) {
+            if let Some(obj) = parsed.as_object() {
+                for (key, val) in obj.iter() {
+                    if let Some((x, y)) = parse_yx_key(key) {
+                        let require_specific_piece = val
+                            .get("requireSpecificPiece")
+                            .and_then(|v| v.as_bool())
+                            .unwrap_or(false);
+                        squares.push(ControlSquare { x, y, require_specific_piece });
+                    }
+                    if let Some(tr) = val.get("turnsRequired").and_then(|v| v.as_u64()) {
+                        max_turns_required = max_turns_required.max(tr as u32);
+                    }
+                }
+            }
         }
     }
+
+    // --- Merge: special_squares_string entries with asControl === true ---
+    // Mirrors the merging logic in game-socket.js updateControlSquareTracking.
+    if let Some(s) = game.special_squares_string.as_deref().filter(|s| !s.is_empty()) {
+        if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(s) {
+            if let Some(obj) = parsed.as_object() {
+                for (key, val) in obj.iter() {
+                    let as_control = val.get("asControl").and_then(|v| v.as_bool()).unwrap_or(false);
+                    if !as_control {
+                        continue;
+                    }
+                    if let Some((x, y)) = parse_yx_key(key) {
+                        // Skip if already added from control_squares_string.
+                        if squares.iter().any(|s| s.x == x && s.y == y) {
+                            continue;
+                        }
+                        let control_cfg = val.get("controlConfig");
+                        let require_specific_piece = control_cfg
+                            .and_then(|c| c.get("requireSpecificPiece"))
+                            .and_then(|v| v.as_bool())
+                            .unwrap_or(false);
+                        squares.push(ControlSquare { x, y, require_specific_piece });
+                        if let Some(tr) = control_cfg
+                            .and_then(|c| c.get("turnsRequired"))
+                            .and_then(|v| v.as_u64())
+                        {
+                            max_turns_required = max_turns_required.max(tr as u32);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if squares.is_empty() {
+        return (vec![], 2);
+    }
+
     // Game-socket.js uses `halfTurnsRequired = turnsRequired * 2`.
     let half_turns_required = (max_turns_required * 2).max(1);
     (squares, half_turns_required)

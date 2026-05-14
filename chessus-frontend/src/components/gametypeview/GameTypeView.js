@@ -2148,7 +2148,15 @@ const GameTypeView = () => {
             parts.push(m ? `Promotion (Player ${m[1]} only)` : 'Promotion');
           }
         }
-        if (cfg?.asControl) parts.push('Control');
+        if (cfg?.asControl) {
+          const cc = cfg.controlConfig || {};
+          const turns = cc.turnsRequired || 1;
+          const consec = cc.consecutiveTurns ? 'consecutive ' : '';
+          const piece = cc.requireSpecificPiece ? 'specific piece only' : 'any piece';
+          const ap = cc.appliesToPlayer === 'p1' ? 'Player 1 only'
+            : cc.appliesToPlayer === 'p2' ? 'Player 2 only' : 'either player';
+          parts.push(`Control (${turns} ${consec}turn${turns > 1 ? 's' : ''}, ${piece}, ${ap})`);
+        }
         if (cfg?.asRestrictionZone) parts.push('Restriction Zone');
         if (cfg?.asRestrictionZone && cfg?.allowRangedOutsideZone) parts.push('Ranged attacks allowed outside zone');
         if (cfg?.restrictFirstMoveToCustom) parts.push('First-move abilities allowed only on these squares');
@@ -2182,6 +2190,10 @@ const GameTypeView = () => {
           asPromotion: !!cfg?.asPromotion,
           promotionAppliesToPlayer: cfg?.asPromotion ? (() => { const r = cfg?.promotionAppliesToPlayer || 'all'; return r === 'both' ? 'all' : r; })() : 'all',
           asControl: !!cfg?.asControl,
+          controlTurnsRequired: cfg?.asControl ? (cfg?.controlConfig?.turnsRequired || 1) : 1,
+          controlConsecutiveTurns: cfg?.asControl ? !!cfg?.controlConfig?.consecutiveTurns : false,
+          controlRequireSpecificPiece: cfg?.asControl ? !!cfg?.controlConfig?.requireSpecificPiece : false,
+          controlAppliesToPlayer: cfg?.asControl ? (cfg?.controlConfig?.appliesToPlayer || 'both') : 'both',
           asRestrictionZone: !!cfg?.asRestrictionZone,
           allowRangedOutsideZone: !!cfg?.allowRangedOutsideZone,
           restrictFirstMoveToCustom: !!cfg?.restrictFirstMoveToCustom,

@@ -698,10 +698,11 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
   }, [gameData.board_width, gameData.board_height, lightSquareColor, darkSquareColor, getSquareType, getSquareColor, handleSquareClick, handleSquareRightClick, handleDragOver, handleDrop, handleDragStart, handleDragEnd, handleSquareTouchStart, handleSquareTouchMove, handleSquareTouchEnd, touchDragType]);
 
   const getCounts = () => {
+    const customAsControl = Object.values(customSquares).filter(cfg => cfg?.asControl === true).length;
     return {
       range: Object.keys(rangeSquares).length,
       promotion: Object.keys(promotionSquares).length,
-      control: Object.keys(controlSquares).length,
+      control: Object.keys(controlSquares).length + customAsControl,
       custom: Object.keys(customSquares).length
     };
   };

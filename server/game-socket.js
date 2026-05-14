@@ -15943,67 +15943,90 @@ function updateControlSquareTracking(gameState) {
     gameState.controlSquareTracking.byPlayer = {};
   }
   
-  // Determine which players are currently controlling at least one square
-  const playersControlling = new Set();
-  
+  // Use the MAX turnsRequired across all configured control squares (matches AI engine).
+  const turnsRequired = Math.max(1, ...Object.values(controlSquares).map(cfg => cfg?.turnsRequired || 1));
+  const halfTurnsRequired = turnsRequired * 2;
+
+  // consecutiveTurns: read from the first control square.
+  //   true  → reset counter when player loses control (must hold uninterrupted).
+  //   false → accumulate total turns held; never reset (default / unchecked in wizard).
+  const consecutiveTurns = !!(Object.values(controlSquares)[0]?.consecutiveTurns);
+
+  // How many control squares each player must simultaneously hold.
+  // With an explicit squares_count: use it. Otherwise require ALL applicable squares.
+  const squaresApplicableTo = (playerPosition) =>
+    Object.values(controlSquares).filter(cfg => {
+      const ap = cfg?.appliesToPlayer || 'both';
+      return ap === 'both' || ap === 'all' || ap === `p${playerPosition}`;
+    }).length;
+
+  // Count how many applicable control squares each player currently holds.
+  const squaresHeldByPlayer = {};
+  for (const player of players) {
+    squaresHeldByPlayer[player.position] = 0;
+  }
+
   for (const [squareKey, config] of Object.entries(controlSquares)) {
     const [row, col] = squareKey.split(',').map(Number);
-    
-    // Find a piece on this square that can control squares.
-    // If the square is configured with `requireSpecificPiece`, we ONLY count
-    // pieces with the `can_control_squares` flag set on the piece itself.
-    // Otherwise (the default), any piece occupying the square may control it.
+
+    // Find the controlling piece.
+    // requireSpecificPiece: only pieces with can_control_squares count.
+    // Otherwise any piece counts.
     const piecesOnSquare = pieces.filter(p => p.x === col && p.y === row);
     const requireSpecific = !!config?.requireSpecificPiece;
     const controllingPiece = requireSpecific
       ? piecesOnSquare.find(p => p.can_control_squares)
       : piecesOnSquare[0];
-    
+
     if (controllingPiece) {
       const controllingPlayerId = parseInt(controllingPiece.team || controllingPiece.player_id || controllingPiece.player_number);
-      playersControlling.add(controllingPlayerId);
-      
-      // Store per-square info for display
+
+      // appliesToPlayer: only count this square for the player it applies to.
+      const appliesToPlayer = config?.appliesToPlayer || 'both';
+      const squareApplies = appliesToPlayer === 'both' || appliesToPlayer === 'all'
+        || appliesToPlayer === `p${controllingPlayerId}`;
+      if (squareApplies && squaresHeldByPlayer[controllingPlayerId] !== undefined) {
+        squaresHeldByPlayer[controllingPlayerId]++;
+      }
+
+      // Store per-square info for client display (regardless of appliesToPlayer).
       gameState.controlSquareTracking.bySquare[squareKey] = {
         playerId: controllingPlayerId
       };
     } else {
-      // No one controlling this square
+      // No one controlling this square.
       delete gameState.controlSquareTracking.bySquare[squareKey];
     }
   }
-  
-  // Update per-player consecutive tracking
-  // Each player who controls at least one square gets their counter incremented
-  // Players who don't control any square get their counter reset (consecutive requirement)
+
+  // Update per-player consecutive-turn counters.
   for (const player of players) {
     const playerPosition = player.position;
-    if (playersControlling.has(playerPosition)) {
-      // Player controls at least one square - increment
+    const held = squaresHeldByPlayer[playerPosition] || 0;
+    const needed = gameType.squares_count
+      ? Math.min(gameType.squares_count, Object.keys(controlSquares).length)
+      : Math.max(1, squaresApplicableTo(playerPosition));
+
+    if (held >= needed) {
+      // Player holds enough squares — increment counter.
       if (!gameState.controlSquareTracking.byPlayer[playerPosition]) {
         gameState.controlSquareTracking.byPlayer[playerPosition] = { halfTurns: 0 };
       }
       gameState.controlSquareTracking.byPlayer[playerPosition].halfTurns++;
-    } else {
-      // Player controls no squares - reset consecutive counter
+    } else if (consecutiveTurns) {
+      // Consecutive mode only: reset counter on loss of control.
       delete gameState.controlSquareTracking.byPlayer[playerPosition];
     }
+    // Non-consecutive mode: counter keeps its value when not holding (no increment).
   }
-  
-  // Check win condition: use turnsRequired from the first control square config
-  const turnsRequired = Object.values(controlSquares)[0]?.turnsRequired || 1;
-  const halfTurnsRequired = turnsRequired * 2;
-  
+
+  // Check win condition.
   for (const [playerPosition, tracking] of Object.entries(gameState.controlSquareTracking.byPlayer)) {
     console.log(`Control squares: player position ${playerPosition} has ${tracking.halfTurns} half-turns, needs ${halfTurnsRequired}`);
-    
+
     if (tracking.halfTurns >= halfTurnsRequired) {
-      const winner = players.find(p => 
-        p.position === parseInt(playerPosition)
-      );
-      
+      const winner = players.find(p => p.position === parseInt(playerPosition));
       console.log(`Control square win! Player position ${playerPosition} controlled squares for ${turnsRequired} full turns`);
-      
       return {
         gameOver: true,
         winner: winner?.id,
@@ -16011,7 +16034,7 @@ function updateControlSquareTracking(gameState) {
       };
     }
   }
-  
+
   return null;
 }
 
