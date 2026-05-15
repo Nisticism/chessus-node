@@ -2506,6 +2506,14 @@ const GameTypeView = () => {
       specialRulesContent.push(`**Forced Capture**\nIf any of your pieces can make a capturing move on your turn, you MUST make a capture (any capture). Non-capturing moves are rejected whenever a capture is available. Combine with Lose All Pieces for classic anti-chess.`);
     }
 
+    // Fog of War mechanic
+    if (game.fog_of_war) {
+      const permanentRevealNote = game.permanent_fog_reveal
+        ? ' Squares that are revealed stay visible for the rest of the game — but enemy pieces entering those squares are still hidden until a friendly piece can see them again.'
+        : '';
+      specialRulesContent.push(`**Fog of War**\nEach player can only see squares that are reachable by movement or attack from their own pieces. Squares outside this visible area are hidden by a smoky fog overlay — enemy pieces and special squares within the fog are concealed. Visibility updates every time a piece moves.${permanentRevealNote} This option may be toggled on or off by the host when creating a game.`);
+    }
+
     // Add the combined Special Rules section if any content exists.
     // Note: pieceLinks (visual list) is intentionally omitted here — promotion-target pieces are
     // already linked inline in the promotion text, so a separate "Pieces used:"

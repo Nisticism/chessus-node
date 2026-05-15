@@ -189,6 +189,7 @@ function buildOtherData(gameState, extraFields = {}) {
     ...(gameState.botPlayer ? { isBotGame: true, botDifficulty: gameState.botPlayer.difficulty || 'medium', botPosition: gameState.botPlayer.position } : {}),
     ...(gameState.materialClockPenalty ? { materialClockPenalty: true } : {}),
     ...(gameState.materialClockHandicap ? { materialClockHandicap: true } : {}),
+    ...(gameState.fogOfWarEnabled != null ? { fogOfWarEnabled: !!gameState.fogOfWarEnabled } : {}),
     ...(gameState.actionsThisTurn ? { actionsThisTurn: gameState.actionsThisTurn } : {}),
     ...(gameState.captureScores ? { captureScores: gameState.captureScores } : {}),
     ...(gameState.consecutiveEqualScoreTurns ? { consecutiveEqualScoreTurns: gameState.consecutiveEqualScoreTurns } : {}),
@@ -2442,6 +2443,7 @@ async function recoverActiveGames() {
           rated: otherData.rated !== false,
           materialClockPenalty: !!otherData.materialClockPenalty,
           materialClockHandicap: !!otherData.materialClockHandicap,
+          fogOfWarEnabled: otherData.fogOfWarEnabled != null ? !!otherData.fogOfWarEnabled : false,
           isCorrespondence: false,
           allowSpectators: game.allow_spectators !== 0,
           showPieceHelpers: game.show_piece_helpers === 1,
@@ -2699,7 +2701,7 @@ function initializeSocket(server) {
     // Create a new live game
     socket.on("createGame", async (data) => {
       try {
-        const { gameTypeId, timeControl, increment, hostId, hostUsername, allowSpectators = true, showPieceHelpers = false, rated = true, allowPremoves = true, premoveTimeCost = 0, startingMode: rawStartingMode = 'none', challengedUserId = null, isCorrespondence = false, correspondenceDays = null, vsComputer = false, botDifficulty = 'medium', materialClockPenalty = false, materialClockHandicap = false, playerSide = 'random' } = data;
+        const { gameTypeId, timeControl, increment, hostId, hostUsername, allowSpectators = true, showPieceHelpers = false, rated = true, allowPremoves = true, premoveTimeCost = 0, startingMode: rawStartingMode = 'none', challengedUserId = null, isCorrespondence = false, correspondenceDays = null, vsComputer = false, botDifficulty = 'medium', materialClockPenalty = false, materialClockHandicap = false, playerSide = 'random', fogOfWarEnabled } = data;
         
         // Get game type details
         const [[gameType]] = await db_pool.query(
@@ -3195,7 +3197,7 @@ function initializeSocket(server) {
         const [result] = await db_pool.query(
           `INSERT INTO games (created_at, turn_length, increment, player_count, player_turn, pieces, other_data, game_type_id, status, host_id, allow_spectators, show_piece_helpers, is_challenge, challenged_user_id, is_correspondence, correspondence_days)
            VALUES (?, ?, ?, 2, 1, ?, ?, ?, 'waiting', ?, ?, ?, ?, ?, ?, ?)`,
-          [currentTime, effectiveTurnLength, increment || 0, piecesData, JSON.stringify({ moves: [], rated, allowPremoves, premoveTimeCost: allowPremoves ? (parseFloat(premoveTimeCost) || 0) : 0, startingMode, materialClockPenalty: !!materialClockPenalty, materialClockHandicap: !!materialClockHandicap }), gameTypeId, hostId, allowSpectators ? 1 : 0, showPieceHelpers ? 1 : 0, isChallenge, challengedUserId, isCorrespondence ? 1 : 0, correspondenceDays || null]
+          [currentTime, effectiveTurnLength, increment || 0, piecesData, JSON.stringify({ moves: [], rated, allowPremoves, premoveTimeCost: allowPremoves ? (parseFloat(premoveTimeCost) || 0) : 0, startingMode, materialClockPenalty: !!materialClockPenalty, materialClockHandicap: !!materialClockHandicap, ...(fogOfWarEnabled != null ? { fogOfWarEnabled: !!fogOfWarEnabled } : {}) }), gameTypeId, hostId, allowSpectators ? 1 : 0, showPieceHelpers ? 1 : 0, isChallenge, challengedUserId, isCorrespondence ? 1 : 0, correspondenceDays || null]
         );
 
         const gameId = result.insertId;
@@ -3248,6 +3250,7 @@ function initializeSocket(server) {
           correspondenceDays: correspondenceDays || null,
           materialClockPenalty: !!materialClockPenalty,
           materialClockHandicap: !!materialClockHandicap,
+          fogOfWarEnabled: fogOfWarEnabled != null ? !!fogOfWarEnabled : (gameType?.fog_of_war ? true : false),
           actionsThisTurn: 0
         };
 
@@ -4591,6 +4594,7 @@ function initializeSocket(server) {
             inviteCode: game.invite_code || null,
             materialClockPenalty: !!joinGameOtherData.materialClockPenalty,
             materialClockHandicap: !!joinGameOtherData.materialClockHandicap,
+            fogOfWarEnabled: joinGameOtherData.fogOfWarEnabled != null ? !!joinGameOtherData.fogOfWarEnabled : (gameType?.fog_of_war ? true : false),
             anonCorresPlayers: joinGameOtherData.anonCorresPlayers || null,
             guestName: joinGameOtherData.guestName || null,
           };
@@ -8822,6 +8826,7 @@ function initializeSocket(server) {
             lastMoveTime: otherData?.lastMoveTime || null,
             materialClockPenalty: !!otherData?.materialClockPenalty,
             materialClockHandicap: !!otherData?.materialClockHandicap,
+            fogOfWarEnabled: otherData?.fogOfWarEnabled != null ? !!otherData.fogOfWarEnabled : (gameType?.fog_of_war ? true : false),
             actionsThisTurn: otherData?.actionsThisTurn || 0,
             // Persisted game-over context so the client can re-display the
             // game-over modal after a reload (e.g. on initial-position ends

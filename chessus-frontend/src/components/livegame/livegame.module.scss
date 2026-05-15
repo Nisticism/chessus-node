@@ -1111,6 +1111,90 @@
   }
 }
 
+// ── Fog of War ────────────────────────────────────────────────────────────────
+// Placed as an absolutely-positioned child inside a .board-square when the
+// square is hidden by fog.  The overlay covers all content (pieces, special
+// square indicators) that sit at z-index 1-9, while leaving the raw square
+// background colour visible beneath.
+
+@keyframes fog-drift-1 {
+  0%   { transform: translate(0, 0) scale(1); }
+  33%  { transform: translate(3px, -2px) scale(1.03); }
+  66%  { transform: translate(-2px, 3px) scale(0.98); }
+  100% { transform: translate(0, 0) scale(1); }
+}
+@keyframes fog-drift-2 {
+  0%   { transform: translate(0, 0) scale(1.02); }
+  40%  { transform: translate(-3px, 2px) scale(0.97); }
+  70%  { transform: translate(2px, -3px) scale(1.04); }
+  100% { transform: translate(0, 0) scale(1.02); }
+}
+@keyframes fog-drift-3 {
+  0%   { transform: translate(0, 0) scale(0.98); }
+  50%  { transform: translate(2px, 3px) scale(1.02); }
+  100% { transform: translate(0, 0) scale(0.98); }
+}
+
+.fog-overlay {
+  position: absolute;
+  inset: -1px; // Bleed 1px beyond the square edge to avoid gap seams
+  z-index: 50; // Sits above pieces (z-index 1-9) and all special-square overlays
+  pointer-events: none;
+  overflow: hidden;
+  // Solid base so ALL content (pieces, special-square indicators) is fully
+  // hidden beneath the fog.  The animated layers above add the wispy texture.
+  background: rgba(8, 12, 24, 0.82);
+
+  &::before,
+  &::after,
+  > span {
+    content: '';
+    display: block;
+    position: absolute;
+    inset: -15%;
+    border-radius: 50%;
+  }
+
+  // Layer 1 – animated light wisp (brightens the solid base)
+  &::before {
+    background: radial-gradient(
+      ellipse at 55% 45%,
+      rgba(60, 70, 100, 0.28) 0%,
+      rgba(40, 50, 80, 0.18) 45%,
+      rgba(20, 30, 60, 0.08) 75%,
+      transparent 100%
+    );
+    animation: fog-drift-1 8s ease-in-out infinite;
+  }
+
+  // Layer 2 – bluish mid wisp
+  &::after {
+    background: radial-gradient(
+      ellipse at 42% 60%,
+      rgba(50, 60, 90, 0.22) 0%,
+      rgba(30, 40, 70, 0.14) 50%,
+      transparent 100%
+    );
+    animation: fog-drift-2 6s ease-in-out infinite;
+  }
+}
+
+// Inner <span> wisp rendered via JS (fog-wisp class)
+.fog-wisp {
+  position: absolute;
+  inset: -15%;
+  border-radius: 50%;
+  display: block;
+  background: radial-gradient(
+    ellipse at 65% 35%,
+    rgba(60, 70, 100, 0.35) 0%,
+    rgba(40, 50, 80, 0.20) 50%,
+    transparent 100%
+  );
+  animation: fog-drift-3 7s ease-in-out infinite;
+  pointer-events: none;
+}
+
 @keyframes ranged-border-pulse {
   from { border-width: 2px; border-color: rgba(255, 34, 34, 0.5); }
   to { border-width: 3px; border-color: rgba(255, 34, 34, 0.7); }

@@ -338,6 +338,13 @@ const LiveGame = () => {
       }
     }
 
+    // Increment moveCount so fog visibility correctly excludes first-N-move squares
+    // from the piece's new position immediately (without waiting for server confirmation).
+    const movedPieceIndex = nextPieces.findIndex((piece) => piece.id === moveData.pieceId);
+    if (movedPieceIndex !== -1) {
+      nextPieces[movedPieceIndex].moveCount = (nextPieces[movedPieceIndex].moveCount || 0) + 1;
+    }
+
     return {
       ...state,
       pieces: nextPieces
@@ -360,6 +367,11 @@ const LiveGame = () => {
   // Ghost board state for move history review
   const [ghostMoveIndex, setGhostMoveIndex] = useState(null);
   const initialPiecesRef = useRef(null);
+
+  // Fog of War: running set of squares permanently revealed (when permanent_fog_reveal is on).
+  // Keyed by gameId + player position in localStorage so it survives page refreshes.
+  const fogRevealedRef = useRef(new Set());
+  const fogRevealedStorageKeyRef = useRef(null);
 
   // Helper to persist a user preference to the server and local storage
   const updateUserPreference = useCallback(async (key, value) => {
@@ -586,13 +598,27 @@ const LiveGame = () => {
     serverTimesRef.current = {};
     lastServerTickRef.current = null;
     activeClockPlayerRef.current = null;
+    // Reset fog reveal history when navigating to a different game
+    fogRevealedRef.current = new Set();
+    fogRevealedStorageKeyRef.current = null;
   }, [gameId]);
+
+  // Fog permanent reveal: persist accumulated set to localStorage whenever pieces change (after each move)
+  useEffect(() => {
+    const key = fogRevealedStorageKeyRef.current;
+    if (!key || fogRevealedRef.current.size === 0) return;
+    try {
+      localStorage.setItem(key, JSON.stringify([...fogRevealedRef.current]));
+    } catch {
+      // localStorage quota — silently ignore
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gameState?.pieces]);
 
   // Load game state on mount
   useEffect(() => {
     const loadGame = async () => {
-      if (!connected) return;
-      
+      if (!connected) return;      
       setLoading(true);
       try {
         // For anonymous correspondence players returning to the game, authenticate
@@ -1613,6 +1639,25 @@ const LiveGame = () => {
     return null;
   }, [gameState?.players, currentUser, socket?.id, gameId, getStoredAnonCorresId]);
   /* eslint-enable react-hooks/exhaustive-deps */
+
+  // Fog permanent reveal: initialize accumulated set from localStorage when game+player is known
+  useEffect(() => {
+    const permanentFogReveal = gameState?.gameType?.permanent_fog_reveal;
+    const playerPos = currentPlayer?.position;
+    if (!permanentFogReveal || !gameId || playerPos == null) {
+      fogRevealedRef.current = new Set();
+      fogRevealedStorageKeyRef.current = null;
+      return;
+    }
+    const key = `fog-revealed-${gameId}-p${playerPos}`;
+    fogRevealedStorageKeyRef.current = key;
+    try {
+      const stored = localStorage.getItem(key);
+      fogRevealedRef.current = stored ? new Set(JSON.parse(stored)) : new Set();
+    } catch {
+      fogRevealedRef.current = new Set();
+    }
+  }, [gameId, currentPlayer?.position, gameState?.gameType?.permanent_fog_reveal]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Check if it's the current user's turn
   const isMyTurn = useMemo(() => {
@@ -2692,7 +2737,7 @@ const LiveGame = () => {
 
   // Calculate valid moves for a piece using actual piece movement data
   // forPremove: when true, includes potential capture squares even when empty (for premove highlighting)
-  const calculateValidMoves = useCallback((piece, pieces, boardWidth, boardHeight, skipCheckFilter = false, forPremove = false, forHoverDisplay = false) => {
+  const calculateValidMoves = useCallback((piece, pieces, boardWidth, boardHeight, skipCheckFilter = false, forPremove = false, forHoverDisplay = false, forFog = false) => {
     // Apply range square bonus
     piece = applyRangeSquareBonus(piece);
 
@@ -2811,9 +2856,10 @@ const LiveGame = () => {
           // Check movement rules
           isValidMove = canPieceMoveTo(piece.x, piece.y, toX, toY, piece, pieceTeam);
           
-          // For premoves: also check if this empty square is a valid capture square
-          // (e.g., pawn diagonal attack - piece might move there by opponent's turn)
-          if (forPremove && !isValidMove) {
+          // For premoves or fog: also check if this empty square is a valid capture square
+          // (e.g., pawn diagonal attack - for premoves the piece might move there;
+          //  for fog the piece can "see" squares it can attack even without a target).
+          if ((forPremove || forFog) && !isValidMove) {
             const canCaptureThere = canPieceCaptureTo(piece.x, piece.y, toX, toY, piece, pieceTeam);
             if (canCaptureThere) {
               isValidMove = true;
@@ -3122,7 +3168,10 @@ const LiveGame = () => {
             if (blockFirstMove) {
               continue;
             }
-            const pieceMovesCount = gameState?.moveHistory?.filter(move => move.pieceId === piece.id).length || 0;
+            // Use the server-maintained moveCount on the piece directly.
+            // This is more reliable than filtering moveHistory (avoids type-coercion
+            // mismatches and missing entries for games restored from the DB).
+            const pieceMovesCount = piece.moveCount || 0;
             if (pieceMovesCount >= firstMovesRequired) {
               continue;
             }
@@ -4816,6 +4865,53 @@ const LiveGame = () => {
       gameState.gameType?.draw_equal_points_at_turn != null ||
       gameState.gameType?.draw_equal_points_consecutive != null;
 
+    // ── Fog of War visibility ────────────────────────────────────────────────
+    // fogVisibleSquares is a Set<"x,y"> of squares the viewing player can see.
+    // null means fog is disabled (all squares visible).
+    const fogVisibleSquares = (() => {
+      const isFogActive = !isGhostMode && gameState.fogOfWarEnabled && !isSpectator && currentPlayer;
+      if (!isFogActive) return null;
+
+      const viewerPosition = currentPlayer.position;
+      const visible = new Set();
+
+      pieces.forEach(p => {
+        const pTeam = p.player_id ?? p.team;
+        if (pTeam !== viewerPosition) return;
+        // The piece's own footprint is always visible
+        const pw = p.piece_width || 1;
+        const ph = p.piece_height || 1;
+        for (let dy = 0; dy < ph; dy++) {
+          for (let dx = 0; dx < pw; dx++) {
+            visible.add(`${p.x + dx},${p.y + dy}`);
+          }
+        }
+        // All squares the piece can move to or attack are visible.
+        // skipCheckFilter=true: raw reachability, not legality.
+        // forFog=true: also include capture-range squares even when empty (e.g. pawn diagonals)
+        //   WITHOUT skipping path checks (unlike forPremove).
+        const moves = calculateValidMoves(p, pieces, boardWidth, boardHeight, true, false, false, true);
+        moves.forEach(m => {
+          const mw = pw; // destination footprint width matches piece width
+          const mh = ph;
+          for (let dy = 0; dy < mh; dy++) {
+            for (let dx = 0; dx < mw; dx++) {
+              visible.add(`${m.x + dx},${m.y + dy}`);
+            }
+          }
+        });
+      });
+
+      // Permanent reveal: merge current visibility into the running accumulated set.
+      // Once a square is seen it stays revealed for the rest of the game session.
+      if (gameState.gameType?.permanent_fog_reveal && fogRevealedRef.current) {
+        visible.forEach(key => fogRevealedRef.current.add(key));
+        return fogRevealedRef.current; // includes all squares ever visible
+      }
+
+      return visible;
+    })();
+
     // Pre-compute attack radius splash squares for the hovered piece
     const attackRadiusSplashSquares = new Set();
     if (hoveredPiece && (hoveredPiece.attack_radius || 0) > 0 && hoveredMoves.length > 0) {
@@ -5002,6 +5098,9 @@ const LiveGame = () => {
             : 'move')
           : null;
 
+        // Whether this square is hidden by fog (used to suppress piece/indicator rendering)
+        const isFogged = !!(fogVisibleSquares && !fogVisibleSquares.has(`${gameX},${gameY}`));
+
         squares.push(
           <div
             key={`${displayX}-${displayY}`}
@@ -5077,7 +5176,7 @@ const LiveGame = () => {
               </svg>
             )}
             {/* Special square indicator (letter overlay) */}
-            {specialSquareType && (
+            {!isFogged && specialSquareType && (
               <div className={`${styles["special-square-indicator"]} ${styles[specialSquareType]}`}>
                 {specialSquareType === 'promotion' && 'P'}
                 {specialSquareType === 'range' && 'R'}
@@ -5108,7 +5207,7 @@ const LiveGame = () => {
                 pointerEvents: 'none'
               }} />
             )}
-            {isAnchor && (() => {
+            {isAnchor && !isFogged && (() => {
               const pieceTeam = piece.player_id || piece.team;
               const isOwnPiece = currentPlayer && (pieceTeam === currentPlayer.position || piece.is_neutral);
               const canDragForMove = isMyTurn && (gameState?.status === 'active' || gameState?.status === 'ready') && isOwnPiece;
@@ -5257,6 +5356,12 @@ const LiveGame = () => {
             {burnAnimations.filter(a => a.x === gameX && a.y === gameY).map(anim => (
               <div key={anim.id} className={styles["burn-float"]} style={{ fontSize: `${Math.max(12, squareSize * 0.3)}px`, left: '50%' }}>🔥-{anim.damage}</div>
             ))}
+            {/* Fog of War overlay — covers this square if not visible to the current player */}
+            {isFogged && (
+              <div className={styles["fog-overlay"]}>
+                <span className={styles["fog-wisp"]} />
+              </div>
+            )}
           </div>
         );
       }

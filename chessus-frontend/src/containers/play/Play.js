@@ -55,6 +55,7 @@ const Play = () => {
   const [rated, setRated] = useState(true);
   const [allowPremoves, setAllowPremoves] = useState(true);
   const [premoveTimeCost, setPremoveTimeCost] = useState(false);
+  const [fogOfWarEnabled, setFogOfWarEnabled] = useState(true);
   const [showAdditionalOptions, setShowAdditionalOptions] = useState(false);
   const additionalOptionsRef = useRef(null);
   const ongoingGamesRef = useRef(null); // for scroll-to in limit modal
@@ -196,6 +197,8 @@ const Play = () => {
     }
 
     setSelectedGameType(gameType);
+    // Default fog option to on if the game type has fog enabled
+    setFogOfWarEnabled(!!gameType.fog_of_war);
     localStorage.setItem('lastPlayedGameType', String(gameType.id));
 
     if (syncQueryParam) {
@@ -858,7 +861,8 @@ const Play = () => {
         vsComputer,
         botDifficulty: vsComputer ? botDifficulty : undefined,
         materialClockPenalty: (timeControlMinutes && materialClockPenalty) ? true : undefined,
-        materialClockHandicap: (timeControlMinutes && materialClockHandicap) ? true : undefined
+        materialClockHandicap: (timeControlMinutes && materialClockHandicap) ? true : undefined,
+        ...(selectedGameType?.fog_of_war ? { fogOfWarEnabled } : {})
       };
 
       // Add challenge data if challenging a friend
@@ -2321,6 +2325,17 @@ const Play = () => {
                 onChange={(v) => { setMaterialClockHandicap(v); if (v) setMaterialClockPenalty(false); }}
                 label="Material Clock Handicap"
                 tooltip={<InfoTooltip text="The player with more material gets less time, balancing the advantage" />}
+              />
+            </div>
+            )}
+
+            {!!selectedGameType?.fog_of_war && (
+            <div className={`${styles["form-group"]} ${styles["checkbox-group"]}`}>
+              <ToggleSwitch
+                checked={fogOfWarEnabled}
+                onChange={(v) => setFogOfWarEnabled(v)}
+                label="Fog of War"
+                tooltip={<InfoTooltip text="When on, each player can only see squares reachable by their own pieces. Squares outside that range are hidden by a smoky overlay." />}
               />
             </div>
             )}

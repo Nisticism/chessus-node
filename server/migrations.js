@@ -4193,6 +4193,27 @@ const runMigrations = async () => {
   }
 
   // ── Feature TODO list ────────────────────────────────────────────────────
+  {
+    const exists = await columnExists('game_types', 'fog_of_war');
+    if (!exists) {
+      await runMigration(
+        `ALTER TABLE game_types ADD COLUMN fog_of_war TINYINT(1) DEFAULT 0 COMMENT 'If true, squares not reachable by any of a player''s pieces are hidden (fog of war)'`,
+        'Add game_types.fog_of_war'
+      );
+      migrationsRun++;
+    }
+  }
+  {
+    const exists = await columnExists('game_types', 'permanent_fog_reveal');
+    if (!exists) {
+      await runMigration(
+        `ALTER TABLE game_types ADD COLUMN permanent_fog_reveal TINYINT(1) DEFAULT 0 COMMENT 'If true (and fog_of_war is on), squares a player reveals stay visible for the rest of the game'`,
+        'Add game_types.permanent_fog_reveal'
+      );
+      migrationsRun++;
+    }
+  }
+
   // Internal admin tool to track potential features (unstarted -> in_progress
   // -> completed | abandoned).
   try {

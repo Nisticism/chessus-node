@@ -481,6 +481,23 @@ const Step2WinConditions = ({ gameData, updateGameData }) => {
       </ToggleRow>
 
       <ToggleRow
+        title="Fog of War"
+        tooltip="When enabled, each player can only see squares that are reachable by movement or attack from their own pieces. Squares outside this visible area are hidden by a smoky fog overlay — enemy pieces and special squares within the fog are concealed. Visibility updates whenever pieces move."
+        checked={gameData.fog_of_war === true || gameData.fog_of_war === 1}
+        onChange={(val) => {
+          handleChange("fog_of_war", val);
+          if (!val) handleChange("permanent_fog_reveal", false);
+        }}
+      >
+        <ToggleRow
+          title="Permanent Reveal"
+          tooltip="Once a square is revealed by one of your pieces, it stays visible for the rest of the game — even after your pieces move away. Enemy pieces that later enter a revealed square are still hidden until a friendly piece can currently see that square."
+          checked={gameData.permanent_fog_reveal === true || gameData.permanent_fog_reveal === 1}
+          onChange={(val) => handleChange("permanent_fog_reveal", val)}
+        />
+      </ToggleRow>
+
+      <ToggleRow
         title="Forced Capture"
         tooltip="When enabled, if any of your pieces can make a capturing move on your turn, you MUST make a capture (any capture). Used in Checkers-style and anti-chess games. Non-capture moves will be rejected when captures are available."
         checked={gameData.forced_capture_condition === true}

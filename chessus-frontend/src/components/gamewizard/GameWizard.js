@@ -103,6 +103,8 @@ const GameWizard = ({ editGameId }) => {
     control_squares_string: "",
     randomized_starting_positions: "",
     other_game_data: "",
+    fog_of_war: false,
+    permanent_fog_reveal: false,
   });
 
   const totalSteps = 4;
@@ -225,6 +227,8 @@ const GameWizard = ({ editGameId }) => {
             other_game_data: existingGame.other_game_data || "",
             start_repositions: existingGame.start_repositions != null ? Number(existingGame.start_repositions) : 0,
             reposition_key_pieces_only: Boolean(existingGame.reposition_key_pieces_only),
+            fog_of_war: Boolean(existingGame.fog_of_war),
+            permanent_fog_reveal: Boolean(existingGame.permanent_fog_reveal),
           });
           setIsEditMode(true);
           setIsDraftMode(Boolean(existingGame.is_draft));

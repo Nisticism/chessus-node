@@ -4,6 +4,21 @@ import styles from "./changelog.module.scss";
 
 const changelogData = [
   {
+    date: "May 15, 2026",
+    title: "New game mechanic: Fog of War",
+    items: [
+      "New game mechanic: Fog of War — when enabled in the game wizard, each player can only see squares reachable by movement or attack from their own pieces. All other squares are hidden by a smoky animated overlay.",
+      "Enemy pieces, special squares, and board details within the fog are fully concealed until your pieces can reach those squares.",
+      "Fog visibility updates in real time as pieces move around the board.",
+      "When hosting a game with Fog of War enabled, the Additional Options section of the host modal includes a toggle to turn fog on or off for that specific game.",
+      "Fog of War is described on the game detail page under Special Rules.",
+      "Pieces now reveal all squares they can attack, even when no enemy occupies those squares — for example, a pawn lights up its diagonal capture squares even on an otherwise empty board.",
+      "First-N-move fog visibility now updates immediately when a piece uses its special move, rather than showing the extended range for one extra turn.",
+      "Fixed: fog correctly hides pieces and special squares (promotion, range, control, custom) on squares that are not yet visible.",
+      "Fixed: Fog of War and Permanent Reveal settings now load correctly when editing an existing game in the wizard.",
+    ],
+  },
+  {
     date: "May 14, 2026",
     title: "Bug fixes: draw offers and submitted moves now survive server restarts; deleted game types no longer cause console error loops",
     items: [
