@@ -4868,16 +4868,29 @@ const LiveGame = () => {
     // ── Fog of War visibility ────────────────────────────────────────────────
     // fogVisibleSquares is a Set<"x,y"> of squares the viewing player can see.
     // null means fog is disabled (all squares visible).
+    //
+    // When a move is staged/pending (awaiting confirmation), compute fog from the
+    // PRE-MOVE piece positions so players can't probe opponent visibility by
+    // sliding pieces around before committing their turn.
+    const fogPieces = (gameState.fogOfWarEnabled && (pendingMove || stagedSimulMove) && preConfirmState)
+      ? parsePieces(preConfirmState.pieces)
+      : pieces;
+
     const fogVisibleSquares = (() => {
-      const isFogActive = !isGhostMode && gameState.fogOfWarEnabled && !isSpectator && currentPlayer;
+      // Spectators in fog games see the union of both players' visible squares
+      // (they see the combined board, not through any individual player's fog).
+      const isFogActive = !isGhostMode && gameState.fogOfWarEnabled && (currentPlayer || isSpectator);
       if (!isFogActive) return null;
 
-      const viewerPosition = currentPlayer.position;
+      // viewerPosition: player's own position, or null for spectators (see both sides).
+      const viewerPosition = isSpectator ? null : currentPlayer.position;
       const visible = new Set();
 
-      pieces.forEach(p => {
+      fogPieces.forEach(p => {
         const pTeam = p.player_id ?? p.team;
-        if (pTeam !== viewerPosition) return;
+        // Players see squares reachable by their own pieces only.
+        // Spectators see squares reachable by EITHER player's pieces.
+        if (viewerPosition !== null && pTeam !== viewerPosition) return;
         // The piece's own footprint is always visible
         const pw = p.piece_width || 1;
         const ph = p.piece_height || 1;
@@ -4890,7 +4903,7 @@ const LiveGame = () => {
         // skipCheckFilter=true: raw reachability, not legality.
         // forFog=true: also include capture-range squares even when empty (e.g. pawn diagonals)
         //   WITHOUT skipping path checks (unlike forPremove).
-        const moves = calculateValidMoves(p, pieces, boardWidth, boardHeight, true, false, false, true);
+        const moves = calculateValidMoves(p, fogPieces, boardWidth, boardHeight, true, false, false, true);
         moves.forEach(m => {
           const mw = pw; // destination footprint width matches piece width
           const mh = ph;
@@ -6218,6 +6231,13 @@ const LiveGame = () => {
           <div className={styles["move-history-column"]}>
             <div className={styles["move-history"]}>
               <h3>Move History</h3>
+              {/* Hide move history during active fog games — move notation reveals piece positions */}
+              {gameState.fogOfWarEnabled && gameState.status === 'active' ? (
+                <div style={{ color: 'var(--text-dim)', textAlign: 'center', padding: '16px 12px', fontSize: '0.85rem', lineHeight: '1.5' }}>
+                  Move history is hidden while a fog of war game is in progress.
+                </div>
+              ) : (
+              <>
               <div className={styles["moves-list"]}>
                 <div className={styles["moves-header"]}>
                   <span className={styles["move-number-header"]}>#</span>
@@ -6273,6 +6293,7 @@ const LiveGame = () => {
                 </div>
                 </>
               )}
+              </>)}
             </div>
 
             {/* Game Options */}

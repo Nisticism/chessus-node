@@ -4,6 +4,15 @@ import styles from "./changelog.module.scss";
 
 const changelogData = [
   {
+    date: "May 18, 2026",
+    title: "Fog of War security fixes: move history hidden, spectator fog, correspondence probe prevention",
+    items: [
+      "Fixed: move history is now hidden during active fog of war games — move notation and the board replay controls revealed piece positions and have been replaced with a notice until the game ends.",
+      "Fixed: spectators in fog of war games no longer see the full board. Spectators now see the union of both players' visible squares, preventing them from relaying hidden piece positions via in-game chat.",
+      "Fixed: in correspondence and staged simultaneous-turn games, sliding a piece to a new square before confirming the move no longer temporarily expands your fog visibility. Fog is now computed from the board state before the pending move until the turn is fully submitted.",
+    ],
+  },
+  {
     date: "May 15, 2026",
     title: "New game mechanic: Fog of War",
     items: [
