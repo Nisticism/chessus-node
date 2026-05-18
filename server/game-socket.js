@@ -492,6 +492,10 @@ function broadcastGameOver(io, gameId, gameState, payload) {
   }
   // Fire-and-forget; do not block the move handler
   notifyPlayersOfGameOutcome(io, gameId, gameState, payload?.winner, payload?.reason);
+  // Release in-memory game state after a delay so any reconnecting player
+  // can still receive the gameOver event, but completed games don't accumulate
+  // in the activeGames map indefinitely (memory leak).
+  setTimeout(() => activeGames.delete(String(gameId)), 5 * 60 * 1000);
 }
 
 /**
@@ -7352,7 +7356,8 @@ function initializeSocket(server) {
               const dbHelpers = require("./db-helpers");
               const movingPlayer = gameState.players.find(p => p.id === userId);
               const opponent = gameState.players.find(p => p.id !== userId);
-              if (opponent) {
+              // Skip notification for bot opponents — they have no DB user row.
+              if (opponent && opponent.id !== 'bot' && Number.isInteger(opponent.id)) {
                 // Check if opponent is currently viewing this game (in the game room)
                 const opponentSocketId = userSockets.get(opponent.id.toString());
                 const opponentInGame = opponentSocketId && io.sockets.sockets.get(opponentSocketId)?.rooms?.has(`game-${gameId}`);

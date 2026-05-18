@@ -44,10 +44,11 @@ module.exports = {
       instances: 1,
       exec_mode: "fork",
       // Restart automatically if memory grows past this — well below OOM
-      max_memory_restart: "900M",
-      // Tell V8 to allow up to ~700MB of old-space heap
-      // (leaves headroom for TF native allocations on a 1-2 GB box)
-      node_args: "--max-old-space-size=700",
+      max_memory_restart: "1100M",
+      // Tell V8 to allow up to ~900MB of old-space heap.
+      // max_memory_restart is set to 1100M so pm2 restarts cleanly before
+      // the OS OOM killer fires (keep ~200MB gap above the V8 cap).
+      node_args: "--max-old-space-size=900",
       // Restart on crash with backoff
       autorestart: true,
       max_restarts: 10,
