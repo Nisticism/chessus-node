@@ -5140,10 +5140,10 @@ const LiveGame = () => {
               ${isViaForDcCapture ? styles["dc-via-capture"] : ''}
               ${isHoverViaForDcMove ? styles["hover-dc-via-move"] : ''}
               ${isHoverViaForDcCapture ? styles["hover-dc-via-capture"] : ''}
-              ${isLastMoveFrom ? (isLight ? styles["last-move-from-light"] : styles["last-move-from-dark"]) : ''}
-              ${isLastMoveTo ? styles["last-move-to"] : ''}
-              ${isFadingLastMoveFrom ? `${isLight ? styles["last-move-from-light"] : styles["last-move-from-dark"]} ${styles["last-move-fading"]}` : ''}
-              ${isFadingLastMoveTo ? `${styles["last-move-to"]} ${styles["last-move-fading"]}` : ''}
+              ${isLastMoveFrom && !isFogged ? (isLight ? styles["last-move-from-light"] : styles["last-move-from-dark"]) : ''}
+              ${isLastMoveTo && !isFogged ? styles["last-move-to"] : ''}
+              ${isFadingLastMoveFrom && !isFogged ? `${isLight ? styles["last-move-from-light"] : styles["last-move-from-dark"]} ${styles["last-move-fading"]}` : ''}
+              ${isFadingLastMoveTo && !isFogged ? `${styles["last-move-to"]} ${styles["last-move-fading"]}` : ''}
               ${canMove ? styles["can-move"] : ''}
               ${isInCheck ? styles["in-check"] : ''}
               ${isPremoveFrom || isPremoveTo ? styles["premove"] : ''}
@@ -5175,7 +5175,7 @@ const LiveGame = () => {
             {/* Ranged move indicator — single span, no container, avoids DOM churn */}
             {activeIsRanged && <span className={styles["ranged-icon"]}>{`\uD83D\uDCA5`}</span>}
             {/* Directional arrow on last-move "from" square */}
-            {arrowAngleDeg !== null && !hideMoveArrow && (
+            {arrowAngleDeg !== null && !hideMoveArrow && !isFogged && (
               <svg
                 className={`${styles["last-move-arrow"]}${isFadingLastMoveFrom ? ` ${styles["last-move-arrow-fading"]}` : ''}`}
                 style={{ transform: `rotate(${arrowAngleDeg}deg)` }}
