@@ -542,21 +542,19 @@ const LiveGame = () => {
       if (fadeTimeoutRef.current) clearTimeout(fadeTimeoutRef.current);
       fadeTimeoutRef.current = setTimeout(() => setFadingLastMoves([]), 2000);
     }
-    // Compute current lastMoves (including multi-action turn pieces) for next snapshot
-    const actionsPerTurn = gameState?.gameType?.actions_per_turn || 1;
+    // Compute current lastMoves for next snapshot.
+    // Collect all consecutive moves from the same player position so that
+    // must_move_if_able extra moves and multi-action-per-turn moves are all
+    // highlighted — not just the single last move.
     const moves = [];
-    if (actionsPerTurn <= 1) {
-      moves.push(last);
-    } else {
-      const turnPosition = last?.position;
-      if (turnPosition != null) {
-        for (let i = lastIdx; i >= 0 && i > lastIdx - actionsPerTurn; i--) {
-          if (history[i].position !== turnPosition) break;
-          moves.push(history[i]);
-        }
-      } else {
-        moves.push(last);
+    const turnPosition = last?.position;
+    if (turnPosition != null) {
+      for (let i = lastIdx; i >= 0; i--) {
+        if (history[i].position !== turnPosition) break;
+        moves.push(history[i]);
       }
+    } else {
+      moves.push(last);
     }
     prevLastMovesRef.current = moves;
     prevLastMoveSigRef.current = sig;
@@ -4790,17 +4788,17 @@ const LiveGame = () => {
     const lastMove = isGhostMode
       ? gameState.moveHistory[ghostMoveIndex] || null
       : gameState.moveHistory?.slice(-1)[0];
-    // For multi-action turns, collect all moves from the last completed turn
-    const actionsPerTurn = gameState.gameType?.actions_per_turn || 1;
+    // Collect all consecutive moves from the same player position as the last
+    // move. This handles both multi-action-per-turn games and must_move_if_able
+    // games where extra free moves add to the same turn without a turn switch.
     const lastMoves = (() => {
       if (!lastMove) return [];
-      if (actionsPerTurn <= 1) return [lastMove];
       const history = gameState.moveHistory || [];
       const endIdx = isGhostMode ? ghostMoveIndex : history.length - 1;
       const turnPosition = history[endIdx]?.position;
       if (turnPosition == null) return [lastMove];
       const moves = [];
-      for (let i = endIdx; i >= 0 && i > endIdx - actionsPerTurn; i--) {
+      for (let i = endIdx; i >= 0; i--) {
         if (history[i].position !== turnPosition) break;
         moves.push(history[i]);
       }

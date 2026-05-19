@@ -499,6 +499,48 @@ function broadcastGameOver(io, gameId, gameState, payload) {
 }
 
 /**
+ * Send a "your turn" notification to the opponent in correspondence or
+ * no-time-control games. Shared by makeMove, promotePiece, skipCaptureAction,
+ * and skipRangedCaptureAction so that every turn-switching path notifies the
+ * waiting player regardless of how the turn ended.
+ * @param {object}       io       - socket.io server
+ * @param {string|number} gameId
+ * @param {object}       gameState
+ * @param {string|number} moverId - userId of the player who just acted
+ */
+async function sendCorrespondenceMoveNotification(io, gameId, gameState, moverId) {
+  if (!(gameState.status === 'active' && (gameState.isCorrespondence || !gameState.timeControl))) return;
+  try {
+    const dbHelpers = require('./db-helpers');
+    const movingPlayer = gameState.players.find(p => p.id === moverId);
+    const opponent = gameState.players.find(p => p.id !== moverId);
+    // Skip notification for bot opponents — they have no DB user row.
+    if (!opponent || opponent.id === 'bot' || !Number.isInteger(opponent.id)) return;
+    const opponentSocketId = userSockets.get(opponent.id.toString());
+    const opponentInGame = opponentSocketId && io.sockets.sockets.get(opponentSocketId)?.rooms?.has(`game-${gameId}`);
+    if (opponentInGame) return;
+    const moveNum = gameState.moveHistory.length;
+    const title = `${movingPlayer?.username || 'Opponent'} made a move`;
+    const content = `Move #${moveNum} in your ${gameState.isCorrespondence ? 'correspondence' : ''} game. It's your turn!`;
+    const actionUrl = `/play/${gameId}`;
+    const existing = await dbHelpers.findUnreadNotification(opponent.id, 'game_move', parseInt(gameId));
+    if (existing) {
+      await dbHelpers.updateNotification(existing.id, { sender_id: moverId, title, content });
+      const updatedNotification = { ...existing, sender_id: moverId, title, content, sender_username: movingPlayer?.username };
+      if (opponentSocketId) io.to(opponentSocketId).emit('newNotification', updatedNotification);
+    } else {
+      const notification = await dbHelpers.createNotification({
+        user_id: opponent.id, sender_id: moverId, type: 'game_move',
+        title, content, related_id: parseInt(gameId), action_url: actionUrl
+      });
+      if (opponentSocketId) io.to(opponentSocketId).emit('newNotification', { ...notification, sender_username: movingPlayer?.username });
+    }
+  } catch (notifErr) {
+    console.error('Error sending move notification:', notifErr);
+  }
+}
+
+/**
  * Detect a brand-new game whose starting position is already in a decided
  * state (checkmate / stalemate / capture-condition met / etc.) and end it
  * immediately with reason 'initial_position'. Skips ELO updates so neither
@@ -7351,55 +7393,7 @@ function initializeSocket(server) {
           });
 
           // Send notification for correspondence or no-time-limit games
-          if (gameState.status === 'active' && (gameState.isCorrespondence || !gameState.timeControl)) {
-            try {
-              const dbHelpers = require("./db-helpers");
-              const movingPlayer = gameState.players.find(p => p.id === userId);
-              const opponent = gameState.players.find(p => p.id !== userId);
-              // Skip notification for bot opponents — they have no DB user row.
-              if (opponent && opponent.id !== 'bot' && Number.isInteger(opponent.id)) {
-                // Check if opponent is currently viewing this game (in the game room)
-                const opponentSocketId = userSockets.get(opponent.id.toString());
-                const opponentInGame = opponentSocketId && io.sockets.sockets.get(opponentSocketId)?.rooms?.has(`game-${gameId}`);
-                
-                if (!opponentInGame) {
-                  const moveNum = gameState.moveHistory.length;
-                  const title = `${movingPlayer?.username || 'Opponent'} made a move`;
-                  const content = `Move #${moveNum} in your ${gameState.isCorrespondence ? 'correspondence' : ''} game. It's your turn!`;
-                  const actionUrl = `/play/${gameId}`;
-
-                  // Check for existing unread notification for this game
-                  const existing = await dbHelpers.findUnreadNotification(opponent.id, 'game_move', parseInt(gameId));
-                  if (existing) {
-                    await dbHelpers.updateNotification(existing.id, {
-                      sender_id: userId,
-                      title,
-                      content
-                    });
-                    const updatedNotification = { ...existing, sender_id: userId, title, content, sender_username: movingPlayer?.username };
-                    if (opponentSocketId) {
-                      io.to(opponentSocketId).emit('newNotification', updatedNotification);
-                    }
-                  } else {
-                    const notification = await dbHelpers.createNotification({
-                      user_id: opponent.id,
-                      sender_id: userId,
-                      type: 'game_move',
-                      title,
-                      content,
-                      related_id: parseInt(gameId),
-                      action_url: actionUrl
-                    });
-                    if (opponentSocketId) {
-                      io.to(opponentSocketId).emit('newNotification', { ...notification, sender_username: movingPlayer?.username });
-                    }
-                  }
-                }
-              }
-            } catch (notifErr) {
-              console.error('Error sending move notification:', notifErr);
-            }
-          }
+          await sendCorrespondenceMoveNotification(io, gameId, gameState, userId);
 
           // If player is in check, emit a separate check event for visibility
           if (checkResult.inCheck) {
@@ -7749,6 +7743,10 @@ function initializeSocket(server) {
           processBotTurn(io, gameId, gameState);
         }
 
+        // Notify opponent in correspondence / no-time-control games that their
+        // turn has started (promotion always ends the mover's turn).
+        await sendCorrespondenceMoveNotification(io, gameId, gameState, userId);
+
       } catch (error) {
         console.error("Error processing promotion:", error);
         socket.emit("error", { message: "Failed to promote piece" });
@@ -7893,6 +7891,9 @@ function initializeSocket(server) {
             gameState.currentTurn === gameState.botPlayer.position) {
           processBotTurn(io, gameId, gameState);
         }
+
+        // Notify opponent in correspondence / no-time-control games.
+        await sendCorrespondenceMoveNotification(io, gameId, gameState, userId);
       } catch (err) {
         console.error("Error in skipCaptureAction:", err);
         socket.emit("error", { message: "Failed to skip capture action" });
@@ -8090,6 +8091,9 @@ function initializeSocket(server) {
             gameState.currentTurn === gameState.botPlayer.position) {
           processBotTurn(io, gameId, gameState);
         }
+
+        // Notify opponent in correspondence / no-time-control games.
+        await sendCorrespondenceMoveNotification(io, gameId, gameState, userId);
       } catch (err) {
         console.error("Error in skipRangedCaptureAction:", err);
         socket.emit("error", { message: "Failed to skip ranged capture action" });
