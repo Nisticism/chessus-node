@@ -218,6 +218,19 @@ app.use(helmet({
 // Gzip compression for all responses
 app.use(compression());
 
+// Cross-origin isolation headers required by Fairy-Stockfish's threaded WASM
+// build (needs SharedArrayBuffer). `credentialless` lets cross-origin resources
+// (e.g. uploaded images served from this same origin, third-party images) load
+// without requiring explicit CORP headers everywhere. The uploads route at
+// /uploads still sets `Cross-Origin-Resource-Policy: cross-origin` explicitly.
+// Without these, browsers refuse to expose SharedArrayBuffer in production and
+// the FS engine fails to start.
+app.use((req, res, next) => {
+  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+  res.setHeader('Cross-Origin-Embedder-Policy', 'credentialless');
+  next();
+});
+
 // Track 429s in-memory so the admin memory-stats endpoint can surface them.
 let rateLimitHits = 0;
 

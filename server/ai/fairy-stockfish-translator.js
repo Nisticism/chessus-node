@@ -246,6 +246,176 @@ function emitAtomsForGroup(piece, group, isCapture) {
   return chunks;
 }
 
+// ---------- custom squares -> Betza ----------
+
+/**
+ * Pick a Betza atom name for a leaper of canonical size (m, n).
+ * m = max(|row|, |col|), n = min(|row|, |col|).
+ */
+function atomForLeaper(m, n) {
+  if (n === 0) {
+    if (m === 1) return 'W'; // wazir
+    if (m === 2) return 'D'; // dabbaba
+  }
+  if (m === n) {
+    if (m === 1) return 'F'; // ferz
+    if (m === 2) return 'A'; // alfil
+  }
+  if (m === 2 && n === 1) return 'N'; // knight
+  if (m === 3 && n === 1) return 'C'; // camel
+  if (m === 3 && n === 2) return 'Z'; // zebra
+  return `(${m},${n})`;
+}
+
+/**
+ * For a canonical (m, n) leaper, return a map from Betza direction prefix
+ * to the set of `{row, col}` offset keys it covers.
+ * Offset keys are formatted "row,col" with explicit signs (e.g. "-2,1").
+ *
+ * Convention: row < 0 = forward (toward opponent home, matching Chessus's
+ * "up" direction which maps to Betza 'f'); col > 0 = right (Betza 'r').
+ */
+function directionGroupsFor(m, n) {
+  if (n === 0) {
+    // Orthogonal leaper (W, D): 4 distinct squares.
+    return {
+      f:  [`-${m},0`],
+      b:  [`${m},0`],
+      r:  [`0,${m}`],
+      l:  [`0,-${m}`],
+    };
+  }
+  if (m === n) {
+    // Diagonal leaper (F, A): 4 distinct squares.
+    return {
+      f:  [`-${m},${m}`, `-${m},-${m}`],
+      b:  [`${m},${m}`, `${m},-${m}`],
+      r:  [`-${m},${m}`, `${m},${m}`],
+      l:  [`-${m},-${m}`, `${m},-${m}`],
+      fr: [`-${m},${m}`],
+      fl: [`-${m},-${m}`],
+      br: [`${m},${m}`],
+      bl: [`${m},-${m}`],
+    };
+  }
+  // Oblique leaper (N, C, Z, etc.): 8 distinct squares.
+  return {
+    f:  [`-${m},${n}`, `-${m},-${n}`, `-${n},${m}`, `-${n},-${m}`],
+    b:  [`${m},${n}`,  `${m},-${n}`,  `${n},${m}`,  `${n},-${m}`],
+    r:  [`-${m},${n}`, `${m},${n}`,   `-${n},${m}`, `${n},${m}`],
+    l:  [`-${m},-${n}`,`${m},-${n}`,  `-${n},-${m}`,`${n},-${m}`],
+    fr: [`-${m},${n}`, `-${n},${m}`],
+    fl: [`-${m},-${n}`,`-${n},-${m}`],
+    br: [`${m},${n}`,  `${n},${m}`],
+    bl: [`${m},-${n}`, `${n},-${m}`],
+  };
+}
+
+function allOffsetsFor(m, n) {
+  if (n === 0)   return [`-${m},0`, `${m},0`, `0,${m}`, `0,-${m}`];
+  if (m === n)   return [`-${m},${m}`, `-${m},-${m}`, `${m},${m}`, `${m},-${m}`];
+  return [
+    `-${m},${n}`, `-${m},-${n}`, `${m},${n}`, `${m},-${n}`,
+    `-${n},${m}`, `-${n},-${m}`, `${n},${m}`, `${n},-${m}`,
+  ];
+}
+
+/**
+ * Translate a list of `{row, col}` custom-square offsets into Betza chunks.
+ *
+ * @param {Array|string|null} squaresRaw  - either the parsed array, a JSON
+ *                                          string, or null/undefined.
+ * @param {string} mcPrefix               - 'm' for movement-only,
+ *                                          'c' for capture-only.
+ * @returns {Array<string>|null}          - Betza chunks (possibly empty)
+ *                                          or null if the offset pattern
+ *                                          cannot be expressed in Betza.
+ */
+function customSquaresToBetza(squaresRaw, mcPrefix) {
+  if (squaresRaw == null) return [];
+  let squares;
+  try {
+    squares = typeof squaresRaw === 'string' ? JSON.parse(squaresRaw) : squaresRaw;
+  } catch (_) { return []; }
+  if (!Array.isArray(squares) || squares.length === 0) return [];
+
+  // Group offsets by canonical (m, n).
+  const groups = new Map(); // key "m,n" -> Set<"row,col">
+  for (const sq of squares) {
+    const row = toInt(sq && sq.row, 0);
+    const col = toInt(sq && sq.col, 0);
+    if (row === 0 && col === 0) continue;
+    const m = Math.max(Math.abs(row), Math.abs(col));
+    const n = Math.min(Math.abs(row), Math.abs(col));
+    const key = `${m},${n}`;
+    if (!groups.has(key)) groups.set(key, new Set());
+    groups.get(key).add(`${row},${col}`);
+  }
+
+  const chunks = [];
+  for (const [groupKey, have] of groups.entries()) {
+    const [m, n] = groupKey.split(',').map(Number);
+    const atom = atomForLeaper(m, n);
+    const all = allOffsetsFor(m, n);
+
+    // Fully symmetric -> emit unprefixed atom.
+    if (have.size === all.length && all.every(k => have.has(k))) {
+      chunks.push(`${mcPrefix}${atom}`);
+      continue;
+    }
+
+    // Greedy cover with direction prefixes. For oblique leapers (n>0, m!=n),
+    // try the 4-square cardinal prefixes (f/b/r/l) first to prefer shorter
+    // output, then fall back to 2-square quadrant prefixes (fr/fl/br/bl).
+    const dirGroups = directionGroupsFor(m, n);
+    const remaining = new Set(have);
+    const used = [];
+
+    if (n !== 0 && m !== n) {
+      for (const pref of ['f', 'b', 'r', 'l']) {
+        const grp = dirGroups[pref];
+        if (grp.every(k => remaining.has(k))) {
+          used.push(pref);
+          for (const k of grp) remaining.delete(k);
+        }
+      }
+    }
+    for (const pref of ['fr', 'fl', 'br', 'bl', 'f', 'b', 'r', 'l']) {
+      if (used.includes(pref)) continue;
+      const grp = dirGroups[pref];
+      if (!grp) continue;
+      if (grp.every(k => remaining.has(k))) {
+        used.push(pref);
+        for (const k of grp) remaining.delete(k);
+      }
+    }
+
+    if (remaining.size > 0) {
+      // Leftover squares can't be expressed by our supported prefixes.
+      // Single isolated squares within an oblique leaper would need Betza's
+      // v/s sub-modifiers, which we don't emit.
+      return null;
+    }
+    for (const pref of used) chunks.push(`${mcPrefix}${pref}${atom}`);
+  }
+  return chunks;
+}
+
+/**
+ * Returns true when the piece's custom_movement_squares /
+ * custom_attack_squares can be translated. Returns false when either array
+ * is non-empty but contains a pattern we can't express. Used by the
+ * compatibility checker.
+ */
+function canTranslateCustomSquares(piece) {
+  if (!piece) return true;
+  const moveChunks = customSquaresToBetza(piece.custom_movement_squares, 'm');
+  if (moveChunks === null) return false;
+  const atkChunks = customSquaresToBetza(piece.custom_attack_squares, 'c');
+  if (atkChunks === null) return false;
+  return true;
+}
+
 function buildAtomChunk(sig, atom, sliderAtom, mcPrefix, dirPrefix) {
   // sig = { v, exact }
   // - v=99   -> infinite slider: prefix + dirPrefix + sliderAtom (R or B)
@@ -339,6 +509,17 @@ function pieceToBetza(piece) {
       }
     }
   }
+
+  // Custom movement / attack squares (freeform leaper offsets).
+  // Movement squares are movement-only (m prefix); attack squares are
+  // capture-only (c prefix). Returns null when the pattern isn't expressible
+  // in Betza, in which case we bail out and the game stays incompatible.
+  const customMoveChunks = customSquaresToBetza(piece.custom_movement_squares, 'm');
+  if (customMoveChunks === null) return null;
+  chunks.push(...customMoveChunks);
+  const customAtkChunks = customSquaresToBetza(piece.custom_attack_squares, 'c');
+  if (customAtkChunks === null) return null;
+  chunks.push(...customAtkChunks);
 
   const out = chunks.join('').trim();
   return out.length > 0 ? out : null;
@@ -715,6 +896,8 @@ function uciMoveToGameMove(uciMove, pieces, boardHeight) {
 module.exports = {
   buildCharMap,
   pieceToBetza,
+  customSquaresToBetza,
+  canTranslateCustomSquares,
   buildVariantINI,
   buildFEN,
   buildFENFromPlacements,

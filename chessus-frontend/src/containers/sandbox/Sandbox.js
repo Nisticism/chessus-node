@@ -1128,9 +1128,11 @@ const Sandbox = () => {
                                      pieceData.step_capture_value ||
                                      pieceData.special_scenario_captures;
 
-    // If piece can capture on move AND no separate capture fields, use movement logic
+    // If piece can capture on move AND no separate capture fields, use movement logic.
+    // Skip custom_movement_squares: those are MOVEMENT ONLY and never produce captures
+    // (captures must come from custom_attack_squares).
     if ((pieceData.can_capture_enemy_on_move === 1 || pieceData.can_capture_enemy_on_move === true) && !hasSeparateCaptureFields) {
-      return canPieceMoveTo(fromX, fromY, toX, toY, pieceData, playerPosition, skipExactRatio);
+      return canPieceMoveTo(fromX, fromY, toX, toY, pieceData, playerPosition, skipExactRatio, /* skipCustom */ true);
     }
 
     // Check directional capture

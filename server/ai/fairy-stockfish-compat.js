@@ -123,16 +123,27 @@ function pieceIncompatReasons(piece, isRoyal = false) {
       'Disable "Chain capture" in the piece wizard (Step 4).');
   }
 
-  // Custom freeform movement / attack squares: any non-empty array is incompatible
+  // Custom freeform movement / attack squares: incompatible only when the
+  // pattern can't be expressed as a Betza leaper subset (e.g. single isolated
+  // squares within an oblique leaper, which would need v/s sub-modifiers).
+  const translator = require('./fairy-stockfish-translator');
   const customMove = parseJsonSafe(piece.custom_movement_squares, []);
-  if (Array.isArray(customMove) && customMove.length > 0) {
-    push('custom_movement_squares', 'Uses custom movement squares.',
-      'Clear custom movement squares in the piece wizard (Step 2).');
-  }
   const customAtk = parseJsonSafe(piece.custom_attack_squares, []);
+  if (Array.isArray(customMove) && customMove.length > 0) {
+    const chunks = translator.customSquaresToBetza(customMove, 'm');
+    if (chunks === null) {
+      push('custom_movement_squares',
+        'Custom movement squares use a pattern that has no Betza equivalent (an oblique-leaper subset that can\'t be expressed as a forward/back/left/right or quadrant slice).',
+        'Edit the custom movement squares in the piece wizard (Step 2) so they cover a full leaper ring or a symmetric subset (e.g. all 4 forward squares, or a quadrant pair).');
+    }
+  }
   if (Array.isArray(customAtk) && customAtk.length > 0) {
-    push('custom_attack_squares', 'Uses custom attack squares.',
-      'Clear custom attack squares in the piece wizard (Step 3).');
+    const chunks = translator.customSquaresToBetza(customAtk, 'c');
+    if (chunks === null) {
+      push('custom_attack_squares',
+        'Custom attack squares use a pattern that has no Betza equivalent.',
+        'Edit the custom attack squares in the piece wizard (Step 3) so they cover a full leaper ring or a symmetric subset.');
+    }
   }
 
   // Additional movements / scenarios on direction (the `special_scenario_*` JSON columns)

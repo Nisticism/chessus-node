@@ -283,7 +283,8 @@ export function estimatePieceValue(piece, boardWidth = 8, boardHeight = 8) {
   const preCustMoveKeys   = new Set(moveSet);
   const preCustAttackKeys = new Set(attackMap.keys());
 
-  // Custom movement squares
+  // Custom movement squares (MOVEMENT ONLY — captures live on
+  // custom_attack_squares; never contribute to attack/threat).
   if (piece.custom_movement_squares) {
     try {
       const c = typeof piece.custom_movement_squares === 'string'
@@ -292,9 +293,7 @@ export function estimatePieceValue(piece, boardWidth = 8, boardHeight = 8) {
         for (const sq of c) {
           const x = cx + (sq.col || 0), y = cy + (sq.row || 0);
           if (!isOnBoard(x, y)) continue;
-          const key = `${x},${y}`;
-          moveSet.add(key);
-          if (canCaptureOnMove && !hasDedicatedCap) addAttack(key, firstMoveOnlyCapture ? 0.5 : 1.0);
+          moveSet.add(`${x},${y}`);
         }
       }
     } catch (_) {}

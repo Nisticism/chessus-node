@@ -10308,6 +10308,8 @@ function computePieceValue(piece, bw, bh) {
   }
 
   // --- CUSTOM MOVEMENT SQUARES (pixel-offset arrays) ---
+  // Movement-only: never contribute to attack/threat (captures live on
+  // custom_attack_squares).
   if (piece.custom_movement_squares) {
     try {
       const customs = typeof piece.custom_movement_squares === 'string'
@@ -10317,11 +10319,7 @@ function computePieceValue(piece, bw, bh) {
         for (const sq of customs) {
           const x = cx + (sq.col || 0), y = cy + (sq.row || 0);
           if (!isOnBoard(x, y)) continue;
-          const key = `${x},${y}`;
-          moveSet.add(key);
-          if (canCaptureOnMove && !hasDedicatedCap) {
-            addAttack(key, firstMoveOnlyCapture ? 0.5 : 1.0);
-          }
+          moveSet.add(`${x},${y}`);
         }
       }
     } catch (_) { /* ignore */ }
@@ -15389,7 +15387,8 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
     }
   }
   
-  // Custom movement squares
+  // Custom movement squares (MOVEMENT ONLY — never captures, even with
+  // can_capture_enemy_on_move set. Captures use custom_attack_squares.)
   if (piece.custom_movement_squares) {
     try {
       const customSquares = typeof piece.custom_movement_squares === 'string'
@@ -15405,16 +15404,9 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
           // Check if already in moves
           if (moves.some(m => m.x === targetX && m.y === targetY)) continue;
           const targetPiece = findPieceAtSquare(allPieces, targetX, targetY);
-          if (targetPiece) {
-            const targetOwner = targetPiece.team || targetPiece.player_id;
-            if (!targetPiece.cannot_be_captured) {
-              if (targetOwner !== pieceOwner && piece.can_capture_enemy_on_move) {
-                moves.push({ x: targetX, y: targetY });
-              } else if (targetOwner === pieceOwner && (piece.can_capture_allies || (!!gameType?.simultaneous_turns && (piece.can_capture_enemy_on_move || piece.can_capture_enemy_via_range)))) {
-                moves.push({ x: targetX, y: targetY });
-              }
-            }
-          } else {
+          // Only land on empty squares. Custom movement squares are
+          // movement-only; captures must come from custom_attack_squares.
+          if (!targetPiece) {
             moves.push({ x: targetX, y: targetY });
           }
         }
