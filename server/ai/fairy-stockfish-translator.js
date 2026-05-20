@@ -404,9 +404,20 @@ function buildVariantINI(gameType, pieceDefs, placements, charMap) {
   //  2) per-piece ends_game_on_capture without ends_game_on_checkmate
   //     (e.g. Knightfall): only the flagged piece types are loss targets.
   // Either flavour produces `extinctionValue = loss` with the union of the
-  // piece-type letters in `extinctionPieceTypes`. For (2) we also enable
-  // `extinctionPseudoRoyal = true` so the engine treats them as protected
-  // pieces during search (it tries hard not to lose them).
+  // piece-type letters in `extinctionPieceTypes`.
+  //
+  // extinctionPseudoRoyal is intentionally kept FALSE even for flavour (2).
+  // When true, FS treats extinction pieces as pseudo-royals and marks moves
+  // that leave them "in check" as illegal. This breaks win-in-1 captures:
+  // if capturing the opponent's last extinction piece would incidentally
+  // leave the bot's own last extinction piece under attack, FS declares the
+  // winning capture illegal and the engine never takes it. Chessus games
+  // like Knightfall have no such "must protect" constraint — you only lose
+  // when the piece IS captured, not when it is threatened. Without the flag,
+  // the engine still defends extinction pieces via normal alpha-beta
+  // evaluation (any line ending in their capture scores as -infinity); the
+  // only difference is that weakly-defended positions at the exact search
+  // horizon are slightly less covered — a small and acceptable tradeoff.
   const extinctionChars = new Set();
   if (toBool(gameType.lose_all_pieces_condition)) {
     for (const c of charMap.byPieceId.values()) {
@@ -418,9 +429,7 @@ function buildVariantINI(gameType, pieceDefs, placements, charMap) {
   }
   if (extinctionChars.size > 0) {
     lines.push('extinctionValue = loss');
-    const pseudoRoyal = (charMap.extinctionLossChars && charMap.extinctionLossChars.size > 0)
-      && !toBool(gameType.lose_all_pieces_condition);
-    lines.push(`extinctionPseudoRoyal = ${pseudoRoyal ? 'true' : 'false'}`);
+    lines.push('extinctionPseudoRoyal = false');
     lines.push(`extinctionPieceTypes = ${Array.from(extinctionChars).join('')}`);
   }
 
