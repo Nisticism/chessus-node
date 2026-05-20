@@ -851,7 +851,9 @@ const migrations = [
   { table: 'pieces', column: 'repeating_capture_change', sql: "ALTER TABLE pieces ADD COLUMN repeating_capture_change TINYINT(1) DEFAULT 0", description: "When 1, exact direction-change second-leg distances repeat infinitely (capture)." },
   { table: 'pieces', column: 'require_empty_via_capture', sql: "ALTER TABLE pieces ADD COLUMN require_empty_via_capture TINYINT(1) DEFAULT 0", description: "When 1, forces the direction-change turn square to be empty even if the piece has hopping abilities (capture)." },
   { table: 'pieces', column: 'require_direction_change', sql: "ALTER TABLE pieces ADD COLUMN require_direction_change TINYINT(1) DEFAULT 0", description: "When 1, the piece MUST use direction-change movement; straight-line moves to squares not reachable via DC are forbidden." },
-  { table: 'pieces', column: 'require_direction_change_capture', sql: "ALTER TABLE pieces ADD COLUMN require_direction_change_capture TINYINT(1) DEFAULT 0", description: "When 1, the piece MUST use direction-change captures; straight-line captures to squares not reachable via DC are forbidden." }
+  { table: 'pieces', column: 'require_direction_change_capture', sql: "ALTER TABLE pieces ADD COLUMN require_direction_change_capture TINYINT(1) DEFAULT 0", description: "When 1, the piece MUST use direction-change captures; straight-line captures to squares not reachable via DC are forbidden." },
+  // --- Fairy-Stockfish integration ---
+  { table: 'game_types', column: 'fairy_stockfish_deep_analysis', sql: "ALTER TABLE game_types ADD COLUMN fairy_stockfish_deep_analysis TINYINT(1) NOT NULL DEFAULT 0", description: "When 1, the Fairy-Stockfish computer player uses the server-side deep analysis queue for this game type instead of the client-side browser engine." }
 ];
 
 // Ensure physical_board_requests table exists (may have been created after tableMigrations ran)

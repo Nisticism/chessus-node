@@ -4,6 +4,7 @@ import PieceBoardPreview from "./PieceBoardPreview";
 import CustomSquareSelector from "./CustomSquareSelector";
 import NumberInput from "../common/NumberInput";
 import InfoTooltip from "./InfoTooltip";
+import FairyStockfishInfoNote from "../common/FairyStockfishInfoNote";
 import ToggleSwitch from "../common/ToggleSwitch";
 import { PIECE_WIZARD_TEXT } from "../../global/global";
 
@@ -292,6 +293,7 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
   return (
     <div className={styles["step-container"]}>
       <h2>Movement Configuration</h2>
+      <FairyStockfishInfoNote kind="pieceMovement" />
       <p className={styles["step-description"]}>
         Define how your piece moves on the board.
       </p>

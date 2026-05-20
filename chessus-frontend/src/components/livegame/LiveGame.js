@@ -30,6 +30,12 @@ import {
 import { totalMaterialValue } from "../../utils/pieceValueEstimator";
 import { getFallbackPieceImage } from "../../utils/pieceFallback";
 import { toggleUpvote, getUpvoteStatus } from "../../actions/games";
+import useFairyStockfish from "../../hooks/useFairyStockfish";
+import {
+  buildFEN as buildFairyFEN,
+  buildMoveHistoryUci as buildFairyMoveHistory,
+  uciMoveToGameMove as fairyUciToMove,
+} from "../../ai/fairyStockfishTranslator";
 
 const API_URL = (process.env.REACT_APP_API_URL || "http://localhost:3001") + "/api/";
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";
@@ -804,6 +810,280 @@ const LiveGame = () => {
     lastServerTickRef.current = Date.now();
     activeClockPlayerRef.current = botId;
   }, [botThinking, gameState?.botPlayer, gameState?.playerTimes]);
+
+  // -------- Fairy-Stockfish (client-side) bot integration --------
+  // When the bot's difficulty is 'stockfish' the browser runs the WASM
+  // engine and submits the move via `submitFairyStockfishMove`. We used to
+  // gate this behind `!gameType.fairy_stockfish_deep_analysis` so deep games
+  // could be served by a stronger server-side engine, but that engine isn't
+  // wired yet -- if we honored the flag the server would silently fall back
+  // to the built-in AI on every move (giving you a 'hard' bot in disguise,
+  // not Fairy Stockfish at all). Always run client-side until the server
+  // engine ships.
+  const isFairyClientBot = !!gameState?.botPlayer
+    && gameState.botPlayer.difficulty === 'stockfish';
+  const fairyStockfish = useFairyStockfish();
+  const [fairyTranslation, setFairyTranslation] = useState(null); // { variantIni, variantName, charMap, boardWidth, boardHeight }
+  const fairyStartedForRef = useRef(null); // gameTypeId we've already booted the engine for
+  const fairyMoveInFlightRef = useRef(false);
+  // Circuit-breaker: if the engine returns no/invalid moves several times in
+  // a row in the same game, stop calling it and let the server fallback take
+  // over for the rest of the game. Otherwise FoW games or unsupported
+  // variants spam fallback requests every turn.
+  const fairyFailureCountRef = useRef(0);
+  const fairyDisabledForGameRef = useRef(false);
+  // Reactive copy so the UI can render a notice when the engine is disabled.
+  const [fairyEngineDisabled, setFairyEngineDisabled] = useState(false);
+  // Track the last (gameId, turnNumber) we've already asked the server to
+  // play via fallback, so clock ticks don't trigger a flood of requests.
+  const fairyFallbackAskedRef = useRef('');
+  const FAIRY_MAX_CONSECUTIVE_FAILURES = 3;
+  // Mirror gameState into a ref so async tasks (engine bestmove resolve)
+  // can check the LATEST turn/status instead of the closure snapshot.
+  const gameStateRef = useRef(null);
+
+  // Fetch translation bundle (variant INI + char map) once per game type.
+  useEffect(() => {
+    if (!isFairyClientBot || !gameState?.gameType?.id) return;
+    if (fairyTranslation && fairyTranslation._gtid === gameState.gameType.id) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        // If the host clicked "Play anyway" past safe-to-ignore compat reasons
+        // (fog of war, alternate win conditions, etc.) the server stamps the
+        // bot with `forceStockfish`. Tell the translation endpoint so it
+        // doesn't 409 us out on those same reasons.
+        const ignoreSafe = !!gameState?.botPlayer?.forceStockfish;
+        const url = `${API_URL}fairy-stockfish/translation/${gameState.gameType.id}`
+          + (ignoreSafe ? '?ignoreSafe=1' : '');
+        const resp = await axios.get(url, { headers: authHeader() });
+        if (cancelled) return;
+        setFairyTranslation({ ...resp.data, _gtid: gameState.gameType.id });
+      } catch (err) {
+        console.error('[FairyStockfish] Failed to load translation bundle', err);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [isFairyClientBot, gameState?.gameType?.id, gameState?.botPlayer?.forceStockfish, fairyTranslation]);
+
+  // Boot the engine once the translation bundle is available.
+  useEffect(() => {
+    if (!isFairyClientBot || !fairyTranslation) return;
+    const gtid = fairyTranslation._gtid;
+    if (fairyStartedForRef.current === gtid) return;
+    fairyStartedForRef.current = gtid;
+    fairyStockfish.startEngine(fairyTranslation.variantIni, fairyTranslation.variantName)
+      .catch((err) => console.error('[FairyStockfish] startEngine failed', err));
+  }, [isFairyClientBot, fairyTranslation, fairyStockfish]);
+
+  // Keep gameStateRef in sync so async engine callbacks see the latest state.
+  useEffect(() => {
+    gameStateRef.current = gameState;
+  }, [gameState]);
+
+  // Reset circuit-breaker when entering a new game (different gameId).
+  useEffect(() => {
+    fairyFailureCountRef.current = 0;
+    fairyDisabledForGameRef.current = false;
+    setFairyEngineDisabled(false);
+  }, [gameId]);
+
+  // When it's the bot's turn, compute and submit a move.
+  useEffect(() => {
+    if (!isFairyClientBot) return;
+    if (!fairyStockfish.engineReady) return;
+    if (!fairyTranslation || !gameState) return;
+    if (fairyMoveInFlightRef.current) return;
+    if (gameState.status === 'completed') return;
+    const botPos = gameState.botPlayer.position;
+    if (gameState.currentTurn !== botPos) return;
+
+    // If the circuit breaker has tripped, don't run the engine -- but DO ask
+    // the server to play this move with its built-in AI, otherwise the bot
+    // appears to freeze for the rest of the game.
+    if (fairyDisabledForGameRef.current) {
+      const askedGameId = gameState?.id ?? gameId;
+      // De-dupe per (game, move number) so clock ticks don't spam requests.
+      const askKey = `${askedGameId}:${gameState?.totalHalfMoves ?? 0}:${gameState.currentTurn}`;
+      if (fairyFallbackAskedRef.current !== askKey) {
+        fairyFallbackAskedRef.current = askKey;
+        socket.emit('requestBotFallbackMove', {
+          gameId: parseInt(askedGameId, 10),
+          userId: currentUser?.id,
+          reason: 'engine_disabled_for_game',
+        });
+      }
+      return;
+    }
+
+    const fen = buildFairyFEN(
+      gameState.pieces,
+      fairyTranslation.boardWidth,
+      fairyTranslation.boardHeight,
+      gameState.currentTurn,
+      gameState.movesWithoutCapture || 0,
+      gameState.totalHalfMoves || 0,
+      fairyTranslation.charMap,
+    );
+    if (!fen) {
+      console.warn('[FairyStockfish] Failed to build FEN; cannot compute move');
+      return;
+    }
+
+    fairyMoveInFlightRef.current = true;
+    // Map botPlayer.stockfishLevel (1..5) to engine search settings.
+    // Strength is expressed primarily as search DEPTH so users see a stable
+    // skill knob instead of "the bot took N seconds".  The movetime is a
+    // hard upper bound so a runaway never holds up the UI.
+    //   1 - Beginner : Skill  1, depth  4 (cap 800ms)
+    //   2 - Casual   : Skill  6, depth  8 (cap 2s)
+    //   3 - Skilled  : Skill 12, depth 14 (cap 4s)
+    //   4 - Expert   : Skill 20, depth 20 (cap 10s, uses clock if available)
+    //   5 - Maximum  : Skill 20, depth 30 (cap 60s, uses clock if available)
+    const level = Math.max(1, Math.min(5,
+      Number(gameState.botPlayer.stockfishLevel) || 3
+    ));
+    const STRENGTH = {
+      1: { skillLevel:  1, depth:  4, movetime:   800, useClock: false },
+      2: { skillLevel:  6, depth:  8, movetime:  2000, useClock: false },
+      3: { skillLevel: 12, depth: 14, movetime:  4000, useClock: false },
+      4: { skillLevel: 20, depth: 20, movetime: 10000, useClock: true  },
+      5: { skillLevel: 20, depth: 30, movetime: 60000, useClock: true  },
+    };
+    const preset = STRENGTH[level];
+
+    // Use the strength preset's depth + movetime directly. We previously
+    // scaled the opening movetime down based on the game's total time budget,
+    // but in practice the engine moves quickly even at high depth, and the
+    // opening throttle made the bot pick obviously bad moves early because
+    // it never reached its target depth. Trust the preset.
+    const effectiveDepth    = preset.depth;
+    const effectiveMovetime = preset.movetime;
+
+    // Resolve bot's clock (seconds remaining) + per-move increment so the
+    // engine can spend its time intelligently on Expert/Maximum.
+    const botPlayerObj = gameState.players.find(p => p.position === botPos);
+    const humanPlayerObj = gameState.players.find(p => p.position !== botPos);
+    const botRemainingSec = botPlayerObj && gameState.playerTimes
+      ? Number(gameState.playerTimes[botPlayerObj.id]) : null;
+    const humanRemainingSec = humanPlayerObj && gameState.playerTimes
+      ? Number(gameState.playerTimes[humanPlayerObj.id]) : null;
+    const incrementSec = Number(gameState.increment || 0);
+
+    const searchOptions = {
+      skillLevel: preset.skillLevel,
+      depth: effectiveDepth,
+      movetime: effectiveMovetime,
+      // Stable per-game key so the worker only resets its TT when the game
+      // actually changes, instead of wiping it on every move.
+      gameKey: `g${gameId}`,
+    };
+    // Clock-aware time management whenever the strength preset opts in. We
+    // no longer gate this on the opening — the engine picks reasonable times
+    // throughout the game, and the previous opening throttle caused weak
+    // early moves.
+    if (preset.useClock && botRemainingSec != null && humanRemainingSec != null) {
+      // FS treats side=w as wtime; map our bot to whichever side it's on so
+      // the engine's time-management math is correct.
+      // In our FEN builder, the bot is always the side-to-move at engine time,
+      // and `buildFairyFEN` writes player 1 as white.
+      if (botPos === 1) {
+        searchOptions.wtime = Math.max(0, Math.floor(botRemainingSec * 1000));
+        searchOptions.btime = Math.max(0, Math.floor(humanRemainingSec * 1000));
+        searchOptions.side  = 'w';
+      } else {
+        searchOptions.wtime = Math.max(0, Math.floor(humanRemainingSec * 1000));
+        searchOptions.btime = Math.max(0, Math.floor(botRemainingSec * 1000));
+        searchOptions.side  = 'b';
+      }
+      if (incrementSec > 0) {
+        searchOptions.winc = Math.floor(incrementSec * 1000);
+        searchOptions.binc = Math.floor(incrementSec * 1000);
+      }
+      // Tell the engine to budget for ~30 more moves. Without movestogo, FS
+      // assumes sudden-death and burns through the clock too fast in the
+      // middlegame, leaving nothing for endgame technique.
+      searchOptions.movestogo = 30;
+    }
+    (async () => {
+      // Snapshot the turn we were asked to play. If the human plays before
+      // the engine returns (or the position changes underneath us), we must
+      // not submit a stale move — the server would reject it with "Not the
+      // bot's turn" and the noise floods the console.
+      const askedTurn = gameState.currentTurn;
+      const askedGameId = gameState?.id ?? gameId;
+      const noteFailure = (reason, extra) => {
+        fairyFailureCountRef.current += 1;
+        if (fairyFailureCountRef.current >= FAIRY_MAX_CONSECUTIVE_FAILURES) {
+          fairyDisabledForGameRef.current = true;
+          setFairyEngineDisabled(true);
+          console.warn(`[FairyStockfish] Disabling client-side engine for this game after ${fairyFailureCountRef.current} consecutive failures (${reason}); server fallback will play the rest of the game.`);
+        }
+        socket.emit('requestBotFallbackMove', {
+          gameId: parseInt(askedGameId, 10),
+          userId: currentUser?.id,
+          reason,
+          ...(extra || {}),
+        });
+      };
+      try {
+        const bestmove = await fairyStockfish.getBestMove(fen, '', searchOptions);
+        // If the turn changed while we were thinking, drop this result.
+        if (gameStateRef.current?.currentTurn !== askedTurn ||
+            gameStateRef.current?.status === 'completed') {
+          return;
+        }
+        if (!bestmove || bestmove === '(none)' || bestmove === '0000') {
+          console.warn('[FairyStockfish] Engine returned no move; requesting server fallback for this turn',
+            { bestmove, variantName: fairyTranslation?.variantName, fen, gameTypeId: gameState?.gameType?.id });
+          noteFailure('engine_no_move');
+          return;
+        }
+        const parsed = fairyUciToMove(
+          bestmove,
+          gameState.pieces.filter(p => (p.team || p.player_id) === botPos),
+          fairyTranslation?.boardHeight,
+        );
+        if (!parsed) {
+          console.warn('[FairyStockfish] Could not parse bestmove, requesting server fallback for this turn',
+            { bestmove, variantName: fairyTranslation?.variantName, fen, gameTypeId: gameState?.gameType?.id,
+              botPiecesSummary: gameState.pieces.filter(p => (p.team || p.player_id) === botPos).map(p => ({ id: p.id, name: p.name, x: p.x, y: p.y })) });
+          noteFailure('unparseable_move', { bestmove });
+          return;
+        }
+        // Engine produced a valid move — reset the failure counter.
+        fairyFailureCountRef.current = 0;
+        socket.emit('submitFairyStockfishMove', {
+          gameId: parseInt(askedGameId, 10),
+          userId: currentUser?.id,
+          move: {
+            from: parsed.from,
+            to: parsed.to,
+            promotionChar: parsed.promotionChar,
+          },
+        });
+      } catch (err) {
+        if (gameStateRef.current?.currentTurn !== askedTurn ||
+            gameStateRef.current?.status === 'completed') {
+          return;
+        }
+        console.error('[FairyStockfish] getBestMove failed; requesting server fallback for this turn', err);
+        noteFailure('engine_error', { error: err?.message || String(err) });
+      } finally {
+        // Release after a small debounce so we don't double-fire on the same turn.
+        setTimeout(() => { fairyMoveInFlightRef.current = false; }, 500);
+      }
+    })();
+  }, [
+    isFairyClientBot,
+    fairyStockfish,
+    fairyStockfish.engineReady,
+    fairyTranslation,
+    gameState,
+    socket,
+    gameId,
+    currentUser?.id,
+  ]);
 
   // Defensive re-anchor: any time the authoritative server-side currentTurn
   // changes, make sure the interpolation refs reflect the new active player.
@@ -5656,6 +5936,21 @@ const LiveGame = () => {
              ) : 
              gameState.status === 'waiting' ? 'Waiting for Opponent' : gameState.status}
           </div>
+          {fairyEngineDisabled && gameState.status !== 'completed' && (
+            <div style={{
+              marginTop: 6,
+              padding: '6px 10px',
+              borderRadius: 6,
+              background: 'rgba(255, 165, 0, 0.18)',
+              border: '1px solid rgba(255, 165, 0, 0.55)',
+              color: '#ffb84d',
+              fontSize: '0.9rem',
+              fontWeight: 500,
+              maxWidth: 520,
+            }}>
+              Fairy Stockfish ran into repeated errors on this position and has been disabled for the rest of this game. The built-in bot will play out the remaining moves.
+            </div>
+          )}
           {gameState.status === 'completed' && gameOverData && (
             <div className={styles["game-result-line"]} style={{
               marginTop: 4,
@@ -5828,8 +6123,10 @@ const LiveGame = () => {
             ) : (
               <>
                 <span className={styles["waiting-turn"]}>
-                  {(botThinking || (gameState.botPlayer && gameState.currentTurn === gameState.botPlayer.position)) 
-                    ? "Computer is thinking..." 
+                  {(botThinking || (gameState.botPlayer && gameState.currentTurn === gameState.botPlayer.position))
+                    ? (isFairyClientBot && fairyStockfish.searchInfo?.depth
+                        ? `Computer is thinking... (depth ${fairyStockfish.searchInfo.depth})`
+                        : "Computer is thinking...")
                     : "Waiting for opponent..."}
                 </span>
                 {inCheck && currentPlayer.position !== gameState.currentTurn && (

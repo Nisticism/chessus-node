@@ -186,7 +186,7 @@ function buildOtherData(gameState, extraFields = {}) {
     ...(gameState.startingMode ? { startingMode: gameState.startingMode } : {}),
     ...(gameState.premoveTimeCost ? { premoveTimeCost: gameState.premoveTimeCost } : {}),
     ...(gameState.initialPieces ? { initialPieces: gameState.initialPieces } : {}),
-    ...(gameState.botPlayer ? { isBotGame: true, botDifficulty: gameState.botPlayer.difficulty || 'medium', botPosition: gameState.botPlayer.position } : {}),
+    ...(gameState.botPlayer ? { isBotGame: true, botDifficulty: gameState.botPlayer.difficulty || 'medium', botPosition: gameState.botPlayer.position, ...(gameState.botPlayer.stockfishLevel != null ? { botStockfishLevel: gameState.botPlayer.stockfishLevel } : {}), ...(gameState.botPlayer.forceStockfish ? { forceStockfishBot: true } : {}) } : {}),
     ...(gameState.materialClockPenalty ? { materialClockPenalty: true } : {}),
     ...(gameState.materialClockHandicap ? { materialClockHandicap: true } : {}),
     ...(gameState.fogOfWarEnabled != null ? { fogOfWarEnabled: !!gameState.fogOfWarEnabled } : {}),
@@ -2497,9 +2497,16 @@ async function recoverActiveGames() {
         };
         // Restore bot player reference so timeout DB writes have correct rated/winner data
         if (otherData?.isBotGame && otherData?.botDifficulty) {
-          const botInfo = BOT_PLAYERS[otherData.botDifficulty] || BOT_PLAYERS.medium;
+          const _botTemplate = BOT_PLAYERS[otherData.botDifficulty] || BOT_PLAYERS.medium;
+          const botInfo = { ..._botTemplate, difficulty: otherData.botDifficulty };
           const restoredBotPosition = otherData.botPosition || 2;
           gameState.botPlayer = { ...botInfo, position: restoredBotPosition };
+          if (otherData.botStockfishLevel != null) {
+            gameState.botPlayer.stockfishLevel = otherData.botStockfishLevel;
+          }
+          if (otherData.forceStockfishBot) {
+            gameState.botPlayer.forceStockfish = true;
+          }
           gameState.rated = false;
           if (!gameState.players.find(p => p.id === botInfo.id)) {
             gameState.players.push({
@@ -2747,7 +2754,7 @@ function initializeSocket(server) {
     // Create a new live game
     socket.on("createGame", async (data) => {
       try {
-        const { gameTypeId, timeControl, increment, hostId, hostUsername, allowSpectators = true, showPieceHelpers = false, rated = true, allowPremoves = true, premoveTimeCost = 0, startingMode: rawStartingMode = 'none', challengedUserId = null, isCorrespondence = false, correspondenceDays = null, vsComputer = false, botDifficulty = 'medium', materialClockPenalty = false, materialClockHandicap = false, playerSide = 'random', fogOfWarEnabled } = data;
+        const { gameTypeId, timeControl, increment, hostId, hostUsername, allowSpectators = true, showPieceHelpers = false, rated = true, allowPremoves = true, premoveTimeCost = 0, startingMode: rawStartingMode = 'none', challengedUserId = null, isCorrespondence = false, correspondenceDays = null, vsComputer = false, botDifficulty = 'medium', botStockfishLevel = null, forceStockfishBot = false, materialClockPenalty = false, materialClockHandicap = false, playerSide = 'random', fogOfWarEnabled } = data;
         
         // Get game type details
         const [[gameType]] = await db_pool.query(
@@ -3316,7 +3323,13 @@ function initializeSocket(server) {
 
         // --- Bot game setup ---
         if (vsComputer) {
-          const botInfo = BOT_PLAYERS[botDifficulty] || BOT_PLAYERS.medium;
+          // Look up the bot template by the requested difficulty.  If the key is
+          // unknown (e.g. a hot-reloaded server missing a newly added entry) we
+          // fall back to the medium template for id/username, but ALWAYS preserve
+          // the client-requested difficulty string on gameState.botPlayer so the
+          // game is persisted and resumed as the correct bot type.
+          const _botTemplate = BOT_PLAYERS[botDifficulty] || BOT_PLAYERS.medium;
+          const botInfo = { ..._botTemplate, difficulty: botDifficulty || _botTemplate.difficulty };
 
           // Determine side assignment based on playerSide preference
           let hostPosition, botPosition;
@@ -3337,6 +3350,13 @@ function initializeSocket(server) {
             { id: botInfo.id, username: botInfo.username, position: botPosition, isBot: true }
           ];
           gameState.botPlayer = { ...botInfo, position: botPosition };
+          // Attach Fairy-Stockfish strength + play-anyway override so the bot
+          // worker / client-side engine can read them.
+          if (botDifficulty === 'stockfish') {
+            const lvl = Math.max(1, Math.min(5, parseInt(botStockfishLevel, 10) || 3));
+            gameState.botPlayer.stockfishLevel = lvl;
+            if (forceStockfishBot) gameState.botPlayer.forceStockfish = true;
+          }
           gameState.status = 'ready';
           gameState.rated = false; // Bot games are never rated
 
@@ -3389,7 +3409,7 @@ function initializeSocket(server) {
           // Update DB: mark game as ready with bot player
           await db_pool.query(
             "UPDATE games SET status = 'ready', other_data = ? WHERE id = ?",
-            [buildOtherData(gameState, { isBotGame: true, botDifficulty: botInfo.difficulty }), gameId]
+            [buildOtherData(gameState, { isBotGame: true, botDifficulty: gameState.botPlayer.difficulty }), gameId]
           );
 
           socket.emit("gameCreated", { gameId, gameState });
@@ -3427,7 +3447,7 @@ function initializeSocket(server) {
             const startTimeStr = new Date().toISOString().slice(0, 19).replace('T', ' ');
             await db_pool.query(
               "UPDATE games SET status = 'active', start_time = ?, other_data = ? WHERE id = ?",
-              [startTimeStr, buildOtherData(gameState, { isBotGame: true, botDifficulty: botInfo.difficulty }), gameId]
+              [startTimeStr, buildOtherData(gameState, { isBotGame: true, botDifficulty: gameState.botPlayer.difficulty }), gameId]
             );
             if (gameState.gameTypeId) {
               try {
@@ -4853,6 +4873,97 @@ function initializeSocket(server) {
           }
         }
         socket.emit("gameState", gameState);
+      }
+    });
+
+    // Submit a move computed by the client-side Fairy-Stockfish engine.
+    // The browser computes the bot's move (zero server RAM) and posts it
+    // back here; the server resolves the piece by `from` square and
+    // re-enters processBotTurn with the move pre-computed.
+    socket.on('submitFairyStockfishMove', async (data) => {
+      try {
+        const { gameId, userId, move } = data || {};
+        if (!gameId || !move || !move.from || !move.to) {
+          return socket.emit('error', { message: 'Invalid submitFairyStockfishMove payload' });
+        }
+        const gameIdStr = gameId.toString();
+        const gameState = activeGames.get(gameIdStr);
+        if (!gameState) return socket.emit('error', { message: 'Game not found' });
+        if (!gameState.botPlayer) return socket.emit('error', { message: 'Not a bot game' });
+        if (gameState.botPlayer.difficulty !== 'stockfish') {
+          return socket.emit('error', { message: 'Bot is not configured for Fairy-Stockfish' });
+        }
+        const deep = !!(gameState.gameType && gameState.gameType.fairy_stockfish_deep_analysis);
+        if (deep) {
+          return socket.emit('error', { message: 'Deep analysis is enabled for this game type; the server runs the engine' });
+        }
+        if (gameState.currentTurn !== gameState.botPlayer.position) {
+          return socket.emit('error', { message: "Not the bot's turn" });
+        }
+        // Requester must be a player in the game (the human host of the bot match).
+        const requester = gameState.players.find(p => p.id === userId);
+        if (!requester) return socket.emit('error', { message: 'You are not a player in this game' });
+
+        // Resolve the piece by the from-square (client may not know the pieceId).
+        const { from, to } = move;
+        const botPos = gameState.botPlayer.position;
+        const fromPiece = gameState.pieces.find(p => {
+          const owner = p.team || p.player_id;
+          return owner === botPos && Number(p.x) === Number(from.x) && Number(p.y) === Number(from.y);
+        });
+        if (!fromPiece) {
+          return socket.emit('error', { message: 'No bot piece found at submitted from-square' });
+        }
+        const preMove = {
+          pieceId: fromPiece.id,
+          from: { x: Number(from.x), y: Number(from.y) },
+          to:   { x: Number(to.x),   y: Number(to.y)   },
+        };
+        if (move.promotionChar && typeof move.promotionChar === 'string') {
+          preMove.promotionChar = move.promotionChar.toLowerCase();
+        }
+        console.log(`[FairyStockfish] Submitted move for game ${gameId}: ${JSON.stringify(preMove)}`);
+        processBotTurn(io, gameId, gameState, preMove);
+      } catch (err) {
+        console.error('[submitFairyStockfishMove] error:', err);
+        socket.emit('error', { message: 'Failed to submit Fairy-Stockfish move' });
+      }
+    });
+
+    // Client-side Fairy-Stockfish couldn't produce a legal move (e.g. variant
+    // rule the engine doesn't understand). Run our built-in AI for THIS move
+    // only; the bot stays configured as 'stockfish' so the next turn retries
+    // the engine.
+    socket.on('requestBotFallbackMove', async (data) => {
+      try {
+        const { gameId, userId, reason } = data || {};
+        if (!gameId) return socket.emit('error', { message: 'Invalid requestBotFallbackMove payload' });
+        const gameIdStr = gameId.toString();
+        const gameState = activeGames.get(gameIdStr);
+        if (!gameState) return socket.emit('error', { message: 'Game not found' });
+        if (!gameState.botPlayer) return socket.emit('error', { message: 'Not a bot game' });
+        if (gameState.botPlayer.difficulty !== 'stockfish') {
+          return socket.emit('error', { message: 'Bot is not configured for Fairy-Stockfish' });
+        }
+        if (gameState.currentTurn !== gameState.botPlayer.position) {
+          return socket.emit('error', { message: "Not the bot's turn" });
+        }
+        const requester = gameState.players.find(p => p.id === userId);
+        if (!requester) return socket.emit('error', { message: 'You are not a player in this game' });
+        console.log(`[FairyStockfish] Fallback move requested for game ${gameId} (reason=${reason || 'unspecified'})`);
+        // Pick the built-in AI difficulty for this fallback move based on the
+        // configured Fairy Stockfish strength. A user who set Expert/Maximum
+        // shouldn't suddenly get an Easy-bot move just because the engine
+        // couldn't handle one position.
+        //   FS level 1 (Beginner) -> easy
+        //   FS level 2 (Casual)   -> medium
+        //   FS level 3+           -> hard
+        const lvl = Math.max(1, Math.min(5, parseInt(gameState.botPlayer.stockfishLevel, 10) || 3));
+        const fallbackDifficulty = lvl <= 1 ? 'easy' : (lvl === 2 ? 'medium' : 'hard');
+        processBotTurn(io, gameId, gameState, null, { forceServerMove: true, fallbackDifficulty, isFairyFallback: true });
+      } catch (err) {
+        console.error('[requestBotFallbackMove] error:', err);
+        socket.emit('error', { message: 'Failed to request bot fallback move' });
       }
     });
 
@@ -8868,9 +8979,16 @@ function initializeSocket(server) {
 
           // Restore botPlayer if this is a bot game
           if (otherData?.isBotGame && otherData?.botDifficulty) {
-            const botInfo = BOT_PLAYERS[otherData.botDifficulty] || BOT_PLAYERS.medium;
+            const _botTemplate = BOT_PLAYERS[otherData.botDifficulty] || BOT_PLAYERS.medium;
+            const botInfo = { ..._botTemplate, difficulty: otherData.botDifficulty };
             const restoredBotPosition = otherData.botPosition || 2; // Default to 2 for legacy games
             gameState.botPlayer = { ...botInfo, position: restoredBotPosition };
+            if (otherData.botStockfishLevel != null) {
+              gameState.botPlayer.stockfishLevel = otherData.botStockfishLevel;
+            }
+            if (otherData.forceStockfishBot) {
+              gameState.botPlayer.forceStockfish = true;
+            }
             gameState.rated = false; // Bot games are never rated
             // Ensure bot player is in the players array with correct structure
             const botInPlayers = gameState.players.find(p => p.id === botInfo.id);
@@ -16355,10 +16473,11 @@ function checkWinCondition(gameState, capturedPieceOrArray = null) {
 // =============================================
 
 const BOT_PLAYERS = {
-  easy:     { id: 'bot', username: 'Computer (Easy)',     difficulty: 'easy' },
-  medium:   { id: 'bot', username: 'Computer (Medium)',   difficulty: 'medium' },
-  hard:     { id: 'bot', username: 'Computer (Hard)',     difficulty: 'hard' },
-  adaptive: { id: 'bot', username: 'Computer (Adaptive)', difficulty: 'adaptive' },
+  easy:      { id: 'bot', username: 'Computer (Easy)',            difficulty: 'easy' },
+  medium:    { id: 'bot', username: 'Computer (Medium)',          difficulty: 'medium' },
+  hard:      { id: 'bot', username: 'Computer (Hard)',            difficulty: 'hard' },
+  adaptive:  { id: 'bot', username: 'Computer (Adaptive)',        difficulty: 'adaptive' },
+  stockfish: { id: 'bot', username: 'Computer (Fairy Stockfish)', difficulty: 'stockfish' },
 };
 
 function isBotPlayer(player) {
@@ -16563,14 +16682,63 @@ async function processBotRepositions(gameState) {
   return !phase.active;
 }
 
-async function processBotTurn(io, gameId, gameState) {
+async function processBotTurn(io, gameId, gameState, precomputedMove = null, options = {}) {
   const botPlayer = gameState.botPlayer;
   if (!botPlayer) { console.log(`[Bot] No botPlayer in game ${gameId}`); return; }
   if (gameState.currentTurn !== botPlayer.position) { console.log(`[Bot] Not bot's turn in game ${gameId}`); return; }
   if (gameState.status === 'completed') { console.log(`[Bot] Game ${gameId} already completed`); return; }
 
+  // Per-turn fallback difficulty: when the Fairy-Stockfish client (or the
+  // server-side engine fallback) can't compute a move for THIS position, we
+  // run our built-in AI for just this turn. The bot's persistent difficulty
+  // stays 'stockfish' so the very next move tries the engine again.
+  const forceServerMove = !!options.forceServerMove;
+  const fallbackDifficulty = options.fallbackDifficulty || 'hard';
+  const isFairyFallback = !!options.isFairyFallback;
+
+  // Fairy-Stockfish bot: when deep analysis is OFF, the client browser runs
+  // the engine and submits the move via `submitFairyStockfishMove`. The
+  // server takes no action here unless a precomputedMove is supplied (the
+  // submit handler re-enters this function with the move already chosen),
+  // OR `forceServerMove` is set (per-turn fallback when the client engine
+  // failed to produce a legal move).
+  if (botPlayer.difficulty === 'stockfish' && !precomputedMove && !forceServerMove) {
+    const deep = !!(gameState.gameType && gameState.gameType.fairy_stockfish_deep_analysis);
+    // Probe for a wired server-side engine. Until it ships, deep-analysis
+    // games degrade to client-side instead of silently falling through to
+    // the built-in 'hard' AI -- that path looked like "Fairy Stockfish" to
+    // the user but was actually a 25-second-per-move minimax bot.
+    let serverEngineAvailable = false;
+    if (deep) {
+      try {
+        const eng = require('./ai/fairy-stockfish-server-engine');
+        serverEngineAvailable = !!(eng && typeof eng.getBestMove === 'function');
+      } catch (_) { serverEngineAvailable = false; }
+    }
+    if (!deep || !serverEngineAvailable) {
+      if (deep && !serverEngineAvailable) {
+        // Log once per game, not once per move.
+        if (!gameState._loggedDeepFallback) {
+          console.warn(`[Bot] Fairy-Stockfish deep analysis is enabled on game type ${gameState.gameType?.id} but the server-side engine is not wired; the client-side engine will play instead. This message is logged once per game.`);
+          gameState._loggedDeepFallback = true;
+        }
+      } else {
+        console.log(`[Bot] Fairy-Stockfish client-side mode in game ${gameId} - awaiting browser move`);
+      }
+      return;
+    }
+    // Server-side deep-analysis path goes here once wired.
+  }
+
+  // Resolve the effective difficulty for THIS turn only. We never overwrite
+  // botPlayer.difficulty so subsequent turns retry the chosen engine.
+  const isStockfishBot = botPlayer.difficulty === 'stockfish';
+  const effectiveDifficulty = (isStockfishBot && (forceServerMove || !precomputedMove))
+    ? fallbackDifficulty
+    : botPlayer.difficulty;
+
   const aiEngine = require('./ai/ai-engine');
-  const settings = aiEngine.DIFFICULTY[botPlayer.difficulty] || aiEngine.DIFFICULTY.medium;
+  const settings = aiEngine.DIFFICULTY[effectiveDifficulty] || aiEngine.DIFFICULTY.medium;
 
   // Scale think delay down under time pressure so the bot doesn't waste clock
   // on the artificial pause when it can't afford to.
@@ -16581,9 +16749,9 @@ async function processBotTurn(io, gameId, gameState) {
     else if (botTimeRemaining < 15) thinkDelay = Math.min(thinkDelay, 100);
     else if (botTimeRemaining < 30) thinkDelay = Math.min(thinkDelay, 300);
   }
-  const delay = thinkDelay;
+  const delay = precomputedMove ? 0 : thinkDelay;
 
-  console.log(`[Bot] Processing turn in game ${gameId} (difficulty=${botPlayer.difficulty}, delay=${delay}ms, timeLimit=${settings.timeLimit}ms)`);
+  console.log(`[Bot] Processing turn in game ${gameId} (difficulty=${botPlayer.difficulty}${effectiveDifficulty !== botPlayer.difficulty ? `, fallback=${effectiveDifficulty}` : ''}, delay=${delay}ms, timeLimit=${settings.timeLimit}ms)`);
 
   // Emit thinking indicator
   io.to(`game-${gameId}`).emit("botThinking", { gameId, thinking: true });
@@ -16681,8 +16849,14 @@ async function processBotTurn(io, gameId, gameState) {
         // Because the event loop is no longer blocked, the game-timer setInterval
         // ticks normally and drains the bot's clock automatically — no manual
         // correction is needed here.
+        if (!bestMove && precomputedMove) {
+          // Move was computed client-side (Fairy-Stockfish) or by the server
+          // engine queue; skip the minimax worker entirely.
+          bestMove = precomputedMove;
+          console.log(`[Bot] Using precomputed move in game ${gameId}: ${JSON.stringify(bestMove).slice(0, 120)}`);
+        }
         if (!bestMove) {
-          bestMove = await runBotInWorker(gameState, botPlayer.position, botPlayer.difficulty);
+          bestMove = await runBotInWorker(gameState, botPlayer.position, effectiveDifficulty);
           const aiElapsedMs = Date.now() - aiStartTime;
           console.log(`[Bot] AI computed in ${aiElapsedMs}ms for game ${gameId}`);
         }
@@ -16778,6 +16952,15 @@ async function processBotTurn(io, gameId, gameState) {
       }
 
       io.to(`game-${gameId}`).emit("botThinking", { gameId, thinking: false });
+
+      // Log the fallback move so admins can see what the built-in AI chose
+      // for positions Fairy Stockfish couldn't handle.
+      if (isFairyFallback && bestMove) {
+        const moveDesc = bestMove.type === 'place'
+          ? `place at (${bestMove.to?.x},${bestMove.to?.y})`
+          : `piece=${bestMove.pieceId} from=(${bestMove.from?.x},${bestMove.from?.y}) to=(${bestMove.to?.x},${bestMove.to?.y})`;
+        console.log(`[FairyStockfish] Fallback move chosen for game ${gameId} (using ${fallbackDifficulty} built-in AI): ${moveDesc}`);
+      }
 
       // Guard: game may have ended while bot was thinking (e.g. timeout)
       if (gameState.status === 'completed') {

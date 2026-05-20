@@ -1928,12 +1928,15 @@
 
 .difficulty-buttons {
   display: flex;
+  flex-wrap: wrap;
   justify-content: center;
   gap: 8px;
 }
 
 .difficulty-btn {
-  flex: 1;
+  flex: 1 1 110px;
+  min-width: 110px;
+  max-width: 200px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1949,6 +1952,16 @@
   &:hover {
     border-color: var(--accent-primary-text);
     color: var(--text-heading);
+  }
+}
+
+.difficulty-warning {
+  border-color: #d4a64a;
+  color: #e8c46a;
+
+  &:hover {
+    border-color: #f0c060;
+    color: #fde08a;
   }
 }
 

@@ -939,6 +939,91 @@ function getPieceValue(piece, boardSize) {
     }
   }
 
+  // ---- Direction-change moves -----------------------------------------
+  // Pieces with `directional_movement_change` / `directional_capture_change`
+  // can string two directional legs together (turn mid-flight). On an empty
+  // hypothetical board this dramatically expands their coverage. We
+  // enumerate all (dir1, step1) -> (dir2, step2) combinations and add the
+  // landing squares to `dcMoveSet` / `dcAttackSet`. These squares are
+  // discounted heavily in the aggregation loop below (weight 0.45) because
+  // the second leg is contingent on (a) the piece actually having the
+  // direction-change ability and (b) the via-square being usable in the
+  // current position. Squares already covered by ordinary movement are
+  // not added again.
+  const dcMoveKeys   = new Set();
+  const dcAttackKeys = new Set();
+  if (piece.directional_movement_change || piece.directional_capture_change) {
+    const dcDirs = dirs; // reuse the 8-direction table from above
+    const sameOrOpposite = (ax, ay, bx, by) =>
+      (ax === bx && ay === by) || (ax === -bx && ay === -by);
+
+    const enumerateDC = (legSuffix, addToSet, isCaptureType) => {
+      // For each first-leg direction with a non-zero range...
+      for (const d1 of dcDirs) {
+        const r1 = piece[`${d1.name}${legSuffix}`] || 0;
+        if (!r1) continue;
+        const r1abs   = Math.abs(r1);
+        const exact1  = !!piece[`${d1.name}${legSuffix}_exact`] || r1 < 0;
+        const max1    = r1abs === 99 ? Math.max(bw, bh) : r1abs;
+        for (let s1 = 1; s1 <= max1; s1++) {
+          if (exact1 && s1 !== r1abs) continue;
+          const viaX = cx + d1.dx * s1;
+          const viaY = cy + d1.dy * s1;
+          if (!isOnBoard(viaX, viaY)) break;
+          // Second leg
+          const secondSuffix = `${legSuffix}_change`;
+          for (const d2 of dcDirs) {
+            if (sameOrOpposite(d1.dx, d1.dy, d2.dx, d2.dy)) continue;
+            const r2 = piece[`${d2.name}${secondSuffix}`] || 0;
+            if (!r2) continue;
+            const r2abs  = Math.abs(r2);
+            const exact2 = !!piece[`${d2.name}${secondSuffix}_exact`] || r2 < 0;
+            const max2   = r2abs === 99 ? Math.max(bw, bh) : r2abs;
+            for (let s2 = 1; s2 <= max2; s2++) {
+              if (exact2 && s2 !== r2abs) continue;
+              const toX = viaX + d2.dx * s2;
+              const toY = viaY + d2.dy * s2;
+              if (!isOnBoard(toX, toY)) break;
+              const key = `${toX},${toY}`;
+              // Don't re-add a square that already counted via normal moves
+              if (isCaptureType) {
+                if (!attackMap.has(key) && !dcAttackKeys.has(key)) {
+                  dcAttackKeys.add(key);
+                  addToSet.add(key);
+                }
+              } else {
+                if (!moveSet.has(key) && !dcMoveKeys.has(key)) {
+                  dcMoveKeys.add(key);
+                  addToSet.add(key);
+                }
+              }
+            }
+          }
+          if (exact1) break;
+        }
+      }
+    };
+
+    if (piece.directional_movement_change) {
+      enumerateDC('_movement', dcMoveKeys, false);
+      // If the piece captures-on-move it also gains attack coverage via DC
+      if (canCaptureOnMove && !hasDedicatedCap) {
+        for (const k of dcMoveKeys) dcAttackKeys.add(k);
+      }
+    }
+    if (piece.directional_capture_change ||
+        (piece.attacks_like_movement && piece.directional_movement_change)) {
+      enumerateDC('_capture', dcAttackKeys, true);
+    }
+
+    // Fold into the main aggregation sets so existing color-bound /
+    // attack-presence checks still see the full coverage. The discount is
+    // applied in the moveContrib / attackContrib loops below via the
+    // dc-key sets.
+    for (const k of dcMoveKeys)   moveSet.add(k);
+    for (const k of dcAttackKeys) if (!attackMap.has(k)) addAttack(k, 1.0);
+  }
+
   // Snapshot pre-custom sets so we can identify squares NEWLY added by custom squares
   const preCustMoveKeys   = new Set(moveSet);
   const preCustAttackKeys = new Set(attackMap.keys());
@@ -967,17 +1052,25 @@ function getPieceValue(piece, boardSize) {
     return arr.every(k => { const [x, y] = k.split(',').map(Number); return (x + y) % 2 === centerParity; });
   }
 
+  // Direction-change-only squares get a heavy discount (~0.45x) since reaching
+  // them requires the DC ability and an empty via square in the live position.
+  const DC_WEIGHT = 0.45;
+
   let moveContrib = 0;
   for (const key of moveSet) {
     const base = stepMoveSet.has(key) ? 1.2 : 1.0;
-    moveContrib += customMoveKeys.has(key) ? base * 1.25 : base;
+    let v = customMoveKeys.has(key) ? base * 1.25 : base;
+    if (dcMoveKeys.has(key) && !customMoveKeys.has(key)) v *= DC_WEIGHT;
+    moveContrib += v;
   }
   if (isColorBound(moveSet)) moveContrib *= 0.7;
 
   let attackContrib = 0;
   for (const [key, w] of attackMap) {
     const base = stepAttackSet.has(key) ? w * 1.2 : w;
-    attackContrib += customAttackKeys.has(key) ? base * 1.25 : base;
+    let v = customAttackKeys.has(key) ? base * 1.25 : base;
+    if (dcAttackKeys.has(key) && !customAttackKeys.has(key)) v *= DC_WEIGHT;
+    attackContrib += v;
   }
   if (isColorBound(attackMap.keys())) attackContrib *= 0.7;
 

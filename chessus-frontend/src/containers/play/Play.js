@@ -11,6 +11,7 @@ import styles from "./play.module.scss";
 import FriendsList from "../../components/friendslist/FriendsList";
 import InfoTooltip from "../../components/piecewizard/InfoTooltip";
 import ToggleSwitch from "../../components/common/ToggleSwitch";
+import FairyStockfishIncompatModal from "../../components/common/FairyStockfishIncompatModal";
 
 const Play = () => {
   const navigate = useNavigate();
@@ -131,6 +132,16 @@ const Play = () => {
   // Per-game-type training availability for the "Adaptive" tier.
   // Shape: { available: bool, gamesPlayed: number } | null while loading
   const [adaptiveAvailability, setAdaptiveAvailability] = useState(null);
+  // Per-game-type Fairy-Stockfish compatibility. Shape:
+  // { compatible: bool, reasons: string[], deepAnalysisEnabled: bool } | null
+  const [fairyStockfishCompat, setFairyStockfishCompat] = useState(null);
+  const [showFairyIncompatModal, setShowFairyIncompatModal] = useState(false);
+  // 1..5 strength level used when botDifficulty === 'stockfish'
+  const [stockfishLevel, setStockfishLevel] = useState(3);
+  // "Play anyway" override: lets the user pick Fairy Stockfish even when the
+  // compatibility check would normally hide it. The engine will play with the
+  // closest variant approximation, so some rules may be silently ignored.
+  const [forceFairyStockfish, setForceFairyStockfish] = useState(false);
   const [materialClockPenalty, setMaterialClockPenalty] = useState(false);
   const [materialClockHandicap, setMaterialClockHandicap] = useState(false);
   const [showAnonCreateModal, setShowAnonCreateModal] = useState(false);
@@ -264,6 +275,42 @@ const Play = () => {
       setBotDifficulty('medium');
     }
   }, [botDifficulty, adaptiveAvailability]);
+
+  // Look up Fairy-Stockfish compatibility for the selected game type.
+  useEffect(() => {
+    if (!vsComputer || !selectedGameType?.id) {
+      setFairyStockfishCompat(null);
+      return;
+    }
+    let cancelled = false;
+    const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001';
+    axios.get(`${API_URL}/api/fairy-stockfish/compatibility/${selectedGameType.id}`)
+      .then(res => {
+        if (cancelled) return;
+        setFairyStockfishCompat(res.data || { compatible: false, reasons: [] });
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setFairyStockfishCompat({ compatible: false, reasons: ['Failed to check compatibility'] });
+      });
+    return () => { cancelled = true; };
+  }, [vsComputer, selectedGameType]);
+
+  // Reset the "play anyway" override whenever the selected game type changes.
+  useEffect(() => { setForceFairyStockfish(false); }, [selectedGameType?.id]);
+
+  // Fairy-Stockfish is available when the game type passes compatibility OR
+  // the user explicitly chose to play anyway. Randomization modes are NOT a
+  // blocker on their own: the engine plays from whatever FEN we hand it, so
+  // a randomized starting layout works as long as the underlying rules do.
+  const fairyAvailable = !!(fairyStockfishCompat?.compatible) || forceFairyStockfish;
+
+  // Auto-revert away from stockfish if it becomes unavailable.
+  useEffect(() => {
+    if (botDifficulty === 'stockfish' && !fairyAvailable) {
+      setBotDifficulty('medium');
+    }
+  }, [botDifficulty, fairyAvailable]);
 
   // Handle incoming challenge navigation from profile pages
   useEffect(() => {
@@ -860,6 +907,8 @@ const Play = () => {
         correspondenceDays: isCorrespondence ? parseInt(correspondenceDays) : null,
         vsComputer,
         botDifficulty: vsComputer ? botDifficulty : undefined,
+        botStockfishLevel: (vsComputer && botDifficulty === 'stockfish') ? stockfishLevel : undefined,
+        forceStockfishBot: (vsComputer && botDifficulty === 'stockfish' && forceFairyStockfish) ? true : undefined,
         materialClockPenalty: (timeControlMinutes && materialClockPenalty) ? true : undefined,
         materialClockHandicap: (timeControlMinutes && materialClockHandicap) ? true : undefined,
         ...(selectedGameType?.fog_of_war ? { fogOfWarEnabled } : {})
@@ -2087,18 +2136,95 @@ const Play = () => {
                               desc: `Trained on ${adaptiveAvailability.gamesPlayed} games`,
                             }]
                           : []),
+                        // Fairy Stockfish: always show the button when a game
+                        // type is selected. When the engine can't fully model
+                        // the game it appears with a yellow warning outline
+                        // and clicking it opens the compatibility modal so
+                        // the user can review issues and choose to play
+                        // anyway or cancel (modal sets forceFairyStockfish).
+                        ...(selectedGameType?.id
+                          ? [{
+                              value: 'stockfish',
+                              label: 'Fairy Stockfish',
+                              desc: fairyAvailable
+                                ? (fairyStockfishCompat?.deepAnalysisEnabled
+                                    ? 'Server deep analysis'
+                                    : 'Browser engine')
+                                : 'Some rules not supported',
+                              warning: !fairyAvailable,
+                              onClickOverride: !fairyAvailable
+                                ? () => setShowFairyIncompatModal(true)
+                                : null,
+                            }]
+                          : []),
                       ].map(d => (
                         <button
                           key={d.value}
-                          className={`${styles["difficulty-btn"]} ${botDifficulty === d.value ? styles["difficulty-active"] : ""}`}
-                          onClick={() => setBotDifficulty(d.value)}
+                          className={`${styles["difficulty-btn"]} ${botDifficulty === d.value ? styles["difficulty-active"] : ""} ${d.warning ? styles["difficulty-warning"] : ""}`}
+                          onClick={() => d.onClickOverride ? d.onClickOverride() : setBotDifficulty(d.value)}
                           type="button"
+                          title={d.warning ? 'Some rules in this game cannot be modeled by Fairy Stockfish. Click for details.' : undefined}
                         >
-                          <span className={styles["difficulty-label"]}>{d.label}</span>
+                          <span className={styles["difficulty-label"]}>
+                            {d.warning && (
+                              <span aria-hidden="true" style={{ marginRight: 4 }}>⚠</span>
+                            )}
+                            {d.label}
+                          </span>
                           <span className={styles["difficulty-desc"]}>{d.desc}</span>
                         </button>
                       ))}
                     </div>
+                    {!fairyAvailable && selectedGameType?.id && (
+                      <div style={{ marginTop: 6, fontSize: 12, color: '#d4a64a' }}>
+                        Fairy Stockfish can't fully model this game. Click the warning button for details.
+                      </div>
+                    )}
+                    {botDifficulty === 'stockfish' && (
+                      <div style={{ marginTop: 10 }}>
+                        <label style={{ display: 'block', fontSize: 13, color: '#cfd6ea', marginBottom: 4 }}>
+                          Engine strength
+                        </label>
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                          {[
+                            { v: 1, label: 'Beginner', desc: 'Depth 4'             },
+                            { v: 2, label: 'Casual',   desc: 'Depth 8'             },
+                            { v: 3, label: 'Skilled',  desc: 'Depth 14, default'   },
+                            { v: 4, label: 'Expert',   desc: 'Depth 20, clock-aware' },
+                            { v: 5, label: 'Maximum',  desc: 'Depth 30, clock-aware' },
+                          ].map(opt => (
+                            <button
+                              key={opt.v}
+                              type="button"
+                              onClick={() => setStockfishLevel(opt.v)}
+                              style={{
+                                padding: '4px 8px',
+                                borderRadius: 4,
+                                border: stockfishLevel === opt.v ? '1px solid #6ea8ff' : '1px solid #3a4055',
+                                background: stockfishLevel === opt.v ? '#1f2a44' : 'transparent',
+                                color: '#e6e8ef',
+                                cursor: 'pointer',
+                                fontSize: 12,
+                                lineHeight: 1.2,
+                                display: 'flex',
+                                flexDirection: 'column',
+                                alignItems: 'center',
+                                minWidth: 70,
+                              }}
+                              title={opt.desc}
+                            >
+                              <span style={{ fontWeight: 600 }}>{opt.label}</span>
+                              <span style={{ fontSize: 10, opacity: 0.7 }}>{opt.desc}</span>
+                            </button>
+                          ))}
+                        </div>
+                        {forceFairyStockfish && (
+                          <div style={{ marginTop: 8, fontSize: 12, color: '#e8c46a' }}>
+                            Playing anyway: some game rules will be approximated or ignored by the engine.
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -2602,6 +2728,17 @@ const Play = () => {
           </div>
         </div>
       )}
+      <FairyStockfishIncompatModal
+        open={showFairyIncompatModal}
+        onClose={() => setShowFairyIncompatModal(false)}
+        reasons={fairyStockfishCompat?.reasons || []}
+        gameName={selectedGameType?.game_name}
+        onPlayAnyway={() => {
+          setForceFairyStockfish(true);
+          setBotDifficulty('stockfish');
+          setShowFairyIncompatModal(false);
+        }}
+      />
     </div>
   );
 };

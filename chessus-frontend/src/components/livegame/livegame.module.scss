@@ -1918,7 +1918,7 @@
   border-radius: 8px;
   padding: 32px;
   text-align: center;
-  max-width: 400px;
+  max-width: 480px;
   width: 90%;
   position: relative;
 
@@ -2005,8 +2005,14 @@
 
   .game-over-actions {
     display: flex;
+    flex-wrap: wrap;
     justify-content: center;
-    gap: 16px;
+    gap: 12px;
+
+    & > button {
+      margin: 0;
+      flex: 0 1 auto;
+    }
   }
 
   .upvote-prompt {

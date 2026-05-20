@@ -3,6 +3,7 @@ import styles from "./gamewizard.module.scss";
 import NumberInput from "../common/NumberInput";
 import ToggleSwitch from "../common/ToggleSwitch";
 import InfoTooltip from "../piecewizard/InfoTooltip";
+import FairyStockfishInfoNote from "../common/FairyStockfishInfoNote";
 
 const Step2WinConditions = ({ gameData, updateGameData }) => {
   const handleChange = (field, value) => {
@@ -63,6 +64,7 @@ const Step2WinConditions = ({ gameData, updateGameData }) => {
       <p className={styles["step-description"]}>
         Define how players can win the game. You can enable multiple win conditions.
       </p>
+      <FairyStockfishInfoNote kind="winConditions" />
 
       <ToggleRow
         title="Checkmate Condition"

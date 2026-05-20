@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import styles from "./gamewizard.module.scss";
-import PieceSelector from "./PieceSelector";
+import PieceSelector, { defaultCastlingDistanceForBoard } from "./PieceSelector";
 import PiecesService from "../../services/pieces.service";
 import { isMobileDevice, isTouchDevice } from "../../helpers/mobileUtils";
 import { 
@@ -13,6 +13,7 @@ import {
 } from "../../helpers/pieceMovementUtils";
 
 import { applySvgStretchBackground } from "../../helpers/svgStretchUtils";
+import FairyStockfishInfoNote from "../common/FairyStockfishInfoNote";
 import InfoTooltip from "../piecewizard/InfoTooltip";
 import useUndoStack from "../../hooks/useUndoStack";
 import NumberInput from "../common/NumberInput";
@@ -443,7 +444,7 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
               manual_castling_partners: pieceData.manual_castling_partners || false,
               castling_partner_left_key: pieceData.castling_partner_left_key || null,
               castling_partner_right_key: pieceData.castling_partner_right_key || null,
-              castling_distance: pieceData.castling_distance ?? 2,
+              castling_distance: pieceData.castling_distance ?? defaultCastlingDistanceForBoard(gameData.board_width),
               // Promotion options (per-placement override)
               promotion_pieces_override: pieceData.promotion_pieces_override ?? null,
               can_promote_to_checkmate: pieceData.can_promote_to_checkmate || false,
@@ -536,7 +537,7 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
             manual_castling_partners: pieceData.manual_castling_partners || false,
             castling_partner_left_key: pieceData.castling_partner_left_key || null,
             castling_partner_right_key: pieceData.castling_partner_right_key || null,
-            castling_distance: pieceData.castling_distance ?? 2,
+            castling_distance: pieceData.castling_distance ?? defaultCastlingDistanceForBoard(gameData.board_width),
             // Promotion options (per-placement override)
             promotion_pieces_override: pieceData.promotion_pieces_override ?? null,
             can_promote_to_checkmate: pieceData.can_promote_to_checkmate || false,
@@ -601,7 +602,7 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
         manual_castling_partners: pieceData.manual_castling_partners || false,
         castling_partner_left_key: pieceData.castling_partner_left_key || null,
         castling_partner_right_key: pieceData.castling_partner_right_key || null,
-        castling_distance: pieceData.castling_distance ?? 2,
+        castling_distance: pieceData.castling_distance ?? defaultCastlingDistanceForBoard(gameData.board_width),
         promotion_pieces_override: pieceData.promotion_pieces_override ?? null,
         can_promote_to_checkmate: pieceData.can_promote_to_checkmate || false,
         limit_promote_checkmate_to_original: pieceData.limit_promote_checkmate_to_original || false,
@@ -1538,7 +1539,7 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
         manual_castling_partners: sourcePiece.manual_castling_partners || false,
         castling_partner_left_key: mirroredLeftKey,
         castling_partner_right_key: mirroredRightKey,
-        castling_distance: sourcePiece.castling_distance ?? 2,
+        castling_distance: sourcePiece.castling_distance ?? defaultCastlingDistanceForBoard(gameData.board_width),
         trample: sourcePiece.trample ?? false,
         trample_radius: sourcePiece.trample_radius ?? 0,
         ghostwalk: sourcePiece.ghostwalk ?? false,
@@ -1621,6 +1622,7 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
       <p className={styles["step-description"]} style={{ marginTop: '10px', fontSize: '14px', fontStyle: 'italic', color: 'var(--text-dim)' }}>
         {isMobile ? '💡 Long press on any square to add/remove pieces on mobile' : '💡 Right-click or drag and drop to manage pieces'}
       </p>
+      <FairyStockfishInfoNote kind="piecePlacement" />
 
       <div className={styles["piece-stats"]}>
         <div className={styles["stat-item"]}>

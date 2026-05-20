@@ -9839,6 +9839,184 @@ app.get('/api/ai-models/:gameTypeId/availability', async (req, res) => {
   }
 });
 
+// ---- Fairy-Stockfish compatibility check (public; used by lobby + admin) ----
+const fairyStockfishCompat = require('./ai/fairy-stockfish-compat');
+
+async function loadFairyStockfishCompatForGameType(gameTypeId) {
+  const [gameRows] = await db_pool.query(
+    'SELECT * FROM game_types WHERE id = ? LIMIT 1',
+    [gameTypeId],
+  );
+  if (gameRows.length === 0) return null;
+  const gameType = gameRows[0];
+
+  const [placements] = await db_pool.query(
+    'SELECT * FROM game_type_pieces WHERE game_type_id = ?',
+    [gameTypeId],
+  );
+
+  const pieceIds = Array.from(new Set(placements.map((p) => p.piece_id).filter(v => v != null)));
+  let pieceDefs = [];
+  if (pieceIds.length > 0) {
+    const placeholders = pieceIds.map(() => '?').join(',');
+    const [rows] = await db_pool.query(
+      `SELECT * FROM pieces WHERE id IN (${placeholders})`,
+      pieceIds,
+    );
+    pieceDefs = rows;
+  }
+
+  const result = fairyStockfishCompat.checkCompatibility(gameType, pieceDefs, placements);
+  return {
+    ...result,
+    deepAnalysisEnabled: !!gameType.fairy_stockfish_deep_analysis,
+  };
+}
+
+app.get('/api/fairy-stockfish/compatibility/:gameTypeId', async (req, res) => {
+  try {
+    const gid = parseInt(req.params.gameTypeId, 10);
+    if (!Number.isFinite(gid)) return res.status(400).send({ message: 'Invalid game type id' });
+    const out = await loadFairyStockfishCompatForGameType(gid);
+    if (!out) return res.status(404).send({ message: 'Game type not found' });
+    res.json(out);
+  } catch (err) {
+    console.error('Fairy-Stockfish compatibility check error:', err);
+    res.status(500).send({ message: 'Failed to check Fairy-Stockfish compatibility' });
+  }
+});
+
+// Translation bundle for the client-side Fairy-Stockfish worker. Returns
+// the variant INI text and the per-piece-id character map so the browser
+// can build FEN strings and feed them to the WASM engine. Public, since
+// any logged-in player who can start a vs-bot match needs this.
+const fairyStockfishTranslator = require('./ai/fairy-stockfish-translator');
+
+app.get('/api/fairy-stockfish/translation/:gameTypeId', async (req, res) => {
+  try {
+    const gid = parseInt(req.params.gameTypeId, 10);
+    if (!Number.isFinite(gid)) return res.status(400).send({ message: 'Invalid game type id' });
+
+    const [gameRows] = await db_pool.query(
+      'SELECT * FROM game_types WHERE id = ? LIMIT 1', [gid],
+    );
+    if (gameRows.length === 0) return res.status(404).send({ message: 'Game type not found' });
+    const gameType = gameRows[0];
+
+    const [placements] = await db_pool.query(
+      'SELECT * FROM game_type_pieces WHERE game_type_id = ?', [gid],
+    );
+    const pieceIds = Array.from(new Set(placements.map(p => p.piece_id).filter(v => v != null)));
+    let pieceDefs = [];
+    if (pieceIds.length > 0) {
+      const placeholders = pieceIds.map(() => '?').join(',');
+      const [rows] = await db_pool.query(
+        `SELECT * FROM pieces WHERE id IN (${placeholders})`, pieceIds,
+      );
+      pieceDefs = rows;
+    }
+
+    // Verify compatibility first; refuse to translate incompatible game types.
+    // `?ignoreSafe=1` lets a client that already showed the "Play anyway"
+    // confirmation through reasons that don't change how pieces move (fog of
+    // war, alternate win conditions, etc.) -- the engine just plays the
+    // movement rules and the server enforces the rest.
+    const ignoreSafe = req.query.ignoreSafe === '1' || req.query.ignoreSafe === 'true';
+    const compat = fairyStockfishCompat.checkCompatibility(gameType, pieceDefs, placements);
+    const blockingReasons = ignoreSafe
+      ? compat.reasons.filter(r => !r.safeToIgnore)
+      : compat.reasons;
+    if (blockingReasons.length > 0) {
+      return res.status(409).json({
+        message: 'Game type is not compatible with Fairy-Stockfish',
+        reasons: blockingReasons,
+      });
+    }
+
+    const charMap = fairyStockfishTranslator.buildCharMap(pieceDefs, placements);
+    const { ini, variantName } = fairyStockfishTranslator.buildVariantINI(
+      gameType, pieceDefs, placements, charMap,
+    );
+
+    res.json({
+      variantIni: ini,
+      variantName,
+      charMap: {
+        byPieceId: Object.fromEntries(charMap.byPieceId),
+        royalChars: Array.from(charMap.royalChars),
+        pawnChars: Array.from(charMap.pawnChars),
+      },
+      boardWidth: gameType.board_width,
+      boardHeight: gameType.board_height,
+    });
+  } catch (err) {
+    console.error('Fairy-Stockfish translation error:', err);
+    res.status(500).send({ message: 'Failed to build Fairy-Stockfish translation' });
+  }
+});
+
+// ---- Admin: Fairy-Stockfish management ----
+
+// Stats endpoint. The deep-analysis server engine isn't wired yet, so
+// activeWorkers/queueDepth/RAM are zeros for now; the UI still surfaces the
+// configured cap so admins know what would happen when they enable it.
+app.get('/api/admin/fairy-stockfish/stats', authenticateAdmin1, async (req, res) => {
+  try {
+    // Lazy-require so the file can be added later without breaking startup.
+    let engine = null;
+    try { engine = require('./ai/fairy-stockfish-server-engine'); } catch (_) {}
+    const live = (engine && typeof engine.getStats === 'function') ? engine.getStats() : null;
+    res.json({
+      engineImplemented: !!live,
+      activeWorkers: live?.activeWorkers ?? 0,
+      queueDepth: live?.queueDepth ?? 0,
+      maxWorkers: live?.maxWorkers ?? 0,
+      estimatedRamMB: live?.estimatedRamMB ?? 0,
+    });
+  } catch (err) {
+    console.error('Fairy-Stockfish stats error:', err);
+    res.status(500).send({ message: 'Failed to load Fairy-Stockfish stats' });
+  }
+});
+
+// List game types with their deep-analysis flag and compat status.
+app.get('/api/admin/fairy-stockfish/game-types', authenticateAdmin1, async (req, res) => {
+  try {
+    const [rows] = await db_pool.query(
+      'SELECT id, game_name, fairy_stockfish_deep_analysis, board_width, board_height FROM game_types ORDER BY game_name ASC',
+    );
+    // Cheap pass: don't run full compat here; the UI can request compat on
+    // demand per row. Returning the deep-analysis flag is the critical part.
+    res.json(rows.map(r => ({
+      id: r.id,
+      gameName: r.game_name,
+      boardWidth: r.board_width,
+      boardHeight: r.board_height,
+      deepAnalysisEnabled: !!r.fairy_stockfish_deep_analysis,
+    })));
+  } catch (err) {
+    console.error('Fairy-Stockfish game-types error:', err);
+    res.status(500).send({ message: 'Failed to list game types' });
+  }
+});
+
+// Toggle the deep-analysis flag for a game type.
+app.put('/api/admin/fairy-stockfish/game-types/:id', authenticateAdmin1, async (req, res) => {
+  try {
+    const gid = parseInt(req.params.id, 10);
+    if (!Number.isFinite(gid)) return res.status(400).send({ message: 'Invalid game type id' });
+    const enabled = req.body?.deepAnalysisEnabled ? 1 : 0;
+    await db_pool.query(
+      'UPDATE game_types SET fairy_stockfish_deep_analysis = ? WHERE id = ?',
+      [enabled, gid],
+    );
+    res.json({ id: gid, deepAnalysisEnabled: !!enabled });
+  } catch (err) {
+    console.error('Fairy-Stockfish toggle error:', err);
+    res.status(500).send({ message: 'Failed to update game type' });
+  }
+});
+
 // Admin: pause / resume new training jobs. Existing in-flight jobs are
 // not affected. Status is in-memory only � a server restart resets to
 // "not paused" (intentional: we don't want a forgotten pause to silently

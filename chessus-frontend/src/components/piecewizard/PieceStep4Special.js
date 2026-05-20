@@ -2,6 +2,7 @@ import React, { useEffect } from "react";
 import styles from "./piecewizard.module.scss";
 import NumberInput from "../common/NumberInput";
 import InfoTooltip from "./InfoTooltip";
+import FairyStockfishInfoNote from "../common/FairyStockfishInfoNote";
 import ToggleSwitch from "../common/ToggleSwitch";
 
 const PieceStep4Special = ({ pieceData, updatePieceData }) => {
@@ -49,6 +50,7 @@ const PieceStep4Special = ({ pieceData, updatePieceData }) => {
   return (
     <div className={styles["step-container"]}>
       <h2>Special Rules & Review</h2>
+      <FairyStockfishInfoNote kind="pieceSpecial" />
       <p className={styles["step-description"]}>
         Configure special movement restrictions and review all settings.
       </p>

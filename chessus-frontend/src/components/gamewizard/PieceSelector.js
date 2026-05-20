@@ -14,6 +14,15 @@ const getImageUrl = (imagePath) => {
   return `${ASSET_URL}${imagePath}`;
 };
 
+// Default castling distance scales with board width: 2 squares on an 8-wide
+// board, +1 for every 2 extra columns (10-wide -> 3, 12-wide -> 4). This
+// matches the natural king-rook spacing on larger Capablanca-style boards.
+export const defaultCastlingDistanceForBoard = (boardWidth) => {
+  const w = parseInt(boardWidth, 10);
+  if (!Number.isFinite(w) || w <= 0) return 2;
+  return 2 + Math.max(0, Math.floor((w - 8) / 2));
+};
+
 const PieceSelector = ({ 
   onSelect, 
   onRemove, 
@@ -94,7 +103,7 @@ const PieceSelector = ({
   const [manualCastlingPartners, setManualCastlingPartners] = useState(currentPlacement?.manual_castling_partners || false);
   const [leftCastlingPartnerKey, setLeftCastlingPartnerKey] = useState(currentPlacement?.castling_partner_left_key || null);
   const [rightCastlingPartnerKey, setRightCastlingPartnerKey] = useState(currentPlacement?.castling_partner_right_key || null);
-  const [castlingDistance, setCastlingDistance] = useState(currentPlacement?.castling_distance ?? 2);
+  const [castlingDistance, setCastlingDistance] = useState(currentPlacement?.castling_distance ?? defaultCastlingDistanceForBoard(boardWidth));
   
   // Fill row state
   const [fillRow, setFillRow] = useState(false);
@@ -1130,7 +1139,7 @@ const PieceSelector = ({
                 min="1"
                 max={maxCastlingDistance}
                 value={castlingDistance}
-                onChange={(e) => setCastlingDistance(Math.max(1, Math.min(maxCastlingDistance, parseInt(e.target.value) || 2)))}
+                onChange={(e) => setCastlingDistance(Math.max(1, Math.min(maxCastlingDistance, parseInt(e.target.value) || defaultCastlingDistanceForBoard(boardWidth))))}
                 className={styles["castling-distance-input"]}
               />
               <span className={styles["castling-distance-hint"]}>
