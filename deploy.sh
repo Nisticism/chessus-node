@@ -32,6 +32,12 @@ echo "[deploy] Publishing frontend to nginx..."
 sudo rm -rf /usr/share/nginx/html/*
 sudo cp -r /home/ec2-user/chessus-node/chessus-frontend/build/. /usr/share/nginx/html/
 
+echo "[deploy] Installing nginx site config (adds COOP/COEP headers for Fairy Stockfish)..."
+sudo cp /home/ec2-user/chessus-node/configs/nginx-site.conf /etc/nginx/conf.d/chessus.conf
+# Remove the nginx-common default site so it doesn't conflict.
+sudo rm -f /etc/nginx/conf.d/default.conf
+sudo nginx -t || { echo "[deploy] nginx config test failed, aborting"; exit 1; }
+
 echo "[deploy] Restarting nginx..."
 sudo systemctl restart nginx
 
