@@ -2660,7 +2660,8 @@ function getBestMoveSync(gameState, botPosition, difficulty, settingsOverride) {
         if (!isCapture) {
           // Deterministic hash per move so the same position always gets the
           // same jitter within this search, but varies across games via seed.
-          const moveSig = (move.pieceId.charCodeAt ? move.pieceId.charCodeAt(0) : move.pieceId) +
+          const _pid = move.pieceId ?? move.placePieceId;
+          const moveSig = (_pid != null ? (_pid.charCodeAt ? _pid.charCodeAt(0) : _pid) : 0) +
             move.to.x * 13 + move.to.y * 97;
           moveScore += ((moveSig * openingJitter) % 8) - 4; // range ±4 units
         }

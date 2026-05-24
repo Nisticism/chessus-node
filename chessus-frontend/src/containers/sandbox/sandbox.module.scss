@@ -262,45 +262,42 @@
 .pagination-bar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 6px 12px;
+  justify-content: center;
+  gap: 3px;
+  padding: 6px 8px;
   background: var(--bg-deep);
   border-bottom: 1px solid var(--border-subtle);
-  font-size: 0.8rem;
-  color: #999;
 
   button {
     background: var(--border-subtle);
     border: 1px solid var(--border-medium);
     border-radius: 4px;
     color: #aaa;
-    padding: 4px 10px;
+    padding: 3px 8px;
     font-size: 0.8rem;
     cursor: pointer;
-    transition: transform 0.2s, box-shadow 0.2s;
+    min-width: 28px;
+    line-height: 1.4;
+    transition: background 0.15s, color 0.15s;
 
-    &:hover {
+    &:hover:not(:disabled) {
       background: var(--border-medium);
       color: var(--text-heading);
+    }
+
+    &:disabled {
+      opacity: 0.35;
+      cursor: default;
     }
   }
 }
 
-.load-more-btn {
-  width: 100%;
-  padding: 10px;
-  background: var(--border-subtle);
-  border: 1px dashed var(--border-medium);
-  border-radius: 6px;
-  color: #aaa;
-  font-size: 0.85rem;
-  cursor: pointer;
-  transition: transform 0.2s, box-shadow 0.2s;
-
-  &:hover {
-    background: var(--border-medium);
-    color: var(--text-heading);
-  }
+.page-btn-active {
+  background: var(--accent, #4a90d9) !important;
+  border-color: var(--accent, #4a90d9) !important;
+  color: #fff !important;
+  font-weight: 600;
+  cursor: default;
 }
 
 // Game Rules section
@@ -471,6 +468,7 @@
   flex-direction: column;
   padding: 20px;
   overflow: auto;
+  position: relative;
 }
 
 .board-header {
@@ -485,6 +483,19 @@
     color: var(--text-heading);
     margin: 0;
     font-size: 1.5rem;
+  }
+}
+
+.game-name-link {
+  color: inherit;
+  text-decoration: none;
+  border-bottom: 1px dashed currentColor;
+  opacity: 0.9;
+  transition: opacity 0.15s;
+
+  &:hover {
+    opacity: 1;
+    border-bottom-style: solid;
   }
 }
 
@@ -817,18 +828,61 @@
 
 .special-square-indicator {
   position: absolute;
-  top: 4px;
-  right: 4px;
-  width: 18px;
-  height: 18px;
-  background: rgba(0, 0, 0, 0.5);
-  border-radius: 3px;
+  top: 2px;
+  right: 2px;
+  font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
+  font-weight: bold;
+  color: var(--text-heading);
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--text-heading);
-  font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
-  font-weight: bold;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+  z-index: 5;
+  pointer-events: none;
+
+  &.promotion { background: #9b59b6; }
+  &.range     { background: #ff8c00; }
+  &.control   { background: #32CD32; }
+  &.custom    { background: #ffd700; color: #000; }
+}
+
+// Special square translucent background overlays (match live-game appearance)
+.board-square {
+  &.promotion-square::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgba(155, 89, 182, 0.3);
+    pointer-events: none;
+    z-index: 1;
+  }
+  &.range-square::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgba(255, 140, 0, 0.3);
+    pointer-events: none;
+    z-index: 1;
+  }
+  &.control-square::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgba(50, 205, 50, 0.3);
+    pointer-events: none;
+    z-index: 1;
+  }
+  &.special-square::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgba(255, 215, 0, 0.3);
+    pointer-events: none;
+    z-index: 1;
+  }
 }
 
 .piece {
@@ -1525,5 +1579,60 @@
   .instruction {
     font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
     padding: 6px 10px;
+  }
+}
+
+/* HP / Attack badge shown over pieces that have show_hp_ad enabled */
+.sandbox-hp-badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  background: rgba(0, 0, 0, 0.78);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 3px;
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 5;
+}
+
+/* Game-over banner — in-flow above the board, non-blocking */
+.sandbox-gameover-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  padding: 0.6rem 0.9rem;
+  margin-bottom: 12px;
+  background: linear-gradient(90deg, #2a3551, #1f2330);
+  border: 1px solid #4a5879;
+  border-radius: 6px;
+  color: #fff;
+  font-size: 0.95rem;
+
+  strong {
+    color: #ffd76b;
+  }
+
+  span {
+    flex: 1 1 auto;
+    opacity: 0.9;
+  }
+
+  button {
+    padding: 0.35rem 0.75rem;
+    border-radius: 4px;
+    border: 1px solid #555;
+    background: #2c3142;
+    color: #fff;
+    cursor: pointer;
+    font-size: 0.85rem;
+
+    &:hover {
+      background: #3a4159;
+    }
   }
 }

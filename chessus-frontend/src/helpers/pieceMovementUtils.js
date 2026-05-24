@@ -1079,7 +1079,10 @@ export const getDirectionChangeMoves = (piece, fromX, fromY, playerPosition, boa
               }
               break; // destination occupied — stop second leg
             } else if (type === 'capture') {
-              break; // capture type but destination empty — skip (not a valid capture)
+              // Empty square — not a valid capture landing, but keep walking (don't stop)
+              // unless this was an exact-distance leg (can't go further)
+              if (piece[secondExactKey]) break;
+              continue; // skip push, continue searching for an enemy
             }
           }
 

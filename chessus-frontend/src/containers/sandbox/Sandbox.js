@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { Link } from "react-router-dom";
 import { useSelector, useDispatch } from "react-redux";
 import { getGameById } from "../../actions/games";
 import axios from "../../services/axios-interceptor";
@@ -28,6 +29,268 @@ const SPECIAL_SQUARE_TYPES = {
   custom: { name: 'Custom Square', color: '#ffd700' }
 };
 
+// =============================================
+// Sandbox game-logic helpers (pure functions)
+// =============================================
+
+const DEFAULT_SANDBOX_RULES = {
+  // win
+  mate_condition: true,
+  mate_condition_requires_all: false,
+  capture_condition: false,
+  capture_condition_requires_all: false,
+  squares_condition: false,
+  piece_count_condition: false,
+  no_moves_condition: false,
+  promotion_condition: false,
+  lose_all_pieces_condition: false,
+  stalemate_win_condition: false,
+  // draw
+  stalemate_draw_condition: true,
+  draw_move_limit: null,
+  repetition_draw_count: null,
+  equal_piece_count_draw: false,
+  // mechanics
+  actions_per_turn: 1,
+  simultaneous_turns: false,
+  flanking_captures: false,
+  place_pieces_action: false,
+  forced_capture_condition: false,
+};
+
+// Build a rules object from a loaded game_type record
+const buildRulesFromGameType = (gt) => {
+  if (!gt) return { ...DEFAULT_SANDBOX_RULES };
+  let otherData = {};
+  try {
+    if (gt.other_game_data) {
+      otherData = typeof gt.other_game_data === 'string' ? JSON.parse(gt.other_game_data) : gt.other_game_data;
+    }
+  } catch (_) { /* ignore */ }
+  return {
+    // win
+    mate_condition: !!gt.mate_condition,
+    mate_condition_requires_all: !!gt.mate_condition_requires_all,
+    capture_condition: !!gt.capture_condition,
+    capture_condition_requires_all: !!gt.capture_condition_requires_all,
+    squares_condition: !!gt.squares_condition,
+    piece_count_condition: !!gt.piece_count_condition,
+    no_moves_condition: !!gt.no_moves_condition,
+    promotion_condition: !!gt.promotion_condition,
+    lose_all_pieces_condition: !!gt.lose_all_pieces_condition,
+    stalemate_win_condition: !!gt.stalemate_win_condition,
+    // draw
+    stalemate_draw_condition: gt.stalemate_draw_condition === undefined ? true : !!gt.stalemate_draw_condition,
+    draw_move_limit: gt.draw_move_limit || null,
+    repetition_draw_count: gt.repetition_draw_count || null,
+    equal_piece_count_draw: !!gt.equal_piece_count_draw,
+    // mechanics
+    actions_per_turn: Number(gt.actions_per_turn) || 1,
+    simultaneous_turns: !!gt.simultaneous_turns,
+    flanking_captures: !!(gt.flanking_captures || otherData.flanking_captures),
+    place_pieces_action: !!otherData.place_pieces_action,
+    forced_capture_condition: !!gt.forced_capture_condition,
+  };
+};
+
+// Initial state for a fresh sandbox (any kind)
+const buildInitialSandboxState = (rules) => ({
+  rules: rules || { ...DEFAULT_SANDBOX_RULES },
+  moveCount: 0,
+  positionHistory: [],
+  actionsThisTurn: 0,
+  gameOver: null,
+  placementPool: [],
+  placementSelected: null,
+});
+
+// Apply capture (HP/AD) to a list of pieces. captureIds is a Set of piece ids
+// that an attacker is hitting (move-capture targets and/or hop-capture targets).
+// Returns { pieces: newArray, justCaptured: [array of fully-removed pieces] }.
+const applyCapturesWithHp = (pieces, captureIds, attacker) => {
+  if (!captureIds || captureIds.size === 0) {
+    return { pieces: [...pieces], justCaptured: [] };
+  }
+  const ad = Number(attacker?.attack_damage ?? 1) || 1;
+  const justCaptured = [];
+  const updated = [];
+  for (const p of pieces) {
+    if (!captureIds.has(p.id)) { updated.push(p); continue; }
+    if (p.cannot_be_captured) { updated.push(p); continue; }
+    const maxHp = Number(p.hit_points ?? 1) || 1;
+    const curHp = Number(p.current_hp ?? maxHp) || maxHp;
+    const newHp = curHp - ad;
+    if (newHp <= 0) {
+      justCaptured.push(p);
+      // Fully removed: omit from updated
+    } else {
+      updated.push({ ...p, current_hp: newHp });
+    }
+  }
+  return { pieces: updated, justCaptured };
+};
+
+// Stable position hash (for repetition draw detection)
+const hashSandboxPosition = (pieces, currentTurn) => {
+  const arr = pieces.map(p =>
+    `${p.piece_id || p.id || ''}:${p.player_id || p.team || 0}:${p.x},${p.y}:${p.current_hp ?? ''}`
+  );
+  arr.sort();
+  return arr.join('|') + `#t${currentTurn}`;
+};
+
+// Pure game-over detection. Returns { gameOver: true, winner, reason } or null.
+// calculateValidMovesFn may be null (skips stalemate/checkmate check).
+const evaluateSandboxEndGame = (sandbox, justCaptured, calculateValidMovesFn) => {
+  const rules = sandbox.rules || DEFAULT_SANDBOX_RULES;
+  const pieces = sandbox.pieces || [];
+  const players = [1, 2];
+
+  // 1. Captures of ends_game_on_capture / ends_game_on_checkmate pieces
+  const eliminated = new Set();
+  let mateReason = false;
+  for (const cap of (justCaptured || [])) {
+    if (cap.ends_game_on_capture || cap.ends_game_on_checkmate) {
+      eliminated.add(cap.player_id || cap.team);
+      if (cap.ends_game_on_checkmate) mateReason = true;
+    }
+  }
+  if (eliminated.size > 0) {
+    const survivors = players.filter(p => !eliminated.has(p));
+    if (survivors.length === 0) {
+      return { gameOver: true, winner: null, reason: 'simultaneous_capture_draw' };
+    }
+    if (survivors.length === 1) {
+      return { gameOver: true, winner: survivors[0], reason: mateReason ? 'checkmate' : 'capture' };
+    }
+  }
+
+  // 2. Elimination by zero-pieces (skip for placement games — players can re-place)
+  if (!rules.place_pieces_action) {
+    for (const player of players) {
+      const myPieces = pieces.filter(p => (p.player_id || p.team) === player);
+      // Only treat zero pieces as a loss if some win condition is set, OR no win conditions
+      // are set (fallback). For mate-only games, leave handling to the ends_game_on_* check.
+      const hasAnyWinCondition = rules.mate_condition || rules.capture_condition ||
+        rules.squares_condition || rules.piece_count_condition || rules.lose_all_pieces_condition;
+      if (myPieces.length === 0) {
+        if (rules.lose_all_pieces_condition) {
+          // Player wins by losing all pieces
+          return { gameOver: true, winner: player, reason: 'lose_all_wins' };
+        }
+        if (rules.capture_condition || rules.piece_count_condition || !hasAnyWinCondition) {
+          const winner = players.find(p => p !== player);
+          return { gameOver: true, winner, reason: 'elimination' };
+        }
+      }
+    }
+  }
+
+  // 2b. Equal piece count draw
+  if (rules.equal_piece_count_draw) {
+    const p1Count = pieces.filter(p => (p.player_id || p.team) === 1).length;
+    const p2Count = pieces.filter(p => (p.player_id || p.team) === 2).length;
+    if (p1Count > 0 && p1Count === p2Count && (sandbox.moveCount || 0) > 0) {
+      // Only fire at end of full round (when player 1 about to move again) to avoid initial-state draws
+      if (sandbox.currentTurn === 1) {
+        return { gameOver: true, winner: null, reason: 'equal_piece_count' };
+      }
+    }
+  }
+
+  // 3. Draw by move limit
+  if (rules.draw_move_limit && (sandbox.moveCount || 0) >= rules.draw_move_limit) {
+    return { gameOver: true, winner: null, reason: 'draw_move_limit' };
+  }
+
+  // 4. Repetition draw
+  if (rules.repetition_draw_count && Array.isArray(sandbox.positionHistory)) {
+    const counts = {};
+    for (const h of sandbox.positionHistory) counts[h] = (counts[h] || 0) + 1;
+    if (Object.values(counts).some(c => c >= rules.repetition_draw_count)) {
+      return { gameOver: true, winner: null, reason: 'repetition' };
+    }
+  }
+
+  // 5. Stalemate / checkmate (no legal moves for current player)
+  if (calculateValidMovesFn) {
+    const bw = sandbox.gameType?.board_width || 8;
+    const bh = sandbox.gameType?.board_height || 8;
+    const turn = sandbox.currentTurn;
+    const myPieces = pieces.filter(p => (p.player_id || p.team) === turn);
+    if (myPieces.length > 0) {
+      let hasAnyMove = false;
+      for (const p of myPieces) {
+        try {
+          const moves = calculateValidMovesFn(p, pieces, bw, bh);
+          if (moves && moves.length > 0) { hasAnyMove = true; break; }
+        } catch (_) { /* ignore per-piece errors */ }
+      }
+      if (!hasAnyMove) {
+        if (rules.mate_condition) {
+          const winner = turn === 1 ? 2 : 1;
+          return { gameOver: true, winner, reason: 'checkmate' };
+        }
+        if (rules.no_moves_condition) {
+          const winner = turn === 1 ? 2 : 1;
+          return { gameOver: true, winner, reason: 'no_moves' };
+        }
+        if (rules.stalemate_win_condition) {
+          // Player who has no moves wins
+          return { gameOver: true, winner: turn, reason: 'stalemate_win' };
+        }
+        if (rules.stalemate_draw_condition !== false) {
+          return { gameOver: true, winner: null, reason: 'stalemate' };
+        }
+        // No applicable rule — continue (do nothing)
+      }
+    }
+  }
+
+  // 6. squares_condition: player wins by controlling all designated control squares
+  if (rules.squares_condition) {
+    const controlData = sandbox.gameSpecialSquares?.control || {};
+    const specialData = sandbox.gameSpecialSquares?.special || {};
+    // Collect all control-square keys (row,col format) from both sources
+    const controlKeys = [
+      ...Object.keys(controlData),
+      ...Object.entries(specialData).filter(([, cfg]) => cfg?.asControl).map(([k]) => k),
+    ];
+    if (controlKeys.length > 0) {
+      for (const player of players) {
+        const allControlled = controlKeys.every(k => {
+          const [ky, kx] = k.split(',').map(Number);
+          return pieces.some(p =>
+            (p.player_id || p.team) === player && doesPieceOccupySquare(p, kx, ky)
+          );
+        });
+        if (allControlled) {
+          return { gameOver: true, winner: player, reason: 'squares_controlled' };
+        }
+      }
+    }
+  }
+
+  return null;
+};
+
+// Friendly reason -> label
+const GAME_OVER_REASON_LABELS = {
+  capture: 'by capture',
+  checkmate: 'by checkmate',
+  elimination: 'by elimination',
+  stalemate: 'by stalemate',
+  stalemate_win: 'stalemate (no-moves player wins)',
+  draw_move_limit: 'by move limit',
+  repetition: 'by repetition',
+  simultaneous_capture_draw: 'simultaneous capture',
+  no_moves: 'no legal moves',
+  lose_all_wins: 'by losing all pieces',
+  equal_piece_count: 'equal piece count draw',
+  promotion_win: 'by promotion',
+  squares_controlled: 'by controlling all squares',
+};
+
 const Sandbox = () => {
   const dispatch = useDispatch();
   const { user: currentUser } = useSelector((state) => state.authReducer);
@@ -48,7 +311,7 @@ const Sandbox = () => {
     gamesAbortRef.current = controller;
     if (replace) setGamesLoading(true);
     try {
-      const params = { page, limit: 50, sort: 'alphabetical' };
+      const params = { page, limit: 20, sort: 'alphabetical' };
       if (search) params.search = search;
       const response = await axios.get(API_URL + "games", {
         params,
@@ -81,6 +344,7 @@ const Sandbox = () => {
     const timer = setTimeout(() => {
       sandboxGamesPageRef.current = 1;
       sandboxGamesSearchRef.current = searchGameTerm;
+      setGameTypePage(1);
       loadSandboxGames(searchGameTerm, 1, true);
     }, 300);
     return () => clearTimeout(timer);
@@ -128,33 +392,32 @@ const Sandbox = () => {
   const [hoveredHighlights, setHoveredHighlights] = useState({});
   const [showGameTypes, setShowGameTypes] = useState(true);
   const [showPieceLibrary, setShowPieceLibrary] = useState(true);
+  const [showWinConditions, setShowWinConditions] = useState(true);
+  const [showDrawConditions, setShowDrawConditions] = useState(false);
+  const [showGameMechanics, setShowGameMechanics] = useState(false);
   // searchGameTerm already declared near top of component — do not re-declare here
   const [searchPieceTerm, setSearchPieceTerm] = useState("");
   const [showHighlights, setShowHighlights] = useState(true);
+  const [showAllSpecialSquares, setShowAllSpecialSquares] = useState(true);
   const [boardFlipped, setBoardFlipped] = useState(false);
   const [playingAs, setPlayingAs] = useState(1);
   const [isDragging, setIsDragging] = useState(false);
   const touchDragRef = useRef({ piece: null, startX: 0, startY: 0, isDragging: false, grabOffsetX: 0, grabOffsetY: 0 });
   const [touchDragPos, setTouchDragPos] = useState(null);
   const [touchDragPiece, setTouchDragPiece] = useState(null);
+  // Holds structured special-square data (LiveGame format) for the active sandbox.
+  // Updated synchronously each render so it is always current when event handlers run.
+  const gameSpecialSquaresRef = useRef({ range: {}, promotion: {}, control: {}, special: {} });
 
   // Pagination for sidebars
   const ITEMS_PER_PAGE = 20;
   const [piecePage, setPiecePage] = useState(1);
 
-  // Game rules state (under construction)
-  const [sandboxRules, setSandboxRules] = useState({
-    mate_condition: true,
-    capture_condition: false,
-    squares_condition: false,
-    piece_count_condition: false,
-    actions_per_turn: 1,
-    simultaneous_turns: false,
-    draw_move_limit: null,
-    repetition_draw_count: null,
-    flanking_captures: false,
-    place_pieces_action: false,
-  });
+  // Per-sandbox rules now live on each sandbox object. We expose helpers that
+  // forward reads/writes to the active sandbox so existing sidebar JSX keeps working.
+  // (Initialized after activeSandbox is computed below.)
+  // Promotion modal state
+  const [promotionPending, setPromotionPending] = useState(null);
   
   // Initialize sidebarPlayerView from localStorage
   const getInitialSidebarPlayerView = () => {
@@ -278,8 +541,10 @@ const Sandbox = () => {
           gameType: { board_width: pending.boardWidth, board_height: pending.boardHeight, game_name: fullPiece.piece_name || 'Piece Preview' },
           pieces: [pieceForSandbox],
           specialSquares: {},
+          gameSpecialSquares: { range: {}, promotion: {}, control: {}, special: {} },
           currentTurn: 1,
-          moveHistory: []
+          moveHistory: [],
+          ...buildInitialSandboxState(null),
         };
 
         setSandboxes(prev => {
@@ -321,6 +586,30 @@ const Sandbox = () => {
     return sandboxes.find(s => s.id === activeSandboxId);
   }, [sandboxes, activeSandboxId]);
 
+  // Keep gameSpecialSquaresRef current (synchronous render-time ref update)
+  gameSpecialSquaresRef.current = activeSandbox?.gameSpecialSquares || { range: {}, promotion: {}, control: {}, special: {} };
+
+  // Per-sandbox rules adapter: existing JSX reads `sandboxRules` and calls
+  // `setSandboxRules`. These now mirror to the active sandbox's `rules` field.
+  const sandboxRules = activeSandbox?.rules || DEFAULT_SANDBOX_RULES;
+  const setSandboxRules = useCallback((updater) => {
+    setSandboxes(prev => prev.map(s => {
+      if (s.id !== activeSandboxId) return s;
+      const current = s.rules || DEFAULT_SANDBOX_RULES;
+      const next = typeof updater === 'function' ? updater(current) : updater;
+      return { ...s, rules: next };
+    }));
+  }, [activeSandboxId]);
+
+  // Helper to merge updates onto the active sandbox
+  const updateActiveSandbox = useCallback((updater) => {
+    setSandboxes(prev => prev.map(s => {
+      if (s.id !== activeSandboxId) return s;
+      const patch = typeof updater === 'function' ? updater(s) : updater;
+      return { ...s, ...patch };
+    }));
+  }, [activeSandboxId]);
+
   // Get the last move for highlighting
   const lastMove = useMemo(() => {
     if (!activeSandbox?.moveHistory?.length) return null;
@@ -356,8 +645,10 @@ const Sandbox = () => {
       gameType: { board_width: 8, board_height: 8, game_name: "Blank Board" },
       pieces: [],
       specialSquares: {},
+      gameSpecialSquares: { range: {}, promotion: {}, control: {}, special: {} },
       currentTurn: 1,
-      moveHistory: []
+      moveHistory: [],
+      ...buildInitialSandboxState(null),
     };
     setSandboxes(prev => [...prev, newSandbox]);
     setActiveSandboxId(newSandbox.id);
@@ -507,7 +798,24 @@ const Sandbox = () => {
             y: posY,
             team: playerId,
             player_id: playerId,
-            move_count: 0
+            move_count: 0,
+            // Junction-table / per-piece-instance fields with sensible defaults so the
+            // sandbox HP/damage system and end-game detection work.
+            hit_points: p.hit_points ?? normalizedPiece?.hit_points ?? 1,
+            current_hp: p.current_hp ?? p.hit_points ?? normalizedPiece?.hit_points ?? 1,
+            attack_damage: p.attack_damage ?? normalizedPiece?.attack_damage ?? 1,
+            show_hp_ad: p.show_hp_ad ?? false,
+            ends_game_on_capture: p.ends_game_on_capture ?? normalizedPiece?.ends_game_on_capture ?? false,
+            ends_game_on_checkmate: p.ends_game_on_checkmate ?? normalizedPiece?.ends_game_on_checkmate ?? false,
+            cannot_be_captured: p.cannot_be_captured ?? normalizedPiece?.cannot_be_captured ?? false,
+            trample: p.trample ?? normalizedPiece?.trample ?? false,
+            trample_radius: p.trample_radius ?? normalizedPiece?.trample_radius ?? 0,
+            ghostwalk: p.ghostwalk ?? normalizedPiece?.ghostwalk ?? false,
+            die_on_capture: p.die_on_capture ?? normalizedPiece?.die_on_capture ?? false,
+            die_on_capture_grants_win: p.die_on_capture_grants_win ?? normalizedPiece?.die_on_capture_grants_win ?? false,
+            can_promote: p.can_promote ?? normalizedPiece?.can_promote ?? false,
+            promotion_pieces_override: p.promotion_pieces_override ?? null,
+            disable_promotion: p.disable_promotion ?? false,
           };
           
           return resultPiece;
@@ -517,14 +825,43 @@ const Sandbox = () => {
       }
     }
     
+    // Build placement pool from other_game_data.placeable_pieces (if any)
+    let placementPool = [];
+    try {
+      const od = freshGameData.other_game_data ? (typeof freshGameData.other_game_data === 'string' ? JSON.parse(freshGameData.other_game_data) : freshGameData.other_game_data) : {};
+      if (Array.isArray(od.placeable_pieces)) {
+        placementPool = od.placeable_pieces;
+      }
+    } catch (_) { /* ignore */ }
+
+    const initState = buildInitialSandboxState(buildRulesFromGameType(freshGameData));
+    initState.placementPool = placementPool;
+
+    // Parse special square strings from the game type into structured LiveGame-format data
+    const gameSpecialSquares = { range: {}, promotion: {}, control: {}, special: {} };
+    try { if (freshGameData.range_squares_string) gameSpecialSquares.range = JSON.parse(freshGameData.range_squares_string) || {}; } catch (_) {}
+    try { if (freshGameData.promotion_squares_string) gameSpecialSquares.promotion = JSON.parse(freshGameData.promotion_squares_string) || {}; } catch (_) {}
+    try { if (freshGameData.control_squares_string) gameSpecialSquares.control = JSON.parse(freshGameData.control_squares_string) || {}; } catch (_) {}
+    try { if (freshGameData.special_squares_string) gameSpecialSquares.special = JSON.parse(freshGameData.special_squares_string) || {}; } catch (_) {}
+
+    // Build display format (x,y keys → type string) for board coloring
+    // LiveGame stores these with "y,x" (row,col) keys; display format uses "x,y" (col,row)
+    const displaySpecialSquares = {};
+    Object.keys(gameSpecialSquares.range).forEach(k => { const [y, x] = k.split(','); displaySpecialSquares[`${x},${y}`] = 'range'; });
+    Object.keys(gameSpecialSquares.promotion).forEach(k => { const [y, x] = k.split(','); displaySpecialSquares[`${x},${y}`] = 'promotion'; });
+    Object.keys(gameSpecialSquares.control).forEach(k => { const [y, x] = k.split(','); displaySpecialSquares[`${x},${y}`] = 'control'; });
+    Object.keys(gameSpecialSquares.special).forEach(k => { const [y, x] = k.split(','); displaySpecialSquares[`${x},${y}`] = 'custom'; });
+
     const newSandbox = {
       id: Date.now(),
       name: freshGameData.game_name || gameType.game_name,
       gameType: freshGameData,
       pieces: pieces,
-      specialSquares: {},
+      specialSquares: displaySpecialSquares,
+      gameSpecialSquares,
       currentTurn: 1,
-      moveHistory: []
+      moveHistory: [],
+      ...initState,
     };
     setSandboxes(prev => [...prev, newSandbox]);
     setActiveSandboxId(newSandbox.id);
@@ -688,6 +1025,20 @@ const Sandbox = () => {
       custom_attack_squares: pieceData.custom_attack_squares,
       // Track move count so first-move-only restrictions apply correctly
       move_count: 0,
+      // Junction-table / per-instance fields (HP/AD, win-condition flags, etc.)
+      hit_points: pieceData.hit_points ?? 1,
+      current_hp: pieceData.current_hp ?? pieceData.hit_points ?? 1,
+      attack_damage: pieceData.attack_damage ?? 1,
+      show_hp_ad: pieceData.show_hp_ad ?? false,
+      ends_game_on_capture: pieceData.ends_game_on_capture ?? false,
+      ends_game_on_checkmate: pieceData.ends_game_on_checkmate ?? false,
+      trample: pieceData.trample ?? false,
+      trample_radius: pieceData.trample_radius ?? 0,
+      ghostwalk: pieceData.ghostwalk ?? false,
+      die_on_capture: pieceData.die_on_capture ?? false,
+      die_on_capture_grants_win: pieceData.die_on_capture_grants_win ?? false,
+      promotion_pieces_override: pieceData.promotion_pieces_override ?? null,
+      disable_promotion: pieceData.disable_promotion ?? false,
     };
 
     setSandboxes(prev => prev.map(s => {
@@ -830,17 +1181,35 @@ const Sandbox = () => {
   const setSpecialSquare = useCallback((x, y, type) => {
     if (!activeSandbox) return;
     
-    const key = `${x},${y}`;
+    const displayKey = `${x},${y}`;
+    const dataKey = `${y},${x}`; // LiveGame format: row,col
     setSandboxes(prev => prev.map(s => {
       if (s.id !== activeSandboxId) return s;
       
       const newSpecialSquares = { ...s.specialSquares };
+      const gss = s.gameSpecialSquares || { range: {}, promotion: {}, control: {}, special: {} };
+      const newGss = {
+        range: { ...gss.range },
+        promotion: { ...gss.promotion },
+        control: { ...gss.control },
+        special: { ...gss.special },
+      };
+      // Remove from all data maps first
+      delete newGss.range[dataKey];
+      delete newGss.promotion[dataKey];
+      delete newGss.control[dataKey];
+      delete newGss.special[dataKey];
+
       if (type) {
-        newSpecialSquares[key] = type;
+        newSpecialSquares[displayKey] = type;
+        if (type === 'range') newGss.range[dataKey] = { rangeBonus: 1 };
+        else if (type === 'promotion') newGss.promotion[dataKey] = {};
+        else if (type === 'control') newGss.control[dataKey] = {};
+        // 'custom' type: no config without a wizard; treated as decorative only
       } else {
-        delete newSpecialSquares[key];
+        delete newSpecialSquares[displayKey];
       }
-      return { ...s, specialSquares: newSpecialSquares };
+      return { ...s, specialSquares: newSpecialSquares, gameSpecialSquares: newGss };
     }));
   }, [activeSandbox, activeSandboxId]);
 
@@ -1338,8 +1707,69 @@ const Sandbox = () => {
     return true;
   }, [findPieceAt]);
 
+  // Apply range boost when a piece is on a range square or custom+asRange square.
+  // Reads from gameSpecialSquaresRef (kept current each render) so the dep array stays empty.
+  const applyRangeSquareBonusSandbox = useCallback((piece) => {
+    const gss = gameSpecialSquaresRef.current;
+    if (!gss) return piece;
+    const key = `${piece.y},${piece.x}`; // LiveGame format: row,col
+    const rangeEntry = (gss.range || {})[key];
+    const customEntry = (gss.special || {})[key];
+    if (!rangeEntry && !customEntry?.asRange) return piece;
+    const bonus = rangeEntry?.rangeBonus || 1;
+    const boosted = { ...piece };
+    const boost = (val) => {
+      if (!val || val === 0 || val === 99) return val;
+      if (val < 0) return val - bonus;
+      return val + bonus;
+    };
+    const dirs = ['up', 'down', 'left', 'right', 'up_left', 'up_right', 'down_left', 'down_right'];
+    for (const dir of dirs) {
+      if (boosted[`${dir}_movement`]) boosted[`${dir}_movement`] = boost(boosted[`${dir}_movement`]);
+      if (boosted[`${dir}_capture`]) boosted[`${dir}_capture`] = boost(boosted[`${dir}_capture`]);
+      if (boosted[`${dir}_attack_range`]) boosted[`${dir}_attack_range`] = boost(boosted[`${dir}_attack_range`]);
+    }
+    if (boosted.step_movement_value) boosted.step_movement_value = boost(boosted.step_movement_value);
+    if (boosted.step_capture_value) boosted.step_capture_value = boost(boosted.step_capture_value);
+    if (boosted.step_by_step_attack_range) boosted.step_by_step_attack_range = boost(boosted.step_by_step_attack_range);
+    if (boosted.ratio_movement_1) boosted.ratio_movement_1 = boost(boosted.ratio_movement_1);
+    if (boosted.ratio_movement_2) boosted.ratio_movement_2 = boost(boosted.ratio_movement_2);
+    if (boosted.ratio_one_attack_range) boosted.ratio_one_attack_range = boost(boosted.ratio_one_attack_range);
+    if (boosted.ratio_two_attack_range) boosted.ratio_two_attack_range = boost(boosted.ratio_two_attack_range);
+    return boosted;
+  }, []); // no deps — reads from stable ref
+
   // Calculate valid moves for a piece (includes ranged attacks)
   const calculateValidMoves = useCallback((piece, pieces, boardWidth, boardHeight) => {
+    // Apply range bonus if the piece is on a range or custom+asRange square
+    piece = applyRangeSquareBonusSandbox(piece);
+
+    // Compute special-square effects on first-move-only moves and zone restriction
+    const gss = gameSpecialSquaresRef.current;
+    const customMap = gss.special || {};
+    const currentKey = `${piece.y},${piece.x}`; // row,col format
+    const currentCfg = customMap[currentKey];
+
+    // blockFirstMove: disableFirstMoveHere on current square, OR piece not on any
+    // restrictFirstMoveToCustom square when at least one such square exists
+    let blockFirstMove = false;
+    if (currentCfg?.disableFirstMoveHere) {
+      blockFirstMove = true;
+    } else {
+      const hasRestrict = Object.values(customMap).some(cfg => cfg?.restrictFirstMoveToCustom);
+      if (hasRestrict && !currentCfg) blockFirstMove = true;
+    }
+
+    // Restriction zone: if piece has cannot_move_outside_zone and zone squares exist,
+    // build the set of allowed destination keys (row,col format)
+    let zoneSquareKeys = null;
+    if (piece.cannot_move_outside_zone) {
+      const zoneKeys = Object.entries(customMap)
+        .filter(([, cfg]) => cfg?.asRestrictionZone)
+        .map(([k]) => k);
+      if (zoneKeys.length > 0) zoneSquareKeys = new Set(zoneKeys);
+    }
+
     const moves = [];
     const pieceTeam = piece.player_id || piece.team;
     const pw = piece.piece_width || 1;
@@ -1669,6 +2099,119 @@ const Sandbox = () => {
       }
     }
 
+    // --- Direction Change moves ---
+    // Walks first leg in one direction, then turns at the via square and walks
+    // a second leg in a different (non-parallel) direction. Mirrors the server
+    // implementation in game-socket.js.
+    const dcDirDefs = {
+      up:         { dx:  0, dy: -1 },
+      down:       { dx:  0, dy:  1 },
+      left:       { dx: -1, dy:  0 },
+      right:      { dx:  1, dy:  0 },
+      up_left:    { dx: -1, dy: -1 },
+      up_right:   { dx:  1, dy: -1 },
+      down_left:  { dx: -1, dy:  1 },
+      down_right: { dx:  1, dy:  1 },
+    };
+    const isP2 = pieceTeam === 2;
+    const dcFlip = (vec) => ({ dx: vec.dx, dy: isP2 ? -vec.dy : vec.dy });
+    const isSameOrOppositeDir = (ax, ay, bx, by) => (ax === bx && ay === by) || (ax === -bx && ay === -by);
+
+    const generateDCMoves = (type) => {
+      // type: 'movement' or 'capture'
+      const masterKey = type === 'capture' ? 'directional_capture_change' : 'directional_movement_change';
+      const useMovColsForCapture = type === 'capture' && piece.attacks_like_movement && !piece[masterKey];
+      const effectiveMaster = useMovColsForCapture ? 'directional_movement_change' : masterKey;
+      if (!piece[effectiveMaster]) return;
+
+      const firstLegSuffix = type === 'capture' ? '_capture' : '_movement';
+      const secondLegSuffix = useMovColsForCapture ? '_movement_change' : `_${type}_change`;
+
+      for (const [dir1Name, baseVec1] of Object.entries(dcDirDefs)) {
+        const firstLegDist = parseInt(piece[`${dir1Name}${firstLegSuffix}`], 10) || 0;
+        if (!firstLegDist) continue;
+        const { dx: fdx, dy: fdy } = dcFlip(baseVec1);
+        const firstExact = !!piece[`${dir1Name}${firstLegSuffix}_exact`];
+        const maxFirst = firstLegDist === 99 ? Math.max(boardWidth, boardHeight) : firstLegDist;
+
+        for (let step1 = 1; step1 <= maxFirst; step1++) {
+          if (firstExact && step1 !== firstLegDist) continue;
+          const viaX = piece.x + fdx * step1;
+          const viaY = piece.y + fdy * step1;
+          if (viaX < 0 || viaY < 0 || viaX >= boardWidth || viaY >= boardHeight) break;
+          // Path to via must be empty
+          let blocked = false;
+          for (let k = 1; k < step1; k++) {
+            const cx = piece.x + fdx * k;
+            const cy = piece.y + fdy * k;
+            const bp = findPieceAt(pieces, cx, cy);
+            if (bp && bp.id !== piece.id) { blocked = true; break; }
+          }
+          if (blocked) break;
+          // Via must be empty
+          const viaPiece = findPieceAt(pieces, viaX, viaY);
+          if (viaPiece && viaPiece.id !== piece.id) break;
+
+          for (const [dir2Name, baseVec2] of Object.entries(dcDirDefs)) {
+            const secondLegDist = parseInt(piece[`${dir2Name}${secondLegSuffix}`], 10) || 0;
+            if (!secondLegDist) continue;
+            const { dx: sdx, dy: sdy } = dcFlip(baseVec2);
+            if (isSameOrOppositeDir(fdx, fdy, sdx, sdy)) continue;
+            const secondExact = !!piece[`${dir2Name}${secondLegSuffix}_exact`];
+            const maxSecond = secondLegDist === 99 ? Math.max(boardWidth, boardHeight) : secondLegDist;
+
+            for (let step2 = 1; step2 <= maxSecond; step2++) {
+              if (secondExact && step2 !== secondLegDist) continue;
+              const toX = viaX + sdx * step2;
+              const toY = viaY + sdy * step2;
+              if (toX < 0 || toY < 0 || toX >= boardWidth || toY >= boardHeight) break;
+              // Path via->landing must be clear (except the landing)
+              let sBlocked = false;
+              for (let k = 1; k < step2; k++) {
+                const cx = viaX + sdx * k;
+                const cy = viaY + sdy * k;
+                const bp = findPieceAt(pieces, cx, cy);
+                if (bp && bp.id !== piece.id) { sBlocked = true; break; }
+              }
+              if (sBlocked) break;
+
+              const target = findPieceAt(pieces, toX, toY);
+              if (target && target.id === piece.id) continue;
+              if (target) {
+                const targetTeam = target.player_id || target.team;
+                if (target.cannot_be_captured) break;
+                const canCap = (type === 'capture' || piece.can_capture_enemy_on_move);
+                if (canCap && (targetTeam !== pieceTeam || piece.can_capture_allies)) {
+                  // Avoid duplicating a move at same (toX,toY)
+                  if (!moves.some(m => m.x === toX && m.y === toY && !m.isRangedAttack)) {
+                    moves.push({ x: toX, y: toY, isCapture: true, isHopCapture: false, hopCapturedPieceIds: [], isFirstMoveOnly: false, isCustomMove: false, isCustomAttack: false, isRangedAttack: false, isDirectionChange: true, via: { x: viaX, y: viaY } });
+                  }
+                }
+                break;
+              } else if (type !== 'capture') {
+                if (!moves.some(m => m.x === toX && m.y === toY && !m.isRangedAttack)) {
+                  moves.push({ x: toX, y: toY, isCapture: false, isHopCapture: false, hopCapturedPieceIds: [], isFirstMoveOnly: false, isCustomMove: false, isCustomAttack: false, isRangedAttack: false, isDirectionChange: true, via: { x: viaX, y: viaY } });
+                }
+              }
+            }
+          }
+          if (firstExact) break;
+        }
+      }
+    };
+
+    if (piece.directional_movement_change) generateDCMoves('movement');
+    if (piece.directional_capture_change || (piece.attacks_like_movement && piece.directional_movement_change)) {
+      generateDCMoves('capture');
+    }
+
+    // require_direction_change: piece MUST use a direction-change move
+    if (piece.require_direction_change) {
+      for (let i = moves.length - 1; i >= 0; i--) {
+        if (!moves[i].isDirectionChange) moves.splice(i, 1);
+      }
+    }
+
     // Separate loop: check ranged attack targets (matches LiveGame pattern)
     if (piece.can_capture_enemy_via_range) {
       for (let toY = 0; toY < boardHeight; toY++) {
@@ -1708,10 +2251,176 @@ const Sandbox = () => {
 
     // Apply first-move-only restriction: pieces that have already moved cannot use
     // first-move-only moves/captures. Mirrors the live-game behaviour.
+    // blockFirstMove also suppresses first-move-only moves based on custom-square rules.
     const hasMoved = (piece.move_count || 0) > 0;
-    const filtered = hasMoved ? moves.filter(m => !m.isFirstMoveOnly) : moves;
+    let filtered = (hasMoved || blockFirstMove) ? moves.filter(m => !m.isFirstMoveOnly) : moves;
+
+    // Apply restriction zone: pieces with cannot_move_outside_zone may only move to zone squares
+    if (zoneSquareKeys) {
+      filtered = filtered.filter(m => zoneSquareKeys.has(`${m.y},${m.x}`));
+    }
+
     return filtered;
-  }, [canPieceMoveTo, canPieceCaptureTo, isPathClear, isStepByStepTarget, canReachStepByStep, findPieceAt, checkIfFirstMoveOnlyMove, checkIfFirstMoveOnlyCapture]);
+  }, [canPieceMoveTo, canPieceCaptureTo, isPathClear, isStepByStepTarget, canReachStepByStep, findPieceAt, checkIfFirstMoveOnlyMove, checkIfFirstMoveOnlyCapture, applyRangeSquareBonusSandbox]);
+
+  // forced_capture_condition: if any piece of the current player has a capture
+  // available, that player MUST capture. Filters a piece's valid moves to
+  // captures only when the piece has captures, or returns [] when other pieces
+  // are obligated to capture instead.
+  const applyForcedCaptureFilter = useCallback((piece, moves) => {
+    if (!activeSandbox || !activeSandbox.rules?.forced_capture_condition) return moves;
+    const myTeam = piece.player_id || piece.team;
+    if (myTeam !== activeSandbox.currentTurn) return moves;
+    const myCaptures = moves.filter(m => m.isCapture);
+    if (myCaptures.length > 0) return myCaptures;
+    const bw = activeSandbox.gameType?.board_width || 8;
+    const bh = activeSandbox.gameType?.board_height || 8;
+    const others = activeSandbox.pieces.filter(p => (p.player_id || p.team) === myTeam && p.id !== piece.id);
+    for (const p of others) {
+      try {
+        const m = calculateValidMoves(p, activeSandbox.pieces, bw, bh);
+        if (m.some(mm => mm.isCapture)) return [];
+      } catch (_) { /* ignore */ }
+    }
+    return moves;
+  }, [activeSandbox, calculateValidMoves]);
+
+  // =============================================
+  // commitMove — single source of truth for applying a move to a sandbox.
+  // Handles capture HP/AD, multi-action turns, position history, end-game
+  // detection, and promotion-pending detection.
+  // Returns the new sandbox object (does NOT call setSandboxes).
+  // =============================================
+  const commitMove = useCallback((sandbox, opts) => {
+    const {
+      movingPieceId,
+      anchorX,
+      anchorY,
+      captureIds,        // Set<string> of piece ids hit by this move (includes hop captures + main target)
+      isRangedAttack = false,
+      moveHistoryEntry,  // object pushed into moveHistory
+      isPlacement = false,
+      newPieceForPlacement = null,
+    } = opts;
+
+    const beforePieces = sandbox.pieces;
+    const attacker = beforePieces.find(p => p.id === movingPieceId);
+
+    // 1. Apply captures with HP/AD
+    const captureSet = captureIds instanceof Set ? captureIds : new Set(captureIds || []);
+    let { pieces: afterCapture, justCaptured } = applyCapturesWithHp(beforePieces, captureSet, attacker);
+
+    // die_on_capture: attacker removes itself if it captured anyone
+    let attackerDies = false;
+    if (attacker && attacker.die_on_capture && justCaptured.length > 0) {
+      attackerDies = true;
+    }
+
+    // 2. Move / place the piece
+    let afterMove;
+    if (isPlacement && newPieceForPlacement) {
+      afterMove = [...afterCapture, newPieceForPlacement];
+    } else if (isRangedAttack) {
+      afterMove = afterCapture.map(p =>
+        p.id === movingPieceId ? { ...p, move_count: (p.move_count || 0) + 1 } : p
+      );
+    } else {
+      afterMove = afterCapture.map(p =>
+        p.id === movingPieceId ? { ...p, x: anchorX, y: anchorY, move_count: (p.move_count || 0) + 1 } : p
+      );
+    }
+    if (attackerDies) {
+      afterMove = afterMove.filter(p => p.id !== movingPieceId);
+      // Treat the attacker as a justCaptured for end-game purposes
+      if (attacker) justCaptured = [...justCaptured, attacker];
+    }
+
+    // 3. Turn / action accounting
+    const rules = sandbox.rules || DEFAULT_SANDBOX_RULES;
+    const actionsPerTurn = Math.max(1, Number(rules.actions_per_turn) || 1);
+    const actionsThisTurn = (sandbox.actionsThisTurn || 0) + 1;
+    let nextTurn = sandbox.currentTurn;
+    let nextActions = actionsThisTurn;
+    if (actionsThisTurn >= actionsPerTurn) {
+      nextTurn = sandbox.currentTurn === 1 ? 2 : 1;
+      nextActions = 0;
+    }
+
+    // 4. Move count & position history
+    const newMoveCount = (sandbox.moveCount || 0) + 1;
+    const newPositionHistory = [...(sandbox.positionHistory || []), hashSandboxPosition(afterMove, nextTurn)];
+
+    const intermediate = {
+      ...sandbox,
+      pieces: afterMove,
+      currentTurn: nextTurn,
+      actionsThisTurn: nextActions,
+      moveCount: newMoveCount,
+      positionHistory: newPositionHistory,
+      moveHistory: [...sandbox.moveHistory, moveHistoryEntry],
+    };
+
+    // 5. End-game evaluation
+    const verdict = evaluateSandboxEndGame(intermediate, justCaptured, calculateValidMoves);
+    if (verdict) {
+      intermediate.gameOver = verdict;
+    }
+
+    // 6. Promotion detection (returned in a side channel via the result so the
+    //    caller can show the modal). We don't actually mutate the piece here —
+    //    promotion is applied after the user chooses a target piece.
+    let promotionInfo = null;
+    if (!attackerDies && !isPlacement && !isRangedAttack) {
+      const moved = afterMove.find(p => p.id === movingPieceId);
+      if (moved && moved.can_promote && !moved.disable_promotion) {
+        // Check promotion squares
+        const promoSquares = (() => {
+          try {
+            const raw = sandbox.gameType?.promotion_squares_string;
+            if (!raw) return null;
+            return typeof raw === 'string' ? JSON.parse(raw) : raw;
+          } catch (_) { return null; }
+        })();
+        let isPromoSquare = false;
+        if (promoSquares) {
+          // promoSquares may be array of {x,y,player} or object keyed by "y,x"
+          if (Array.isArray(promoSquares)) {
+            isPromoSquare = promoSquares.some(s =>
+              ((s.x === anchorX && s.y === anchorY) || (s.col === anchorX && s.row === anchorY)) &&
+              (!s.player || s.player === moved.player_id || s.player === moved.team)
+            );
+          } else if (typeof promoSquares === 'object') {
+            isPromoSquare = !!promoSquares[`${anchorY},${anchorX}`] || !!promoSquares[`${anchorX},${anchorY}`];
+          }
+        }
+        // Also check custom squares with promotion flag
+        if (!isPromoSquare && sandbox.specialSquares) {
+          const key = `${anchorX},${anchorY}`;
+          const sq = sandbox.specialSquares[key];
+          // sq may be a plain string ('promotion') or legacy object ({ type: 'promotion' })
+          if (sq && (sq === 'promotion' || sq.type === 'promotion' || (sq.type === 'custom' && sq.config?.asPromotion))) {
+            isPromoSquare = true;
+          }
+        }
+        // Also check gameSpecialSquares.special for asPromotion (from loaded game type)
+        if (!isPromoSquare) {
+          const spe = sandbox.gameSpecialSquares?.special || {};
+          const specialKey = `${anchorY},${anchorX}`; // LiveGame row,col format
+          if (spe[specialKey]?.asPromotion) isPromoSquare = true;
+        }
+        if (isPromoSquare) {
+          promotionInfo = { pieceId: movingPieceId, x: anchorX, y: anchorY, player: moved.player_id || moved.team };
+          // If promotion_condition rule is active, reaching a promotion square wins immediately
+          if (rules.promotion_condition) {
+            intermediate.gameOver = { gameOver: true, winner: moved.player_id || moved.team, reason: 'promotion_win' };
+          }
+        }
+      }
+    }
+    intermediate._promotionInfo = promotionInfo;
+
+    return intermediate;
+  }, [calculateValidMoves]);
 
   // Handle square click - free repositioning (click piece, click destination)
   const handleSquareClick = useCallback((x, y) => {
@@ -1719,6 +2428,48 @@ const Sandbox = () => {
 
     const pieces = activeSandbox.pieces;
     const clickedPiece = findPieceAt(pieces, x, y);
+
+    // Placement mode: if a placement piece is selected and the square is empty,
+    // place it as a "place" action.
+    if (!clickedPiece && activeSandbox.placementSelected && activeSandbox.rules?.place_pieces_action) {
+      const placeData = activeSandbox.placementSelected;
+      const fullPiece = fullPiecesList.find(p => p.piece_id === placeData.piece_id || p.id === placeData.piece_id) || placeData;
+      const playerId = activeSandbox.currentTurn;
+      const newPiece = {
+        ...fullPiece,
+        ratio_movement_1: fullPiece.ratio_movement_1 || fullPiece.ratio_one_movement,
+        ratio_movement_2: fullPiece.ratio_movement_2 || fullPiece.ratio_two_movement,
+        ratio_capture_1: fullPiece.ratio_capture_1 || fullPiece.ratio_one_capture,
+        ratio_capture_2: fullPiece.ratio_capture_2 || fullPiece.ratio_two_capture,
+        step_movement_style: fullPiece.step_by_step_movement_style ?? fullPiece.step_movement_style,
+        step_movement_value: fullPiece.step_by_step_movement_value ?? fullPiece.step_movement_value,
+        id: `piece-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        piece_id: fullPiece.piece_id || fullPiece.id,
+        x, y,
+        team: playerId,
+        player_id: playerId,
+        move_count: 0,
+        hit_points: fullPiece.hit_points ?? 1,
+        current_hp: fullPiece.hit_points ?? 1,
+        attack_damage: fullPiece.attack_damage ?? 1,
+        show_hp_ad: false,
+      };
+      const sbSnap = sandboxes.find(s => s.id === activeSandboxId);
+      if (sbSnap) {
+        const result = commitMove(sbSnap, {
+          movingPieceId: newPiece.id,
+          anchorX: x, anchorY: y,
+          captureIds: new Set(),
+          isPlacement: true,
+          newPieceForPlacement: newPiece,
+          moveHistoryEntry: { type: 'place', to: { x, y }, piece: newPiece.piece_name },
+        });
+        delete result._promotionInfo;
+        const next = { ...result, placementSelected: null };
+        setSandboxes(prev => prev.map(s => s.id === activeSandboxId ? next : s));
+      }
+      return;
+    }
 
     if (selectedPiece) {
       // If clicking the anchor square of the same piece, deselect
@@ -1789,36 +2540,27 @@ const Sandbox = () => {
           if (target) piecesToRemove.add(target.id);
         }
 
-        const updatedPieces = piecesToRemove.size > 0
-          ? pieces.filter(p => !piecesToRemove.has(p.id))
-          : [...pieces];
-        const movedPieces = move.isRangedAttack
-          ? updatedPieces.map(p =>
-              p.id === selectedPiece.id ? { ...p, move_count: (p.move_count || 0) + 1 } : p
-            )
-          : updatedPieces.map(p =>
-              p.id === selectedPiece.id ? { ...p, x: targetX, y: targetY, move_count: (p.move_count || 0) + 1 } : p
-            );
-
-        const currentTurn = activeSandbox.currentTurn;
-        const nextTurn = currentTurn === 1 ? 2 : 1;
-
-        setSandboxes(prev => prev.map(s =>
-          s.id === activeSandboxId
-            ? {
-                ...s,
-                pieces: movedPieces,
-                currentTurn: nextTurn,
-                moveHistory: [...s.moveHistory, {
-                  from: { x: selectedPiece.x, y: selectedPiece.y },
-                  to: { x: targetX, y: targetY },
-                  piece: selectedPiece.piece_name,
-                  piece_width: spw,
-                  piece_height: sph
-                }]
-              }
-            : s
-        ));
+        const sbSnap2 = sandboxes.find(s => s.id === activeSandboxId);
+        if (sbSnap2) {
+          const result = commitMove(sbSnap2, {
+            movingPieceId: selectedPiece.id,
+            anchorX: targetX,
+            anchorY: targetY,
+            captureIds: piecesToRemove,
+            isRangedAttack: !!move.isRangedAttack,
+            moveHistoryEntry: {
+              from: { x: selectedPiece.x, y: selectedPiece.y },
+              to: { x: targetX, y: targetY },
+              piece: selectedPiece.piece_name,
+              piece_width: spw,
+              piece_height: sph
+            }
+          });
+          const pendingPromo = result._promotionInfo ? { ...result._promotionInfo, sandboxId: activeSandboxId } : null;
+          delete result._promotionInfo;
+          setSandboxes(prev => prev.map(s => s.id === activeSandboxId ? result : s));
+          if (pendingPromo) setPromotionPending(pendingPromo);
+        }
 
         setSelectedPiece(null);
         setValidMoves([]);
@@ -1879,10 +2621,10 @@ const Sandbox = () => {
         const boardWidth = activeSandbox.gameType.board_width || 8;
         const boardHeight = activeSandbox.gameType.board_height || 8;
         const moves = calculateValidMoves(clickedPiece, pieces, boardWidth, boardHeight);
-        setValidMoves(moves);
+        setValidMoves(applyForcedCaptureFilter(clickedPiece, moves));
       }
     }
-  }, [activeSandbox, activeSandboxId, selectedPiece, validMoves, findPieceAt, calculateValidMoves]);
+  }, [activeSandbox, activeSandboxId, selectedPiece, validMoves, findPieceAt, calculateValidMoves, commitMove, fullPiecesList, sandboxes, applyForcedCaptureFilter]);
   /* eslint-enable react-hooks/exhaustive-deps */
 
   // Handle Delete key to remove selected piece
@@ -1956,10 +2698,11 @@ const Sandbox = () => {
       grabOffsetY = Math.floor((touch.clientY - rect.top) / cellHeight);
     }
     const moves = calculateValidMoves(piece, activeSandbox.pieces, activeSandbox.gameType.board_width, activeSandbox.gameType.board_height);
-    touchDragRef.current = { piece, startX: touch.clientX, startY: touch.clientY, isDragging: false, grabOffsetX, grabOffsetY, moves };
+    const filteredMoves = applyForcedCaptureFilter(piece, moves);
+    touchDragRef.current = { piece, startX: touch.clientX, startY: touch.clientY, isDragging: false, grabOffsetX, grabOffsetY, moves: filteredMoves };
     setSelectedPiece(piece);
-    setValidMoves(moves);
-  }, [activeSandbox, calculateValidMoves]);
+    setValidMoves(filteredMoves);
+  }, [activeSandbox, calculateValidMoves, applyForcedCaptureFilter]);
 
   const handlePieceTouchMove = useCallback((e) => {
     const td = touchDragRef.current;
@@ -2035,11 +2778,20 @@ const Sandbox = () => {
             let piecesToRemove = new Set();
             if (move.isHopCapture && move.hopCapturedPieceIds) move.hopCapturedPieceIds.forEach(id => piecesToRemove.add(id));
             if (targetPiece) piecesToRemove.add(targetPiece.id);
-            const updatedPieces = piecesToRemove.size > 0 ? pieces.filter(p => !piecesToRemove.has(p.id)) : [...pieces];
-            const movedPieces = updatedPieces.map(p => p.id === piece.id ? { ...p, x: anchorX, y: anchorY, move_count: (p.move_count || 0) + 1 } : p);
-            const currentTurn = activeSandbox.currentTurn;
-            const nextTurn = currentTurn === 1 ? 2 : 1;
-            setSandboxes(prev => prev.map(s => s.id === activeSandboxId ? { ...s, pieces: movedPieces, currentTurn: nextTurn, moveHistory: [...s.moveHistory, { from: { x: piece.x, y: piece.y }, to: { x: anchorX, y: anchorY }, piece: piece.piece_name, piece_width: pw, piece_height: ph }] } : s));
+            const sbSnap3 = sandboxes.find(s => s.id === activeSandboxId);
+            if (sbSnap3) {
+              const result = commitMove(sbSnap3, {
+                movingPieceId: piece.id,
+                anchorX, anchorY,
+                captureIds: piecesToRemove,
+                isRangedAttack: false,
+                moveHistoryEntry: { from: { x: piece.x, y: piece.y }, to: { x: anchorX, y: anchorY }, piece: piece.piece_name, piece_width: pw, piece_height: ph }
+              });
+              const pendingPromo = result._promotionInfo ? { ...result._promotionInfo, sandboxId: activeSandboxId } : null;
+              delete result._promotionInfo;
+              setSandboxes(prev => prev.map(s => s.id === activeSandboxId ? result : s));
+              if (pendingPromo) setPromotionPending(pendingPromo);
+            }
           }
         }
       }
@@ -2050,7 +2802,7 @@ const Sandbox = () => {
     setIsDragging(false);
     setSelectedPiece(null);
     setValidMoves([]);
-  }, [activeSandbox, activeSandboxId, findPieceAt]);
+  }, [activeSandbox, activeSandboxId, findPieceAt, commitMove, sandboxes]);
 
   // Handle right-click mousedown on square (for ranged click-vs-drag detection)
   const handleSquareMouseDown = useCallback((e, x, y) => {
@@ -2150,23 +2902,26 @@ const Sandbox = () => {
           if (targetPiece && targetTeam !== sourceTeam &&
               canRangedAttackTo(data.piece.y, data.piece.x, target.y, target.x, data.piece, sourceTeam) &&
               isRangedPathClear(data.piece.x, data.piece.y, target.x, target.y, data.piece, pieces, sourceTeam)) {
-            const updatedPieces = pieces.filter(p => p.id !== targetPiece.id);
-            const nextTurn = activeSandbox.currentTurn === 1 ? 2 : 1;
-            setSandboxes(prev => prev.map(s =>
-              s.id === activeSandboxId
-                ? {
-                    ...s,
-                    pieces: updatedPieces,
-                    currentTurn: nextTurn,
-                    moveHistory: [...s.moveHistory, {
-                      from: { x: data.piece.x, y: data.piece.y },
-                      to: { x: target.x, y: target.y },
-                      piece: data.piece.piece_name,
-                      rangedAttack: true
-                    }]
-                  }
-                : s
-            ));
+            const sbSnap4 = sandboxes.find(s => s.id === activeSandboxId);
+            if (sbSnap4) {
+              const result = commitMove(sbSnap4, {
+                movingPieceId: data.piece.id,
+                anchorX: data.piece.x,
+                anchorY: data.piece.y,
+                captureIds: new Set([targetPiece.id]),
+                isRangedAttack: true,
+                moveHistoryEntry: {
+                  from: { x: data.piece.x, y: data.piece.y },
+                  to: { x: target.x, y: target.y },
+                  piece: data.piece.piece_name,
+                  rangedAttack: true
+                }
+              });
+              const pendingPromo = result._promotionInfo ? { ...result._promotionInfo, sandboxId: activeSandboxId } : null;
+              delete result._promotionInfo;
+              setSandboxes(prev => prev.map(s => s.id === activeSandboxId ? result : s));
+              if (pendingPromo) setPromotionPending(pendingPromo);
+            }
           }
         }
       } else {
@@ -2210,7 +2965,7 @@ const Sandbox = () => {
       window.removeEventListener('contextmenu', handleContextMenu, { capture: true });
       window.removeEventListener('resize', handleResize);
     };
-  }, [isRightClickActive, activeSandbox, activeSandboxId, removePieceFromBoard, findPieceAt]);
+  }, [isRightClickActive, activeSandbox, activeSandboxId, removePieceFromBoard, findPieceAt, commitMove, sandboxes]);
 
   // Handle piece selection from modal
   const handlePieceSelect = useCallback((pieceData) => {
@@ -2376,8 +3131,8 @@ const Sandbox = () => {
       activeSandbox.gameType.board_height
     );
     setSelectedPiece(piece);
-    setValidMoves(moves);
-  }, [activeSandbox, calculateValidMoves]);
+    setValidMoves(applyForcedCaptureFilter(piece, moves));
+  }, [activeSandbox, calculateValidMoves, applyForcedCaptureFilter]);
 
   // Handle drag from piece library
   const handleLibraryDragStart = useCallback((e, pieceData) => {
@@ -2465,33 +3220,27 @@ const Sandbox = () => {
             if (targetPiece) {
               piecesToRemove.add(targetPiece.id);
             }
-            
-            const updatedPieces = piecesToRemove.size > 0
-              ? pieces.filter(p => !piecesToRemove.has(p.id))
-              : [...pieces];
-            const movedPieces = updatedPieces.map(p =>
-              p.id === pieceData.id ? { ...p, x: anchorX, y: anchorY, move_count: (p.move_count || 0) + 1 } : p
-            );
 
-            const currentTurn = activeSandbox.currentTurn;
-            const nextTurn = currentTurn === 1 ? 2 : 1;
-
-            setSandboxes(prev => prev.map(s =>
-              s.id === activeSandboxId
-                ? {
-                    ...s,
-                    pieces: movedPieces,
-                    currentTurn: nextTurn,
-                    moveHistory: [...s.moveHistory, {
-                      from: { x: pieceData.originalX, y: pieceData.originalY },
-                      to: { x: anchorX, y: anchorY },
-                      piece: pieceData.piece_name,
-                      piece_width: pieceData.piece_width || 1,
-                      piece_height: pieceData.piece_height || 1
-                    }]
-                  }
-                : s
-            ));
+            const sbSnap5 = sandboxes.find(s => s.id === activeSandboxId);
+            if (sbSnap5) {
+              const result = commitMove(sbSnap5, {
+                movingPieceId: pieceData.id,
+                anchorX, anchorY,
+                captureIds: piecesToRemove,
+                isRangedAttack: false,
+                moveHistoryEntry: {
+                  from: { x: pieceData.originalX, y: pieceData.originalY },
+                  to: { x: anchorX, y: anchorY },
+                  piece: pieceData.piece_name,
+                  piece_width: pieceData.piece_width || 1,
+                  piece_height: pieceData.piece_height || 1
+                }
+              });
+              const pendingPromo = result._promotionInfo ? { ...result._promotionInfo, sandboxId: activeSandboxId } : null;
+              delete result._promotionInfo;
+              setSandboxes(prev => prev.map(s => s.id === activeSandboxId ? result : s));
+              if (pendingPromo) setPromotionPending(pendingPromo);
+            }
           }
           // Clear selection state whether move succeeded or not
           setIsDragging(false);
@@ -2505,7 +3254,7 @@ const Sandbox = () => {
     } catch (err) {
       console.error('Failed to handle drop:', err);
     }
-  }, [activeSandbox, activeSandboxId, addPieceToBoard, validMoves, findPieceAt]);
+  }, [activeSandbox, activeSandboxId, addPieceToBoard, validMoves, findPieceAt, commitMove, sandboxes]);
 
   const handleDragOver = useCallback((e) => {
     e.preventDefault();
@@ -2546,21 +3295,29 @@ const Sandbox = () => {
     return getPieceImage(piece.image_location, playerIndex);
   }, [getPieceImage]);
 
-  // Game list is already filtered server-side; expose as-is
+  // Numbered pagination for game types
+  const [gameTypePage, setGameTypePage] = useState(1);
+  const GAMES_PER_PAGE = 20;
+  const totalGamePages = gamesTotal > 0 ? Math.ceil(gamesTotal / GAMES_PER_PAGE) : 1;
   const pagedGameTypes = gamesList;
-  const hasMoreGames = gamesList.length < gamesTotal;
 
-  const loadMoreGames = useCallback(() => {
-    const nextPage = sandboxGamesPageRef.current + 1;
-    sandboxGamesPageRef.current = nextPage;
-    loadSandboxGames(sandboxGamesSearchRef.current, nextPage, false);
-  }, [loadSandboxGames]);
+  const handleGameTypePageChange = useCallback((page) => {
+    const clamped = Math.max(1, Math.min(page, totalGamePages));
+    setGameTypePage(clamped);
+    sandboxGamesPageRef.current = clamped;
+    sandboxGamesSearchRef.current = searchGameTerm;
+    loadSandboxGames(searchGameTerm, clamped, true);
+  }, [loadSandboxGames, searchGameTerm, totalGamePages]);
 
   // Filter pieces
   const filteredPieces = fullPiecesList.filter(piece =>
     piece.piece_name?.toLowerCase().includes(searchPieceTerm.toLowerCase())
   );
-  const pagedPieces = filteredPieces.slice(0, piecePage * ITEMS_PER_PAGE);
+  const totalPiecePages = Math.ceil(filteredPieces.length / ITEMS_PER_PAGE) || 1;
+  const pagedPieces = filteredPieces.slice((piecePage - 1) * ITEMS_PER_PAGE, piecePage * ITEMS_PER_PAGE);
+  const handlePiecePageChange = (page) => {
+    setPiecePage(Math.max(1, Math.min(page, totalPiecePages)));
+  };
 
   // Render the board
   const renderBoard = () => {
@@ -2632,7 +3389,7 @@ const Sandbox = () => {
           return x >= lastMove.to.x && x < lastMove.to.x + lmpw
             && y >= lastMove.to.y && y < lastMove.to.y + lmph;
         })();
-        const specialSquareType = specialSquares[`${x},${y}`];
+        const specialSquareType = showAllSpecialSquares ? specialSquares[`${x},${y}`] : null;
 
         // Check ranged attack highlights
         const isRangedMove = !!rangedMove;
@@ -2683,6 +3440,10 @@ const Sandbox = () => {
               ${isSelected ? styles.selected : ''}
               ${isLastMoveFrom ? (isLight ? styles["last-move-from-light"] : styles["last-move-from-dark"]) : ''}
               ${isLastMoveTo ? styles["last-move-to"] : ''}
+              ${specialSquareType === 'promotion' ? styles["promotion-square"] : ''}
+              ${specialSquareType === 'range' ? styles["range-square"] : ''}
+              ${specialSquareType === 'control' ? styles["control-square"] : ''}
+              ${specialSquareType === 'custom' ? styles["special-square"] : ''}
             `}
             onClick={() => handleSquareClick(x, y)}
             onDragOver={handleDragOver}
@@ -2693,11 +3454,9 @@ const Sandbox = () => {
             onTouchEnd={handleTouchEnd}
             onTouchMove={handleTouchEnd}
             style={{
-              backgroundColor: specialSquareType 
-                ? SPECIAL_SQUARE_TYPES[specialSquareType]?.color
-                : isLight 
-                  ? (currentUser?.light_square_color || '#cad5e8')
-                  : (currentUser?.dark_square_color || '#08234d'),
+              backgroundColor: isLight 
+                ? (currentUser?.light_square_color || '#cad5e8')
+                : (currentUser?.dark_square_color || '#08234d'),
               ...(isAnchor && piece && ((piece.piece_width || 1) > 1 || (piece.piece_height || 1) > 1) ? { zIndex: 10 } : {})
             }}
           >
@@ -2766,11 +3525,16 @@ const Sandbox = () => {
                     onError={(e) => handlePieceImageError(e, piece.piece_name, piece.player_id || piece.team)}
                   />
                 )}
+                {piece.show_hp_ad && (
+                  <div className={styles["sandbox-hp-badge"]}>
+                    {`${piece.current_hp ?? piece.hit_points ?? 1}/${piece.attack_damage ?? 1}`}
+                  </div>
+                )}
               </div>
               );
             })()}
-            {specialSquareType && !piece && (
-              <div className={styles["special-square-indicator"]}>
+            {specialSquareType && (
+              <div className={`${styles["special-square-indicator"]} ${styles[specialSquareType]}`}>
                 {SPECIAL_SQUARE_TYPES[specialSquareType]?.name?.charAt(0)}
               </div>
             )}
@@ -2781,13 +3545,60 @@ const Sandbox = () => {
 
     return (
       <div className={styles["board-wrapper"]}>
+        {activeSandbox.gameOver && (
+          <div className={styles["sandbox-gameover-banner"]}>
+            <strong>
+              {activeSandbox.gameOver.winner
+                ? `Player ${activeSandbox.gameOver.winner} wins`
+                : 'Draw'}
+              :
+            </strong>
+            <span>{GAME_OVER_REASON_LABELS[activeSandbox.gameOver.reason] || activeSandbox.gameOver.reason}</span>
+            <button
+              className={styles["btn-primary"]}
+              onClick={() => {
+                setSandboxes(prev => prev.map(s => {
+                  if (s.id !== activeSandboxId) return s;
+                  return {
+                    ...s,
+                    currentTurn: 1,
+                    moveHistory: [],
+                    moveCount: 0,
+                    positionHistory: [],
+                    actionsThisTurn: 0,
+                    gameOver: null,
+                    pieces: s.pieces.map(p => ({ ...p, move_count: 0, current_hp: p.hit_points ?? p.current_hp ?? 1 })),
+                  };
+                }));
+              }}
+            >
+              Reset Game
+            </button>
+            <button
+              className={styles["btn-secondary"]}
+              onClick={() => updateActiveSandbox(() => ({ gameOver: null }))}
+              title="Dismiss the banner and keep editing"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
         <div className={styles["board-header"]}>
-          <h2>{activeSandbox.name}</h2>
+          <h2>
+            {activeSandbox.gameType?.id
+              ? <Link to={`/games/${activeSandbox.gameType.id}`} target="_blank" rel="noopener noreferrer" className={styles["game-name-link"]}>{activeSandbox.name}</Link>
+              : activeSandbox.name}
+          </h2>
           <div className={styles["header-controls"]}>
             <ToggleSwitch
               checked={showHighlights}
               onChange={(v) => setShowHighlights(v)}
               label="Show move highlights"
+            />
+            <ToggleSwitch
+              checked={showAllSpecialSquares}
+              onChange={(v) => setShowAllSpecialSquares(v)}
+              label="Show special squares"
             />
           </div>
         </div>
@@ -2796,6 +3607,53 @@ const Sandbox = () => {
             ? `Your turn (Player ${playingAs})`
             : `Opponent's turn (Player ${activeSandbox.currentTurn === 1 ? 1 : 2})`}
         </div>
+        {activeSandbox.rules?.place_pieces_action && Array.isArray(activeSandbox.placementPool) && activeSandbox.placementPool.length > 0 && (
+          <div style={{ display: 'flex', gap: '0.4rem', padding: '0.5rem', flexWrap: 'wrap', background: 'rgba(0,0,0,0.15)', borderRadius: 4, marginBottom: '0.4rem' }}>
+            <span style={{ fontSize: 12, alignSelf: 'center', opacity: 0.8 }}>Place:</span>
+            {activeSandbox.placementPool.map((pp, idx) => {
+              const full = fullPiecesList.find(fp => fp.piece_id === pp.piece_id || fp.id === pp.piece_id) || pp;
+              let imgSrc = '';
+              try {
+                const loc = full.image_location;
+                if (loc) {
+                  const parsed = typeof loc === 'string' ? JSON.parse(loc) : loc;
+                  const first = Array.isArray(parsed) ? parsed[0] : parsed;
+                  imgSrc = first?.startsWith('http') ? first : `${ASSET_URL}${first}`;
+                }
+              } catch (_) { /* ignore */ }
+              const isSelected = activeSandbox.placementSelected?.piece_id === (full.piece_id || full.id);
+              return (
+                <button
+                  key={`${full.piece_id || full.id}-${idx}`}
+                  onClick={() => updateActiveSandbox(s => ({
+                    ...s,
+                    placementSelected: isSelected ? null : { ...full, piece_id: full.piece_id || full.id },
+                  }))}
+                  title={full.piece_name}
+                  style={{
+                    display: 'flex', flexDirection: 'column', alignItems: 'center',
+                    padding: '0.25rem 0.4rem',
+                    background: isSelected ? 'rgba(80,160,240,0.4)' : 'rgba(255,255,255,0.05)',
+                    border: isSelected ? '2px solid #5aa8ff' : '1px solid #444',
+                    borderRadius: 4, cursor: 'pointer', color: 'inherit', minWidth: 56,
+                  }}
+                >
+                  {imgSrc && <img src={imgSrc} alt={full.piece_name} style={{ width: 32, height: 32, objectFit: 'contain' }}
+                    onError={(e) => handlePieceImageError(e, full.piece_name, activeSandbox.currentTurn)} />}
+                  <span style={{ fontSize: 11, marginTop: 2 }}>{full.piece_name}</span>
+                </button>
+              );
+            })}
+            {activeSandbox.placementSelected && (
+              <button
+                onClick={() => updateActiveSandbox(s => ({ ...s, placementSelected: null }))}
+                style={{ marginLeft: 'auto', alignSelf: 'center', fontSize: 12, padding: '0.25rem 0.5rem' }}
+              >
+                Cancel
+              </button>
+            )}
+          </div>
+        )}
         <div className={styles["board-with-notation"]}>
           {/* Rank labels (left side) */}
           <div className={styles["rank-labels"]} style={{ gridTemplateRows: `repeat(${boardHeight}, ${squareSize}px)` }}>
@@ -2927,7 +3785,7 @@ const Sandbox = () => {
               if (window.confirm('Clear all pieces from the board?')) {
                 setSandboxes(prev => prev.map(s =>
                   s.id === activeSandboxId
-                    ? { ...s, pieces: [], moveHistory: [] }
+                    ? { ...s, pieces: [], moveHistory: [], moveCount: 0, positionHistory: [], actionsThisTurn: 0, gameOver: null }
                     : s
                 ));
               }
@@ -2938,10 +3796,36 @@ const Sandbox = () => {
           </button>
           <button
             onClick={() => {
+              // Reset game-progress state without clearing pieces
+              setSandboxes(prev => prev.map(s => {
+                if (s.id !== activeSandboxId) return s;
+                return {
+                  ...s,
+                  currentTurn: 1,
+                  moveHistory: [],
+                  moveCount: 0,
+                  positionHistory: [],
+                  actionsThisTurn: 0,
+                  gameOver: null,
+                  pieces: s.pieces.map(p => ({
+                    ...p,
+                    move_count: 0,
+                    current_hp: p.hit_points ?? p.current_hp ?? 1,
+                  })),
+                };
+              }));
+            }}
+            className={styles["btn-secondary"]}
+            title="Reset turn, move history, HP, and game-over state"
+          >
+            Reset Game
+          </button>
+          <button
+            onClick={() => {
               if (window.confirm('Clear all special squares?')) {
                 setSandboxes(prev => prev.map(s =>
                   s.id === activeSandboxId
-                    ? { ...s, specialSquares: {} }
+                    ? { ...s, specialSquares: {}, gameSpecialSquares: { range: {}, promotion: {}, control: {}, special: {} } }
                     : s
                 ));
               }
@@ -3142,15 +4026,30 @@ const Sandbox = () => {
                 />
               </div>
 
+              {totalGamePages > 1 && (() => {
+                const cur = gameTypePage;
+                const pageNums = [];
+                let start = Math.max(1, cur - 1);
+                let end = Math.min(totalGamePages, start + 2);
+                if (end - start < 2) start = Math.max(1, end - 2);
+                for (let p = start; p <= end; p++) pageNums.push(p);
+                return (
+                  <div className={styles["pagination-bar"]}>
+                    <button className={styles["page-btn"]} onClick={() => handleGameTypePageChange(1)} disabled={cur === 1 || gamesLoading} title="First page">&laquo;</button>
+                    <button className={styles["page-btn"]} onClick={() => handleGameTypePageChange(cur - 1)} disabled={cur === 1 || gamesLoading} title="Previous">&lsaquo;</button>
+                    {pageNums.map(p => (
+                      <button key={p} className={`${styles["page-btn"]}${p === cur ? ' ' + styles["page-btn-active"] : ''}`} onClick={() => handleGameTypePageChange(p)} disabled={gamesLoading}>{p}</button>
+                    ))}
+                    <button className={styles["page-btn"]} onClick={() => handleGameTypePageChange(cur + 1)} disabled={cur === totalGamePages || gamesLoading} title="Next">&rsaquo;</button>
+                    <button className={styles["page-btn"]} onClick={() => handleGameTypePageChange(totalGamePages)} disabled={cur === totalGamePages || gamesLoading} title="Last page">&raquo;</button>
+                  </div>
+                );
+              })()}
+
               {gamesLoading && gamesList.length === 0 && (
                 <div style={{ padding: '8px', opacity: 0.6, fontSize: '0.85em' }}>Loading games...</div>
               )}
 
-              {hasMoreGames && (
-                <div className={styles["pagination-bar"]}>
-                  <span>{pagedGameTypes.length} of {gamesTotal}</span>
-                </div>
-              )}
               <div className={styles["item-list"]}>
                 <button
                   onClick={createBlankSandbox}
@@ -3173,46 +4072,94 @@ const Sandbox = () => {
                   </button>
                 ))}
               </div>
-              {hasMoreGames && (
-                <button
-                  className={styles["load-more-btn"]}
-                  onClick={loadMoreGames}
-                  disabled={gamesLoading}
-                >
-                  {gamesLoading ? 'Loading...' : `Load More (${gamesTotal - pagedGameTypes.length} remaining)`}
-                </button>
-              )}
             </>
           )}
         </div>
 
-        {/* Game Rules Section */}
+        {/* Win Conditions Section */}
         <div className={styles["sidebar-section"]}>
           <div className={styles["sidebar-header"]}>
-            <h3>Game Rules</h3>
+            <h3>Win Conditions</h3>
+            <button
+              onClick={() => setShowWinConditions(v => !v)}
+              className={styles["toggle-btn"]}
+              title={showWinConditions ? "Collapse" : "Expand"}
+            >
+              {showWinConditions ? '▼' : '▶'}
+            </button>
           </div>
-          <div className={styles["game-rules"]}>
-            <div className={styles["rules-notice"]}>🚧 Under Construction — more settings coming soon</div>
-            <ToggleSwitch checked={sandboxRules.mate_condition} onChange={(v) => setSandboxRules(r => ({ ...r, mate_condition: v }))} label="Checkmate" />
-            <ToggleSwitch checked={sandboxRules.capture_condition} onChange={(v) => setSandboxRules(r => ({ ...r, capture_condition: v }))} label="Capture to win" />
-            <ToggleSwitch checked={sandboxRules.squares_condition} onChange={(v) => setSandboxRules(r => ({ ...r, squares_condition: v }))} label="Control squares" />
-            <ToggleSwitch checked={sandboxRules.piece_count_condition} onChange={(v) => setSandboxRules(r => ({ ...r, piece_count_condition: v }))} label="Piece count wins" />
-            <ToggleSwitch checked={sandboxRules.flanking_captures} onChange={(v) => setSandboxRules(r => ({ ...r, flanking_captures: v }))} label="Flanking captures" />
-            <ToggleSwitch checked={sandboxRules.place_pieces_action} onChange={(v) => setSandboxRules(r => ({ ...r, place_pieces_action: v }))} label="Place pieces" />
-            <ToggleSwitch checked={sandboxRules.simultaneous_turns} onChange={(v) => setSandboxRules(r => ({ ...r, simultaneous_turns: v }))} label="Simultaneous turns" />
-            <label className={styles["rule-input"]}>
-              <span>Actions per turn</span>
-              <NumberInput value={sandboxRules.actions_per_turn} onChange={(val) => setSandboxRules(r => ({ ...r, actions_per_turn: Math.max(1, Math.min(8, val || 1)) }))} options={{ min: 1, max: 8 }} />
-            </label>
-            <label className={styles["rule-input"]}>
-              <span>Draw move limit</span>
-              <NumberInput value={sandboxRules.draw_move_limit || ''} onChange={(val) => setSandboxRules(r => ({ ...r, draw_move_limit: val ? Math.max(1, Math.min(500, val)) : null }))} options={{ min: 1, max: 500, placeholder: 'Off' }} />
-            </label>
-            <label className={styles["rule-input"]}>
-              <span>Repetition draw</span>
-              <NumberInput value={sandboxRules.repetition_draw_count || ''} onChange={(val) => setSandboxRules(r => ({ ...r, repetition_draw_count: val ? Math.max(2, Math.min(9, val)) : null }))} options={{ min: 2, max: 9, placeholder: 'Off' }} />
-            </label>
+          {showWinConditions && (
+            <div className={styles["game-rules"]}>
+              <ToggleSwitch checked={sandboxRules.mate_condition} onChange={(v) => setSandboxRules(r => ({ ...r, mate_condition: v }))} label="Checkmate" />
+              {sandboxRules.mate_condition && (
+                <ToggleSwitch checked={sandboxRules.mate_condition_requires_all} onChange={(v) => setSandboxRules(r => ({ ...r, mate_condition_requires_all: v }))} label="…requires ALL royal pieces" />
+              )}
+              <ToggleSwitch checked={sandboxRules.capture_condition} onChange={(v) => setSandboxRules(r => ({ ...r, capture_condition: v }))} label="Capture to win" />
+              {sandboxRules.capture_condition && (
+                <ToggleSwitch checked={sandboxRules.capture_condition_requires_all} onChange={(v) => setSandboxRules(r => ({ ...r, capture_condition_requires_all: v }))} label="…requires ALL targets" />
+              )}
+              <ToggleSwitch checked={sandboxRules.no_moves_condition} onChange={(v) => setSandboxRules(r => ({ ...r, no_moves_condition: v }))} label="No moves = loss" />
+              <ToggleSwitch checked={sandboxRules.squares_condition} onChange={(v) => setSandboxRules(r => ({ ...r, squares_condition: v }))} label="Control squares" />
+              <ToggleSwitch checked={sandboxRules.piece_count_condition} onChange={(v) => setSandboxRules(r => ({ ...r, piece_count_condition: v }))} label="Piece count wins" />
+              <ToggleSwitch checked={sandboxRules.promotion_condition} onChange={(v) => setSandboxRules(r => ({ ...r, promotion_condition: v }))} label="Promotion wins" />
+              <ToggleSwitch checked={sandboxRules.lose_all_pieces_condition} onChange={(v) => setSandboxRules(r => ({ ...r, lose_all_pieces_condition: v }))} label="Lose all pieces wins" />
+              <ToggleSwitch checked={sandboxRules.stalemate_win_condition} onChange={(v) => setSandboxRules(r => ({ ...r, stalemate_win_condition: v }))} label="Stalemate = win" />
+            </div>
+          )}
+        </div>
+
+        {/* Draw Conditions Section */}
+        <div className={styles["sidebar-section"]}>
+          <div className={styles["sidebar-header"]}>
+            <h3>Draw Conditions</h3>
+            <button
+              onClick={() => setShowDrawConditions(v => !v)}
+              className={styles["toggle-btn"]}
+              title={showDrawConditions ? "Collapse" : "Expand"}
+            >
+              {showDrawConditions ? '▼' : '▶'}
+            </button>
           </div>
+          {showDrawConditions && (
+            <div className={styles["game-rules"]}>
+              <ToggleSwitch checked={sandboxRules.stalemate_draw_condition} onChange={(v) => setSandboxRules(r => ({ ...r, stalemate_draw_condition: v }))} label="Stalemate = draw" />
+              <ToggleSwitch checked={sandboxRules.equal_piece_count_draw} onChange={(v) => setSandboxRules(r => ({ ...r, equal_piece_count_draw: v }))} label="Equal piece count = draw" />
+              <label className={styles["rule-input"]}>
+                <span>Draw move limit</span>
+                <NumberInput value={sandboxRules.draw_move_limit || ''} onChange={(val) => setSandboxRules(r => ({ ...r, draw_move_limit: val ? Math.max(1, Math.min(500, val)) : null }))} options={{ min: 1, max: 500, placeholder: 'Off' }} />
+              </label>
+              <label className={styles["rule-input"]}>
+                <span>Repetition draw</span>
+                <NumberInput value={sandboxRules.repetition_draw_count || ''} onChange={(val) => setSandboxRules(r => ({ ...r, repetition_draw_count: val ? Math.max(2, Math.min(9, val)) : null }))} options={{ min: 2, max: 9, placeholder: 'Off' }} />
+              </label>
+            </div>
+          )}
+        </div>
+
+        {/* Game Mechanics Section */}
+        <div className={styles["sidebar-section"]}>
+          <div className={styles["sidebar-header"]}>
+            <h3>Game Mechanics</h3>
+            <button
+              onClick={() => setShowGameMechanics(v => !v)}
+              className={styles["toggle-btn"]}
+              title={showGameMechanics ? "Collapse" : "Expand"}
+            >
+              {showGameMechanics ? '▼' : '▶'}
+            </button>
+          </div>
+          {showGameMechanics && (
+            <div className={styles["game-rules"]}>
+              <label className={styles["rule-input"]}>
+                <span>Actions per turn</span>
+                <NumberInput value={sandboxRules.actions_per_turn} onChange={(val) => setSandboxRules(r => ({ ...r, actions_per_turn: Math.max(1, Math.min(8, val || 1)) }))} options={{ min: 1, max: 8 }} />
+              </label>
+              <ToggleSwitch checked={sandboxRules.place_pieces_action} onChange={(v) => setSandboxRules(r => ({ ...r, place_pieces_action: v }))} label="Place pieces action" />
+              <ToggleSwitch checked={sandboxRules.forced_capture_condition} onChange={(v) => setSandboxRules(r => ({ ...r, forced_capture_condition: v }))} label="Forced capture" />
+              <ToggleSwitch checked={sandboxRules.flanking_captures} onChange={(v) => setSandboxRules(r => ({ ...r, flanking_captures: v }))} label="Flanking captures" />
+              <ToggleSwitch checked={sandboxRules.simultaneous_turns} onChange={(v) => setSandboxRules(r => ({ ...r, simultaneous_turns: v }))} label="Simultaneous turns" />
+            </div>
+          )}
         </div>
       </div>
 
@@ -3305,14 +4252,25 @@ const Sandbox = () => {
               <div className={styles["loading"]}>Loading pieces...</div>
             ) : (
               <>
-              {filteredPieces.length > ITEMS_PER_PAGE && (
-                <div className={styles["pagination-bar"]}>
-                  <span>{pagedPieces.length} of {filteredPieces.length}</span>
-                  {pagedPieces.length < filteredPieces.length && (
-                    <button onClick={() => setPiecePage(p => p + 1)}>Load More</button>
-                  )}
-                </div>
-              )}
+              {totalPiecePages > 1 && (() => {
+                const cur = piecePage;
+                const pageNums = [];
+                let start = Math.max(1, cur - 1);
+                let end = Math.min(totalPiecePages, start + 2);
+                if (end - start < 2) start = Math.max(1, end - 2);
+                for (let p = start; p <= end; p++) pageNums.push(p);
+                return (
+                  <div className={styles["pagination-bar"]}>
+                    <button className={styles["page-btn"]} onClick={() => handlePiecePageChange(1)} disabled={cur === 1} title="First page">&laquo;</button>
+                    <button className={styles["page-btn"]} onClick={() => handlePiecePageChange(cur - 1)} disabled={cur === 1} title="Previous">&lsaquo;</button>
+                    {pageNums.map(p => (
+                      <button key={p} className={`${styles["page-btn"]}${p === cur ? ' ' + styles["page-btn-active"] : ''}`} onClick={() => handlePiecePageChange(p)}>{p}</button>
+                    ))}
+                    <button className={styles["page-btn"]} onClick={() => handlePiecePageChange(cur + 1)} disabled={cur === totalPiecePages} title="Next">&rsaquo;</button>
+                    <button className={styles["page-btn"]} onClick={() => handlePiecePageChange(totalPiecePages)} disabled={cur === totalPiecePages} title="Last page">&raquo;</button>
+                  </div>
+                );
+              })()}
               <div className={styles["piece-grid"]}>
                 {pagedPieces.map((piece) => {
                   const imageUrl = getPieceImage(piece.image_location, sidebarPlayerView - 1);
@@ -3345,14 +4303,6 @@ const Sandbox = () => {
                   );
                 })}
               </div>
-              {pagedPieces.length < filteredPieces.length && (
-                <button
-                  className={styles["load-more-btn"]}
-                  onClick={() => setPiecePage(p => p + 1)}
-                >
-                  Load More ({filteredPieces.length - pagedPieces.length} remaining)
-                </button>
-              )}
               </>
             )}
           </>
@@ -3361,6 +4311,114 @@ const Sandbox = () => {
 
       {/* Right-click Modal */}
       {renderRightClickModal()}
+
+      {/* Promotion Modal */}
+      {promotionPending && (() => {
+        const sb = sandboxes.find(s => s.id === promotionPending.sandboxId);
+        if (!sb) return null;
+        const movedPiece = sb.pieces.find(p => p.id === promotionPending.pieceId);
+        // Determine promotion candidates
+        let candidates = [];
+        if (movedPiece?.promotion_pieces_override) {
+          try {
+            const ids = typeof movedPiece.promotion_pieces_override === 'string'
+              ? JSON.parse(movedPiece.promotion_pieces_override)
+              : movedPiece.promotion_pieces_override;
+            if (Array.isArray(ids)) {
+              candidates = ids.map(id => fullPiecesList.find(p => p.piece_id === id || p.id === id)).filter(Boolean);
+            }
+          } catch (_) { /* ignore */ }
+        }
+        if (candidates.length === 0) {
+          // Fallback: all pieces from the same game-type (pieces_string), excluding the moved one
+          const seen = new Set();
+          const gameTypePieces = (() => {
+            try {
+              const raw = sb.gameType?.pieces_string;
+              if (!raw) return [];
+              const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+              const arr = Array.isArray(parsed) ? parsed : Object.values(parsed);
+              return arr.map(p => p.piece_id || p.id).filter(Boolean);
+            } catch (_) { return []; }
+          })();
+          for (const pid of gameTypePieces) {
+            if (seen.has(pid)) continue;
+            seen.add(pid);
+            const full = fullPiecesList.find(p => p.piece_id === pid || p.id === pid);
+            if (full && full.piece_id !== movedPiece?.piece_id) candidates.push(full);
+          }
+        }
+        if (candidates.length === 0) candidates = fullPiecesList.slice(0, 12);
+
+        const applyPromotion = (chosen) => {
+          if (chosen && movedPiece) {
+            const normalized = {
+              ...chosen,
+              ratio_movement_1: chosen.ratio_movement_1 || chosen.ratio_one_movement,
+              ratio_movement_2: chosen.ratio_movement_2 || chosen.ratio_two_movement,
+              ratio_capture_1: chosen.ratio_capture_1 || chosen.ratio_one_capture,
+              ratio_capture_2: chosen.ratio_capture_2 || chosen.ratio_two_capture,
+            };
+            setSandboxes(prev => prev.map(s => {
+              if (s.id !== sb.id) return s;
+              return {
+                ...s,
+                pieces: s.pieces.map(p => p.id === movedPiece.id ? {
+                  ...p,
+                  ...normalized,
+                  // Preserve identity / position / instance-state
+                  id: p.id,
+                  x: p.x,
+                  y: p.y,
+                  team: p.team,
+                  player_id: p.player_id,
+                  move_count: p.move_count,
+                  current_hp: chosen.hit_points ?? p.current_hp,
+                  piece_id: chosen.piece_id || chosen.id,
+                  piece_name: chosen.piece_name,
+                  image_location: chosen.image_location,
+                } : p),
+              };
+            }));
+          }
+          setPromotionPending(null);
+        };
+
+        return (
+          <div className={styles["modal-overlay"]} onClick={() => setPromotionPending(null)}>
+            <div className={styles["modal-content"]} onClick={(e) => e.stopPropagation()} style={{ maxWidth: 500 }}>
+              <div className={styles["modal-header"]}>
+                <h3>Promote piece</h3>
+                <button className={styles["close-button"]} onClick={() => setPromotionPending(null)}>✕</button>
+              </div>
+              <div style={{ padding: '0.75rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))', gap: '0.5rem' }}>
+                {candidates.map(c => {
+                  let imgSrc = '';
+                  try {
+                    const loc = c.image_location;
+                    if (loc) {
+                      const parsed = typeof loc === 'string' ? JSON.parse(loc) : loc;
+                      const first = Array.isArray(parsed) ? parsed[0] : parsed;
+                      imgSrc = first?.startsWith('http') ? first : `${ASSET_URL}${first}`;
+                    }
+                  } catch (_) { /* ignore */ }
+                  return (
+                    <button
+                      key={c.piece_id || c.id}
+                      onClick={() => applyPromotion(c)}
+                      style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '0.5rem', background: 'none', border: '1px solid #555', borderRadius: 4, cursor: 'pointer', color: 'inherit' }}
+                    >
+                      {imgSrc && <img src={imgSrc} alt={c.piece_name} style={{ width: 48, height: 48, objectFit: 'contain' }}
+                        onError={(e) => handlePieceImageError(e, c.piece_name, movedPiece?.player_id || 1)} />}
+                      <span style={{ fontSize: 12, marginTop: 4 }}>{c.piece_name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };

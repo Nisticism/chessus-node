@@ -4,6 +4,17 @@ import styles from "./changelog.module.scss";
 
 const changelogData = [
   {
+    date: "May 24, 2026",
+    title: "Sandbox: custom squares fully functional, translucent overlay, piece pagination",
+    items: [
+      "Sandbox: special squares loaded from a game type (range, promotion, control, custom) are now fully functional — range squares apply the movement bonus, promotion squares trigger piece promotion, control squares count toward the squares-controlled win condition, and custom squares gate first-move and zone restrictions.",
+      "Sandbox: special squares are now rendered as translucent color overlays so the underlying board color remains visible, matching how they look in live games.",
+      "Sandbox: added a 'Show special squares' toggle in the board header to hide or reveal all special square indicators.",
+      "Sandbox: piece library pagination redesigned with numbered page buttons (matching the game list sidebar).",
+      "Sandbox: game name in the board header now links to the game type page when a game is loaded from the game types menu.",
+    ],
+  },
+  {
     date: "May 20, 2026",
     title: "Fairy Stockfish: stronger engine, depth-based strength, smarter fallbacks",
     items: [
