@@ -4082,6 +4082,8 @@ const LiveGame = () => {
     e.currentTarget.style.opacity = '1';
     setDraggedPiece(null);
     setDragValidMoves([]);
+    setSelectedPiece(null);
+    setValidMoves([]);
   }, []);
 
   const handleDragOver = useCallback((e) => {
@@ -4095,6 +4097,13 @@ const LiveGame = () => {
     e.stopPropagation();
     
     if (!draggedPiece) {
+      return;
+    }
+
+    // Block drop while a correspondence move is awaiting confirmation
+    if (pendingMove) {
+      setDraggedPiece(null);
+      setDragValidMoves([]);
       return;
     }
 
@@ -4238,7 +4247,7 @@ const LiveGame = () => {
     setValidMoves([]);
     setDraggedPiece(null);
     setDragValidMoves([]);
-  }, [draggedPiece, dragValidMoves, isMyTurn, isMyRepositionTurn, myRepositionsDone, gameState, submitMove, submitReposition, sendPremove, gameId, inCheck, currentPlayer, soundEnabledRef, calculateValidMoves]);
+  }, [draggedPiece, dragValidMoves, isMyTurn, isMyRepositionTurn, myRepositionsDone, gameState, submitMove, submitReposition, sendPremove, gameId, inCheck, currentPlayer, soundEnabledRef, calculateValidMoves, pendingMove]);
 
   // Check if board should be flipped (player 2 sees board from their perspective)
   const shouldFlipBoard = useMemo(() => {
@@ -4713,6 +4722,9 @@ const LiveGame = () => {
     // If a ranged right-click is pending (hold detection active), skip normal handling
     if (data && data.isOwnRangedPiece) return;
 
+    // Block interactions while a correspondence move is pending confirmation
+    if (pendingMove) return;
+
     // Right-click cancels premove if one exists
     if (premove) {
       setPremove(null);
@@ -4843,7 +4855,7 @@ const LiveGame = () => {
       setValidMoves([]);
     }
     rightClickDataRef.current = null;
-  }, [selectedPiece, validMoves, isMyTurn, gameState, submitMove, gameId, premove, sendClearPremove, rangedSelectedPiece, sendPremove, showIllegalMoveWarning, placementUseLeftClick, currentPlayer, specialSquares, setPlacementTarget, setShowPlacementModal, canReachStepByStepRanged, setPremove, isRangedPathClear]);
+  }, [selectedPiece, validMoves, isMyTurn, gameState, submitMove, gameId, premove, sendClearPremove, rangedSelectedPiece, sendPremove, showIllegalMoveWarning, placementUseLeftClick, currentPlayer, specialSquares, setPlacementTarget, setShowPlacementModal, canReachStepByStepRanged, setPremove, isRangedPathClear, pendingMove]);
 
   // Handle resign
   const handleResign = () => {
@@ -6701,7 +6713,19 @@ const LiveGame = () => {
                 onChange={(v) => {
                   setTurnConfirmEnabled(v);
                   localStorage.setItem('turnConfirmEnabled', v);
-                  if (!v) setPendingMove(null);
+                  if (!v) {
+                    // Revert any optimistic board preview before clearing the pending move
+                    if (preConfirmState) {
+                      setGameState(prev => ({
+                        ...prev,
+                        pieces: preConfirmState.pieces,
+                        currentTurn: preConfirmState.currentTurn
+                      }));
+                    }
+                    clearOptimisticMoveSnapshot();
+                    setPendingMove(null);
+                    setPreConfirmState(null);
+                  }
                 }}
                 label="Confirm moves"
               />
