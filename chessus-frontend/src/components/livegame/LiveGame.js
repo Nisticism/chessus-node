@@ -1546,6 +1546,9 @@ const LiveGame = () => {
     // Promotion events
     const unsubscribePromotionRequired = onGameEvent("promotionRequired", ({ gameId: promoGameId, pieceId, pieceName, options, move, gameState: newState }) => {
       if (parseInt(promoGameId) === parseInt(gameId)) {
+        // Save pre-move piece positions before clearing the optimistic snapshot,
+        // so fog-of-war doesn't reveal the new position until promotion is confirmed.
+        const prePromoSnap = optimisticMoveSnapshotRef.current?.pieces || null;
         clearOptimisticMoveSnapshot();
         // Update game state with the move
         setGameState(prev => ({
