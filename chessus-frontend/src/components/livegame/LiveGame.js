@@ -250,6 +250,9 @@ const LiveGame = () => {
   // (so handlePromotionSelect routes to simulPromotionChoice instead of the
   // regular promotePiece handler).
   const [promotionIsSimul, setPromotionIsSimul] = useState(false);
+  // Pre-promotion piece positions for fog-of-war: prevents fog from updating
+  // until after the player confirms their promotion choice.
+  const [prePromotionPieces, setPrePromotionPieces] = useState(null);
   const [specialSquares, setSpecialSquares] = useState({ range: {}, promotion: {}, control: {}, special: {} });
   const [pendingDrawOffer, setPendingDrawOffer] = useState(null); // {from, fromUsername} when opponent offers draw
   const [drawOfferSent, setDrawOfferSent] = useState(false); // Track if current user sent a draw offer
@@ -1563,7 +1566,8 @@ const LiveGame = () => {
           promotingPiece
         });
         setShowPromotionModal(true);
-        
+        setPrePromotionPieces(prePromoSnap);
+
         // Play promotion sound
         if (soundEnabledRef.current) {
           soundManager.playMove();
@@ -1591,6 +1595,9 @@ const LiveGame = () => {
       setShowPromotionModal(false);
       setPromotionData(null);
       setPromotionMinimized(false);
+      setPrePromotionPieces(null);
+      setSelectedPiece(null);
+      setValidMoves([]);
     });
 
     // Simul-turns: server is asking us to pick a promotion target before
@@ -1647,7 +1654,7 @@ const LiveGame = () => {
         // Hide promotion modal
         setShowPromotionModal(false);
         setPromotionData(null);
-        
+        setPrePromotionPieces(null);
         // Update game state
         setGameState(prev => ({
           ...prev,
@@ -3714,6 +3721,9 @@ const LiveGame = () => {
     // Block interactions while a move is pending confirmation
     if (pendingMove) return;
 
+    // Block interactions while a promotion choice is pending
+    if (showPromotionModal) return;
+
     // Block all interactions for spectators
     if (!currentPlayer) return;
 
@@ -3958,7 +3968,7 @@ const LiveGame = () => {
       setSelectedPiece(null);
       setValidMoves([]);
     }
-  }, [isMyTurn, gameState, currentPlayer, selectedPiece, validMoves, calculateValidMoves, submitMove, sendPremove, setPremove, gameId, rangedSelectedPiece, setShowPlacementModal, setPlacementTarget, pendingMove, ghostMoveIndex, captureActionPieceId, showIllegalMoveWarning, placementUseLeftClick, specialSquares]);
+  }, [isMyTurn, gameState, currentPlayer, selectedPiece, validMoves, calculateValidMoves, submitMove, sendPremove, setPremove, gameId, rangedSelectedPiece, setShowPlacementModal, setPlacementTarget, pendingMove, ghostMoveIndex, captureActionPieceId, showIllegalMoveWarning, placementUseLeftClick, specialSquares, showPromotionModal]);
   /* eslint-enable react-hooks/exhaustive-deps */
 
   // Handle piece hover for movement helpers
@@ -3996,6 +4006,12 @@ const LiveGame = () => {
   const handleDragStart = useCallback((e, piece) => {
     // Block dragging while a move is pending confirmation
     if (pendingMove) {
+      e.preventDefault();
+      return;
+    }
+
+    // Block dragging while a promotion choice is pending
+    if (showPromotionModal) {
       e.preventDefault();
       return;
     }
@@ -4076,7 +4092,7 @@ const LiveGame = () => {
     e.dataTransfer.setDragImage(pieceEl, rect.width / 2, rect.height / 2);
     
     e.currentTarget.style.opacity = '0.5';
-  }, [isMyTurn, gameState, currentPlayer, calculateValidMoves, pendingMove]);
+  }, [isMyTurn, gameState, currentPlayer, calculateValidMoves, pendingMove, showPromotionModal]);
 
   const handleDragEnd = useCallback((e) => {
     e.currentTarget.style.opacity = '1';
@@ -4102,6 +4118,13 @@ const LiveGame = () => {
 
     // Block drop while a correspondence move is awaiting confirmation
     if (pendingMove) {
+      setDraggedPiece(null);
+      setDragValidMoves([]);
+      return;
+    }
+
+    // Block drop while a promotion choice is pending
+    if (showPromotionModal) {
       setDraggedPiece(null);
       setDragValidMoves([]);
       return;
@@ -4247,7 +4270,7 @@ const LiveGame = () => {
     setValidMoves([]);
     setDraggedPiece(null);
     setDragValidMoves([]);
-  }, [draggedPiece, dragValidMoves, isMyTurn, isMyRepositionTurn, myRepositionsDone, gameState, submitMove, submitReposition, sendPremove, gameId, inCheck, currentPlayer, soundEnabledRef, calculateValidMoves, pendingMove]);
+  }, [draggedPiece, dragValidMoves, isMyTurn, isMyRepositionTurn, myRepositionsDone, gameState, submitMove, submitReposition, sendPremove, gameId, inCheck, currentPlayer, soundEnabledRef, calculateValidMoves, pendingMove, showPromotionModal]);
 
   // Check if board should be flipped (player 2 sees board from their perspective)
   const shouldFlipBoard = useMemo(() => {
@@ -4330,6 +4353,9 @@ const LiveGame = () => {
     // Block dragging while a move is pending confirmation
     if (pendingMove) return;
 
+    // Block dragging while a promotion choice is pending
+    if (showPromotionModal) return;
+
     const pieceTeam = piece.player_id || piece.team;
     const isOwnPiece = currentPlayer && (pieceTeam === currentPlayer.position || piece.is_neutral);
 
@@ -4387,7 +4413,7 @@ const LiveGame = () => {
     touchDragRef.current = { piece, moves, startX: touch.clientX, startY: touch.clientY, isDragging: false, grabOffset };
     setSelectedPiece(piece);
     setValidMoves(moves);
-  }, [isMyTurn, isMyRepositionTurn, gameState, currentPlayer, calculateValidMoves, pendingMove, captureActionPieceId, showIllegalMoveWarning]);
+  }, [isMyTurn, isMyRepositionTurn, gameState, currentPlayer, calculateValidMoves, pendingMove, captureActionPieceId, showIllegalMoveWarning, showPromotionModal]);
 
   const handleTouchMove = useCallback((e) => {
     const td = touchDragRef.current;
@@ -4725,6 +4751,9 @@ const LiveGame = () => {
     // Block interactions while a correspondence move is pending confirmation
     if (pendingMove) return;
 
+    // Block interactions while a promotion choice is pending
+    if (showPromotionModal) return;
+
     // Right-click cancels premove if one exists
     if (premove) {
       setPremove(null);
@@ -4855,7 +4884,7 @@ const LiveGame = () => {
       setValidMoves([]);
     }
     rightClickDataRef.current = null;
-  }, [selectedPiece, validMoves, isMyTurn, gameState, submitMove, gameId, premove, sendClearPremove, rangedSelectedPiece, sendPremove, showIllegalMoveWarning, placementUseLeftClick, currentPlayer, specialSquares, setPlacementTarget, setShowPlacementModal, canReachStepByStepRanged, setPremove, isRangedPathClear, pendingMove]);
+  }, [selectedPiece, validMoves, isMyTurn, gameState, submitMove, gameId, premove, sendClearPremove, rangedSelectedPiece, sendPremove, showIllegalMoveWarning, placementUseLeftClick, currentPlayer, specialSquares, setPlacementTarget, setShowPlacementModal, canReachStepByStepRanged, setPremove, isRangedPathClear, pendingMove, showPromotionModal]);
 
   // Handle resign
   const handleResign = () => {
@@ -4915,6 +4944,7 @@ const LiveGame = () => {
       setShowPromotionModal(false);
       setPromotionData(null);
       setPromotionIsSimul(false);
+      setPrePromotionPieces(null);
       return;
     }
 
@@ -5164,12 +5194,17 @@ const LiveGame = () => {
     // sliding pieces around before committing their turn.
     const fogPieces = (gameState.fogOfWarEnabled && (pendingMove || stagedSimulMove) && preConfirmState)
       ? parsePieces(preConfirmState.pieces)
+      : (gameState.fogOfWarEnabled && showPromotionModal && !promotionIsSimul && prePromotionPieces)
+      ? parsePieces(prePromotionPieces)
       : pieces;
 
     const fogVisibleSquares = (() => {
       // Spectators in fog games see the union of both players' visible squares
       // (they see the combined board, not through any individual player's fog).
-      const isFogActive = !isGhostMode && gameState.fogOfWarEnabled && (currentPlayer || isSpectator);
+      // Fog is also lifted once the game ends and the player has dismissed the
+      // game-over modal, so the full board is revealed for post-game review.
+      const isGameCompleted = gameState.status === 'completed' || gameState.status === 'abandoned';
+      const isFogActive = !isGhostMode && gameState.fogOfWarEnabled && (currentPlayer || isSpectator) && !(isGameCompleted && !showGameOver);
       if (!isFogActive) return null;
 
       // viewerPosition: player's own position, or null for spectators (see both sides).

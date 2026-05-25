@@ -5002,6 +5002,11 @@ function initializeSocket(server) {
           return socket.emit("error", { message: "You must complete the chain capture with the same piece" });
         }
 
+        // Block regular moves while a promotion choice is pending for this player
+        if (gameState.pendingPromotion && gameState.pendingPromotion.userId === userId) {
+          return socket.emit("error", { message: "Please complete your promotion choice before making another move" });
+        }
+
         // Enforce capture actions: if a capture action sequence is in progress, only the same piece can move
         if (gameState.captureActionsPieceId != null && move.pieceId !== gameState.captureActionsPieceId) {
           return socket.emit("error", { message: "You must use the same piece for your capture action, or skip it" });
