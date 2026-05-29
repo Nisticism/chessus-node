@@ -348,12 +348,17 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
 // Serve static files from uploads directory with CORS headers
+// UPLOADS_BASE: honour UPLOADS_DIR env var (e.g. a mounted EBS data volume) and
+// fall back to the repo-relative path so existing deployments require no change.
+const UPLOADS_BASE = process.env.UPLOADS_DIR
+  ? path.resolve(process.env.UPLOADS_DIR)
+  : path.join(__dirname, '../uploads');
 app.use('/uploads', (req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Private-Network', 'true');
   res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
   next();
-}, express.static(path.join(__dirname, '../uploads')));
+}, express.static(UPLOADS_BASE));
 
 // Configure multer for file uploads
 const multer = require('multer');
@@ -361,7 +366,7 @@ const multer = require('multer');
 // Configure multer for piece image uploads
 const pieceStorage = multer.diskStorage({
   destination: function (req, file, cb) {
-    const uploadDir = path.join(__dirname, '../uploads/pieces');
+    const uploadDir = path.join(UPLOADS_BASE, 'pieces');
     // Create directory if it doesn't exist
     if (!fs.existsSync(uploadDir)) {
       fs.mkdirSync(uploadDir, { recursive: true });
@@ -398,7 +403,7 @@ const pieceUpload = multer({
 // Configure multer for profile picture uploads
 const profilePictureStorage = multer.diskStorage({
   destination: function (req, file, cb) {
-    const uploadDir = path.join(__dirname, '../uploads/profile-pictures');
+    const uploadDir = path.join(UPLOADS_BASE, 'profile-pictures');
     // Create directory if it doesn't exist
     if (!fs.existsSync(uploadDir)) {
       fs.mkdirSync(uploadDir, { recursive: true });
@@ -428,7 +433,7 @@ const profilePictureUpload = multer({
 });
 
 // Configure multer for DM image attachments
-const dmImageDir = path.join(__dirname, '../uploads/dm-images');
+const dmImageDir = path.join(UPLOADS_BASE, 'dm-images');
 if (!fs.existsSync(dmImageDir)) fs.mkdirSync(dmImageDir, { recursive: true });
 
 const dmImageStorage = multer.diskStorage({
@@ -14627,17 +14632,25 @@ app.get("/api/admin/storage-stats", authenticateAdmin1, async (req, res) => {
     }
 
     const repoRoot = path.join(__dirname, '..');
-    const uploadsDir = path.join(repoRoot, 'uploads');
+    const uploadsDir = UPLOADS_BASE; // respects UPLOADS_DIR env var
     const piecesDir = path.join(uploadsDir, 'pieces');
     const avatarsDir = path.join(uploadsDir, 'profile-pictures');
+    const dmImagesDir = path.join(uploadsDir, 'dm-images');
     let trainingDir;
     try { trainingDir = trainingRootDir(); } catch (_) { trainingDir = path.join(repoRoot, 'ai-training'); }
 
     const folderSizes = {
-      uploads: getDirSizeBytes(uploadsDir),
-      pieces: getDirSizeBytes(piecesDir),
-      profilePictures: getDirSizeBytes(avatarsDir),
-      aiTraining: getDirSizeBytes(trainingDir),
+      uploads:              getDirSizeBytes(uploadsDir),
+      pieces:               getDirSizeBytes(piecesDir),
+      profilePictures:      getDirSizeBytes(avatarsDir),
+      dmImages:             getDirSizeBytes(dmImagesDir),
+      aiTraining:           getDirSizeBytes(trainingDir),
+      logs:                 getDirSizeBytes(path.join(repoRoot, 'logs')),
+      nodeModules:          getDirSizeBytes(path.join(repoRoot, 'node_modules')),
+      frontendNodeModules:  getDirSizeBytes(path.join(repoRoot, 'chessus-frontend', 'node_modules')),
+      frontendBuild:        getDirSizeBytes(path.join(repoRoot, 'chessus-frontend', 'build')),
+      rustTarget:           getDirSizeBytes(path.join(repoRoot, 'ai-engine-rs', 'target')),
+      gitDir:               getDirSizeBytes(path.join(repoRoot, '.git')),
     };
 
     const fileCounts = {
@@ -14662,20 +14675,78 @@ app.get("/api/admin/storage-stats", authenticateAdmin1, async (req, res) => {
       }
     } catch (_) {}
 
-    // DB table row counts
+    // DB table row counts + total MySQL data size in bytes
     const tableList = ['users', 'games', 'game_types', 'pieces', 'ai_training_jobs'];
     const rowCounts = {};
-    await Promise.all(tableList.map(async (t) => {
-      try {
-        const [[r]] = await db_pool.query(`SELECT COUNT(*) AS cnt FROM \`${t}\``);
-        rowCounts[t] = r.cnt;
-      } catch (_) { rowCounts[t] = null; }
-    }));
+    let dbSizeBytes = null;
+    await Promise.all([
+      ...tableList.map(async (t) => {
+        try {
+          const [[r]] = await db_pool.query(`SELECT COUNT(*) AS cnt FROM \`${t}\``);
+          rowCounts[t] = r.cnt;
+        } catch (_) { rowCounts[t] = null; }
+      }),
+      (async () => {
+        try {
+          const [[r]] = await db_pool.query(
+            `SELECT SUM(data_length + index_length) AS sz
+             FROM information_schema.tables
+             WHERE table_schema = DATABASE()`
+          );
+          dbSizeBytes = r.sz != null ? Number(r.sz) : null;
+        } catch (_) {}
+      })(),
+    ]);
 
-    res.json({ folderSizes, fileCounts, diskSpace, rowCounts });
+    res.json({ folderSizes, fileCounts, diskSpace, rowCounts, dbSizeBytes });
   } catch (err) {
     console.error('storage-stats error:', err);
     res.status(500).json({ error: 'Failed to compute storage stats' });
+  }
+});
+
+// Admin endpoint: proxy to the frontend EC2's storage-stats endpoint so the
+// admin dashboard can show per-instance disk metrics without the browser
+// needing to reach the frontend server directly.
+// Requires FRONTEND_EC2_URL in .env (e.g. http://10.0.1.20:5000).
+app.get("/api/admin/remote-storage-stats", authenticateAdmin1, async (req, res) => {
+  const frontendUrl = process.env.FRONTEND_EC2_URL;
+  if (!frontendUrl) {
+    return res.status(503).json({ error: 'FRONTEND_EC2_URL is not set in .env — add it to enable cross-instance storage stats' });
+  }
+  try {
+    const targetUrl = new URL('/api/admin/storage-stats', frontendUrl);
+    const isHttps = targetUrl.protocol === 'https:';
+    const { request: nodeRequest } = require(isHttps ? 'https' : 'http');
+    const authHeader = req.headers['authorization'];
+    const body = await new Promise((resolve, reject) => {
+      const options = {
+        hostname: targetUrl.hostname,
+        port: targetUrl.port || (isHttps ? 443 : 80),
+        path: targetUrl.pathname,
+        method: 'GET',
+        headers: { authorization: authHeader },
+        timeout: 15000,
+      };
+      const r = nodeRequest(options, (res2) => {
+        let raw = '';
+        res2.on('data', d => { raw += d; });
+        res2.on('end', () => {
+          if (res2.statusCode !== 200) {
+            return reject(Object.assign(new Error(`HTTP ${res2.statusCode} from frontend EC2`), { statusCode: res2.statusCode }));
+          }
+          try { resolve(JSON.parse(raw)); }
+          catch { reject(new Error('Non-JSON response from frontend EC2')); }
+        });
+      });
+      r.on('error', reject);
+      r.on('timeout', () => { r.destroy(); reject(new Error('Request to frontend EC2 timed out')); });
+      r.end();
+    });
+    res.json(body);
+  } catch (err) {
+    console.error('remote-storage-stats error:', err.message);
+    res.status(err.statusCode || 502).json({ error: `Could not reach frontend EC2: ${err.message}` });
   }
 });
 

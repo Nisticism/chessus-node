@@ -139,6 +139,8 @@ const AdminDashboard = () => {
   const [storageStats, setStorageStats] = useState(null);
   const [storageStatsLoading, setStorageStatsLoading] = useState(false);
   const [storageStatsError, setStorageStatsError] = useState(null);
+  const [frontendStorageStats, setFrontendStorageStats] = useState(null);
+  const [frontendStorageStatsError, setFrontendStorageStatsError] = useState(null);
 
   // AI Analysis Requests state
   const [aiAnalysisRequests, setAiAnalysisRequests] = useState([]);
@@ -430,13 +432,33 @@ const AdminDashboard = () => {
   const fetchStorageStats = async () => {
     setStorageStatsLoading(true);
     setStorageStatsError(null);
+    setFrontendStorageStats(null);
+    setFrontendStorageStatsError(null);
     try {
-      const response = await axios.get(`${API_URL}admin/storage-stats`, { headers: authHeader() });
-      setStorageStats({ ...response.data, _fetchedAt: Date.now() });
-    } catch (error) {
-      const status = error?.response?.status;
-      const msg = error?.response?.data?.error || error?.message;
-      setStorageStatsError(`Failed to load storage stats${status ? ` (HTTP ${status})` : ''}${msg ? `: ${msg}` : ''}`);
+      const [backendRes, frontendRes] = await Promise.allSettled([
+        axios.get(`${API_URL}admin/storage-stats`, { headers: authHeader() }),
+        axios.get(`${API_URL}admin/remote-storage-stats`, { headers: authHeader() }),
+      ]);
+      if (backendRes.status === 'fulfilled') {
+        setStorageStats({ ...backendRes.value.data, _fetchedAt: Date.now() });
+      } else {
+        const err = backendRes.reason;
+        const status = err?.response?.status;
+        const msg = err?.response?.data?.error || err?.message;
+        setStorageStatsError(`Failed to load backend stats${status ? ` (HTTP ${status})` : ''}${msg ? `: ${msg}` : ''}`);
+      }
+      if (frontendRes.status === 'fulfilled') {
+        setFrontendStorageStats({ ...frontendRes.value.data, _fetchedAt: Date.now() });
+      } else {
+        const err = frontendRes.reason;
+        const status = err?.response?.status;
+        const msg = err?.response?.data?.error || err?.message;
+        setFrontendStorageStatsError(
+          status === 503
+            ? 'Set FRONTEND_EC2_URL in backend .env to enable cross-instance stats'
+            : `Could not reach frontend EC2${status ? ` (HTTP ${status})` : ''}${msg ? `: ${msg}` : ''}`
+        );
+      }
     } finally {
       setStorageStatsLoading(false);
     }
@@ -3055,41 +3077,94 @@ const AdminDashboard = () => {
             return `${(b / 1024).toFixed(0)} KB`;
           };
           const fetchedAt = storageStats._fetchedAt ? new Date(storageStats._fetchedAt).toLocaleTimeString() : null;
-          const disk = storageStats.diskSpace;
-          const diskPct = disk ? Math.round(disk.usedBytes / disk.totalBytes * 100) : null;
-          const diskHighlight = diskPct != null && diskPct > 85;
+
+          const renderDiskBar = (disk) => {
+            if (!disk) return <p style={{ color: 'var(--text-dim)', fontSize: '0.78em', marginBottom: '8px' }}>Disk info unavailable.</p>;
+            const pct = Math.round(disk.usedBytes / disk.totalBytes * 100);
+            const hi = pct > 85;
+            return (
+              <div style={{ marginBottom: '12px' }}>
+                <div style={{ fontSize: '0.78em', color: 'var(--text-dim)', marginBottom: '5px' }}>Disk: {pct}% used</div>
+                <div style={{ height: '8px', background: 'rgba(255,255,255,0.1)', borderRadius: '4px', overflow: 'hidden', marginBottom: '5px', maxWidth: '400px' }}>
+                  <div style={{ width: `${pct}%`, height: '100%', background: hi ? 'var(--text-danger, #e55)' : 'var(--accent, #7289da)', borderRadius: '4px' }} />
+                </div>
+                <div style={{ fontSize: '0.78em', color: 'var(--text-dim)' }}>
+                  Used: <strong style={{ color: hi ? 'var(--text-danger, #e55)' : 'inherit' }}>{fmtBytes(disk.usedBytes)}</strong>
+                  {' / Total: '}<strong>{fmtBytes(disk.totalBytes)}</strong>
+                  {' / Free: '}<strong>{fmtBytes(disk.freeBytes)}</strong>
+                </div>
+              </div>
+            );
+          };
+
+          const renderCardGroup = (cards) => (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: '10px', marginBottom: '16px' }}>
+              {cards.map(({ label, value }) => (
+                <div key={label} style={{ background: 'var(--bg-card, #1a1a2e)', borderRadius: '8px', padding: '12px 14px', border: '1px solid var(--border-color, #333)' }}>
+                  <div style={{ fontSize: '0.7em', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>{label}</div>
+                  <div style={{ fontSize: '1.1em', fontWeight: 700 }}>{value}</div>
+                </div>
+              ))}
+            </div>
+          );
+
+          const sectionLabel = (title, subtitle) => (
+            <div style={{ marginBottom: '10px', marginTop: '18px', display: 'flex', alignItems: 'baseline', gap: '10px' }}>
+              <span style={{ fontSize: '0.82em', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.07em' }}>{title}</span>
+              {subtitle && <span style={{ fontSize: '0.75em', color: 'var(--text-dim)' }}>{subtitle}</span>}
+            </div>
+          );
+
+          // --- Backend cards ---
+          const bdirs = storageStats.folderSizes || {};
+          const bMeasured = Object.values(bdirs).reduce((a, b) => a + (b || 0), 0) + (storageStats.dbSizeBytes || 0);
+          const bUnaccounted = storageStats.diskSpace ? Math.max(0, storageStats.diskSpace.usedBytes - bMeasured) : null;
+          const backendCards = [
+            { label: 'MySQL database', value: fmtBytes(storageStats.dbSizeBytes) },
+            { label: 'uploads/ (total)', value: fmtBytes(bdirs.uploads) },
+            { label: 'pieces/', value: `${fmtBytes(bdirs.pieces)} (${storageStats.fileCounts?.pieces ?? '?'} files)` },
+            { label: 'profile-pictures/', value: `${fmtBytes(bdirs.profilePictures)} (${storageStats.fileCounts?.profilePictures ?? '?'} files)` },
+            { label: 'dm-images/', value: fmtBytes(bdirs.dmImages) },
+            { label: 'PM2 logs/', value: fmtBytes(bdirs.logs) },
+            { label: 'node_modules/ (server)', value: fmtBytes(bdirs.nodeModules) },
+            { label: 'ai-engine-rs/target/', value: fmtBytes(bdirs.rustTarget) },
+            { label: '.git/ history', value: fmtBytes(bdirs.gitDir) },
+            { label: 'OS & system (est.)', value: fmtBytes(bUnaccounted) },
+          ];
+
+          // --- Frontend cards (live from the frontend EC2 via proxy endpoint) ---
+          const fdirs = frontendStorageStats?.folderSizes || {};
+          const fMeasured = Object.values(fdirs).reduce((a, b) => a + (b || 0), 0);
+          const fUnaccounted = frontendStorageStats?.diskSpace
+            ? Math.max(0, frontendStorageStats.diskSpace.usedBytes - fMeasured) : null;
+          const frontendCards = [
+            { label: 'ai-training/', value: fmtBytes(fdirs.aiTraining) },
+            { label: 'node_modules/ (server)', value: fmtBytes(fdirs.nodeModules) },
+            { label: 'node_modules/ (frontend)', value: fmtBytes(fdirs.frontendNodeModules) },
+            { label: 'frontend build/', value: fmtBytes(fdirs.frontendBuild) },
+            { label: 'PM2 logs/', value: fmtBytes(fdirs.logs) },
+            { label: 'uploads/', value: fmtBytes(fdirs.uploads) },
+            ...(fUnaccounted != null ? [{ label: 'OS & system (est.)', value: fmtBytes(fUnaccounted) }] : []),
+          ];
+
           return (
             <>
-              {fetchedAt && <p style={{ color: 'var(--text-dim)', fontSize: '0.8em', marginBottom: '12px' }}>Last fetched: {fetchedAt}</p>}
-              {disk && (
-                <div style={{ marginBottom: '16px' }}>
-                  <div style={{ fontSize: '0.8em', color: 'var(--text-dim)', marginBottom: '6px' }}>Partition disk usage ({diskPct}% used)</div>
-                  <div style={{ height: '8px', background: 'rgba(255,255,255,0.1)', borderRadius: '4px', overflow: 'hidden', marginBottom: '6px', maxWidth: '400px' }}>
-                    <div style={{ width: `${diskPct}%`, height: '100%', background: diskHighlight ? 'var(--text-danger, #e55)' : 'var(--accent, #7289da)', borderRadius: '4px' }} />
-                  </div>
-                  <div style={{ fontSize: '0.8em', color: 'var(--text-dim)' }}>
-                    Used: <strong style={{ color: diskHighlight ? 'var(--text-danger, #e55)' : 'inherit' }}>{fmtBytes(disk.usedBytes)}</strong>
-                    {' / Total: '}<strong>{fmtBytes(disk.totalBytes)}</strong>
-                    {' / Free: '}<strong>{fmtBytes(disk.freeBytes)}</strong>
-                  </div>
-                </div>
-              )}
-              {!disk && <p style={{ color: 'var(--text-dim)', fontSize: '0.8em', marginBottom: '12px' }}>Disk space info unavailable (server may not support df).</p>}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '10px', marginBottom: '16px' }}>
-                {[
-                  { label: 'uploads/ (total)', value: fmtBytes(storageStats.folderSizes?.uploads) },
-                  { label: 'pieces/ folder', value: `${fmtBytes(storageStats.folderSizes?.pieces)} (${storageStats.fileCounts?.pieces ?? '?'} files)` },
-                  { label: 'profile-pictures/', value: `${fmtBytes(storageStats.folderSizes?.profilePictures)} (${storageStats.fileCounts?.profilePictures ?? '?'} files)` },
-                  { label: 'ai-training/ folder', value: fmtBytes(storageStats.folderSizes?.aiTraining) },
-                ].map(({ label, value }) => (
-                  <div key={label} style={{ background: 'var(--bg-card, #1a1a2e)', borderRadius: '8px', padding: '12px 14px', border: '1px solid var(--border-color, #333)' }}>
-                    <div style={{ fontSize: '0.7em', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>{label}</div>
-                    <div style={{ fontSize: '1.1em', fontWeight: 700 }}>{value}</div>
-                  </div>
-                ))}
-              </div>
+              {fetchedAt && <p style={{ color: 'var(--text-dim)', fontSize: '0.8em', marginBottom: '8px' }}>Last fetched: {fetchedAt}</p>}
+
+              {sectionLabel('Backend EC2 (t3.small)', '— database, uploads, server')}
+              {renderDiskBar(storageStats.diskSpace)}
+              {renderCardGroup(backendCards)}
+
+              {sectionLabel('Frontend EC2 (t3.medium)', '— AI training, React app')}
+              {frontendStorageStatsError
+                ? <p style={{ color: 'var(--text-dim)', fontSize: '0.8em', marginBottom: '12px', fontStyle: 'italic' }}>{frontendStorageStatsError}</p>
+                : frontendStorageStats
+                  ? <>{renderDiskBar(frontendStorageStats.diskSpace)}{renderCardGroup(frontendCards)}</>
+                  : <p style={{ color: 'var(--text-dim)', fontSize: '0.8em', marginBottom: '12px' }}>Frontend EC2 stats not loaded.</p>
+              }
+
               {storageStats.rowCounts && (
-                <div>
+                <div style={{ marginTop: '18px' }}>
                   <div style={{ fontSize: '0.8em', color: 'var(--text-dim)', marginBottom: '8px' }}>DB Table Row Counts</div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
                     {Object.entries(storageStats.rowCounts).map(([table, count]) => (

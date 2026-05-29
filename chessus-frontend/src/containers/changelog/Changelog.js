@@ -4,6 +4,16 @@ import styles from "./changelog.module.scss";
 
 const changelogData = [
   {
+    date: "May 28, 2026",
+    title: "Admin storage metrics overhaul and EBS expansion prep",
+    items: [
+      "Admin storage metrics now show a full breakdown of every major disk consumer: MySQL database size, uploads (pieces, profile pictures, DM images), PM2 logs, server and frontend node_modules, React build, Rust build cache, and git history — plus an 'OS & system' estimate for the remainder.",
+      "Storage metrics are now split into separate Backend EC2 and Frontend EC2 sections, each with its own disk usage bar (used / total / free) that turns red when over 85% full.",
+      "Frontend EC2 stats are fetched live from the frontend server. If FRONTEND_EC2_URL is not yet configured, the section shows a setup hint instead of an error.",
+      "Uploads directory is now configurable via UPLOADS_DIR environment variable, allowing it to be redirected to a separate EBS data volume without any code changes.",
+    ],
+  },
+  {
     date: "May 24, 2026",
     title: "Sandbox: custom squares fully functional, translucent overlay, piece pagination",
     items: [
