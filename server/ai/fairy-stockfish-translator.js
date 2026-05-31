@@ -201,7 +201,7 @@ function buildCharMap(pieceDefs, placements) {
  * isCapture: when true, only use these directions for captures (we emit a
  *            "c" prefix). When false, only for movement (emit "m").
  */
-function emitAtomsForGroup(piece, group, isCapture) {
+function emitAtomsForGroup(piece, group, isCapture, mcPrefixOverride) {
   // group = ORTHO_DIRS or DIAG_DIRS
   const atom = group === ORTHO_DIRS ? 'W' : 'F';
   const sliderAtom = group === ORTHO_DIRS ? 'R' : 'B';
@@ -220,7 +220,7 @@ function emitAtomsForGroup(piece, group, isCapture) {
   }
 
   const chunks = [];
-  const prefix = isCapture ? 'c' : 'm';
+  const prefix = (mcPrefixOverride != null) ? mcPrefixOverride : (isCapture ? 'c' : 'm');
 
   // Group adjacent directions sharing the same (v, exact) signature.
   // First, try the "all four directions identical" shortcut for nicer output.
@@ -321,99 +321,156 @@ function allOffsetsFor(m, n) {
 }
 
 /**
- * Translate a list of `{row, col}` custom-square offsets into Betza chunks.
- *
- * @param {Array|string|null} squaresRaw  - either the parsed array, a JSON
- *                                          string, or null/undefined.
- * @param {string} mcPrefix               - 'm' for movement-only,
- *                                          'c' for capture-only.
- * @returns {Array<string>|null}          - Betza chunks (possibly empty)
- *                                          or null if the offset pattern
- *                                          cannot be expressed in Betza.
+ * Parse a custom-squares JSON value into a Set<"row,col"> of non-zero offsets.
  */
-function customSquaresToBetza(squaresRaw, mcPrefix) {
-  if (squaresRaw == null) return [];
-  let squares;
-  try {
-    squares = typeof squaresRaw === 'string' ? JSON.parse(squaresRaw) : squaresRaw;
-  } catch (_) { return []; }
-  if (!Array.isArray(squares) || squares.length === 0) return [];
-
-  // Group offsets by canonical (m, n).
-  const groups = new Map(); // key "m,n" -> Set<"row,col">
-  for (const sq of squares) {
+function parseOffsetSet(raw) {
+  const out = new Set();
+  if (raw == null) return out;
+  let arr;
+  try { arr = typeof raw === 'string' ? JSON.parse(raw) : raw; }
+  catch (_) { return out; }
+  if (!Array.isArray(arr)) return out;
+  for (const sq of arr) {
     const row = toInt(sq && sq.row, 0);
     const col = toInt(sq && sq.col, 0);
     if (row === 0 && col === 0) continue;
+    out.add(`${row},${col}`);
+  }
+  return out;
+}
+
+/**
+ * Emit Betza chunks for a subset of a (m,n) leaper ring with the given
+ * mc prefix ('' = move+capture, 'm' = move-only, 'c' = capture-only).
+ * Returns null when the subset can't be expressed with our supported
+ * direction prefixes.
+ */
+function emitLeaperSubset(m, n, atom, have, mcPrefix) {
+  const all = allOffsetsFor(m, n);
+  if (have.size === all.length && all.every(k => have.has(k))) {
+    return [`${mcPrefix}${atom}`];
+  }
+  const dirGroups = directionGroupsFor(m, n);
+  const remaining = new Set(have);
+  const used = [];
+
+  const tryCover = (label, keys) => {
+    if (used.includes(label)) return;
+    if (keys.length > 0 && keys.every(k => remaining.has(k))) {
+      used.push(label);
+      for (const k of keys) remaining.delete(k);
+    }
+  };
+
+  // v (vertical = f+b) and s (sideways = l+r) help for orthogonal leapers
+  // where each cardinal direction covers a single square: vW collapses fW+bW.
+  if (n === 0) {
+    tryCover('v', [`-${m},0`, `${m},0`]);
+    tryCover('s', [`0,${m}`, `0,-${m}`]);
+  }
+
+  // For oblique leapers (n>0, m!=n), try the 4-square cardinal prefixes first
+  // to produce shorter output, then fall back to the 2-square wedges.
+  if (n !== 0 && m !== n) {
+    for (const pref of ['f', 'b', 'r', 'l']) tryCover(pref, dirGroups[pref] || []);
+  }
+  for (const pref of ['fr', 'fl', 'br', 'bl', 'f', 'b', 'r', 'l']) {
+    tryCover(pref, dirGroups[pref] || []);
+  }
+
+  if (remaining.size > 0) return null;
+  return used.map(pref => `${mcPrefix}${pref}${atom}`);
+}
+
+/**
+ * Joint translation of a piece's custom movement + custom attack offsets
+ * into Betza chunks. Considering both sides together lets us:
+ *   - Emit an unprefixed atom when a (m,n) leaper offset is BOTH a movement
+ *     and an attack square (Betza atoms without m/c default to move+capture).
+ *     This unlocks arbitrary unnamed (m,n) leapers, which Fairy-Stockfish
+ *     v1.1.11 mis-handles when combined with an m/c prefix.
+ *   - Split a named leaper ring into shared / move-only / capture-only
+ *     subsets and emit each with the right prefix.
+ *
+ * Returns Betza chunks (possibly empty) or null when the pattern can't be
+ * expressed (used by the compatibility checker to flag the game).
+ */
+function customSquaresPairToBetza(moveRaw, atkRaw) {
+  const moveSet = parseOffsetSet(moveRaw);
+  const atkSet = parseOffsetSet(atkRaw);
+  if (moveSet.size === 0 && atkSet.size === 0) return [];
+
+  // Bucket every offset into its canonical (m,n) ring.
+  const groups = new Map(); // key "m,n" -> { m, n, shared, moveOnly, atkOnly }
+  const ensureGroup = (m, n) => {
+    const k = `${m},${n}`;
+    if (!groups.has(k)) groups.set(k, { m, n, shared: new Set(), moveOnly: new Set(), atkOnly: new Set() });
+    return groups.get(k);
+  };
+  for (const k of new Set([...moveSet, ...atkSet])) {
+    const [row, col] = k.split(',').map(Number);
     const m = Math.max(Math.abs(row), Math.abs(col));
     const n = Math.min(Math.abs(row), Math.abs(col));
-    const key = `${m},${n}`;
-    if (!groups.has(key)) groups.set(key, new Set());
-    groups.get(key).add(`${row},${col}`);
+    const g = ensureGroup(m, n);
+    const inMove = moveSet.has(k);
+    const inAtk = atkSet.has(k);
+    if (inMove && inAtk) g.shared.add(k);
+    else if (inMove) g.moveOnly.add(k);
+    else g.atkOnly.add(k);
   }
 
   const chunks = [];
-  for (const [groupKey, have] of groups.entries()) {
-    const [m, n] = groupKey.split(',').map(Number);
-    const atom = atomForLeaper(m, n);
-    const all = allOffsetsFor(m, n);
+  for (const g of groups.values()) {
+    const atom = atomForLeaper(g.m, g.n);
+    const isUnnamed = atom.startsWith('(');
 
-    // Fully symmetric -> emit unprefixed atom.
-    if (have.size === all.length && all.every(k => have.has(k))) {
-      chunks.push(`${mcPrefix}${atom}`);
+    if (isUnnamed) {
+      // Unnamed (m,n) atoms can only be emitted UNPREFIXED in FS v1.1.11.
+      // That means: every offset must be shared between movement and attack,
+      // and the full ring must be present (no direction prefix either).
+      if (g.moveOnly.size > 0 || g.atkOnly.size > 0) return null;
+      const all = allOffsetsFor(g.m, g.n);
+      if (g.shared.size !== all.length || !all.every(k => g.shared.has(k))) return null;
+      chunks.push(atom);
       continue;
     }
 
-    // Greedy cover with direction prefixes. For oblique leapers (n>0, m!=n),
-    // try the 4-square cardinal prefixes (f/b/r/l) first to prefer shorter
-    // output, then fall back to 2-square quadrant prefixes (fr/fl/br/bl).
-    const dirGroups = directionGroupsFor(m, n);
-    const remaining = new Set(have);
-    const used = [];
-
-    if (n !== 0 && m !== n) {
-      for (const pref of ['f', 'b', 'r', 'l']) {
-        const grp = dirGroups[pref];
-        if (grp.every(k => remaining.has(k))) {
-          used.push(pref);
-          for (const k of grp) remaining.delete(k);
-        }
-      }
+    // Named atom: emit each non-empty subset with the right prefix.
+    const subsets = [
+      { set: g.shared, prefix: '' },
+      { set: g.moveOnly, prefix: 'm' },
+      { set: g.atkOnly, prefix: 'c' },
+    ];
+    for (const sub of subsets) {
+      if (sub.set.size === 0) continue;
+      const subChunks = emitLeaperSubset(g.m, g.n, atom, sub.set, sub.prefix);
+      if (subChunks === null) return null;
+      chunks.push(...subChunks);
     }
-    for (const pref of ['fr', 'fl', 'br', 'bl', 'f', 'b', 'r', 'l']) {
-      if (used.includes(pref)) continue;
-      const grp = dirGroups[pref];
-      if (!grp) continue;
-      if (grp.every(k => remaining.has(k))) {
-        used.push(pref);
-        for (const k of grp) remaining.delete(k);
-      }
-    }
-
-    if (remaining.size > 0) {
-      // Leftover squares can't be expressed by our supported prefixes.
-      // Single isolated squares within an oblique leaper would need Betza's
-      // v/s sub-modifiers, which we don't emit.
-      return null;
-    }
-    for (const pref of used) chunks.push(`${mcPrefix}${pref}${atom}`);
   }
   return chunks;
 }
 
 /**
+ * Back-compat wrapper around the joint translator. Accepts the original
+ * single-side signature (squares array + 'm'/'c' prefix) and delegates to
+ * customSquaresPairToBetza by passing the other side as empty.
+ */
+function customSquaresToBetza(squaresRaw, mcPrefix) {
+  if (mcPrefix === 'c') return customSquaresPairToBetza(null, squaresRaw);
+  return customSquaresPairToBetza(squaresRaw, null);
+}
+
+/**
  * Returns true when the piece's custom_movement_squares /
- * custom_attack_squares can be translated. Returns false when either array
- * is non-empty but contains a pattern we can't express. Used by the
- * compatibility checker.
+ * custom_attack_squares can be translated. Used by the compatibility checker.
  */
 function canTranslateCustomSquares(piece) {
   if (!piece) return true;
-  const moveChunks = customSquaresToBetza(piece.custom_movement_squares, 'm');
-  if (moveChunks === null) return false;
-  const atkChunks = customSquaresToBetza(piece.custom_attack_squares, 'c');
-  if (atkChunks === null) return false;
-  return true;
+  return customSquaresPairToBetza(
+    piece.custom_movement_squares,
+    piece.custom_attack_squares,
+  ) !== null;
 }
 
 function buildAtomChunk(sig, atom, sliderAtom, mcPrefix, dirPrefix) {
@@ -450,35 +507,58 @@ function pieceToBetza(piece) {
 
   const chunks = [];
 
+  // "Move and capture identically" detection. When the piece captures on its
+  // movement squares (attacks_like_movement or can_capture_enemy_on_move) AND
+  // has no separate capture fields, we emit movement chunks UNPREFIXED.
+  // Betza atoms without an m/c prefix default to move+capture; with the `m`
+  // prefix they become move-only and the engine refuses to capture along
+  // them, which would silently break the bot for rook/queen/bishop-style
+  // pieces that rely on can_capture_enemy_on_move.
+  const hasAttackDir = hasAnyDir(piece, true);
+  const hasAttackCustom = parseOffsetSet(piece.custom_attack_squares).size > 0;
+  const attacksByMovement =
+    (toBool(piece.attacks_like_movement) || toBool(piece.can_capture_enemy_on_move))
+    && !hasAttackDir
+    && !hasAttackCustom;
+  const movePrefix = attacksByMovement ? '' : 'm';
+
   // Ratio leaper (e.g. knight = 2:1). Adds an "N" (for 2:1) or generic
   // "(m,n)" leaper. Fairy-Stockfish supports parenthesised leapers.
   if (toBool(piece.ratio_movement_style)) {
     const r1 = toInt(piece.ratio_movement_1 ?? piece.ratio_one_movement);
     const r2 = toInt(piece.ratio_movement_2 ?? piece.ratio_two_movement);
     if (r1 > 0 && r2 > 0) {
+      let atom;
       if ((r1 === 2 && r2 === 1) || (r1 === 1 && r2 === 2)) {
-        chunks.push('N');
+        atom = 'N';
       } else if (r1 === 2 && r2 === 2) {
-        chunks.push('A'); // alfil
+        atom = 'A';
       } else if ((r1 === 2 && r2 === 0) || (r1 === 0 && r2 === 2)) {
-        chunks.push('D'); // dabbaba
+        atom = 'D';
       } else if ((r1 === 3 && r2 === 1) || (r1 === 1 && r2 === 3)) {
-        chunks.push('C'); // camel
+        atom = 'C';
+      } else if ((r1 === 3 && r2 === 2) || (r1 === 2 && r2 === 3)) {
+        atom = 'Z';
       } else {
-        chunks.push(`(${Math.max(r1, r2)},${Math.min(r1, r2)})`);
+        atom = `(${Math.max(r1, r2)},${Math.min(r1, r2)})`;
       }
+      // Ratio leapers in Chessus naturally move-and-capture (the bot has no
+      // "capture-only ratio" concept here), so emit unprefixed even when
+      // attacksByMovement is false. For unnamed (m,n) atoms this matches the
+      // FS constraint that m/c-prefixed parenthesised atoms mis-behave.
+      chunks.push(atom);
     }
   }
 
   // Direction-style movement & capture.
   if (toBool(piece.directional_movement_style) || hasAnyDir(piece, false)) {
     for (const grp of [ORTHO_DIRS, DIAG_DIRS]) {
-      chunks.push(...emitAtomsForGroup(piece, grp, false));
+      chunks.push(...emitAtomsForGroup(piece, grp, false, movePrefix));
     }
   }
-  if (hasAnyDir(piece, true)) {
+  if (hasAttackDir) {
     for (const grp of [ORTHO_DIRS, DIAG_DIRS]) {
-      chunks.push(...emitAtomsForGroup(piece, grp, true));
+      chunks.push(...emitAtomsForGroup(piece, grp, true, 'c'));
     }
   }
 
@@ -510,16 +590,20 @@ function pieceToBetza(piece) {
     }
   }
 
-  // Custom movement / attack squares (freeform leaper offsets).
-  // Movement squares are movement-only (m prefix); attack squares are
-  // capture-only (c prefix). Returns null when the pattern isn't expressible
-  // in Betza, in which case we bail out and the game stays incompatible.
-  const customMoveChunks = customSquaresToBetza(piece.custom_movement_squares, 'm');
-  if (customMoveChunks === null) return null;
-  chunks.push(...customMoveChunks);
-  const customAtkChunks = customSquaresToBetza(piece.custom_attack_squares, 'c');
-  if (customAtkChunks === null) return null;
-  chunks.push(...customAtkChunks);
+  // Custom movement / attack squares. The joint translator emits unprefixed
+  // atoms for offsets shared between movement and attack, which is what we
+  // want when the piece captures along its movement squares. When
+  // attacksByMovement is true, treat custom_movement_squares as ALSO being
+  // attack squares so the joint translator emits them unprefixed.
+  const customAtkArg = attacksByMovement
+    ? piece.custom_movement_squares
+    : piece.custom_attack_squares;
+  const customChunks = customSquaresPairToBetza(
+    piece.custom_movement_squares,
+    customAtkArg,
+  );
+  if (customChunks === null) return null;
+  chunks.push(...customChunks);
 
   const out = chunks.join('').trim();
   return out.length > 0 ? out : null;
@@ -645,6 +729,24 @@ function buildVariantINI(gameType, pieceDefs, placements, charMap) {
     lines.push(`whiteFlag = ${sq}`);
     lines.push(`blackFlag = ${sq}`);
   }
+
+  // Castling: Fairy-Stockfish's base `chess` variant has castling enabled by
+  // default. Disable it when there's no royal piece, or when the royal piece's
+  // `can_castle` flag is off, so the engine doesn't try castling moves that
+  // Chessus's validator will reject.
+  let castlingEnabled = false;
+  if (charMap.royalChars && charMap.royalChars.size > 0) {
+    // Find the royal piece template and check can_castle.
+    for (const [pid, ch] of charMap.byPieceId.entries()) {
+      if (!charMap.royalChars.has(ch)) continue;
+      const royalPiece = pieceDefs.find(p => p && p.id === pid);
+      if (royalPiece && toBool(royalPiece.can_castle)) {
+        castlingEnabled = true;
+        break;
+      }
+    }
+  }
+  if (!castlingEnabled) lines.push('castling = false');
 
   // chess960 mode whenever the game uses backrow/mirrored randomization
   if (gameType.starting_mode === 'backrow' || gameType.starting_mode === 'mirrored') {
@@ -897,6 +999,7 @@ module.exports = {
   buildCharMap,
   pieceToBetza,
   customSquaresToBetza,
+  customSquaresPairToBetza,
   canTranslateCustomSquares,
   buildVariantINI,
   buildFEN,

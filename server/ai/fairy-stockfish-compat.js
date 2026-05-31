@@ -59,7 +59,7 @@ function parseJsonSafe(value, fallback) {
  *                             uncapturable in Fairy-Stockfish, so cannot_be_captured
  *                             on a royal piece is not an incompatibility.
  */
-function pieceIncompatReasons(piece, isRoyal = false) {
+function pieceIncompatReasons(piece, isRoyal = false, isPawn = false) {
   const reasons = [];
   if (!piece) return reasons;
   const name = piece.piece_name || `Piece #${piece.id}`;
@@ -124,33 +124,35 @@ function pieceIncompatReasons(piece, isRoyal = false) {
   }
 
   // Custom freeform movement / attack squares: incompatible only when the
-  // pattern can't be expressed as a Betza leaper subset (e.g. single isolated
-  // squares within an oblique leaper, which would need v/s sub-modifiers).
+  // joint pattern can't be expressed in Betza. The translator considers both
+  // sides together so it can emit unprefixed atoms for offsets shared between
+  // movement and attack (which unlocks arbitrary unnamed (m,n) leapers that
+  // Fairy-Stockfish mis-handles when combined with an m/c prefix).
   const translator = require('./fairy-stockfish-translator');
   const customMove = parseJsonSafe(piece.custom_movement_squares, []);
   const customAtk = parseJsonSafe(piece.custom_attack_squares, []);
-  if (Array.isArray(customMove) && customMove.length > 0) {
-    const chunks = translator.customSquaresToBetza(customMove, 'm');
+  const hasAnyCustom = (Array.isArray(customMove) && customMove.length > 0)
+    || (Array.isArray(customAtk) && customAtk.length > 0);
+  if (hasAnyCustom) {
+    const chunks = translator.customSquaresPairToBetza(customMove, customAtk);
     if (chunks === null) {
-      push('custom_movement_squares',
-        'Custom movement squares use a pattern that has no Betza equivalent (an oblique-leaper subset that can\'t be expressed as a forward/back/left/right or quadrant slice).',
-        'Edit the custom movement squares in the piece wizard (Step 2) so they cover a full leaper ring or a symmetric subset (e.g. all 4 forward squares, or a quadrant pair).');
-    }
-  }
-  if (Array.isArray(customAtk) && customAtk.length > 0) {
-    const chunks = translator.customSquaresToBetza(customAtk, 'c');
-    if (chunks === null) {
-      push('custom_attack_squares',
-        'Custom attack squares use a pattern that has no Betza equivalent.',
-        'Edit the custom attack squares in the piece wizard (Step 3) so they cover a full leaper ring or a symmetric subset.');
+      push('custom_movement_squares/custom_attack_squares',
+        'Custom movement/attack squares use a pattern that has no Betza equivalent (e.g. an asymmetric subset of an unnamed (m,n) leaper, or a subset of a named leaper that can\'t be sliced into forward/back/left/right or quadrant covers).',
+        'Edit the custom squares in the piece wizard so they form a symmetric subset of a named leaper ring (W/F/D/N/A/C/Z), or make the unnamed leaper movement squares match its attack squares exactly so the engine can emit an unprefixed atom.');
     }
   }
 
-  // Additional movements / scenarios on direction (the `special_scenario_*` JSON columns)
+  // Additional movements / scenarios on direction (the `special_scenario_*` JSON columns).
+  // Pawn pieces are skipped here because Fairy-Stockfish's built-in P type handles their
+  // double-move (additionalMovements) natively — flagging them would wrongly block standard chess.
   const ssMoves = parseJsonSafe(piece.special_scenario_moves, null);
-  if (ssMoves && typeof ssMoves === 'object') {
-    for (const key of Object.keys(ssMoves)) {
-      const arr = ssMoves[key];
+  if (ssMoves && typeof ssMoves === 'object' && !isPawn) {
+    // Data is nested as { additionalMovements: { up: [...], down: [...] } }
+    const moveDirs = (ssMoves.additionalMovements && typeof ssMoves.additionalMovements === 'object')
+      ? ssMoves.additionalMovements
+      : ssMoves;
+    for (const key of Object.keys(moveDirs)) {
+      const arr = moveDirs[key];
       if (Array.isArray(arr) && arr.some(a => a && (toInt(a.value) !== 0 || a.infinite))) {
         push('special_scenario_moves',
           'Has additional alternate movements (multiple movement options per direction).',
@@ -159,12 +161,17 @@ function pieceIncompatReasons(piece, isRoyal = false) {
       }
     }
   }
-  const ssCap = parseJsonSafe(piece.special_scenario_capture, null);
-  if (ssCap && typeof ssCap === 'object') {
-    for (const key of Object.keys(ssCap)) {
-      const arr = ssCap[key];
+  // Note: DB column is `special_scenario_captures` (plural) — using that here.
+  const ssCap = parseJsonSafe(piece.special_scenario_captures, null);
+  if (ssCap && typeof ssCap === 'object' && !isPawn) {
+    // Data is nested as { additionalCaptures: { up: [...], down: [...] } }
+    const capDirs = (ssCap.additionalCaptures && typeof ssCap.additionalCaptures === 'object')
+      ? ssCap.additionalCaptures
+      : ssCap;
+    for (const key of Object.keys(capDirs)) {
+      const arr = capDirs[key];
       if (Array.isArray(arr) && arr.some(a => a && (toInt(a.value) !== 0 || a.infinite))) {
-        push('special_scenario_capture',
+        push('special_scenario_captures',
           'Has additional alternate captures.',
           'Remove the alternate captures in the piece wizard (Step 3 - Additional captures).');
         break;
@@ -324,10 +331,23 @@ function checkCompatibility(gameType, pieceDefs = [], placements = []) {
     }
   }
 
+  // Identify pawn-like pieces: they are assigned Fairy-Stockfish's built-in 'P' type and
+  // their double-move / special_scenario_moves are handled natively by the engine.
+  const pawnIds = new Set();
+  for (const pid of usedPieceIds) {
+    const p = pieceById.get(pid);
+    if (!p || royalIds.has(pid)) continue;
+    const fwdMove = toInt(p.up_movement) > 0 && toInt(p.up_movement) <= 2;
+    const fwdCap = toInt(p.up_left_capture) > 0 || toInt(p.up_right_capture) > 0;
+    const noBack = toInt(p.down_movement) === 0 && toInt(p.down_capture) === 0;
+    const noSide = toInt(p.left_movement) === 0 && toInt(p.right_movement) === 0;
+    if (fwdMove && fwdCap && noBack && noSide) pawnIds.add(pid);
+  }
+
   for (const pid of usedPieceIds) {
     const piece = pieceById.get(pid);
     if (!piece) continue;
-    for (const r of pieceIncompatReasons(piece, royalIds.has(pid))) reasons.push(r);
+    for (const r of pieceIncompatReasons(piece, royalIds.has(pid), pawnIds.has(pid))) reasons.push(r);
   }
 
   // ---- Placement override checks ----
