@@ -17158,25 +17158,53 @@ async function processBotTurn(io, gameId, gameState, precomputedMove = null, opt
         console.error(`[Bot] Move validation failed in game ${gameId}:`, moveResult.reason, 
           `move: piece=${bestMove.pieceId} from=(${bestMove.from.x},${bestMove.from.y}) to=(${bestMove.to.x},${bestMove.to.y})`);
         
-        // Retry with other legal moves
-        const legalMoves = getAllLegalMovesForPlayer(gameState, botPlayer.position);
-        let retrySuccess = false;
-        for (const altMove of legalMoves) {
-          if (altMove.pieceId === bestMove.pieceId && altMove.to.x === bestMove.to.x && altMove.to.y === bestMove.to.y) continue;
-          const altResult = await validateAndApplyMove(gameState, altMove);
-          if (altResult.valid) {
-            console.log(`[Bot] Retry succeeded in game ${gameId}: piece=${altMove.pieceId} to=(${altMove.to.x},${altMove.to.y})`);
-            bestMove = altMove;
-            moveResult = altResult;
-            retrySuccess = true;
-            break;
+        // When a Fairy-Stockfish precomputed move is rejected (e.g. "You must get out of
+        // check" or "That piece must be checkmated, not captured"), the engine's Betza
+        // model doesn't fully capture the server's rule set for this position.  Fall back
+        // to the built-in Node AI so the bot plays a GOOD move rather than a random one.
+        if (precomputedMove) {
+          const fsFailFallbackDiff = fallbackDifficulty || 'hard';
+          console.warn(`[FairyStockfish -> NodeAI] FS move rejected (${moveResult.reason}) in game ${gameId}; computing fallback with ${fsFailFallbackDiff} built-in AI`);
+          try {
+            const fallbackBest = await runBotInWorker(gameState, botPlayer.position, fsFailFallbackDiff);
+            if (fallbackBest) {
+              const fallbackResult = await validateAndApplyMove(gameState, fallbackBest);
+              if (fallbackResult.valid) {
+                const fbDesc = `piece=${fallbackBest.pieceId} from=(${fallbackBest.from?.x},${fallbackBest.from?.y}) to=(${fallbackBest.to?.x},${fallbackBest.to?.y})`;
+                console.warn(`[FairyStockfish -> NodeAI] Fallback succeeded in game ${gameId} (using ${fsFailFallbackDiff}): ${fbDesc}`);
+                bestMove = fallbackBest;
+                moveResult = fallbackResult;
+              } else {
+                console.error(`[FairyStockfish -> NodeAI] Fallback AI move also invalid in game ${gameId}: ${fallbackResult.reason}`);
+              }
+            }
+          } catch (fallbackErr) {
+            console.error(`[FairyStockfish -> NodeAI] Fallback AI threw in game ${gameId}:`, fallbackErr);
           }
         }
-        if (!retrySuccess) {
-          console.error(`[Bot] All moves failed validation in game ${gameId} (${legalMoves.length} tried)`);
-          io.to(`game-${gameId}`).emit("botThinking", { gameId, thinking: false });
-          clearTimeout(safetyTimer);
-          return;
+
+        // If still no valid move (AI fallback failed, or this wasn't a precomputed move),
+        // try any enumerated legal move as a last resort.
+        if (!moveResult.valid) {
+          const legalMoves = getAllLegalMovesForPlayer(gameState, botPlayer.position);
+          let retrySuccess = false;
+          for (const altMove of legalMoves) {
+            if (altMove.pieceId === bestMove.pieceId && altMove.to.x === bestMove.to.x && altMove.to.y === bestMove.to.y) continue;
+            const altResult = await validateAndApplyMove(gameState, altMove);
+            if (altResult.valid) {
+              console.warn(`[Bot] Last-resort legal-move retry succeeded in game ${gameId}: piece=${altMove.pieceId} to=(${altMove.to.x},${altMove.to.y})`);
+              bestMove = altMove;
+              moveResult = altResult;
+              retrySuccess = true;
+              break;
+            }
+          }
+          if (!retrySuccess) {
+            console.error(`[Bot] All moves failed validation in game ${gameId} (${legalMoves.length} tried); bot turn skipped`);
+            io.to(`game-${gameId}`).emit("botThinking", { gameId, thinking: false });
+            clearTimeout(safetyTimer);
+            return;
+          }
         }
       }
 
