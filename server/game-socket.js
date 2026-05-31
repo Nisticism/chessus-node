@@ -23,6 +23,12 @@ const playerSockets = new Map(); // Maps socket.id to userId
 const userSockets = new Map(); // Maps userId to socket.id
 const onlineUsers = new Set(); // Set of online user IDs
 const disconnectTimeouts = new Map(); // Maps userId to disconnect timeout (grace period)
+// Re-entry guard for processBotTurn: prevents overlapping bot-turn executions
+// for the same game when the client repeatedly submits Fairy-Stockfish moves
+// before the server has finished handling the previous submission. Without
+// this, each duplicate submit spawns its own AI fallback worker and 20s
+// safety timer, cascading into a stall that runs the human's clock down.
+const botTurnInFlight = new Set();
 
 // ── Lobby query cache ─────────────────────────────────────────────────────────
 // The /play page polls getOngoingGames + getOpenLiveGames every 5 s per client.
@@ -16685,6 +16691,34 @@ async function processBotTurn(io, gameId, gameState, precomputedMove = null, opt
   if (gameState.currentTurn !== botPlayer.position) { console.log(`[Bot] Not bot's turn in game ${gameId}`); return; }
   if (gameState.status === 'completed') { console.log(`[Bot] Game ${gameId} already completed`); return; }
 
+  // Re-entry guard. If another processBotTurn for this game is already
+  // running (likely because the client repeatedly submits FS moves that the
+  // server is still validating), drop this invocation. For client-supplied
+  // FS moves, also tell the client to stop resubmitting and request a proper
+  // server-side fallback.
+  const gameIdKey = String(gameId);
+  if (botTurnInFlight.has(gameIdKey)) {
+    console.log(`[Bot] processBotTurn re-entry skipped for game ${gameId} (already in flight)`);
+    if (precomputedMove) {
+      io.to(`game-${gameId}`).emit('fairyStockfishMoveRejected', {
+        gameId: Number(gameId),
+        reason: 'duplicate_submission',
+        move: precomputedMove,
+      });
+    }
+    return;
+  }
+  botTurnInFlight.add(gameIdKey);
+  try {
+    return await _processBotTurnInner(io, gameId, gameState, precomputedMove, options);
+  } finally {
+    botTurnInFlight.delete(gameIdKey);
+  }
+}
+
+async function _processBotTurnInner(io, gameId, gameState, precomputedMove = null, options = {}) {
+  const botPlayer = gameState.botPlayer;
+
   // Per-turn fallback difficulty: when the Fairy-Stockfish client (or the
   // server-side engine fallback) can't compute a move for THIS position, we
   // run our built-in AI for just this turn. The bot's persistent difficulty
@@ -17157,54 +17191,47 @@ async function processBotTurn(io, gameId, gameState, precomputedMove = null, opt
       if (!moveResult.valid) {
         console.error(`[Bot] Move validation failed in game ${gameId}:`, moveResult.reason, 
           `move: piece=${bestMove.pieceId} from=(${bestMove.from.x},${bestMove.from.y}) to=(${bestMove.to.x},${bestMove.to.y})`);
-        
-        // When a Fairy-Stockfish precomputed move is rejected (e.g. "You must get out of
-        // check" or "That piece must be checkmated, not captured"), the engine's Betza
-        // model doesn't fully capture the server's rule set for this position.  Fall back
-        // to the built-in Node AI so the bot plays a GOOD move rather than a random one.
+
+        // When a Fairy-Stockfish precomputed move is rejected, the engine's
+        // Betza model doesn't fully capture the server's rule set for this
+        // position. Tell the client so it (a) stops resubmitting the same
+        // move and (b) requests a proper server-side fallback via the
+        // existing `requestBotFallbackMove` path. We do NOT run the AI
+        // fallback inline here -- doing so would mean every duplicate
+        // submission spawns its own worker and 20s safety timer, cascading
+        // into a stall that runs the human's clock down.
         if (precomputedMove) {
-          const fsFailFallbackDiff = fallbackDifficulty || 'hard';
-          console.warn(`[FairyStockfish -> NodeAI] FS move rejected (${moveResult.reason}) in game ${gameId}; computing fallback with ${fsFailFallbackDiff} built-in AI`);
-          try {
-            const fallbackBest = await runBotInWorker(gameState, botPlayer.position, fsFailFallbackDiff);
-            if (fallbackBest) {
-              const fallbackResult = await validateAndApplyMove(gameState, fallbackBest);
-              if (fallbackResult.valid) {
-                const fbDesc = `piece=${fallbackBest.pieceId} from=(${fallbackBest.from?.x},${fallbackBest.from?.y}) to=(${fallbackBest.to?.x},${fallbackBest.to?.y})`;
-                console.warn(`[FairyStockfish -> NodeAI] Fallback succeeded in game ${gameId} (using ${fsFailFallbackDiff}): ${fbDesc}`);
-                bestMove = fallbackBest;
-                moveResult = fallbackResult;
-              } else {
-                console.error(`[FairyStockfish -> NodeAI] Fallback AI move also invalid in game ${gameId}: ${fallbackResult.reason}`);
-              }
-            }
-          } catch (fallbackErr) {
-            console.error(`[FairyStockfish -> NodeAI] Fallback AI threw in game ${gameId}:`, fallbackErr);
-          }
+          io.to(`game-${gameId}`).emit('fairyStockfishMoveRejected', {
+            gameId: Number(gameId),
+            reason: moveResult.reason || 'invalid_move',
+            move: precomputedMove,
+          });
+          console.warn(`[FairyStockfish] Notified client to fall back; bot turn returns without playing this move`);
+          io.to(`game-${gameId}`).emit("botThinking", { gameId, thinking: false });
+          clearTimeout(safetyTimer);
+          return;
         }
 
-        // If still no valid move (AI fallback failed, or this wasn't a precomputed move),
-        // try any enumerated legal move as a last resort.
-        if (!moveResult.valid) {
-          const legalMoves = getAllLegalMovesForPlayer(gameState, botPlayer.position);
-          let retrySuccess = false;
-          for (const altMove of legalMoves) {
-            if (altMove.pieceId === bestMove.pieceId && altMove.to.x === bestMove.to.x && altMove.to.y === bestMove.to.y) continue;
-            const altResult = await validateAndApplyMove(gameState, altMove);
-            if (altResult.valid) {
-              console.warn(`[Bot] Last-resort legal-move retry succeeded in game ${gameId}: piece=${altMove.pieceId} to=(${altMove.to.x},${altMove.to.y})`);
-              bestMove = altMove;
-              moveResult = altResult;
-              retrySuccess = true;
-              break;
-            }
+        // Non-FS path (built-in AI produced an invalid move -- shouldn't
+        // happen but defend against it): try any other legal move.
+        const legalMoves = getAllLegalMovesForPlayer(gameState, botPlayer.position);
+        let retrySuccess = false;
+        for (const altMove of legalMoves) {
+          if (altMove.pieceId === bestMove.pieceId && altMove.to.x === bestMove.to.x && altMove.to.y === bestMove.to.y) continue;
+          const altResult = await validateAndApplyMove(gameState, altMove);
+          if (altResult.valid) {
+            console.warn(`[Bot] Last-resort legal-move retry succeeded in game ${gameId}: piece=${altMove.pieceId} to=(${altMove.to.x},${altMove.to.y})`);
+            bestMove = altMove;
+            moveResult = altResult;
+            retrySuccess = true;
+            break;
           }
-          if (!retrySuccess) {
-            console.error(`[Bot] All moves failed validation in game ${gameId} (${legalMoves.length} tried); bot turn skipped`);
-            io.to(`game-${gameId}`).emit("botThinking", { gameId, thinking: false });
-            clearTimeout(safetyTimer);
-            return;
-          }
+        }
+        if (!retrySuccess) {
+          console.error(`[Bot] All moves failed validation in game ${gameId} (${legalMoves.length} tried); bot turn skipped`);
+          io.to(`game-${gameId}`).emit("botThinking", { gameId, thinking: false });
+          clearTimeout(safetyTimer);
+          return;
         }
       }
 

@@ -1452,6 +1452,31 @@ const LiveGame = () => {
       showIllegalMoveWarning(message);
     });
 
+    // Fairy-Stockfish: the server rejected our submitted engine move (e.g. it
+    // walks into check or otherwise violates a rule the engine's Betza model
+    // doesn't enforce). Bump the failure counter, suppress re-submitting the
+    // same move on this turn, and request a server-side fallback so the bot
+    // actually plays. Without this, the client's engine effect would simply
+    // re-fire after `fairyMoveInFlightRef` clears (~500ms) and resubmit the
+    // same illegal move, stalling the bot's turn indefinitely.
+    const unsubscribeFairyRejected = onGameEvent('fairyStockfishMoveRejected', ({ gameId: rejGameId, reason, move }) => {
+      if (parseInt(rejGameId) !== parseInt(gameId)) return;
+      console.warn('[FairyStockfish] Server rejected engine move; falling back to server-side bot for this turn', { reason, move });
+      // Prevent the engine effect from resubmitting immediately.
+      fairyMoveInFlightRef.current = true;
+      fairyFailureCountRef.current += 1;
+      if (fairyFailureCountRef.current >= FAIRY_MAX_CONSECUTIVE_FAILURES) {
+        fairyDisabledForGameRef.current = true;
+        setFairyEngineDisabled(true);
+        console.warn(`[FairyStockfish] Disabling client-side engine for this game after ${fairyFailureCountRef.current} consecutive failures (server_rejection); server fallback will play the rest of the game.`);
+      }
+      socket.emit('requestBotFallbackMove', {
+        gameId: parseInt(gameId, 10),
+        userId: currentUser?.id,
+        reason: `server_rejected:${reason || 'invalid_move'}`,
+      });
+    });
+
     // Listen for premove events
     const unsubscribePremoveSet = onGameEvent("premoveSet", ({ gameId: premoveGameId }) => {
       if (parseInt(premoveGameId) === parseInt(gameId)) {
@@ -1900,6 +1925,7 @@ const LiveGame = () => {
       unsubscribePlayerJoined();
       unsubscribeGameState();
       unsubscribeError();
+      unsubscribeFairyRejected();
       unsubscribeTimeUpdate();
       unsubscribeOpponentDisconnected();
       unsubscribeOpponentReconnected();
