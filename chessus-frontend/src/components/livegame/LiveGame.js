@@ -863,7 +863,19 @@ const LiveGame = () => {
         if (cancelled) return;
         setFairyTranslation({ ...resp.data, _gtid: gameState.gameType.id });
       } catch (err) {
-        console.error('[FairyStockfish] Failed to load translation bundle', err);
+        if (cancelled) return;
+        const status = err?.response?.status;
+        if (status === 409) {
+          // Game type is not compatible with Fairy-Stockfish (e.g. uses
+          // custom squares with unnamed leaper atoms). Trip the circuit
+          // breaker immediately so every bot turn falls back to the server
+          // built-in AI instead of waiting for an engine that won't start.
+          console.warn('[FairyStockfish] Game type incompatible (409); disabling client engine and using server fallback for all moves.');
+          fairyDisabledForGameRef.current = true;
+          setFairyEngineDisabled(true);
+        } else {
+          console.error('[FairyStockfish] Failed to load translation bundle', err);
+        }
       }
     })();
     return () => { cancelled = true; };
@@ -894,16 +906,17 @@ const LiveGame = () => {
   // When it's the bot's turn, compute and submit a move.
   useEffect(() => {
     if (!isFairyClientBot) return;
-    if (!fairyStockfish.engineReady) return;
-    if (!fairyTranslation || !gameState) return;
-    if (fairyMoveInFlightRef.current) return;
+    if (!gameState) return;
     if (gameState.status === 'completed') return;
     const botPos = gameState.botPlayer.position;
     if (gameState.currentTurn !== botPos) return;
 
-    // If the circuit breaker has tripped, don't run the engine -- but DO ask
-    // the server to play this move with its built-in AI, otherwise the bot
-    // appears to freeze for the rest of the game.
+    // If the circuit breaker has tripped (including when the translation API
+    // returned 409 meaning the game type is incompatible), don't run the
+    // engine -- but DO ask the server to play this move with its built-in AI,
+    // otherwise the bot appears to freeze for the rest of the game.
+    // This check intentionally runs BEFORE the fairyTranslation guard so it
+    // fires even when translation never loaded (e.g. after a 409).
     if (fairyDisabledForGameRef.current) {
       const askedGameId = gameState?.id ?? gameId;
       // De-dupe per (game, move number) so clock ticks don't spam requests.
@@ -918,6 +931,11 @@ const LiveGame = () => {
       }
       return;
     }
+
+    // Normal FS path: engine must be ready and translation loaded.
+    if (!fairyStockfish.engineReady) return;
+    if (!fairyTranslation) return;
+    if (fairyMoveInFlightRef.current) return;
 
     const fen = buildFairyFEN(
       gameState.pieces,
@@ -3156,15 +3174,29 @@ const LiveGame = () => {
           }
         }
 
-        // Check if this is a custom-square-only move (direct jump, no path check needed)
+        // Check if this is a custom-square-only move (direct jump, no path check needed).
+        // Use raw absolute offsets (toY - piece.y, toX - piece.x) — this matches the server-side
+        // logic which applies custom squares as (cy + sq.row, cx + sq.col) with no perspective flip.
+        // This avoids the perspective-flip mismatch that can occur when using canPieceMoveTo/
+        // canPieceCaptureTo with skipCustom=true to detect custom squares for opponent pieces.
         let isCustomSquareMove = false;
         if (isValidMove) {
-          const hasCustom = isCapture ? piece.custom_attack_squares : piece.custom_movement_squares;
-          if (hasCustom) {
-            const standardValid = isCapture
-              ? canPieceCaptureTo(piece.x, piece.y, toX, toY, piece, pieceTeam, false, true)
-              : canPieceMoveTo(piece.x, piece.y, toX, toY, piece, pieceTeam, false, true);
-            if (!standardValid) isCustomSquareMove = true;
+          const rawRowOffset = toY - piece.y;
+          const rawColOffset = toX - piece.x;
+          // For captures, prefer custom_attack_squares; fall back to custom_movement_squares
+          // when can_capture_enemy_on_move is set (piece captures using its movement pattern).
+          const atkCustom = piece.custom_attack_squares;
+          const movCustom = piece.custom_movement_squares;
+          const toCheckCustom = isCapture
+            ? (atkCustom || (piece.can_capture_enemy_on_move ? movCustom : null))
+            : movCustom;
+          if (toCheckCustom) {
+            try {
+              const customs = typeof toCheckCustom === 'string' ? JSON.parse(toCheckCustom) : toCheckCustom;
+              if (Array.isArray(customs) && customs.some(sq => sq.row === rawRowOffset && sq.col === rawColOffset)) {
+                isCustomSquareMove = true;
+              }
+            } catch { /* ignore */ }
           }
         }
 
@@ -3704,8 +3736,12 @@ const LiveGame = () => {
       });
     }
 
-    // Filter out moves that would leave the player in check (if mate_condition is enabled and not skipped)
-    if (!skipCheckFilter && gameState?.gameType?.mate_condition && currentPlayer) {
+    // Filter out moves that would leave the player in check (if mate_condition is enabled and not skipped).
+    // Only apply this filter to the current player's own pieces — applying it to opponent pieces
+    // would incorrectly remove the opponent's check-giving moves from their hover display.
+    const pieceTeamForCheckFilter = piece.player_id || piece.team;
+    const isOwnPieceForCheckFilter = !!piece.is_neutral || (currentPlayer && pieceTeamForCheckFilter === currentPlayer.position);
+    if (!skipCheckFilter && gameState?.gameType?.mate_condition && currentPlayer && isOwnPieceForCheckFilter) {
       // Don't filter ranged attacks through check filter (they don't move the piece)
       const regularMoves = moves.filter(m => !m.isRangedAttack);
       const rangedMoves = moves.filter(m => m.isRangedAttack);
@@ -6367,7 +6403,14 @@ const LiveGame = () => {
                     {!topPlayer && gameState.status === 'waiting' ? (
                       <span className={styles["waiting-for-opponent"]}>Waiting for opponent…</span>
                     ) : topPlayer?.id === 'bot' ? (
-                      topPlayer?.username
+                      <>
+                        {topPlayer?.username}
+                        {gameState.botPlayer?.difficulty === 'stockfish' && gameState.botPlayer?.stockfishLevel != null && (
+                          <span style={{ display: 'block', fontSize: '0.75em', opacity: 0.7, fontWeight: 400 }}>
+                            {({ 1: 'Beginner', 2: 'Casual', 3: 'Skilled', 4: 'Expert', 5: 'Maximum' })[gameState.botPlayer.stockfishLevel] || `Level ${gameState.botPlayer.stockfishLevel}`}
+                          </span>
+                        )}
+                      </>
                     ) : (
                       <Link to={`/profile/${topPlayer?.username}`} className={styles["player-name-link"]} onClick={(e) => e.stopPropagation()}>
                         {topPlayer?.username}
@@ -6445,7 +6488,14 @@ const LiveGame = () => {
                 <div className={styles["player-header"]}>
                   <span className={styles["player-name"]}>
                     {bottomPlayer?.id === 'bot' ? (
-                      bottomPlayer?.username
+                      <>
+                        {bottomPlayer?.username}
+                        {gameState.botPlayer?.difficulty === 'stockfish' && gameState.botPlayer?.stockfishLevel != null && (
+                          <span style={{ display: 'block', fontSize: '0.75em', opacity: 0.7, fontWeight: 400 }}>
+                            {({ 1: 'Beginner', 2: 'Casual', 3: 'Skilled', 4: 'Expert', 5: 'Maximum' })[gameState.botPlayer.stockfishLevel] || `Level ${gameState.botPlayer.stockfishLevel}`}
+                          </span>
+                        )}
+                      </>
                     ) : (
                       <Link to={`/profile/${bottomPlayer?.username}`} className={styles["player-name-link"]} onClick={(e) => e.stopPropagation()}>
                         {bottomPlayer?.username}
