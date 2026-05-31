@@ -4,6 +4,19 @@ import styles from "./changelog.module.scss";
 
 const changelogData = [
   {
+    date: "May 31, 2026",
+    title: "Hover highlights for opponent pieces; broader Fairy Stockfish support",
+    items: [
+      "Fixed: hovering an opponent's piece sometimes showed the wrong move highlights — squares that the piece could actually capture or move to were drawn as blocked. The hover preview now matches the piece's real reachable squares, including custom-square teleports for both your pieces and the opponent's.",
+      "Fixed: opponent pieces with check-giving moves had those moves hidden from the hover preview because the legality filter was applied from your side of the board. Hover preview now shows the opponent's full move set, including moves that would give check to your king.",
+      "Fairy Stockfish: significantly more games are now playable against the engine. Pieces that capture along their movement squares (rook/queen/bishop-style pieces relying on 'Attacks Like Movement' or 'Can Capture Enemy On Move') were silently being emitted as move-only to the engine, so the engine refused to capture with them. They now correctly emit as move-and-capture atoms, fixing strength regressions across many custom game types.",
+      "Fairy Stockfish: custom movement and attack squares are now translated jointly, which unlocks arbitrary (m,n) leaper sizes (e.g. (4,2), (3,0), (4,3)) when the piece moves and captures on the same offsets. Previously the engine flagged any unnamed leaper as incompatible.",
+      "Fairy Stockfish: when a custom-square pattern splits between movement-only and attack-only squares for a named leaper (W/F/D/N/A/C/Z), each subset now translates correctly with its own m/c prefix.",
+      "Fairy Stockfish: the engine no longer attempts castling in games whose royal piece doesn't have castling enabled — castling is now explicitly disabled in the engine variant when the piece's 'Can Castle' flag is off.",
+      "Fairy Stockfish: cleaner Betza output using 'v' (vertical) and 's' (sideways) direction prefixes for orthogonal leapers with paired-direction custom squares.",
+    ],
+  },
+  {
     date: "May 28, 2026",
     title: "Admin storage metrics overhaul and EBS expansion prep",
     items: [
