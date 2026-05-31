@@ -1385,14 +1385,20 @@ app.get("/api/users/:userId/match-history", async (req, res) => {
         eloChanges: otherData.eloChanges || null,
         isBotGame: !!otherData.isBotGame,
         botDifficulty: otherData.botDifficulty || null,
+        botStockfishLevel: otherData.botStockfishLevel != null ? otherData.botStockfishLevel : null,
         gameTypeName: game.game_type_name,
         boardWidth: game.board_width,
         boardHeight: game.board_height,
         timeControl: game.turn_length,
         increment: game.increment,
         players: (() => {
+          const _fsDiff = otherData.botDifficulty || 'medium';
+          const _fsLvl = otherData.botStockfishLevel;
+          const _fsLvlLabels = { 1: 'Beginner', 2: 'Casual', 3: 'Skilled', 4: 'Expert', 5: 'Maximum' };
           const botUsername = otherData.isBotGame
-            ? `Computer (${(otherData.botDifficulty || 'medium').charAt(0).toUpperCase() + (otherData.botDifficulty || 'medium').slice(1)})`
+            ? (_fsDiff === 'stockfish'
+              ? (_fsLvl != null ? `Fairy Stockfish (${_fsLvlLabels[_fsLvl] || 'Level ' + _fsLvl})` : 'Fairy Stockfish')
+              : `Computer (${_fsDiff.charAt(0).toUpperCase() + _fsDiff.slice(1)})`)
             : null;
           const botPosition = otherData.botPosition || 2;
           const anonLivePlayers = otherData.anonLivePlayers || null;
@@ -2000,6 +2006,7 @@ app.get("/api/match/:gameId", async (req, res) => {
         startingMode: otherData.startingMode || 'none',
         isBotGame: !!otherData.isBotGame,
         botDifficulty: otherData.botDifficulty || null,
+        botStockfishLevel: otherData.botStockfishLevel != null ? otherData.botStockfishLevel : null,
         isCorrespondence: !!game.is_correspondence,
         correspondenceDays: game.correspondence_days || null
       },
@@ -2023,7 +2030,12 @@ app.get("/api/match/:gameId", async (req, res) => {
         }));
         if (otherData.isBotGame) {
           const botPos = otherData.botPosition || 2;
-          const botLabel = `Computer (${(otherData.botDifficulty || 'medium').charAt(0).toUpperCase() + (otherData.botDifficulty || 'medium').slice(1)})`;
+          const _matchDetailDiff = otherData.botDifficulty || 'medium';
+          const _matchDetailLvl = otherData.botStockfishLevel;
+          const _matchDetailLvlLabels = { 1: 'Beginner', 2: 'Casual', 3: 'Skilled', 4: 'Expert', 5: 'Maximum' };
+          const botLabel = _matchDetailDiff === 'stockfish'
+            ? (_matchDetailLvl != null ? `Fairy Stockfish (${_matchDetailLvlLabels[_matchDetailLvl] || 'Level ' + _matchDetailLvl})` : 'Fairy Stockfish')
+            : `Computer (${_matchDetailDiff.charAt(0).toUpperCase() + _matchDetailDiff.slice(1)})`;
           if (!mapped.some(p => p.id === 'bot' || p.position === botPos)) {
             mapped.push({
               id: 'bot',
@@ -2308,6 +2320,11 @@ app.post("/api/pieces/duplicates", async (req, res) => {
       'down_right_capture_change','down_capture_change','down_left_capture_change','left_capture_change',
       'up_left_capture_change_available_for','up_capture_change_available_for','up_right_capture_change_available_for','right_capture_change_available_for',
       'down_right_capture_change_available_for','down_capture_change_available_for','down_left_capture_change_available_for','left_capture_change_available_for',
+      // Iteration min/max fields — all affect how many times a move pattern may be repeated
+      'max_directional_movement_iterations','min_directional_movement_iterations',
+      'min_ratio_iterations',
+      'max_directional_ranged_attack_iterations','min_directional_ranged_attack_iterations',
+      'max_ratio_ranged_attack_iterations','min_ratio_ranged_attack_iterations',
     ];
     // JSON / text columns � compare by canonical JSON (or trimmed string).
     // Empty arrays and empty objects are treated as null (= "not configured").
@@ -2411,7 +2428,12 @@ app.post("/api/pieces/duplicates", async (req, res) => {
         p.down_right_capture_change_exact, p.down_capture_change_exact, p.down_left_capture_change_exact, p.left_capture_change_exact,
         p.up_left_capture_change_available_for, p.up_capture_change_available_for, p.up_right_capture_change_available_for, p.right_capture_change_available_for,
         p.down_right_capture_change_available_for, p.down_capture_change_available_for, p.down_left_capture_change_available_for, p.left_capture_change_available_for,
-        p.repeating_capture_change, p.require_empty_via_capture
+        p.repeating_capture_change, p.require_empty_via_capture,
+        p.require_direction_change, p.require_direction_change_capture,
+        p.max_directional_movement_iterations, p.min_directional_movement_iterations,
+        p.min_ratio_iterations,
+        p.max_directional_ranged_attack_iterations, p.min_directional_ranged_attack_iterations,
+        p.max_ratio_ranged_attack_iterations, p.min_ratio_ranged_attack_iterations
       FROM chessusnode.pieces p
       LEFT JOIN chessusnode.users u ON p.creator_id = u.id
     `);

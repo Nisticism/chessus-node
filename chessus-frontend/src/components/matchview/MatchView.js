@@ -693,7 +693,14 @@ const MatchView = () => {
                 <div className={styles["setting-item"]}>
                   <span className={styles["setting-label"]}>Opponent</span>
                   <span className={styles["setting-value"]}>
-                    Computer ({match.settings.botDifficulty ? match.settings.botDifficulty.charAt(0).toUpperCase() + match.settings.botDifficulty.slice(1) : 'Medium'})
+                    {match.settings.botDifficulty === 'stockfish'
+                      ? (() => {
+                          const lvl = match.settings.botStockfishLevel;
+                          const lvlLabels = { 1: 'Beginner', 2: 'Casual', 3: 'Skilled', 4: 'Expert', 5: 'Maximum' };
+                          return lvl != null ? `Fairy Stockfish (${lvlLabels[lvl] || 'Level ' + lvl})` : 'Fairy Stockfish';
+                        })()
+                      : `Computer (${match.settings.botDifficulty ? match.settings.botDifficulty.charAt(0).toUpperCase() + match.settings.botDifficulty.slice(1) : 'Medium'})`
+                    }
                   </span>
                 </div>
               )}

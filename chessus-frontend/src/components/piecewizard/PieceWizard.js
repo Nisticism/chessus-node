@@ -48,6 +48,10 @@ const PieceWizard = ({ editPieceId = null }) => {
     // Step 2: Movement Configuration
     directional_movement_style: false,
     repeating_movement: false,
+    max_directional_movement_iterations: null,
+    min_directional_movement_iterations: null,
+    first_move_only: false,
+    first_move_only_capture: false,
     up_left_movement: 0,
     up_movement: 0,
     up_right_movement: 0,
@@ -82,6 +86,7 @@ const PieceWizard = ({ editPieceId = null }) => {
     ratio_two_movement: null,
     repeating_ratio: false,
     max_ratio_iterations: null,
+    min_ratio_iterations: null,
     
     step_by_step_movement_style: false,
     step_by_step_movement_value: null,
@@ -107,6 +112,9 @@ const PieceWizard = ({ editPieceId = null }) => {
     max_directional_hop_pieces_attack: null,
     can_capture_enemy_via_range: false,
     can_capture_enemy_on_move: true,
+    can_capture_ally_via_range: false,
+    can_capture_ally_on_range: false,
+    can_attack_on_iteration: false,
     
     up_left_attack_range: 0,
     up_attack_range: 0,
@@ -159,6 +167,12 @@ const PieceWizard = ({ editPieceId = null }) => {
     
     ratio_one_attack_range: null,
     ratio_two_attack_range: null,
+    repeating_directional_ranged_attack: false,
+    max_directional_ranged_attack_iterations: null,
+    min_directional_ranged_attack_iterations: null,
+    repeating_ratio_ranged_attack: false,
+    max_ratio_ranged_attack_iterations: null,
+    min_ratio_ranged_attack_iterations: null,
     
     step_by_step_attack_style: false,
     step_by_step_attack_value: null,

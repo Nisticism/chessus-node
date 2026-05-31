@@ -111,8 +111,18 @@ const MatchHistory = ({ userId, username }) => {
     }
   };
 
+  const getFsLevelLabel = (level) => {
+    const labels = { 1: 'Beginner', 2: 'Casual', 3: 'Skilled', 4: 'Expert', 5: 'Maximum' };
+    return labels[level] || null;
+  };
+
   const getOpponent = (game) => {
     if (game.isBotGame) {
+      if (game.botDifficulty === 'stockfish') {
+        const lvlLabel = game.botStockfishLevel != null ? getFsLevelLabel(game.botStockfishLevel) : null;
+        const label = lvlLabel ? `Fairy Stockfish (${lvlLabel})` : 'Fairy Stockfish';
+        return { username: label, elo: null, isBot: true };
+      }
       const diffLabel = game.botDifficulty
         ? game.botDifficulty.charAt(0).toUpperCase() + game.botDifficulty.slice(1)
         : "Medium";
