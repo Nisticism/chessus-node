@@ -113,49 +113,41 @@ class SoundManager {
       const cleanup = () => {
         this.activeSounds.delete(sound);
       };
-      const cleanupWithCancel = () => {
-        clearTimeout(safety);
-        sound.removeEventListener('timeupdate', onTimeUpdate);
+
+      // Clip the sound by comparing sound.currentTime against the target duration.
+      // Using currentTime (actual audio position) avoids the old pre-scheduled
+      // setTimeout race where the timer fired before play() had started, and also
+      // avoids the wall-clock drift issue where Date.now() deltas from the first
+      // timeupdate event caused the clip to fire one event-period too late (making
+      // multi-sample WAV files play their second sample).
+      // Durations: move 0.25s, check 0.3s, everything else 0.6s.
+      const clipSec = soundName === 'move' ? 0.25 : soundName === 'check' ? 0.3 : 0.6;
+      let clipFired = false;
+      let safetyTimer = null;
+      let onTimeUpdate = null;
+
+      const stopAndClean = () => {
+        if (clipFired) return;
+        clipFired = true;
+        if (onTimeUpdate) sound.removeEventListener('timeupdate', onTimeUpdate);
+        if (safetyTimer) { clearTimeout(safetyTimer); safetyTimer = null; }
+        try { sound.pause(); } catch (e) { /* ignore */ }
         cleanup();
       };
-      sound.addEventListener('ended', cleanupWithCancel, { once: true });
-      sound.addEventListener('error', cleanupWithCancel, { once: true });
 
-      // Clip the sound to a short window so rapid events (move, capture, check)
-      // don't overlap badly. We use 'timeupdate' (fires ~4x/s during real playback)
-      // so the clip timer only starts counting AFTER the browser has actually
-      // begun producing audio — avoiding the old bug where a pre-scheduled
-      // setTimeout fired before playback started and cut the clip to 0ms.
-      // Durations: move 0.35s, check 0.4s, everything else 0.7s.
-      const clipMs = soundName === 'move' ? 350 : soundName === 'check' ? 400 : 700;
-      let clipFired = false;
-      let playbackStartedAt = null;
-      const onTimeUpdate = () => {
-        if (clipFired) return;
-        if (playbackStartedAt === null) playbackStartedAt = Date.now();
-        if (Date.now() - playbackStartedAt >= clipMs) {
-          clipFired = true;
-          sound.removeEventListener('timeupdate', onTimeUpdate);
-          try { sound.pause(); } catch (e) { /* ignore */ }
-          cleanup();
+      onTimeUpdate = () => {
+        if (!clipFired && sound.currentTime >= clipSec) {
+          stopAndClean();
         }
       };
       sound.addEventListener('timeupdate', onTimeUpdate);
-
-      // Safety-net: if timeupdate never fires (e.g. very short file already ended),
-      // rely on the 'ended' handler above which calls cleanup().
-      // Hard cap at 2s to guard against stalled clones.
-      const safety = setTimeout(() => {
-        clipFired = true;
-        sound.removeEventListener('timeupdate', onTimeUpdate);
-        try { sound.pause(); } catch (e) { /* ignore */ }
-        cleanup();
-      }, 2000);
+      sound.addEventListener('ended', stopAndClean, { once: true });
+      sound.addEventListener('error', stopAndClean, { once: true });
+      // Safety-net: hard cap at 2s in case timeupdate never fires for a stalled clone.
+      safetyTimer = setTimeout(stopAndClean, 2000);
 
       sound.play().catch(err => {
-        clearTimeout(safety);
-        sound.removeEventListener('timeupdate', onTimeUpdate);
-        cleanup();
+        stopAndClean();
         // If the tab was hidden, store for replay on next turn start
         if (document.visibilityState === 'hidden') {
           if (this.pendingSounds.length < 8) this.pendingSounds.push(soundName);

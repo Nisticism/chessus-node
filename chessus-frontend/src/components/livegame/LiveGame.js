@@ -3892,7 +3892,12 @@ const LiveGame = () => {
     const hasAllyCaptureMove = selectedPiece && isOwnPiece && clickedPiece && selectedPiece.can_capture_allies &&
       clickedPiece.id !== selectedPiece.id &&
       validMoves.some(m => m.isCapture && doesPieceOccupySquare(clickedPiece, m.x, m.y));
-    if (clickedPiece && !hasAllyCaptureMove && (isPreviewMode || (isOwnPiece && isMyTurn) || canSelectForPremove)) {
+    // Close-range castling: the castling partner sits on the castle-destination square.
+    // Clicking it must execute the castle, not re-select the partner.
+    const hasCastlingMoveToPartner = !!(selectedPiece && isOwnPiece && clickedPiece &&
+      clickedPiece.id !== selectedPiece.id &&
+      validMoves.some(m => m.isCastling && m.castlingWith === clickedPiece.id));
+    if (clickedPiece && !hasAllyCaptureMove && !hasCastlingMoveToPartner && (isPreviewMode || (isOwnPiece && isMyTurn) || canSelectForPremove)) {
       // If a capture action is pending, only allow selecting the designated piece
       if (captureActionPieceId != null && isMyTurn && clickedPiece.id !== captureActionPieceId) {
         showIllegalMoveWarning("You must use the highlighted piece for your capture action, or skip.", 2500);
@@ -3938,7 +3943,13 @@ const LiveGame = () => {
       setCastleArmedSquare(null);
       // On a normal (short) click always prefer the non-castling move so that
       // a dual-action square defaults to moving, not castling.
-      let move = validMoves.find(m => m.x === x && m.y === y && !m.isCastling);
+      // Exception: clicking directly on the castling partner always executes the castle
+      // (close-range castling where the partner occupies the destination square).
+      let move;
+      if (hasCastlingMoveToPartner && clickedPiece) {
+        move = validMoves.find(m => m.isCastling && m.castlingWith === clickedPiece.id);
+      }
+      if (!move) move = validMoves.find(m => m.x === x && m.y === y && !m.isCastling);
       if (!move) move = validMoves.find(m => m.x === x && m.y === y);
       if (!move && selectedPiece) {
         const spw = selectedPiece.piece_width || 1;
