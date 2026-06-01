@@ -1117,17 +1117,11 @@ export const formatMoveNotation = (move, includeFrom = true, boardHeight = 8) =>
   if (!move) return '';
 
   // Anonymized opponent move (Hidden Enemy Pieces / fog mode). The server
-  // strips from/to/piece info; we surface only the fact that a move happened
-  // and any side effects the viewer is allowed to know about.
+  // strips from/to/piece info; we surface only that a move happened. In fog
+  // mode the viewer should NOT learn what kind of move it was — no capture
+  // marker, no castling marker, no check indicator. Always render bare "…".
   if (move.opponentMove) {
-    const parts = ['\u2026']; // horizontal ellipsis
-    if (move.capture || move.ownPiecesCaptured?.length) parts.push('x');
-    if (move.isCastling) parts.push('O-O');
-    if (move.isRangedAttack) parts.push('\u2192');
-    if (move.promoted) parts.push('=');
-    if (move.isCheckmate) parts.push('#');
-    else if (move.isCheck) parts.push('+');
-    return parts.join('');
+    return '\u2026';
   }
 
   // Place-type moves (piece placement action — no 'from' square)

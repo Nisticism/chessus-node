@@ -152,6 +152,7 @@ function fogFilterPayload(payload, gameState, viewerPos) {
 
   if (Array.isArray(out.pieces)) out.pieces = filterPiecesForViewer(out.pieces, viewerPos);
   if (Array.isArray(out.moveHistory)) out.moveHistory = filterMoveHistoryForViewer(out.moveHistory, viewerPos);
+  if (Array.isArray(out.initialPieces)) out.initialPieces = filterPiecesForViewer(out.initialPieces, viewerPos);
   if (Array.isArray(out.checkedPieces)) {
     // Suppress checked-piece identity for opponents (they never get to learn which piece of yours is in check).
     // The viewer's own checked pieces should still appear (their own royals).
@@ -162,6 +163,7 @@ function fogFilterPayload(payload, gameState, viewerPos) {
     const gs = { ...out.gameState };
     if (Array.isArray(gs.pieces)) gs.pieces = filterPiecesForViewer(gs.pieces, viewerPos);
     if (Array.isArray(gs.moveHistory)) gs.moveHistory = filterMoveHistoryForViewer(gs.moveHistory, viewerPos);
+    if (Array.isArray(gs.initialPieces)) gs.initialPieces = filterPiecesForViewer(gs.initialPieces, viewerPos);
     out.gameState = gs;
   }
 
@@ -14628,22 +14630,22 @@ function canPieceMoveToSquare(piece, targetX, targetY, allPieces, gameType = nul
     if (partnerId) {
       const partner = allPieces.find(p => p.id === partnerId);
       if (partner && !partner.hasMoved) {
-        // Calculate distance to partner
-        const distanceToPartner = Math.abs(partner.x - piece.x);
-        
-        // Check if this is close-range castling (partner within castling distance)
-        const isCloseRange = distanceToPartner > 0 && distanceToPartner <= (piece.castling_distance || 2);
-        
-        let physicallyAllowed = false;
-        if (isCloseRange) {
-          // Close-range castling: king hops over pieces
-          // Target is valid if: empty, OR occupied by the partner itself (who will move)
-          const occupant = findPieceAtSquare(allPieces, targetX, targetY);
-          physicallyAllowed = !occupant || occupant.id === partnerId;
-        } else {
-          // Standard long-range castling: path must be clear
-          physicallyAllowed = isPathClear(piece.x, piece.y, targetX, targetY);
+        // King-traversal path must be clear. The partner is exempt because it
+        // will be moved by the castling handler. We deliberately do NOT check
+        // the path between king and partner: castling is a teleport for the
+        // partner regardless of where it sits (e.g. castling_distance=1 with
+        // partner at the corner). Only the king's actual movement path matters.
+        const step = dx > 0 ? 1 : -1;
+        let pathClear = true;
+        for (let i = 1; i <= absDx; i++) {
+          const sqX = piece.x + step * i;
+          const occupant = findPieceAtSquare(allPieces, sqX, piece.y);
+          if (occupant && occupant.id !== partnerId) {
+            pathClear = false;
+            break;
+          }
         }
+        const physicallyAllowed = pathClear;
 
         if (physicallyAllowed) {
           // Zone-of-control check: when mate_condition is active the castling piece
@@ -14653,7 +14655,6 @@ function canPieceMoveToSquare(piece, targetX, targetY, allPieces, gameType = nul
           if (gameType && gameType.mate_condition) {
             const castlerOwner = piece.team || piece.player_id;
             const enemyPieces = allPieces.filter(p => (p.team || p.player_id) !== castlerOwner);
-            const step = dx > 0 ? 1 : -1;
             let blockedByZOC = false;
             // Start from piece.x so that being in check also blocks castling
             for (let sq = piece.x; sq !== targetX + step; sq += step) {
@@ -15694,26 +15695,18 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
       const rookPiece = allPieces.find(p => p.id === piece.castling_partner_left_id);
       
       if (rookPiece && !rookPiece.hasMoved) {
-        const distanceToPartner = piece.x - rookPiece.x;
-        const isCloseRange = distanceToPartner > 0 && distanceToPartner <= castleDist;
-        
+        // King-traversal path must be clear. Partner is exempt because it
+        // teleports during castling (so castling_distance=1 with the partner
+        // sitting at the corner is fine — only the king's own path matters).
         let pathClear = true;
-        
-        if (isCloseRange) {
-          // Close-range castling: king hops, target can be partner's position or empty
-          const occupant = findPieceAtSquare(allPieces, leftTarget.x, leftTarget.y);
-          const targetOccupiedByOther = occupant && occupant.id !== rookPiece.id;
-          pathClear = !targetOccupiedByOther;
-        } else {
-          // Standard long-range castling: check if all squares between are unoccupied
-          for (let x = piece.x - 1; x >= rookPiece.x + 1; x--) {
-            if (findPieceAtSquare(allPieces, x, piece.y)) {
-              pathClear = false;
-              break;
-            }
+        for (let x = piece.x - 1; x >= piece.x - castleDist; x--) {
+          const occupant = findPieceAtSquare(allPieces, x, piece.y);
+          if (occupant && occupant.id !== rookPiece.id) {
+            pathClear = false;
+            break;
           }
         }
-        
+
         // ZOC check: block castling if any square the piece traverses (including its own
         // starting square, to catch being in check) is attacked by an enemy.
         // The partner's own square is excluded since it will have vacated.
@@ -15742,26 +15735,18 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
       const rookPiece = allPieces.find(p => p.id === piece.castling_partner_right_id);
       
       if (rookPiece && !rookPiece.hasMoved) {
-        const distanceToPartner = rookPiece.x - piece.x;
-        const isCloseRange = distanceToPartner > 0 && distanceToPartner <= castleDist;
-        
+        // King-traversal path must be clear. Partner is exempt because it
+        // teleports during castling (so castling_distance=1 with the partner
+        // sitting at the corner is fine — only the king's own path matters).
         let pathClear = true;
-        
-        if (isCloseRange) {
-          // Close-range castling: king hops, target can be partner's position or empty
-          const occupant = findPieceAtSquare(allPieces, rightTarget.x, rightTarget.y);
-          const targetOccupiedByOther = occupant && occupant.id !== rookPiece.id;
-          pathClear = !targetOccupiedByOther;
-        } else {
-          // Standard long-range castling: check if all squares between are unoccupied
-          for (let x = piece.x + 1; x <= rookPiece.x - 1; x++) {
-            if (findPieceAtSquare(allPieces, x, piece.y)) {
-              pathClear = false;
-              break;
-            }
+        for (let x = piece.x + 1; x <= piece.x + castleDist; x++) {
+          const occupant = findPieceAtSquare(allPieces, x, piece.y);
+          if (occupant && occupant.id !== rookPiece.id) {
+            pathClear = false;
+            break;
           }
         }
-        
+
         // ZOC check: block castling if any square the piece traverses (including its own
         // starting square, to catch being in check) is attacked by an enemy.
         // The partner's own square is excluded since it will have vacated.

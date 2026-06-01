@@ -3594,39 +3594,23 @@ const LiveGame = () => {
         if (partner && !partner.hasMoved) {
           const targetX = piece.x - castleDist;
           const targetY = piece.y;
-          const distanceToPartner = piece.x - partner.x;
-          
-          // Check if this is close-range castling (partner within castleDist squares)
-          const isCloseRange = distanceToPartner > 0 && distanceToPartner <= castleDist;
-          
-          if (isCloseRange) {
-            // Close-range castling: king hops over pieces, partner can be at target or adjacent
-            // Target is valid if: empty, OR occupied by the partner itself (who will move)
-            const targetOccupiedByOther = pieces.some(p => p.id !== partner.id && doesPieceOccupySquare(p, targetX, targetY));
-            if (!targetOccupiedByOther) {
-              moves.push({
-                x: targetX,
-                y: targetY,
-                isCapture: false,
-                isCastling: true,
-                castlingWith: piece.castling_partner_left_id,
-                castlingDirection: 'left'
-              });
-            }
-          } else {
-            // Standard long-range castling: path must be clear
-            const targetOccupied = !!findPieceAtSquare(pieces, targetX, targetY);
-            const pathClear = isPathClear(piece.x, piece.y, targetX, targetY, pieces);
-            if (!targetOccupied && pathClear) {
-              moves.push({
-                x: targetX,
-                y: targetY,
-                isCapture: false,
-                isCastling: true,
-                castlingWith: piece.castling_partner_left_id,
-                castlingDirection: 'left'
-              });
-            }
+          // King-traversal path must be clear. Partner is exempt because it
+          // teleports during castling (so castling_distance=1 with the partner
+          // at the corner is fine — only the king's own path matters).
+          let pathClear = true;
+          for (let x = piece.x - 1; x >= piece.x - castleDist; x--) {
+            const occupant = pieces.find(p => p.id !== partner.id && doesPieceOccupySquare(p, x, piece.y));
+            if (occupant) { pathClear = false; break; }
+          }
+          if (pathClear) {
+            moves.push({
+              x: targetX,
+              y: targetY,
+              isCapture: false,
+              isCastling: true,
+              castlingWith: piece.castling_partner_left_id,
+              castlingDirection: 'left'
+            });
           }
         }
       }
@@ -3637,39 +3621,23 @@ const LiveGame = () => {
         if (partner && !partner.hasMoved) {
           const targetX = piece.x + castleDist;
           const targetY = piece.y;
-          const distanceToPartner = partner.x - piece.x;
-          
-          // Check if this is close-range castling (partner within castleDist squares)
-          const isCloseRange = distanceToPartner > 0 && distanceToPartner <= castleDist;
-          
-          if (isCloseRange) {
-            // Close-range castling: king hops over pieces, partner can be at target or adjacent
-            // Target is valid if: empty, OR occupied by the partner itself (who will move)
-            const targetOccupiedByOther = pieces.some(p => p.id !== partner.id && doesPieceOccupySquare(p, targetX, targetY));
-            if (!targetOccupiedByOther) {
-              moves.push({
-                x: targetX,
-                y: targetY,
-                isCapture: false,
-                isCastling: true,
-                castlingWith: piece.castling_partner_right_id,
-                castlingDirection: 'right'
-              });
-            }
-          } else {
-            // Standard long-range castling: path must be clear
-            const targetOccupied = !!findPieceAtSquare(pieces, targetX, targetY);
-            const pathClear = isPathClear(piece.x, piece.y, targetX, targetY, pieces);
-            if (!targetOccupied && pathClear) {
-              moves.push({
-                x: targetX,
-                y: targetY,
-                isCapture: false,
-                isCastling: true,
-                castlingWith: piece.castling_partner_right_id,
-                castlingDirection: 'right'
-              });
-            }
+          // King-traversal path must be clear. Partner is exempt because it
+          // teleports during castling (so castling_distance=1 with the partner
+          // at the corner is fine — only the king's own path matters).
+          let pathClear = true;
+          for (let x = piece.x + 1; x <= piece.x + castleDist; x++) {
+            const occupant = pieces.find(p => p.id !== partner.id && doesPieceOccupySquare(p, x, piece.y));
+            if (occupant) { pathClear = false; break; }
+          }
+          if (pathClear) {
+            moves.push({
+              x: targetX,
+              y: targetY,
+              isCapture: false,
+              isCastling: true,
+              castlingWith: piece.castling_partner_right_id,
+              castlingDirection: 'right'
+            });
           }
         }
       }
@@ -5648,10 +5616,12 @@ const LiveGame = () => {
         // Move indicator — type drives a CSS custom property rendered via ::after pseudo-element.
         // Using CSS avoids React DOM node creation/destruction on every hover, eliminating hover lag.
         // Suppress the dot on impassable squares: they cannot be valid destinations.
+        // Also suppress the regular dot once the castle is armed on a dual-action square —
+        // the secondary castle-armed indicator takes over so the user has unambiguous feedback.
         const activeRegularMove = regularMove || hoveredRegularMove;
         const activeIsRanged = isRangedMove || isRangedHover || isRangedDragTarget || isRangedSelectedTarget;
         const dotBg = { move: 'rgba(33,150,243,0.55)', capture: 'rgba(220,60,60,0.7)', first: 'rgba(255,215,0,0.65)', custom: 'rgba(0,188,150,0.55)' };
-        const dotType = activeRegularMove && !isImpassable
+        const dotType = (activeRegularMove && !isImpassable && !isCastleArmed)
           ? (activeRegularMove.isCustomMove || activeRegularMove.isCustomAttack ? 'custom'
             : activeRegularMove.isFirstMoveOnly ? 'first'
             : activeRegularMove.isCapture ? 'capture'
