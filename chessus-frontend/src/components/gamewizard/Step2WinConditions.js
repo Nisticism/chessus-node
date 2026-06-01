@@ -191,17 +191,6 @@ const Step2WinConditions = ({ gameData, updateGameData }) => {
         </div>
       </ToggleRow>
 
-      <div className={styles["sub-field"]}>
-        <label className={styles["form-label"]}>
-          Optional Condition ID <InfoTooltip text="Reference to a custom win condition defined externally. Leave empty unless you have a custom condition system set up." />
-        </label>
-        <NumberInput
-          value={gameData.optional_condition || 0}
-          onChange={(val) => handleChange("optional_condition", val || null)}
-          options={{ min: 0, placeholder: "Leave empty if not applicable", className: styles["form-input-small"] }}
-        />
-      </div>
-
       <ToggleRow
         title="Illegal Move Limit"
         tooltip="When enabled, a player who attempts this many illegal moves loses the game. The server silently rejects each illegal attempt and increments a per-player counter; no reason is given. Especially useful alongside the 'Hidden Enemy Pieces' game mechanic (where the player cannot see what's blocking them), but works in any game. Inspired by the illegal-move rule used in Tsuitate Shogi."
@@ -220,6 +209,20 @@ const Step2WinConditions = ({ gameData, updateGameData }) => {
           </p>
         </div>
       </ToggleRow>
+
+      {/* Optional Condition ID — not yet implemented in game logic; hidden until used */}
+      <div style={{ display: 'none' }}>
+        <div className={styles["sub-field"]}>
+          <label className={styles["form-label"]}>
+            Optional Condition ID <InfoTooltip text="Reference to a custom win condition defined externally. Leave empty unless you have a custom condition system set up." />
+          </label>
+          <NumberInput
+            value={gameData.optional_condition || 0}
+            onChange={(val) => handleChange("optional_condition", val || null)}
+            options={{ min: 0, placeholder: "Leave empty if not applicable", className: styles["form-input-small"] }}
+          />
+        </div>
+      </div>
 
       <div className={styles["section-divider"]}></div>
       <h2 style={{ marginTop: '32px' }}>Draw Conditions</h2>
