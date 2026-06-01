@@ -1617,7 +1617,13 @@ function evaluatePosition(state, perspective) {
   // --- Center control (reduced weight) ---
   // Pieces near the center score slightly better, but this is a weak signal
   // that cannot compete with material safety. Max ~2 pts per piece.
+  // Edge files (x=0 / x=bw-1) get an explicit small penalty for low-value pieces
+  // (pawn-like). A pawn on an edge file controls only one diagonal and cannot
+  // contribute to central control — so without this penalty the engine sees
+  // pushing an a-pawn as roughly equivalent to pushing a d-pawn.
   const _totalMoves = state.moveCount || 0;
+  const edgeFile = (x) => (x === 0 || x === bw - 1);
+  const edgeRank = (y) => (y === 0 || y === bh - 1);
   for (const piece of myPieces) {
     const dist = Math.sqrt(
       Math.pow(piece.x - centerX, 2) + Math.pow(piece.y - centerY, 2)
@@ -1626,6 +1632,11 @@ function evaluatePosition(state, perspective) {
     const pv = getPieceValue(piece, bs);
     const pieceImportance = Math.min(pv, 10) / 10;
     score += proximity * (1 + pieceImportance * 1);
+    // Edge-file penalty for low-value pieces that have left their starting rank.
+    // Threshold pv <= 2 covers pawn-class pieces across custom games.
+    if (pv > 0 && pv <= 2 && edgeFile(piece.x) && !edgeRank(piece.y)) {
+      score -= 3;
+    }
   }
   for (const piece of opPieces) {
     const dist = Math.sqrt(
@@ -1635,6 +1646,9 @@ function evaluatePosition(state, perspective) {
     const pv = getPieceValue(piece, bs);
     const pieceImportance = Math.min(pv, 10) / 10;
     score -= proximity * (1 + pieceImportance * 1);
+    if (pv > 0 && pv <= 2 && edgeFile(piece.x) && !edgeRank(piece.y)) {
+      score += 3;
+    }
   }
 
   // --- Piece safety: penalize pieces that can be captured by lower-value enemies ---

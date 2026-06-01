@@ -31,8 +31,9 @@ class SoundManager {
     this.unlocked = false;
     // Set of currently-playing clones; capped to prevent browser audio-channel exhaustion.
     this.activeSounds = new Set();
-    // Last sound name requested while the tab was hidden; replayed on tab focus.
-    this.pendingSound = null;
+    // Queue of sound names requested while the tab was hidden / audio was not
+    // yet unlocked. Drained on tab focus / first user interaction.
+    this.pendingSounds = [];
 
     // Unlock audio on first user interaction (bypasses browser autoplay policy)
     const unlock = () => {
@@ -73,10 +74,9 @@ class SoundManager {
         });
         // Play any sound that was missed while the tab was hidden.
         // Small delay lets the priming settle before the real playback attempt.
-        if (this.pendingSound) {
-          const queued = this.pendingSound;
-          this.pendingSound = null;
-          setTimeout(() => this.play(queued), 80);
+        if (this.pendingSounds.length > 0) {
+          const queued = this.pendingSounds.splice(0, this.pendingSounds.length);
+          queued.forEach((name, idx) => setTimeout(() => this.play(name), 80 + idx * 60));
         }
       }
     });
@@ -88,14 +88,16 @@ class SoundManager {
     // Audio hasn't been unlocked yet by a user interaction — queue the sound
     // so it fires as soon as the first click/key/touch unlocks the context.
     if (!this.unlocked) {
-      this.pendingSound = soundName;
+      if (this.pendingSounds.length < 8) this.pendingSounds.push(soundName);
       return;
     }
 
     try {
       // Hard cap: if we already have too many concurrent sounds the browser will
       // start silently rejecting play() calls. Stop the oldest clone first.
-      if (this.activeSounds.size >= 4) {
+      // Raised from 4 -> 8 so a burst (move + capture + check + hit + bot reply)
+      // doesn't silently drop later sounds.
+      if (this.activeSounds.size >= 8) {
         const oldest = this.activeSounds.values().next().value;
         try { oldest.pause(); } catch (e) { /* ignore */ }
         this.activeSounds.delete(oldest);
@@ -106,31 +108,32 @@ class SoundManager {
       const sound = source.cloneNode();
       sound.volume = source.volume;
 
-      // Per-sound clip duration: move 0.25s, check 0.3s, everything else 0.6s.
-      const duration = soundName === 'move' ? 250 : soundName === 'check' ? 300 : 600;
-
-      // Schedule the clip timer SYNCHRONOUSLY before play() — never inside .then().
-      // The old code set the timer inside .then(), which could be skipped if a
-      // second sound started before the first Promise resolved, leaving orphan clones.
-      const stopTimer = setTimeout(() => {
-        try { sound.pause(); } catch (e) { /* ignore */ }
-        this.activeSounds.delete(sound);
-      }, duration);
-
-      const onDone = () => {
-        clearTimeout(stopTimer);
-        this.activeSounds.delete(sound);
-      };
-      sound.addEventListener('ended', onDone, { once: true });
-      sound.addEventListener('error', onDone, { once: true });
       this.activeSounds.add(sound);
 
+      const cleanup = () => {
+        this.activeSounds.delete(sound);
+      };
+      sound.addEventListener('ended', cleanup, { once: true });
+      sound.addEventListener('error', cleanup, { once: true });
+
+      // Safety-net cap: 2 seconds. Our wav files are well under that, but a
+      // browser audio glitch could leave a clone in 'paused mid-play' state.
+      // We deliberately do NOT pre-clip short sounds anymore — the old 250ms
+      // cap on 'move' could chop the clip in half when the browser delayed
+      // playback start (which is the most common cause of "no sound played").
+      const safety = setTimeout(() => {
+        try { sound.pause(); } catch (e) { /* ignore */ }
+        cleanup();
+      }, 2000);
+      sound.addEventListener('ended', () => clearTimeout(safety), { once: true });
+      sound.addEventListener('error', () => clearTimeout(safety), { once: true });
+
       sound.play().catch(err => {
-        clearTimeout(stopTimer);
-        onDone();
+        clearTimeout(safety);
+        cleanup();
         // If the tab was hidden, store for replay on next turn start
         if (document.visibilityState === 'hidden') {
-          this.pendingSound = soundName;
+          if (this.pendingSounds.length < 8) this.pendingSounds.push(soundName);
         }
         console.debug('Sound play prevented:', err.message);
       });
@@ -144,10 +147,9 @@ class SoundManager {
   }
 
   onTurnStart() {
-    if (this.pendingSound) {
-      const queued = this.pendingSound;
-      this.pendingSound = null;
-      setTimeout(() => this.play(queued), 80);
+    if (this.pendingSounds.length > 0) {
+      const queued = this.pendingSounds.splice(0, this.pendingSounds.length);
+      queued.forEach((name, idx) => setTimeout(() => this.play(name), 80 + idx * 60));
     }
   }
 

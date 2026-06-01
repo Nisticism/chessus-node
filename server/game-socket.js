@@ -688,6 +688,82 @@ function broadcastGameOver(io, gameId, gameState, payload) {
 }
 
 /**
+ * Charge a player one illegal-move attempt against the illegal_move_limit win
+ * condition. Persists the updated counter, emits an `illegalMove` event, and
+ * if the player has exhausted their attempts, ends the game with reason
+ * `illegal_move_limit` (broadcasting `gameOver`).
+ *
+ * Safe to call from any context that has detected an illegal move (regular
+ * move rejection, failed premove, etc). When the win condition is not
+ * enabled (illegalMoveLimit <= 0) this is a no-op.
+ */
+async function applyIllegalMoveAttempt(io, gameId, gameState, offendingPlayer, reason) {
+  const limit = Number(gameState?.illegalMoveLimit) || 0;
+  if (limit <= 0) return;
+  if (!offendingPlayer || offendingPlayer.position == null) return;
+  if (!gameState.illegalMoveCounts) gameState.illegalMoveCounts = { 1: 0, 2: 0 };
+  const pos = offendingPlayer.position;
+  gameState.illegalMoveCounts[pos] = (gameState.illegalMoveCounts[pos] || 0) + 1;
+  const attemptsMade = gameState.illegalMoveCounts[pos];
+  const attemptsRemaining = Math.max(0, limit - attemptsMade);
+  try {
+    await db_pool.query(
+      "UPDATE games SET illegal_move_counts = ? WHERE id = ?",
+      [JSON.stringify(gameState.illegalMoveCounts), gameId]
+    );
+  } catch (e) { console.error('Failed to persist illegal_move_counts:', e.message); }
+
+  // Notify the offending player. Emit to their personal socket if known, else
+  // fall back to the room (the client filters by gameId).
+  const payload = {
+    gameId,
+    attemptsMade,
+    attemptsRemaining,
+    limit,
+    ...(gameState.hideEnemyPieces ? {} : { reason: reason || 'Illegal move' })
+  };
+  try {
+    const sockId = userSockets.get(String(offendingPlayer.id));
+    if (sockId) io.to(sockId).emit('illegalMove', payload);
+    else io.to(`game-${gameId}`).emit('illegalMove', payload);
+  } catch (_) { try { io.to(`game-${gameId}`).emit('illegalMove', payload); } catch (_) {} }
+
+  if (attemptsRemaining > 0) return;
+
+  // Player exhausted their attempts — end the game.
+  const winnerPos = pos === 1 ? 2 : 1;
+  const winnerPlayer = (gameState.players || []).find(p => p.position === winnerPos);
+  const loserPlayer  = (gameState.players || []).find(p => p.position === pos);
+  const winnerId = winnerPlayer?.id || null;
+  const loserId  = loserPlayer?.id  || null;
+  try { stopGameTimer(gameId); } catch (_) {}
+  gameState.status = 'completed';
+  gameState.winner = winnerId;
+  gameState.winReason = 'illegal_move_limit';
+  let eloChanges = null;
+  if (gameState.rated !== false && winnerId && loserId) {
+    try { eloChanges = await updateEloRatings(winnerId, loserId); } catch (_) {}
+  }
+  const endTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
+  try {
+    await db_pool.query(
+      `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?, pieces = ?, other_data = ? WHERE id = ?`,
+      [endTime, sanitizeWinnerId(winnerId), JSON.stringify(gameState.pieces),
+       buildOtherData(gameState, { winner: winnerId, reason: 'illegal_move_limit', eloChanges, illegalMoveCounts: gameState.illegalMoveCounts }),
+       gameId]
+    );
+  } catch (e) { console.error('Failed to mark game completed (illegal_move_limit):', e.message); }
+  broadcastGameOver(io, gameId, gameState, {
+    gameId,
+    winner: winnerId,
+    reason: 'illegal_move_limit',
+    finalState: gameState,
+    eloChanges,
+    illegalMoveCounts: gameState.illegalMoveCounts,
+  });
+}
+
+/**
  * Send a "your turn" notification to the opponent in correspondence or
  * no-time-control games. Shared by makeMove, promotePiece, skipCaptureAction,
  * and skipRangedCaptureAction so that every turn-switching path notifies the
@@ -7116,6 +7192,13 @@ function initializeSocket(server) {
             // is delivered reliably even if the user reconnected on a new
             // socket id between queueing the premove and the opponent's move.
             console.log(`[Premove] Cancelled (regular handler): ${premoveResult.reason}`, premove.move);
+
+            // Illegal-move-limit: a failed premove counts toward the player's
+            // limit just like a manual illegal attempt. Especially important
+            // in Hidden Enemy Pieces mode where premoves are a blind probe.
+            await applyIllegalMoveAttempt(io, gameId, gameState, nextPlayer, premoveResult.reason || 'Premove failed');
+            if (gameState.status === 'completed') return; // game ended on limit
+
             io.to(`game-${gameId}`).emit("premoveCancelled", {
               gameId,
               playerId: nextPlayer?.id || null,
@@ -11503,6 +11586,19 @@ async function validateAndApplyMove(gameState, move, options = {}) {
     );
     if (destinationPieceIndex !== -1) {
       allCapturedPieces = [pieces[destinationPieceIndex]];
+    }
+  }
+
+  // Close-range castling: when the castling target square is currently
+  // occupied by the castling partner (e.g. castling_distance=1 with the
+  // partner adjacent to the king), the occupant must be treated as a
+  // swap participant, not a capture. The partner is moved by the castling
+  // handler below — skip the destination-occupancy capture checks.
+  if (move.isCastling && move.castlingWith && destinationPieceIndex !== -1) {
+    const occ = pieces[destinationPieceIndex];
+    if (occ && occ.id === move.castlingWith) {
+      destinationPieceIndex = -1;
+      allCapturedPieces = [];
     }
   }
 
@@ -18406,7 +18502,10 @@ async function _processBotTurnInner(io, gameId, gameState, precomputedMove = nul
             }
           } else {
             console.log(`[Premove] Cancelled (bot handler): ${premoveResult.reason}`, premove.move);
-            io.to(`game-${gameId}`).emit("premoveCancelled", { gameId, reason: 'Premove is no longer valid' });
+            const humanForLimit = gameState.players.find(p => p.position === gameState.currentTurn);
+            await applyIllegalMoveAttempt(io, gameId, gameState, humanForLimit, premoveResult.reason || 'Premove failed');
+            if (gameState.status === 'completed') return;
+            io.to(`game-${gameId}`).emit("premoveCancelled", { gameId, playerId: humanForLimit?.id || null, reason: premoveResult.reason || 'Premove is no longer valid' });
           }
         }
       }

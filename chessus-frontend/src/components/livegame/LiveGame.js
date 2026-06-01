@@ -192,14 +192,14 @@ const LiveGame = () => {
   const [gameState, setGameState] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Hidden Enemy Pieces (fog) — premove is disabled because the player can't
-  // see what the opponent will do, so any premove is a blind guess that the
-  // server has to validate against pieces it knows about. Skip the network
-  // round-trip entirely when fog is active and the game is still running.
+  // Hidden Enemy Pieces (fog): premoves ARE allowed and behave normally. If a
+  // premove turns out to be illegal once the opponent's move is revealed, it
+  // is silently cancelled — and if the game has the illegal-move-limit
+  // condition enabled the server counts that failed premove toward the limit
+  // (same as a manual illegal attempt while probing).
   const sendPremove = useCallback((gid, data) => {
-    if (gameState?.hideEnemyPieces && gameState?.status !== 'completed') return;
     return _rawSendPremove(gid, data);
-  }, [_rawSendPremove, gameState?.hideEnemyPieces, gameState?.status]);
+  }, [_rawSendPremove]);
   const [error, setError] = useState(null);
   const [spectators, setSpectators] = useState([]);
   const [showSpectators, setShowSpectators] = useState(true);
