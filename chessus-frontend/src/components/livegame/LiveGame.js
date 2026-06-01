@@ -250,6 +250,7 @@ const LiveGame = () => {
   // drives the visual charging/armed overlay.
   const castleHoldTimerRef = useRef(null);
   const castleArmedRef = useRef(null); // { x, y } or null
+  const dragCastleHoverRef = useRef(null); // { x, y } currently-armed-square during drag
   const [castleHoldSquare, setCastleHoldSquare] = useState(null); // { x, y }
   const [castleArmedSquare, setCastleArmedSquare] = useState(null); // { x, y }
   const [showBoardNotation, setShowBoardNotation] = useState(true);
@@ -4212,13 +4213,51 @@ const LiveGame = () => {
     setDragValidMoves([]);
     setSelectedPiece(null);
     setValidMoves([]);
+    // Clear any in-progress castle-hold arming from the drag.
+    if (castleHoldTimerRef.current) { clearTimeout(castleHoldTimerRef.current); castleHoldTimerRef.current = null; }
+    dragCastleHoverRef.current = null;
+    setCastleHoldSquare(null);
+    setCastleArmedSquare(null);
   }, []);
 
-  const handleDragOver = useCallback((e) => {
+  const handleDragOver = useCallback((e, x, y) => {
     e.preventDefault();
     e.stopPropagation();
     e.dataTransfer.dropEffect = 'move';
-  }, []);
+
+    // Castle hold while dragging: if cursor hovers for 1 s over a square that
+    // has BOTH a regular move and a castling move available, arm castle so
+    // the drop submits the castle variant. Releasing earlier (or moving to a
+    // different square) cancels and the regular move fires on drop.
+    if (!draggedPiece || !dragValidMoves || dragValidMoves.length === 0 || x == null || y == null) return;
+    const hasRegular = dragValidMoves.some(m => m.x === x && m.y === y && !m.isCastling && !m.isRangedAttack);
+    const castleMove = dragValidMoves.find(m => m.x === x && m.y === y && m.isCastling);
+    const dual = hasRegular && !!castleMove;
+    const hovered = dragCastleHoverRef.current;
+
+    if (!dual) {
+      // Not on a dual-action square: clear any in-progress arming.
+      if (hovered) {
+        if (castleHoldTimerRef.current) { clearTimeout(castleHoldTimerRef.current); castleHoldTimerRef.current = null; }
+        dragCastleHoverRef.current = null;
+        setCastleHoldSquare(null);
+        setCastleArmedSquare(null);
+      }
+      return;
+    }
+    // Same square we're already arming/armed on: no-op.
+    if (hovered && hovered.x === x && hovered.y === y) return;
+    // New dual-action square: reset and start a fresh 1 s timer.
+    if (castleHoldTimerRef.current) { clearTimeout(castleHoldTimerRef.current); castleHoldTimerRef.current = null; }
+    dragCastleHoverRef.current = { x, y };
+    setCastleArmedSquare(null);
+    setCastleHoldSquare({ x, y });
+    castleHoldTimerRef.current = setTimeout(() => {
+      castleHoldTimerRef.current = null;
+      setCastleHoldSquare(null);
+      setCastleArmedSquare({ x, y });
+    }, 1000);
+  }, [draggedPiece, dragValidMoves]);
 
   const handleDrop = useCallback((e, targetX, targetY) => {
     e.preventDefault();
@@ -4334,6 +4373,19 @@ const LiveGame = () => {
       return;
     }
     
+    // Castle-on-drag: if the user hovered ≥ 1 s over this square during the
+    // drag, swap the regular move for its castling alternative.
+    const armed = castleArmedSquare;
+    if (armed && armed.x === anchorX && armed.y === anchorY) {
+      const castleAlt = dragValidMoves.find(m => m.x === anchorX && m.y === anchorY && m.isCastling);
+      if (castleAlt) validMove = castleAlt;
+    }
+    // Clear castle-hold drag state regardless of which variant fires.
+    if (castleHoldTimerRef.current) { clearTimeout(castleHoldTimerRef.current); castleHoldTimerRef.current = null; }
+    dragCastleHoverRef.current = null;
+    if (castleHoldSquare) setCastleHoldSquare(null);
+    if (castleArmedSquare) setCastleArmedSquare(null);
+
     if (validMove) {
       // Check if this is a regular move or premove
       const canMakeMove = isMyTurn && (gameState?.status === 'active' || gameState?.status === 'ready');
@@ -4382,7 +4434,7 @@ const LiveGame = () => {
     setValidMoves([]);
     setDraggedPiece(null);
     setDragValidMoves([]);
-  }, [draggedPiece, dragValidMoves, isMyTurn, isMyRepositionTurn, myRepositionsDone, gameState, submitMove, submitReposition, sendPremove, gameId, inCheck, currentPlayer, soundEnabledRef, calculateValidMoves, pendingMove, showPromotionModal]);
+  }, [draggedPiece, dragValidMoves, isMyTurn, isMyRepositionTurn, myRepositionsDone, gameState, submitMove, submitReposition, sendPremove, gameId, inCheck, currentPlayer, soundEnabledRef, calculateValidMoves, pendingMove, showPromotionModal, castleArmedSquare, castleHoldSquare]);
 
   // Check if board should be flipped (player 2 sees board from their perspective)
   const shouldFlipBoard = useMemo(() => {
@@ -5678,7 +5730,7 @@ const LiveGame = () => {
               ${isRepositionable ? styles["reposition-eligible"] : ''}
             `}
             onClick={() => handleSquareClick(gameX, gameY)}
-            onDragOver={handleDragOver}
+            onDragOver={(e) => handleDragOver(e, gameX, gameY)}
             onDrop={(e) => handleDrop(e, gameX, gameY)}
             onMouseDown={(e) => handleSquareMouseDown(e, gameX, gameY)}
             onContextMenu={(e) => handleSquareContextMenu(e, gameX, gameY)}

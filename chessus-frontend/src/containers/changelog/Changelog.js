@@ -4,6 +4,13 @@ import styles from "./changelog.module.scss";
 
 const changelogData = [
   {
+    date: "June 1, 2026",
+    title: "Castle-on-drag hold timer",
+    items: [
+      "Castling vs. regular move on the same square: the 1-second hold-to-castle now works when you drag the king (previously it only worked when click-selecting the king and then click-holding the destination). Drag the king onto the dual-action square, pause for 1 second — the regular (blue) move dot disappears, the yellow castle dot brightens, and releasing the mouse now executes the castle. Release earlier (or drag to another square) to fall back to the regular move as before.",
+    ],
+  },
+  {
     date: "May 31, 2026",
     title: "Hover highlights for opponent pieces; broader Fairy Stockfish support",
     items: [
