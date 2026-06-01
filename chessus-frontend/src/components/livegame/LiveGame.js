@@ -3925,19 +3925,20 @@ const LiveGame = () => {
     const canPremove = selectedPiece && (!isMyTurn || isBotGame) && (gameState.status === 'active' || gameState.status === 'ready') && gameState.allowPremoves !== false && myRepositionsDone;
     
     if (canMakeMove) {
-      // Find move: exact match first, then check multi-tile footprint overlap.
-      // Dual-action squares (regular + castling on same destination): if the
-      // user held the mouse down for >=1s before releasing, castleArmedRef
-      // routes the click to the castling variant instead of the regular one.
-      let move;
-      const castleArmed = castleArmedRef.current;
-      if (castleArmed && castleArmed.x === x && castleArmed.y === y) {
-        move = validMoves.find(m => m.x === x && m.y === y && m.isCastling);
+      // Clean up any castle hold state.
+      if (castleHoldTimerRef.current) { clearTimeout(castleHoldTimerRef.current); castleHoldTimerRef.current = null; }
+      setCastleHoldSquare(null);
+      // If the 1s-hold executed the castle via window.mouseup, skip (consumed).
+      if (castleArmedRef.current === 'consumed') {
+        castleArmedRef.current = null;
+        setCastleArmedSquare(null);
+        return;
       }
       castleArmedRef.current = null;
-      if (castleHoldTimerRef.current) { clearTimeout(castleHoldTimerRef.current); castleHoldTimerRef.current = null; }
       setCastleArmedSquare(null);
-      setCastleHoldSquare(null);
+      // On a normal (short) click always prefer the non-castling move so that
+      // a dual-action square defaults to moving, not castling.
+      let move = validMoves.find(m => m.x === x && m.y === y && !m.isCastling);
       if (!move) move = validMoves.find(m => m.x === x && m.y === y);
       if (!move && selectedPiece) {
         const spw = selectedPiece.piece_width || 1;
@@ -4728,29 +4729,63 @@ const LiveGame = () => {
     // the castle move when castleArmedRef matches; otherwise it falls through
     // to the regular move (the default).
     if (e.button === 0) {
-      if (selectedPiece && validMoves.length > 0) {
+      // Always cancel any previous hold state before starting a new one.
+      if (castleHoldTimerRef.current) {
+        clearTimeout(castleHoldTimerRef.current);
+        castleHoldTimerRef.current = null;
+      }
+      castleArmedRef.current = null;
+      setCastleArmedSquare(null);
+      setCastleHoldSquare(null);
+
+      if (selectedPiece && isMyTurn && validMoves.length > 0 &&
+          (gameState?.status === 'active' || gameState?.status === 'ready')) {
         const hasRegular = validMoves.some(m => m.x === x && m.y === y && !m.isCastling && !m.isRangedAttack);
-        const hasCastle = validMoves.some(m => m.x === x && m.y === y && m.isCastling);
-        if (hasRegular && hasCastle) {
-          if (castleHoldTimerRef.current) clearTimeout(castleHoldTimerRef.current);
-          castleArmedRef.current = null;
-          setCastleArmedSquare(null);
+        const castleMove = validMoves.find(m => m.x === x && m.y === y && m.isCastling);
+        if (hasRegular && castleMove) {
+          // Capture current king piece + castle move data in closure so the
+          // async handler can submit even if state changed by release time.
+          const kingPiece = selectedPiece;
           setCastleHoldSquare({ x, y });
+
           castleHoldTimerRef.current = setTimeout(() => {
             castleHoldTimerRef.current = null;
-            castleArmedRef.current = { x, y };
             setCastleArmedSquare({ x, y });
             setCastleHoldSquare(null);
+
+            // Execute the castle when the user releases (global so it fires
+            // even if the cursor drifted off the square during the hold).
+            function executeCastleOnRelease() {
+              window.removeEventListener('mouseup', executeCastleOnRelease);
+              setCastleArmedSquare(null);
+              // Mark as consumed so onClick (which may fire just after) skips.
+              castleArmedRef.current = 'consumed';
+              const moveData = {
+                from: { x: kingPiece.x, y: kingPiece.y },
+                to: { x: castleMove.x, y: castleMove.y },
+                pieceId: kingPiece.id,
+                isCastling: true,
+                castlingWith: castleMove.castlingWith,
+                castlingDirection: castleMove.castlingDirection
+              };
+              submitMove(parseInt(gameId), moveData);
+              setSelectedPiece(null);
+              setValidMoves([]);
+              setTimeout(() => { castleArmedRef.current = null; }, 500);
+            }
+            window.addEventListener('mouseup', executeCastleOnRelease);
           }, 1000);
-          const cancelHold = () => {
+
+          // Cancel the hold if the user releases before 1 s.
+          function cancelCastleHold() {
+            window.removeEventListener('mouseup', cancelCastleHold);
             if (castleHoldTimerRef.current) {
               clearTimeout(castleHoldTimerRef.current);
               castleHoldTimerRef.current = null;
               setCastleHoldSquare(null);
             }
-            window.removeEventListener('mouseup', cancelHold);
-          };
-          window.addEventListener('mouseup', cancelHold);
+          }
+          window.addEventListener('mouseup', cancelCastleHold);
         }
       }
       return;
