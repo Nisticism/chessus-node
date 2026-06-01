@@ -2101,7 +2101,7 @@ app.get("/api/pieces", async (req, res) => {
         orderClause = 'ORDER BY game_count DESC, p.id DESC';
         break;
       case 'alphabetical':
-        orderClause = 'ORDER BY p.piece_name ASC';
+        orderClause = 'ORDER BY TRIM(p.piece_name) ASC';
         break;
       case 'newest':
       default:
@@ -2178,10 +2178,10 @@ app.get("/api/pieces/community-images", async (req, res) => {
     let orderClause;
     switch (sort) {
       case 'alphabetical':
-        orderClause = "ORDER BY p.piece_name ASC";
+        orderClause = "ORDER BY TRIM(p.piece_name) ASC";
         break;
       case 'by_uploader':
-        orderClause = "ORDER BY creator_name ASC, p.piece_name ASC";
+        orderClause = "ORDER BY TRIM(creator_name) ASC, TRIM(p.piece_name) ASC";
         break;
       case 'newest':
       default:
@@ -7990,7 +7990,7 @@ app.post("/api/pieces/create", authenticateToken, multerWrap(pieceUpload.array('
     const pieceHeight = Math.min(4, Math.max(1, parseInt(pieceData.piece_height) || 1));
 
     const pieceValues = [
-      pieceData.piece_name,
+      (pieceData.piece_name || '').trim(),
       imagesJSON,
       pieceWidth,
       pieceHeight,
@@ -8684,7 +8684,7 @@ app.put("/api/pieces/:pieceId", authenticateToken, multerWrap(pieceUpload.array(
     const pieceHeight = Math.min(4, Math.max(1, parseInt(pieceData.piece_height) || 1));
 
     const pieceValues = [
-      pieceData.piece_name,
+      (pieceData.piece_name || '').trim(),
       imagesJSON,
       pieceWidth,
       pieceHeight,
