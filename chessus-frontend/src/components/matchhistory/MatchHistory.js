@@ -107,6 +107,7 @@ const MatchHistory = ({ userId, username }) => {
       case 'draw_points_tie': return 'draw by points tie';
       case 'draw_equal_points_at_turn': return 'draw by equal points';
       case 'draw_equal_points_consecutive': return 'draw by equal points';
+      case 'illegal_move_limit': return 'by illegal-move limit';
       default: return '';
     }
   };

@@ -144,6 +144,7 @@ const formatGameOverReasonShort = (reason) => {
     case 'draw_points_tie': return 'draw — both reached threshold';
     case 'draw_equal_points_at_turn': return 'draw — equal points at turn limit';
     case 'draw_equal_points_consecutive': return 'draw — equal points stalemate';
+    case 'illegal_move_limit': return 'by illegal-move limit';
     default: return reason || 'game complete';
   }
 };
@@ -172,7 +173,7 @@ const LiveGame = () => {
     declineDraw,
     cancelDraw,
     cancelGame,
-    setPremove: sendPremove,
+    setPremove: _rawSendPremove,
     clearPremove: sendClearPremove,
     cancelPromotion,
     promotePiece,
@@ -190,6 +191,15 @@ const LiveGame = () => {
 
   const [gameState, setGameState] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  // Hidden Enemy Pieces (fog) — premove is disabled because the player can't
+  // see what the opponent will do, so any premove is a blind guess that the
+  // server has to validate against pieces it knows about. Skip the network
+  // round-trip entirely when fog is active and the game is still running.
+  const sendPremove = useCallback((gid, data) => {
+    if (gameState?.hideEnemyPieces && gameState?.status !== 'completed') return;
+    return _rawSendPremove(gid, data);
+  }, [_rawSendPremove, gameState?.hideEnemyPieces, gameState?.status]);
   const [error, setError] = useState(null);
   const [spectators, setSpectators] = useState([]);
   const [showSpectators, setShowSpectators] = useState(true);
@@ -234,6 +244,14 @@ const LiveGame = () => {
   const [showAllSpecialSquares, setShowAllSpecialSquares] = useState(false);
   const [hideRestrictionZones, setHideRestrictionZones] = useState(false);
   const [showCastlingInfo, setShowCastlingInfo] = useState(false);
+  // Click-and-hold disambiguation: when a square has BOTH a regular move and
+  // a castling move (same destination), a quick click executes the regular
+  // move and a 1-second hold promotes to castle. Refs drive selection; state
+  // drives the visual charging/armed overlay.
+  const castleHoldTimerRef = useRef(null);
+  const castleArmedRef = useRef(null); // { x, y } or null
+  const [castleHoldSquare, setCastleHoldSquare] = useState(null); // { x, y }
+  const [castleArmedSquare, setCastleArmedSquare] = useState(null); // { x, y }
   const [showBoardNotation, setShowBoardNotation] = useState(true);
   const [showBadges, setShowBadges] = useState(true);
   const [soundEnabled, setSoundEnabled] = useState(() => {
@@ -1452,6 +1470,29 @@ const LiveGame = () => {
       showIllegalMoveWarning(message);
     });
 
+    // Hidden Enemy Pieces / Illegal Move Limit: server emits "illegalMove" when
+    // a move is rejected in a game with illegal_move_limit > 0. The reason is
+    // intentionally suppressed for fog (hide_enemy_pieces) games.
+    const unsubscribeIllegalMove = onGameEvent("illegalMove", ({ gameId: imGameId, attemptsMade, attemptsRemaining, limit, reason }) => {
+      if (parseInt(imGameId) !== parseInt(gameId)) return;
+      const optimisticSnapshot = optimisticMoveSnapshotRef.current;
+      if (optimisticSnapshot) {
+        setGameState((prev) => ({
+          ...prev,
+          pieces: optimisticSnapshot.pieces,
+          currentTurn: optimisticSnapshot.currentTurn ?? prev.currentTurn
+        }));
+        clearOptimisticMoveSnapshot();
+      }
+      setPendingMove(null);
+      setPreConfirmState(null);
+      const lead = reason ? reason : 'Illegal move.';
+      const tail = attemptsRemaining === 1
+        ? '1 illegal move remaining before loss.'
+        : `${attemptsRemaining} illegal moves remaining before loss.`;
+      showIllegalMoveWarning(`${lead} (${attemptsMade}/${limit}) ${tail}`, 4000);
+    });
+
     // Fairy-Stockfish: the server rejected our submitted engine move (e.g. it
     // walks into check or otherwise violates a rule the engine's Betza model
     // doesn't enforce). Bump the failure counter, suppress re-submitting the
@@ -1484,18 +1525,19 @@ const LiveGame = () => {
       }
     });
 
-    const unsubscribePremoveCancelled = onGameEvent("premoveCancelled", ({ gameId: cancelGameId, reason }) => {
+    const unsubscribePremoveCancelled = onGameEvent("premoveCancelled", ({ gameId: cancelGameId, playerId, reason }) => {
       if (parseInt(cancelGameId) === parseInt(gameId)) {
+        // Server now also broadcasts cancellations to the whole game room as
+        // a delivery safety net; ignore cancellations that aren't ours.
+        if (playerId != null && currentUser?.id != null && parseInt(playerId) !== parseInt(currentUser.id)) {
+          return;
+        }
         setPremove(null);
         setSelectedPiece(null);
         setValidMoves([]);
-        // Don't show error message for premove cancellation - it's not the user's fault
-        // The opponent's move made the premove invalid, which is expected behavior
-        // setMoveError(reason || "Premove cancelled");
-        // if (soundEnabledRef.current) {
-        //   soundManager.playIllegalMove();
-        // }
-        // setTimeout(() => setMoveError(null), 3000);
+        // Show a brief, non-alarming notice so the player knows the queued
+        // premove didn't execute and they should make a fresh move.
+        showIllegalMoveWarning(reason ? `Premove cancelled: ${reason}` : "Premove cancelled — make your move", 2500);
       }
     });
 
@@ -1925,6 +1967,7 @@ const LiveGame = () => {
       unsubscribePlayerJoined();
       unsubscribeGameState();
       unsubscribeError();
+      unsubscribeIllegalMove();
       unsubscribeFairyRejected();
       unsubscribeTimeUpdate();
       unsubscribeOpponentDisconnected();
@@ -3857,13 +3900,21 @@ const LiveGame = () => {
       }
       setSelectedPiece(clickedPiece);
       const actuallyPremoving = canSelectForPremove && !isMyTurn;
+      // In Hidden Enemy Pieces mode, the player must be able to probe with
+      // attack-only moves (e.g. pawn diagonals into empty-looking squares).
+      // forFog=true exposes those destinations as clickable; the server still
+      // rejects them when truly empty and counts the attempt toward the
+      // illegal-move limit.
+      const fogProbe = !!(gameState?.hideEnemyPieces && isMyTurn && isOwnPiece);
       const moves = calculateValidMoves(
         clickedPiece, 
         pieces, 
         gameState.gameType?.board_width || 8, 
         gameState.gameType?.board_height || 8,
         actuallyPremoving, // skipCheckFilter - premoves skip check filter since board state will change
-        actuallyPremoving // forPremove - include potential capture squares
+        actuallyPremoving, // forPremove - include potential capture squares
+        false,             // forHoverDisplay
+        fogProbe           // forFog - include attack-only-empty squares for hidden-piece probing
       );
       setValidMoves(moves);
       return;
@@ -3874,8 +3925,20 @@ const LiveGame = () => {
     const canPremove = selectedPiece && (!isMyTurn || isBotGame) && (gameState.status === 'active' || gameState.status === 'ready') && gameState.allowPremoves !== false && myRepositionsDone;
     
     if (canMakeMove) {
-      // Find move: exact match first, then check multi-tile footprint overlap
-      let move = validMoves.find(m => m.x === x && m.y === y);
+      // Find move: exact match first, then check multi-tile footprint overlap.
+      // Dual-action squares (regular + castling on same destination): if the
+      // user held the mouse down for >=1s before releasing, castleArmedRef
+      // routes the click to the castling variant instead of the regular one.
+      let move;
+      const castleArmed = castleArmedRef.current;
+      if (castleArmed && castleArmed.x === x && castleArmed.y === y) {
+        move = validMoves.find(m => m.x === x && m.y === y && m.isCastling);
+      }
+      castleArmedRef.current = null;
+      if (castleHoldTimerRef.current) { clearTimeout(castleHoldTimerRef.current); castleHoldTimerRef.current = null; }
+      setCastleArmedSquare(null);
+      setCastleHoldSquare(null);
+      if (!move) move = validMoves.find(m => m.x === x && m.y === y);
       if (!move && selectedPiece) {
         const spw = selectedPiece.piece_width || 1;
         const sph = selectedPiece.piece_height || 1;
@@ -4136,13 +4199,17 @@ const LiveGame = () => {
     
     // Calculate valid moves for the dragged piece
     const pieces = parsePieces(gameState.pieces);
+    // Hidden Enemy Pieces: allow probing attack-only-empty squares (see click handler).
+    const fogProbe = !!(gameState?.hideEnemyPieces && canDragForMove);
     const moves = calculateValidMoves(
       piece,
       pieces,
       gameState.gameType?.board_width || 8,
       gameState.gameType?.board_height || 8,
       canDragForPremove, // skipCheckFilter - premoves skip check filter since board state will change
-      canDragForPremove // forPremove - include potential capture squares for premoves
+      canDragForPremove, // forPremove - include potential capture squares for premoves
+      false,             // forHoverDisplay
+      fogProbe           // forFog - include attack-only-empty squares for hidden-piece probing
     );
     setDragValidMoves(moves);
     setValidMoves(moves);
@@ -4467,12 +4534,15 @@ const LiveGame = () => {
     }
 
     const pieces = parsePieces(gameState.pieces);
+    const fogProbe = !!(gameState?.hideEnemyPieces && isMyTurn);
     const moves = calculateValidMoves(
       piece, pieces,
       gameState.gameType?.board_width || 8,
       gameState.gameType?.board_height || 8,
       canDragForPremove, // skipCheckFilter - premoves skip check filter since board state will change
-      canDragForPremove
+      canDragForPremove,
+      false,             // forHoverDisplay
+      fogProbe           // forFog - include attack-only-empty squares for hidden-piece probing
     );
 
     touchDragRef.current = { piece, moves, startX: touch.clientX, startY: touch.clientY, isDragging: false, grabOffset };
@@ -4652,6 +4722,39 @@ const LiveGame = () => {
   // Global listeners are added synchronously here (not via a state-gated useEffect)
   // to ensure they are in place before the first mousemove fires, even for fast drags.
   const handleSquareMouseDown = useCallback((e, x, y) => {
+    // Left-click hold on a dual-action square (regular move + castling on the
+    // same destination): start a 1-second timer that arms the castling
+    // variant. The onClick handler that fires on mouseup will then route to
+    // the castle move when castleArmedRef matches; otherwise it falls through
+    // to the regular move (the default).
+    if (e.button === 0) {
+      if (selectedPiece && validMoves.length > 0) {
+        const hasRegular = validMoves.some(m => m.x === x && m.y === y && !m.isCastling && !m.isRangedAttack);
+        const hasCastle = validMoves.some(m => m.x === x && m.y === y && m.isCastling);
+        if (hasRegular && hasCastle) {
+          if (castleHoldTimerRef.current) clearTimeout(castleHoldTimerRef.current);
+          castleArmedRef.current = null;
+          setCastleArmedSquare(null);
+          setCastleHoldSquare({ x, y });
+          castleHoldTimerRef.current = setTimeout(() => {
+            castleHoldTimerRef.current = null;
+            castleArmedRef.current = { x, y };
+            setCastleArmedSquare({ x, y });
+            setCastleHoldSquare(null);
+          }, 1000);
+          const cancelHold = () => {
+            if (castleHoldTimerRef.current) {
+              clearTimeout(castleHoldTimerRef.current);
+              castleHoldTimerRef.current = null;
+              setCastleHoldSquare(null);
+            }
+            window.removeEventListener('mouseup', cancelHold);
+          };
+          window.addEventListener('mouseup', cancelHold);
+        }
+      }
+      return;
+    }
     if (e.button !== 2) return;
     if (!gameState || gameState.status === 'completed') return;
 
@@ -4803,7 +4906,7 @@ const LiveGame = () => {
     window.addEventListener('mouseup', handleMouseUp);
     window.addEventListener('contextmenu', handleContextMenu, { capture: true });
     window.addEventListener('resize', handleResize);
-  }, [gameState, currentPlayer, isMyTurn, submitMove, gameId, sendPremove, setPremove, showIllegalMoveWarning, canReachStepByStepRanged]);
+  }, [gameState, currentPlayer, isMyTurn, submitMove, gameId, sendPremove, setPremove, showIllegalMoveWarning, canReachStepByStepRanged, selectedPiece, validMoves]);
 
   // Handle contextmenu on square
   const handleSquareContextMenu = useCallback((e, x, y) => {
@@ -5354,6 +5457,14 @@ const LiveGame = () => {
         const regularMove = !inSelectedFootprint ? validMoves.find(m => !m.isRangedAttack &&
           gameX >= m.x && gameX < m.x + spw && gameY >= m.y && gameY < m.y + sph
         ) : null;
+        // Castle-alternative: when the same destination also yields a castling
+        // move (alongside the matched regular move), render a secondary dot so
+        // the user can see both options exist. Click = regular, hold 1s = castle.
+        const castleAltMove = (regularMove && !regularMove.isCastling)
+          ? validMoves.find(m => m.x === gameX && m.y === gameY && m.isCastling)
+          : null;
+        const isCastleCharging = !!castleAltMove && castleHoldSquare && castleHoldSquare.x === gameX && castleHoldSquare.y === gameY;
+        const isCastleArmed = !!castleAltMove && castleArmedSquare && castleArmedSquare.x === gameX && castleArmedSquare.y === gameY;
         const rangedMove = validMoves.find(m => m.x === gameX && m.y === gameY && m.isRangedAttack);
         const isLastMoveFrom = lastMoves.some(lm => {
           const lmpw = lm.piece_width || 1;
@@ -5566,6 +5677,16 @@ const LiveGame = () => {
           >
             {/* Ranged move indicator — single span, no container, avoids DOM churn */}
             {activeIsRanged && <span className={styles["ranged-icon"]}>{`\uD83D\uDCA5`}</span>}
+            {/* Castle-alternative indicator: extra dot showing this square also
+                permits castling (in addition to the regular move shown via the
+                main move-dot). The charging/armed overlays appear while the
+                user holds the mouse button on this square. */}
+            {castleAltMove && (
+              <span className={`${styles["castle-alt-dot"]}${isCastleArmed ? ` ${styles["castle-armed"]}` : ''}`} />
+            )}
+            {isCastleCharging && (
+              <span className={styles["castle-charging-ring"]} />
+            )}
             {/* Directional arrow on last-move "from" square */}
             {arrowAngleDeg !== null && !hideMoveArrow && !isFogged && (
               <svg
@@ -7069,8 +7190,9 @@ const LiveGame = () => {
         </div>
       )}
 
-      {/* Captured Pieces Row */}
-      {(capturedPieces.player1.length > 0 || capturedPieces.player2.length > 0) && (
+      {/* Captured Pieces Row — hidden during active Hidden-Enemy-Pieces games */}
+      {!(gameState?.hideEnemyPieces && gameState?.status !== 'completed') &&
+        (capturedPieces.player1.length > 0 || capturedPieces.player2.length > 0) && (
         <div className={styles["layout-row-captured"]}>
           <div className={styles["captured-pieces-section"]}>
             <div 
@@ -7476,6 +7598,7 @@ const LiveGame = () => {
                gameOverData.reason === 'draw_points_tie' ? 'Draw — Both Reached Point Threshold' :
                gameOverData.reason === 'draw_equal_points_at_turn' ? 'Draw — Equal Points at Turn Limit' :
                gameOverData.reason === 'draw_equal_points_consecutive' ? 'Draw — Equal Points Stalemate' :
+               gameOverData.reason === 'illegal_move_limit' ? 'By Illegal-Move Limit' :
                gameOverData.reason}
             </div>
             {(gameOverData.player1Score != null || gameOverData.player2Score != null) && (

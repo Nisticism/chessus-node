@@ -154,6 +154,7 @@ const MatchView = () => {
       case 'draw_points_tie': return 'Points tie (draw)';
       case 'draw_equal_points_at_turn': return 'Equal points at turn limit (draw)';
       case 'draw_equal_points_consecutive': return 'Equal points — consecutive turns (draw)';
+      case 'illegal_move_limit': return 'Illegal-move limit reached';
       default: return 'Game completed';
     }
   };

@@ -853,7 +853,12 @@ const migrations = [
   { table: 'pieces', column: 'require_direction_change', sql: "ALTER TABLE pieces ADD COLUMN require_direction_change TINYINT(1) DEFAULT 0", description: "When 1, the piece MUST use direction-change movement; straight-line moves to squares not reachable via DC are forbidden." },
   { table: 'pieces', column: 'require_direction_change_capture', sql: "ALTER TABLE pieces ADD COLUMN require_direction_change_capture TINYINT(1) DEFAULT 0", description: "When 1, the piece MUST use direction-change captures; straight-line captures to squares not reachable via DC are forbidden." },
   // --- Fairy-Stockfish integration ---
-  { table: 'game_types', column: 'fairy_stockfish_deep_analysis', sql: "ALTER TABLE game_types ADD COLUMN fairy_stockfish_deep_analysis TINYINT(1) NOT NULL DEFAULT 0", description: "When 1, the Fairy-Stockfish computer player uses the server-side deep analysis queue for this game type instead of the client-side browser engine." }
+  { table: 'game_types', column: 'fairy_stockfish_deep_analysis', sql: "ALTER TABLE game_types ADD COLUMN fairy_stockfish_deep_analysis TINYINT(1) NOT NULL DEFAULT 0", description: "When 1, the Fairy-Stockfish computer player uses the server-side deep analysis queue for this game type instead of the client-side browser engine." },
+  // --- Hidden enemy pieces (fog of war) + illegal-move-limit win condition ---
+  { table: 'game_types', column: 'hide_enemy_pieces', sql: "ALTER TABLE game_types ADD COLUMN hide_enemy_pieces TINYINT(1) NOT NULL DEFAULT 0", description: "When 1, enemy pieces are hidden from each player during live play (fog of war)." },
+  { table: 'game_types', column: 'illegal_move_limit', sql: "ALTER TABLE game_types ADD COLUMN illegal_move_limit INT NOT NULL DEFAULT 0", description: "When > 0, a player who attempts this many illegal moves loses the game (1-100)." },
+  { table: 'games', column: 'illegal_move_counts', sql: "ALTER TABLE games ADD COLUMN illegal_move_counts VARCHAR(255) DEFAULT NULL", description: "JSON map of playerPosition -> illegal-move attempt count for the live game." },
+  { table: 'games', column: 'spectator_visibility', sql: "ALTER TABLE games ADD COLUMN spectator_visibility VARCHAR(16) NOT NULL DEFAULT 'all'", description: "Spectator visibility mode for hidden-piece games: 'all' | 'player1' | 'player2'." }
 ];
 
 // Ensure physical_board_requests table exists (may have been created after tableMigrations ran)

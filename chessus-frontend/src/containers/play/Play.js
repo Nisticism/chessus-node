@@ -52,6 +52,7 @@ const Play = () => {
   const [timeControl, setTimeControl] = useState("10"); // minutes
   const [increment, setIncrement] = useState("0"); // seconds
   const [allowSpectators, setAllowSpectators] = useState(true);
+  const [spectatorVisibility, setSpectatorVisibility] = useState("all"); // "all" | "player1" | "player2"
   const [showPieceHelpers, setShowPieceHelpers] = useState(true);
   const [rated, setRated] = useState(true);
   const [allowPremoves, setAllowPremoves] = useState(true);
@@ -897,6 +898,7 @@ const Play = () => {
         timeControl: timeControlMinutes,
         increment: incrementSeconds,
         allowSpectators,
+        spectatorVisibility: allowSpectators ? spectatorVisibility : 'all',
         showPieceHelpers,
         rated: vsComputer ? false : rated,
         allowPremoves: allowPremoves,
@@ -2433,6 +2435,24 @@ const Play = () => {
                 tooltip={<InfoTooltip text="Let other players watch the game in progress" />}
               />
             </div>
+
+            {allowSpectators && (selectedGameType?.hide_enemy_pieces || selectedGameType?.fog_of_war) && (
+              <div className={styles["form-group"]}>
+                <label>
+                  Spectator Visibility{' '}
+                  <InfoTooltip text="Controls what spectators see in fog-of-war or hidden-piece games. 'Full board' lets spectators see everything (recommended for analysis streams). 'Player 1 / Player 2 perspective' restricts spectators to the same limited view as that player." />
+                </label>
+                <select
+                  className={styles["form-input"]}
+                  value={spectatorVisibility}
+                  onChange={(e) => setSpectatorVisibility(e.target.value)}
+                >
+                  <option value="all">Full board (see everything)</option>
+                  <option value="player1">Player 1's perspective</option>
+                  <option value="player2">Player 2's perspective</option>
+                </select>
+              </div>
+            )}
 
             {timeControl !== "0" && gameMode !== "correspondence" && (
             <div className={`${styles["form-group"]} ${styles["checkbox-group"]}`}>

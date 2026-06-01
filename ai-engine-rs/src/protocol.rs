@@ -62,6 +62,18 @@ pub struct GameType {
     pub draw_move_limit: Option<i32>,
     pub repetition_draw_count: Option<i32>,
 
+    /// Fog-of-war: enemy pieces are hidden from each player during live
+    /// play. The trainer/bot still sees the full board (it "cheats"), so
+    /// this flag is informational for the engine. Mirrors
+    /// `hide_enemy_pieces` in server/game-socket.js.
+    pub hide_enemy_pieces: bool,
+    /// If > 0, a player loses after attempting this many illegal moves
+    /// in the live game. The trainer does not produce illegal moves
+    /// during self-play, so this field is informational only and is
+    /// stored to keep rules.json round-trippable. Mirrors
+    /// `illegal_move_limit` in server/game-socket.js.
+    pub illegal_move_limit: i32,
+
     // Additional win/loss/draw conditions (newer DB columns)
     pub lose_all_pieces_condition: bool,
     pub stalemate_win_condition: bool,

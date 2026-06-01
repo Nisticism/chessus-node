@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Socket.io Game Handler
  * Manages real-time multiplayer game functionality
  */
@@ -45,6 +45,189 @@ const _lobbyCache = {
 function invalidateLobbyCache() {
   _lobbyCache.ongoingGames.ts = 0;
   _lobbyCache.openGames.ts    = 0;
+}
+
+// ─── Fog-of-war piece visibility (hide_enemy_pieces) ──────────────────────────
+// When a game has hide_enemy_pieces enabled, each player only sees their own
+// pieces and opponent move history is anonymized. The bot does NOT go through
+// this filter — it reads activeGames directly. Spectators are routed based on
+// gameState.spectatorVisibility ('all' | 'player1' | 'player2').
+
+function _ownerPosition(piece) {
+  if (!piece) return null;
+  return piece.player_id ?? piece.team ?? piece.player ?? null;
+}
+
+/**
+ * Returns the viewer's effective position for fog filtering:
+ *   - 1 or 2: see only that player's pieces
+ *   - 0: full board (no filtering)
+ * Spectators with spectator_visibility = 'player1'/'player2' are constrained
+ * to that side's view; 'all' (default) gives them the full board.
+ */
+function getViewerPosition(gameState, userId) {
+  if (!gameState) return 0;
+  // Players see their own side.
+  const player = (gameState.players || []).find(p => p && p.id != null && Number(p.id) === Number(userId));
+  if (player && (player.position === 1 || player.position === 2)) return player.position;
+  // Spectators (anyone not in players[] or with no assigned position) are
+  // governed by the host's spectator_visibility setting.
+  const vis = gameState.spectatorVisibility || 'all';
+  if (vis === 'player1') return 1;
+  if (vis === 'player2') return 2;
+  return 0;
+}
+
+/** Returns true when fog filtering should apply for this viewer. */
+function shouldFogFilter(gameState, viewerPos) {
+  if (!gameState || !gameState.hideEnemyPieces) return false;
+  // Reveal everything once the game has ended (status='completed').
+  if (gameState.status === 'completed') return false;
+  // Full-board viewers (viewerPos===0) skip filtering.
+  if (!viewerPos || (viewerPos !== 1 && viewerPos !== 2)) return false;
+  return true;
+}
+
+/**
+ * Return a new pieces array with enemy pieces stripped out for the viewer.
+ */
+function filterPiecesForViewer(pieces, viewerPos) {
+  if (!Array.isArray(pieces)) return pieces;
+  return pieces.filter(p => _ownerPosition(p) === viewerPos);
+}
+
+/**
+ * Build an anonymized move-history entry for an opponent's move. Reveals only:
+ *  - that a move was made
+ *  - whether it captured (and which of the viewer's pieces was lost, by id/coords)
+ *  - whether it gave check
+ *  - whether it was a ranged attack / castling category (so the UI can show a generic tag)
+ * Hides: from-square, moving piece id/name, to-square (unless it captured a piece the viewer owned).
+ */
+function anonymizeOpponentMove(moveRecord, viewerPos) {
+  if (!moveRecord) return moveRecord;
+  const anon = {
+    opponentMove: true,
+    player: moveRecord.player,
+    position: moveRecord.position,
+    timestamp: moveRecord.timestamp,
+  };
+  // If a viewer-owned piece was captured, surface its identity so the UI can
+  // animate the loss correctly. Otherwise hide capture target details.
+  const ownCaptures = [];
+  const candidates = [];
+  if (moveRecord.captured) candidates.push(moveRecord.captured);
+  if (Array.isArray(moveRecord.allCaptured)) candidates.push(...moveRecord.allCaptured);
+  if (Array.isArray(moveRecord.capturedByHop)) candidates.push(...moveRecord.capturedByHop);
+  for (const cap of candidates) {
+    if (cap && _ownerPosition(cap) === viewerPos) ownCaptures.push(cap);
+  }
+  if (ownCaptures.length > 0) {
+    anon.ownPiecesCaptured = ownCaptures.map(p => ({ id: p.id, x: p.x, y: p.y, piece_id: p.piece_id, piece_name: p.piece_name, player_id: _ownerPosition(p) }));
+    anon.capture = true;
+  } else if (moveRecord.captured || (moveRecord.allCaptured && moveRecord.allCaptured.length)) {
+    anon.capture = true;
+  }
+  if (moveRecord.isRangedAttack) anon.isRangedAttack = true;
+  if (moveRecord.isCastling) anon.isCastling = true;
+  if (moveRecord.isPromotion || moveRecord.promotedTo) anon.promoted = true;
+  return anon;
+}
+
+/** Filter a moveHistory array, anonymizing opponent moves. */
+function filterMoveHistoryForViewer(moveHistory, viewerPos) {
+  if (!Array.isArray(moveHistory)) return moveHistory;
+  return moveHistory.map(m => (m && m.position && m.position !== viewerPos) ? anonymizeOpponentMove(m, viewerPos) : m);
+}
+
+/**
+ * Return a deep-ish copy of payload with fog filtering applied for the viewer.
+ * Recurses one level to find `pieces` / `moveHistory` inside a `gameState`
+ * sub-object as well as a top-level `move` record.
+ */
+function fogFilterPayload(payload, gameState, viewerPos) {
+  if (!shouldFogFilter(gameState, viewerPos)) return payload;
+  if (!payload || typeof payload !== 'object') return payload;
+  const out = Array.isArray(payload) ? payload.slice() : { ...payload };
+
+  if (Array.isArray(out.pieces)) out.pieces = filterPiecesForViewer(out.pieces, viewerPos);
+  if (Array.isArray(out.moveHistory)) out.moveHistory = filterMoveHistoryForViewer(out.moveHistory, viewerPos);
+  if (Array.isArray(out.checkedPieces)) {
+    // Suppress checked-piece identity for opponents (they never get to learn which piece of yours is in check).
+    // The viewer's own checked pieces should still appear (their own royals).
+    out.checkedPieces = out.checkedPieces.filter(p => _ownerPosition(p) === viewerPos);
+  }
+
+  if (out.gameState && typeof out.gameState === 'object') {
+    const gs = { ...out.gameState };
+    if (Array.isArray(gs.pieces)) gs.pieces = filterPiecesForViewer(gs.pieces, viewerPos);
+    if (Array.isArray(gs.moveHistory)) gs.moveHistory = filterMoveHistoryForViewer(gs.moveHistory, viewerPos);
+    out.gameState = gs;
+  }
+
+  if (out.move && typeof out.move === 'object' && out.move.position && out.move.position !== viewerPos) {
+    out.move = anonymizeOpponentMove(out.move, viewerPos);
+  }
+
+  // Strip captured-piece identity for the moving side's notification when the
+  // viewer is the attacker (matches the ruleset: attacker sees "Capture" but
+  // not which piece they took).
+  if (out.move && typeof out.move === 'object' && out.move.position === viewerPos) {
+    const m = { ...out.move };
+    if (m.captured) m.captured = { x: m.captured.x, y: m.captured.y, capturedAnonymous: true };
+    if (Array.isArray(m.allCaptured)) m.allCaptured = m.allCaptured.map(c => ({ x: c.x, y: c.y, capturedAnonymous: true }));
+    if (Array.isArray(m.capturedByHop)) m.capturedByHop = m.capturedByHop.map(c => ({ x: c.x, y: c.y, capturedAnonymous: true }));
+    out.move = m;
+  }
+
+  return out;
+}
+
+/**
+ * Emit an event to every socket in a game room, applying fog filtering per
+ * recipient. When the game does not have hide_enemy_pieces enabled (or is
+ * complete), this is identical to io.to(room).emit(event, payload).
+ *
+ * Always pass the full unfiltered payload; the helper applies the filter
+ * based on each socket's owner (looked up via playerSockets/userSockets).
+ */
+function emitToGameRoom(io, gameState, event, payload) {
+  if (!io || !gameState) return;
+  const gameId = gameState.id;
+  const room = `game-${gameId}`;
+  if (!gameState.hideEnemyPieces || gameState.status === 'completed') {
+    return io.to(room).emit(event, payload);
+  }
+  // Per-socket filtered emit.
+  const roomSet = io.sockets.adapter.rooms.get(room);
+  if (!roomSet || roomSet.size === 0) return;
+  for (const socketId of roomSet) {
+    const sock = io.sockets.sockets.get(socketId);
+    if (!sock) continue;
+    const sockUser = playerSockets.get(socketId);
+    const userId = sockUser && typeof sockUser === 'object' ? sockUser.id : sockUser;
+    const viewerPos = getViewerPosition(gameState, userId);
+    const filtered = fogFilterPayload(payload, gameState, viewerPos);
+    sock.emit(event, filtered);
+  }
+}
+
+/**
+ * Fog-aware version of `socket.emit(event, payload)` for direct-to-socket
+ * sends (e.g. gameCreated / gameState restore / botGameReady). Resolves the
+ * socket's owner via playerSockets and applies the same fog filter the room
+ * helper does. Safe to call when fog is off — passes through unchanged.
+ */
+function emitToSocket(sock, gameState, event, payload) {
+  if (!sock) return;
+  if (!gameState || !gameState.hideEnemyPieces || gameState.status === 'completed') {
+    return sock.emit(event, payload);
+  }
+  const sockUser = playerSockets.get(sock.id);
+  const userId = sockUser && typeof sockUser === 'object' ? sockUser.id : sockUser;
+  const viewerPos = getViewerPosition(gameState, userId);
+  const filtered = fogFilterPayload(payload, gameState, viewerPos);
+  sock.emit(event, filtered);
 }
 
 // Game-disconnect (forfeit) timers. Keyed by `${gameId}:${userId}`.
@@ -2760,7 +2943,8 @@ function initializeSocket(server) {
     // Create a new live game
     socket.on("createGame", async (data) => {
       try {
-        const { gameTypeId, timeControl, increment, hostId, hostUsername, allowSpectators = true, showPieceHelpers = false, rated = true, allowPremoves = true, premoveTimeCost = 0, startingMode: rawStartingMode = 'none', challengedUserId = null, isCorrespondence = false, correspondenceDays = null, vsComputer = false, botDifficulty = 'medium', botStockfishLevel = null, forceStockfishBot = false, materialClockPenalty = false, materialClockHandicap = false, playerSide = 'random', fogOfWarEnabled } = data;
+        const { gameTypeId, timeControl, increment, hostId, hostUsername, allowSpectators = true, spectatorVisibility: rawSpectatorVisibility = 'all', showPieceHelpers = false, rated = true, allowPremoves = true, premoveTimeCost = 0, startingMode: rawStartingMode = 'none', challengedUserId = null, isCorrespondence = false, correspondenceDays = null, vsComputer = false, botDifficulty = 'medium', botStockfishLevel = null, forceStockfishBot = false, materialClockPenalty = false, materialClockHandicap = false, playerSide = 'random', fogOfWarEnabled } = data;
+        const spectatorVisibility = ['all','player1','player2'].includes(rawSpectatorVisibility) ? rawSpectatorVisibility : 'all';
         
         // Get game type details
         const [[gameType]] = await db_pool.query(
@@ -3254,9 +3438,9 @@ function initializeSocket(server) {
         const effectiveTurnLength = isCorrespondence ? null : timeControl;
         
         const [result] = await db_pool.query(
-          `INSERT INTO games (created_at, turn_length, increment, player_count, player_turn, pieces, other_data, game_type_id, status, host_id, allow_spectators, show_piece_helpers, is_challenge, challenged_user_id, is_correspondence, correspondence_days)
-           VALUES (?, ?, ?, 2, 1, ?, ?, ?, 'waiting', ?, ?, ?, ?, ?, ?, ?)`,
-          [currentTime, effectiveTurnLength, increment || 0, piecesData, JSON.stringify({ moves: [], rated, allowPremoves, premoveTimeCost: allowPremoves ? (parseFloat(premoveTimeCost) || 0) : 0, startingMode, materialClockPenalty: !!materialClockPenalty, materialClockHandicap: !!materialClockHandicap, ...(fogOfWarEnabled != null ? { fogOfWarEnabled: !!fogOfWarEnabled } : {}) }), gameTypeId, hostId, allowSpectators ? 1 : 0, showPieceHelpers ? 1 : 0, isChallenge, challengedUserId, isCorrespondence ? 1 : 0, correspondenceDays || null]
+          `INSERT INTO games (created_at, turn_length, increment, player_count, player_turn, pieces, other_data, game_type_id, status, host_id, allow_spectators, show_piece_helpers, is_challenge, challenged_user_id, is_correspondence, correspondence_days, spectator_visibility, illegal_move_counts)
+           VALUES (?, ?, ?, 2, 1, ?, ?, ?, 'waiting', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [currentTime, effectiveTurnLength, increment || 0, piecesData, JSON.stringify({ moves: [], rated, allowPremoves, premoveTimeCost: allowPremoves ? (parseFloat(premoveTimeCost) || 0) : 0, startingMode, materialClockPenalty: !!materialClockPenalty, materialClockHandicap: !!materialClockHandicap, ...(fogOfWarEnabled != null ? { fogOfWarEnabled: !!fogOfWarEnabled } : {}) }), gameTypeId, hostId, allowSpectators ? 1 : 0, showPieceHelpers ? 1 : 0, isChallenge, challengedUserId, isCorrespondence ? 1 : 0, correspondenceDays || null, spectatorVisibility, JSON.stringify({ 1: 0, 2: 0 })]
         );
 
         const gameId = result.insertId;
@@ -3310,6 +3494,12 @@ function initializeSocket(server) {
           materialClockPenalty: !!materialClockPenalty,
           materialClockHandicap: !!materialClockHandicap,
           fogOfWarEnabled: fogOfWarEnabled != null ? !!fogOfWarEnabled : (gameType?.fog_of_war ? true : false),
+          // Hidden-pieces fog + spectator visibility (only meaningful when
+          // the game type has hide_enemy_pieces or fog_of_war). Default 'all'.
+          hideEnemyPieces: !!gameType?.hide_enemy_pieces,
+          illegalMoveLimit: Number(gameType?.illegal_move_limit) || 0,
+          illegalMoveCounts: { 1: 0, 2: 0 },
+          spectatorVisibility,
           actionsThisTurn: 0
         };
 
@@ -3418,11 +3608,11 @@ function initializeSocket(server) {
             [buildOtherData(gameState, { isBotGame: true, botDifficulty: gameState.botPlayer.difficulty }), gameId]
           );
 
-          socket.emit("gameCreated", { gameId, gameState });
+          socket.emit("gameCreated", { gameId, gameState: fogFilterPayload(gameState, gameState, getViewerPosition(gameState, hostId)) });
           invalidateLobbyCache();
           socket.emit("botGameReady", {
             gameId,
-            gameState,
+            gameState: fogFilterPayload(gameState, gameState, getViewerPosition(gameState, hostId)),
             botPlayer: { username: botInfo.username, difficulty: botInfo.difficulty }
           });
 
@@ -4133,7 +4323,7 @@ function initializeSocket(server) {
 
         socket.join(`game-${gameId}`);
 
-        io.to(`game-${gameId}`).emit("playerJoined", {
+        emitToGameRoom(io, gameState, "playerJoined", {
           gameId,
           gameState,
           newPlayer
@@ -4305,7 +4495,7 @@ function initializeSocket(server) {
 
         socket.join(`game-${gameId}`);
 
-        io.to(`game-${gameId}`).emit("playerJoined", {
+        emitToGameRoom(io, gameState, "playerJoined", {
           gameId,
           gameState,
           newPlayer
@@ -4667,6 +4857,10 @@ function initializeSocket(server) {
             materialClockPenalty: !!joinGameOtherData.materialClockPenalty,
             materialClockHandicap: !!joinGameOtherData.materialClockHandicap,
             fogOfWarEnabled: joinGameOtherData.fogOfWarEnabled != null ? !!joinGameOtherData.fogOfWarEnabled : (gameType?.fog_of_war ? true : false),
+            hideEnemyPieces: !!gameType?.hide_enemy_pieces,
+            illegalMoveLimit: Number(gameType?.illegal_move_limit) || 0,
+            illegalMoveCounts: { 1: 0, 2: 0 },
+            spectatorVisibility: game.spectator_visibility || 'all',
             anonCorresPlayers: joinGameOtherData.anonCorresPlayers || null,
             guestName: joinGameOtherData.guestName || null,
           };
@@ -4823,7 +5017,7 @@ function initializeSocket(server) {
         socket.join(`game-${gameId}`);
 
         // Notify all players in the game
-        io.to(`game-${gameId}`).emit("playerJoined", {
+        emitToGameRoom(io, gameState, "playerJoined", {
           gameId,
           gameState,
           newPlayer: { id: userId, username }
@@ -4878,7 +5072,7 @@ function initializeSocket(server) {
             }
           }
         }
-        socket.emit("gameState", gameState);
+        socket.emit("gameState", fogFilterPayload(gameState, gameState, getViewerPosition(gameState, userId)));
       }
     });
 
@@ -5367,7 +5561,7 @@ function initializeSocket(server) {
              buildOtherData(gameState), gameId]
           );
 
-          io.to(`game-${gameId}`).emit("moveMade", {
+          emitToGameRoom(io, gameState, "moveMade", {
             gameId,
             move: placeMoveRecord,
             gameState: {
@@ -5462,6 +5656,68 @@ function initializeSocket(server) {
             currentTurn: gameState.currentTurn,
             userId: userId
           });
+          // Illegal-move-limit win condition: each rejected attempt by the
+          // current player decrements their per-game allowance. The reason
+          // string is intentionally suppressed in fog mode (per ruleset).
+          const limit = Number(gameState.illegalMoveLimit) || 0;
+          if (limit > 0) {
+            if (!gameState.illegalMoveCounts) gameState.illegalMoveCounts = { 1: 0, 2: 0 };
+            const pos = gameState.currentTurn;
+            gameState.illegalMoveCounts[pos] = (gameState.illegalMoveCounts[pos] || 0) + 1;
+            const attemptsMade = gameState.illegalMoveCounts[pos];
+            const attemptsRemaining = Math.max(0, limit - attemptsMade);
+            // Persist updated counter so it survives reload/restart.
+            try {
+              await db_pool.query(
+                "UPDATE games SET illegal_move_counts = ? WHERE id = ?",
+                [JSON.stringify(gameState.illegalMoveCounts), gameId]
+              );
+            } catch (e) { console.error('Failed to persist illegal_move_counts:', e.message); }
+
+            socket.emit("illegalMove", {
+              gameId,
+              attemptsMade,
+              attemptsRemaining,
+              limit,
+              // Reason is only included for non-fog games (transparent error).
+              ...(gameState.hideEnemyPieces ? {} : { reason: moveResult.reason || 'Illegal move' })
+            });
+
+            if (attemptsRemaining <= 0) {
+              // Player has exhausted their attempts — they lose.
+              const winnerPos = pos === 1 ? 2 : 1;
+              const winnerPlayer = (gameState.players || []).find(p => p.position === winnerPos);
+              const loserPlayer  = (gameState.players || []).find(p => p.position === pos);
+              const winnerId = winnerPlayer?.id || null;
+              const loserId  = loserPlayer?.id  || null;
+              try { stopGameTimer(gameId); } catch (_) {}
+              gameState.status = 'completed';
+              gameState.winner = winnerId;
+              gameState.winReason = 'illegal_move_limit';
+              let eloChanges = null;
+              if (gameState.rated !== false && winnerId && loserId) {
+                try { eloChanges = await updateEloRatings(winnerId, loserId); } catch (_) {}
+              }
+              const endTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
+              try {
+                await db_pool.query(
+                  `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?, pieces = ?, other_data = ? WHERE id = ?`,
+                  [endTime, sanitizeWinnerId(winnerId), JSON.stringify(gameState.pieces),
+                   buildOtherData(gameState, { winner: winnerId, reason: 'illegal_move_limit', eloChanges, illegalMoveCounts: gameState.illegalMoveCounts }),
+                   gameId]
+                );
+              } catch (e) { console.error('Failed to mark game completed (illegal_move_limit):', e.message); }
+              broadcastGameOver(io, gameId, gameState, {
+                gameId,
+                winner: winnerId,
+                reason: 'illegal_move_limit',
+                finalState: gameState,
+                eloChanges,
+                illegalMoveCounts: gameState.illegalMoveCounts,
+              });
+            }
+            return;
+          }
           return socket.emit("error", { message: moveResult.reason || "Invalid move" });
         }
 
@@ -5606,7 +5862,7 @@ function initializeSocket(server) {
               }
 
               // Broadcast promotion
-              io.to(`game-${gameId}`).emit("piecePromoted", {
+              emitToGameRoom(io, gameState, "piecePromoted", {
                 gameId,
                 pieceId: moveResult.promotionEligible.pieceId,
                 newPieceId: promotedPiece.piece_id,
@@ -5671,7 +5927,7 @@ function initializeSocket(server) {
                 gameState.moveHistory[gameState.moveHistory.length - 1].isCheck = true;
               }
               if (promoCheckResult.inCheck) {
-                io.to(`game-${gameId}`).emit("check", { gameId, playerInCheck: gameState.currentTurn, checkedPieces: promoCheckResult.checkedPieces });
+                emitToGameRoom(io, gameState, "check", { gameId, playerInCheck: gameState.currentTurn, checkedPieces: promoCheckResult.checkedPieces });
               }
 
               // Update DB
@@ -5747,7 +6003,7 @@ function initializeSocket(server) {
           );
           
           // Emit chain capture state to players
-          io.to(`game-${gameId}`).emit("chainCaptureRequired", {
+          emitToGameRoom(io, gameState, "chainCaptureRequired", {
             gameId,
             pieceId: gameState.chainCapturePieceId,
             move: moveRecord,
@@ -5790,7 +6046,7 @@ function initializeSocket(server) {
           );
 
           // Broadcast the capture move first so the board visually updates for all players
-          io.to(`game-${gameId}`).emit("moveMade", {
+          emitToGameRoom(io, gameState, "moveMade", {
             gameId,
             move: moveRecord,
             gameState: {
@@ -5811,7 +6067,7 @@ function initializeSocket(server) {
             clockMultipliers: {}
           });
 
-          io.to(`game-${gameId}`).emit("captureActionRequired", {
+          emitToGameRoom(io, gameState, "captureActionRequired", {
             gameId,
             pieceId: gameState.captureActionsPieceId,
             actionsUsed: gameState.captureActionsUsed,
@@ -5866,7 +6122,7 @@ function initializeSocket(server) {
           );
 
           // Broadcast the ranged capture move first so the board visually updates for all players
-          io.to(`game-${gameId}`).emit("moveMade", {
+          emitToGameRoom(io, gameState, "moveMade", {
             gameId,
             move: moveRecord,
             gameState: {
@@ -5887,7 +6143,7 @@ function initializeSocket(server) {
             clockMultipliers: {}
           });
 
-          io.to(`game-${gameId}`).emit("rangedCaptureActionRequired", {
+          emitToGameRoom(io, gameState, "rangedCaptureActionRequired", {
             gameId,
             pieceId: gameState.rangedCaptureActionsPieceId,
             actionsUsed: gameState.rangedCaptureActionsUsed,
@@ -6161,7 +6417,7 @@ function initializeSocket(server) {
                 );
 
                 // Broadcast premove execution before game over
-                io.to(`game-${gameId}`).emit("premoveExecuted", {
+                emitToGameRoom(io, gameState, "premoveExecuted", {
                   gameId, move: premoveRecord,
                   gameState: { pieces: gameState.pieces, currentTurn: gameState.currentTurn, playerTimes: gameState.playerTimes, moveHistory: gameState.moveHistory }
                 });
@@ -6223,13 +6479,13 @@ function initializeSocket(server) {
                   }
 
                   // Broadcast premove + promotion
-                  io.to(`game-${gameId}`).emit("premoveExecuted", {
+                  emitToGameRoom(io, gameState, "premoveExecuted", {
                     gameId, move: premoveRecord,
                     gameState: { pieces: gameState.pieces, currentTurn: gameState.currentTurn, playerTimes: gameState.playerTimes, moveHistory: gameState.moveHistory },
                     ...(regenPieces && regenPieces.length > 0 ? { regenPieces } : {}),
                     ...(burnPieces && burnPieces.length > 0 ? { burnPieces } : {})
                   });
-                  io.to(`game-${gameId}`).emit("piecePromoted", {
+                  emitToGameRoom(io, gameState, "piecePromoted", {
                     gameId,
                     pieceId: premoveResult.promotionEligible.pieceId,
                     newPieceId: promotedPiece.piece_id,
@@ -6296,7 +6552,7 @@ function initializeSocket(server) {
                     gameState.moveHistory[gameState.moveHistory.length - 1].isCheck = true;
                   }
                   if (promoCheckResult.inCheck) {
-                    io.to(`game-${gameId}`).emit("check", { gameId, playerInCheck: gameState.currentTurn, checkedPieces: promoCheckResult.checkedPieces });
+                    emitToGameRoom(io, gameState, "check", { gameId, playerInCheck: gameState.currentTurn, checkedPieces: promoCheckResult.checkedPieces });
                   }
 
                   // Update DB and continue
@@ -6315,7 +6571,7 @@ function initializeSocket(server) {
 
               // 2+ options: pause for player to choose
               // Broadcast premove execution first (so board updates)
-              io.to(`game-${gameId}`).emit("premoveExecuted", {
+              emitToGameRoom(io, gameState, "premoveExecuted", {
                 gameId, move: premoveRecord,
                 gameState: { pieces: gameState.pieces, currentTurn: gameState.currentTurn, playerTimes: gameState.playerTimes, moveHistory: gameState.moveHistory },
                 ...(regenPieces && regenPieces.length > 0 ? { regenPieces } : {}),
@@ -6382,7 +6638,7 @@ function initializeSocket(server) {
                 [gameState.currentTurn, JSON.stringify(gameState.pieces), buildOtherData(gameState), gameId]
               );
               // Notify room of board update
-              io.to(`game-${gameId}`).emit("premoveExecuted", {
+              emitToGameRoom(io, gameState, "premoveExecuted", {
                 gameId,
                 move: premoveRecord,
                 gameState: {
@@ -6431,7 +6687,7 @@ function initializeSocket(server) {
             gameState.checkedPieces = premoveCheckResult.checkedPieces;
             
             // Broadcast the premove execution (includes check info for sound)
-            io.to(`game-${gameId}`).emit("premoveExecuted", {
+            emitToGameRoom(io, gameState, "premoveExecuted", {
               gameId,
               move: premoveRecord,
               gameState: {
@@ -6823,7 +7079,7 @@ function initializeSocket(server) {
             
             // Broadcast check status after premove
             if (premoveCheckResult.inCheck) {
-              io.to(`game-${gameId}`).emit("check", {
+              emitToGameRoom(io, gameState, "check", {
                 gameId,
                 playerInCheck: gameState.currentTurn,
                 checkedPieces: premoveCheckResult.checkedPieces,
@@ -6836,7 +7092,7 @@ function initializeSocket(server) {
 
             // Update the premoveExecuted event with check info (emit again with full state)
             // This ensures the frontend can play the correct sound even if events arrive in separate batches
-            io.to(`game-${gameId}`).emit("premoveExecuted", {
+            emitToGameRoom(io, gameState, "premoveExecuted", {
               gameId,
               move: premoveRecord,
               isCheckUpdate: true,
@@ -6855,15 +7111,16 @@ function initializeSocket(server) {
             // After successful premove execution and checks, return to skip the regular flow
             return;
           } else {
-            // Premove is no longer valid, notify player
+            // Premove is no longer valid, notify player.
+            // Broadcast to the room (not just userSockets.get) so the notice
+            // is delivered reliably even if the user reconnected on a new
+            // socket id between queueing the premove and the opponent's move.
             console.log(`[Premove] Cancelled (regular handler): ${premoveResult.reason}`, premove.move);
-            const nextPlayerSocketId = userSockets.get(nextPlayer.id.toString());
-            if (nextPlayerSocketId) {
-              io.to(nextPlayerSocketId).emit("premoveCancelled", {
-                gameId,
-                reason: premoveResult.reason || "Premove is no longer valid"
-              });
-            }
+            io.to(`game-${gameId}`).emit("premoveCancelled", {
+              gameId,
+              playerId: nextPlayer?.id || null,
+              reason: premoveResult.reason || "Premove is no longer valid"
+            });
           }
         }
 
@@ -7486,7 +7743,7 @@ function initializeSocket(server) {
               if (Math.abs(m - 1) >= 0.1) moveClockMultipliers[p.id] = Math.round(m * 100) / 100;
             }
           }
-          io.to(`game-${gameId}`).emit("moveMade", {
+          emitToGameRoom(io, gameState, "moveMade", {
             gameId,
             move: moveRecord,
             gameState: {
@@ -7520,7 +7777,7 @@ function initializeSocket(server) {
           // If player is in check, emit a separate check event for visibility
           if (checkResult.inCheck) {
             const checkedPlayer = gameState.players.find(p => p.position === gameState.currentTurn);
-            io.to(`game-${gameId}`).emit("check", {
+            emitToGameRoom(io, gameState, "check", {
               gameId,
               playerId: checkedPlayer?.id,
               playerPosition: gameState.currentTurn,
@@ -7720,7 +7977,7 @@ function initializeSocket(server) {
         );
 
         // Broadcast the promotion to all players
-        io.to(`game-${gameId}`).emit("piecePromoted", {
+        emitToGameRoom(io, gameState, "piecePromoted", {
           gameId,
           pieceId: piece.id,
           newPieceId: promotedPiece.piece_id,
@@ -7847,7 +8104,7 @@ function initializeSocket(server) {
 
         // Broadcast check status if in check
         if (checkResult.inCheck) {
-          io.to(`game-${gameId}`).emit("check", {
+          emitToGameRoom(io, gameState, "check", {
             gameId,
             playerInCheck: gameState.currentTurn,
             checkedPieces: checkResult.checkedPieces,
@@ -7983,7 +8240,7 @@ function initializeSocket(server) {
           [gameState.currentTurn, JSON.stringify(gameState.pieces), buildOtherData(gameState), gameId]
         );
 
-        io.to(`game-${gameId}`).emit("captureActionSkipped", {
+        emitToGameRoom(io, gameState, "captureActionSkipped", {
           gameId,
           gameState: {
             status: gameState.status,
@@ -8002,7 +8259,7 @@ function initializeSocket(server) {
         });
 
         if (checkResult.inCheck) {
-          io.to(`game-${gameId}`).emit("check", {
+          emitToGameRoom(io, gameState, "check", {
             gameId,
             playerPosition: gameState.currentTurn,
             checkedPieces: checkResult.checkedPieces
@@ -8191,7 +8448,7 @@ function initializeSocket(server) {
           [gameState.currentTurn, JSON.stringify(gameState.pieces), buildOtherData(gameState), gameId]
         );
 
-        io.to(`game-${gameId}`).emit("captureActionSkipped", {
+        emitToGameRoom(io, gameState, "captureActionSkipped", {
           gameId,
           gameState: {
             status: gameState.status,
@@ -8530,7 +8787,7 @@ function initializeSocket(server) {
         const hasPointsCond = gameState.gameType?.points_to_win != null ||
           gameState.gameType?.draw_equal_points_at_turn != null ||
           gameState.gameType?.draw_equal_points_consecutive != null;
-        socket.emit("gameState", hasPointsCond
+        emitToSocket(socket, gameState, "gameState", hasPointsCond
           ? Object.assign({}, gameState, { playerScores: { 1: getPlayerScore(gameState, 1), 2: getPlayerScore(gameState, 2) } })
           : gameState);
         // Restore the simul-turns ready state for the reconnecting player.
@@ -8958,6 +9215,20 @@ function initializeSocket(server) {
             materialClockPenalty: !!otherData?.materialClockPenalty,
             materialClockHandicap: !!otherData?.materialClockHandicap,
             fogOfWarEnabled: otherData?.fogOfWarEnabled != null ? !!otherData.fogOfWarEnabled : (gameType?.fog_of_war ? true : false),
+            hideEnemyPieces: !!gameType?.hide_enemy_pieces,
+            illegalMoveLimit: Number(gameType?.illegal_move_limit) || 0,
+            illegalMoveCounts: (() => {
+              try {
+                if (game.illegal_move_counts) {
+                  const parsed = typeof game.illegal_move_counts === 'string'
+                    ? JSON.parse(game.illegal_move_counts)
+                    : game.illegal_move_counts;
+                  return { 1: Number(parsed?.[1] || parsed?.['1'] || 0), 2: Number(parsed?.[2] || parsed?.['2'] || 0) };
+                }
+              } catch (e) { /* ignore */ }
+              return { 1: 0, 2: 0 };
+            })(),
+            spectatorVisibility: game.spectator_visibility || 'all',
             actionsThisTurn: otherData?.actionsThisTurn || 0,
             // Persisted game-over context so the client can re-display the
             // game-over modal after a reload (e.g. on initial-position ends
@@ -9110,7 +9381,7 @@ function initializeSocket(server) {
           const hasPointsCondDb = gameState.gameType?.points_to_win != null ||
             gameState.gameType?.draw_equal_points_at_turn != null ||
             gameState.gameType?.draw_equal_points_consecutive != null;
-          socket.emit("gameState", hasPointsCondDb
+          emitToSocket(socket, gameState, "gameState", hasPointsCondDb
             ? Object.assign({}, gameState, { playerScores: { 1: getPlayerScore(gameState, 1), 2: getPlayerScore(gameState, 2) } })
             : gameState);
           // Restore simul-turns ready state for reconnecting player (DB path).
@@ -17679,7 +17950,7 @@ async function _processBotTurnInner(io, gameId, gameState, precomputedMove = nul
           if (Math.abs(m - 1) >= 0.1) botMoveClockMultipliers[p.id] = Math.round(m * 100) / 100;
         }
       }
-      io.to(`game-${gameId}`).emit("moveMade", {
+      emitToGameRoom(io, gameState, "moveMade", {
         gameId,
         move: moveRecord,
         gameState: {
@@ -17707,7 +17978,7 @@ async function _processBotTurnInner(io, gameId, gameState, precomputedMove = nul
       });
 
       if (checkResult.inCheck) {
-        io.to(`game-${gameId}`).emit("check", {
+        emitToGameRoom(io, gameState, "check", {
           gameId,
           playerPosition: gameState.currentTurn,
           checkedPieces: checkResult.checkedPieces.map(p => ({ id: p.id, piece_name: p.piece_name, x: p.x, y: p.y }))
@@ -17817,11 +18088,11 @@ async function _processBotTurnInner(io, gameId, gameState, precomputedMove = nul
                   }
 
                   // Broadcast premove + promotion
-                  io.to(`game-${gameId}`).emit("premoveExecuted", {
+                  emitToGameRoom(io, gameState, "premoveExecuted", {
                     gameId, move: pmRecord,
                     gameState: { pieces: gameState.pieces, currentTurn: gameState.currentTurn, playerTimes: gameState.playerTimes, moveHistory: gameState.moveHistory }
                   });
-                  io.to(`game-${gameId}`).emit("piecePromoted", {
+                  emitToGameRoom(io, gameState, "piecePromoted", {
                     gameId,
                     pieceId: premoveResult.promotionEligible.pieceId,
                     newPieceId: pmPromotedPiece.piece_id,
@@ -17852,7 +18123,7 @@ async function _processBotTurnInner(io, gameId, gameState, precomputedMove = nul
                     }
                   }
                   if (pmPromoCheck.inCheck) {
-                    io.to(`game-${gameId}`).emit("check", { gameId, playerInCheck: gameState.currentTurn, checkedPieces: pmPromoCheck.checkedPieces });
+                    emitToGameRoom(io, gameState, "check", { gameId, playerInCheck: gameState.currentTurn, checkedPieces: pmPromoCheck.checkedPieces });
                   }
 
                   // Update DB and trigger bot turn
@@ -17868,7 +18139,7 @@ async function _processBotTurnInner(io, gameId, gameState, precomputedMove = nul
               }
 
               // 2+ options: pause for player to choose
-              io.to(`game-${gameId}`).emit("premoveExecuted", {
+              emitToGameRoom(io, gameState, "premoveExecuted", {
                 gameId, move: pmRecord,
                 gameState: { pieces: gameState.pieces, currentTurn: gameState.currentTurn, playerTimes: gameState.playerTimes, moveHistory: gameState.moveHistory }
               });
@@ -17964,7 +18235,7 @@ async function _processBotTurnInner(io, gameId, gameState, precomputedMove = nul
                 "UPDATE games SET player_turn = ?, pieces = ?, other_data = ? WHERE id = ?",
                 [gameState.currentTurn, JSON.stringify(gameState.pieces), buildOtherData(gameState), gameId]
               );
-              io.to(`game-${gameId}`).emit("premoveExecuted", {
+              emitToGameRoom(io, gameState, "premoveExecuted", {
                 gameId,
                 move: pmRecord,
                 gameState: {
@@ -18021,7 +18292,7 @@ async function _processBotTurnInner(io, gameId, gameState, precomputedMove = nul
                 "UPDATE games SET player_turn = ?, pieces = ?, other_data = ? WHERE id = ?",
                 [gameState.currentTurn, JSON.stringify(gameState.pieces), buildOtherData(gameState), gameId]
               );
-              io.to(`game-${gameId}`).emit("premoveExecuted", {
+              emitToGameRoom(io, gameState, "premoveExecuted", {
                 gameId,
                 move: pmRecord,
                 gameState: {
@@ -18105,7 +18376,7 @@ async function _processBotTurnInner(io, gameId, gameState, precomputedMove = nul
             );
 
             // Broadcast premove execution
-            io.to(`game-${gameId}`).emit("premoveExecuted", {
+            emitToGameRoom(io, gameState, "premoveExecuted", {
               gameId,
               move: pmRecord,
               gameState: {
@@ -18180,7 +18451,7 @@ async function finishBotGame(io, gameId, gameState, winResult, moveRecord, effec
   }
 
   // Broadcast the move that caused the game to end
-  io.to(`game-${gameId}`).emit("moveMade", {
+  emitToGameRoom(io, gameState, "moveMade", {
     gameId,
     move: moveRecord,
     gameState: {

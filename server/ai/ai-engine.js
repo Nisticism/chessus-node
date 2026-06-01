@@ -24,8 +24,8 @@ const SCORE_LOSS = -100000;
 const SCORE_DRAW = 0;
 
 const DIFFICULTY = {
-  easy:   { depth: 3, timeLimit: 2000,  randomness: 0.35, thinkDelay: 600, quiescenceDepth: 1 },
-  medium: { depth: 5, timeLimit: 10000, randomness: 0.03, thinkDelay: 400, quiescenceDepth: 4 },
+  easy:   { depth: 3, timeLimit: 2000,  randomness: 0.20, thinkDelay: 600, quiescenceDepth: 2 },
+  medium: { depth: 6, timeLimit: 10000, randomness: 0.02, thinkDelay: 400, quiescenceDepth: 4 },
   hard:   { depth: 8, timeLimit: 25000, randomness: 0.00, thinkDelay: 200, quiescenceDepth: 6 },
   // Baseline for "adaptive" — should always be at least as strong as
   // hard (we hide it from the UI when no training data exists, so this
@@ -1744,8 +1744,10 @@ function evaluatePosition(state, perspective) {
       const see = staticExchangeEval(state, myPiece.x, myPiece.y,
         attackerId, atkValue, myValue, opponentPos, bs);
       if (see > 0.5) {
-        // Opponent wins the exchange — penalize proportionally to material loss
-        score -= see * 30;
+        // Opponent wins the exchange — penalize proportionally to material loss.
+        // Multiplier is large so a hanging piece can't be outweighed by minor
+        // positional gains elsewhere in the eval.
+        score -= see * 50;
       } else if (see > -0.5) {
         // Roughly even exchange — mild penalty for being under pressure
         score -= myValue;
@@ -2471,12 +2473,9 @@ function getBestMoveSync(gameState, botPosition, difficulty, settingsOverride) {
   if (legalMoves.length === 0) return null;
   if (legalMoves.length === 1) return legalMoves[0];
 
-  // Random move chance (for lower difficulties / variety)
-  if (Math.random() < settings.randomness) {
-    const idx = Math.floor(Math.random() * legalMoves.length);
-    console.log(`[AI] Random move selected (difficulty: ${difficulty})`);
-    return legalMoves[idx];
-  }
+  // NOTE: the random-move chance (for easy/medium variety) is checked AFTER
+  // the instant tactical bailouts below. Otherwise easy/medium would skip
+  // obvious escape/capture moves in favor of a 20%/2% random blunder.
 
   // Detect back-and-forth patterns from recent bot move history
   const botMoveHistory = gameState.moveHistory?.filter(m => m.isBot) || [];
@@ -2523,14 +2522,15 @@ function getBestMoveSync(gameState, botPosition, difficulty, settingsOverride) {
     : [];
 
   // --- Instant bailouts for unambiguous tactical situations ---
-  // When there is a clearly winning capture or a major piece about to be lost
-  // for free, return the obvious move immediately without spending the full
-  // time budget on search.  The thresholds are intentionally conservative
-  // (≥ 5 pawn-equivalents at stake) so the bailout never fires on ambiguous
-  // tactical positions.  randomness > 0 (easy/medium) is excluded so those
-  // bots still make occasional mistakes.
-  if (settings.randomness === 0) {
-    const INSTANT_THRESHOLD = 5.0;
+  // When there is a clearly winning capture or a piece about to be lost for
+  // free, return the obvious move immediately without spending the full time
+  // budget on search.  Threshold 2.5 catches bishop/knight-level threats; any
+  // smaller and even-trade noise starts firing.  All difficulties run these
+  // bailouts — a "medium" bot that hangs a free bishop just feels broken.
+  // The per-difficulty random-move chance below is still applied for the
+  // non-tactical case so easy/medium remain beatable in quiet positions.
+  {
+    const INSTANT_THRESHOLD = 2.5;
     const opponent = botPosition === 1 ? 2 : 1;
     const urgentCapture = tactics.freeCaptures.length > 0 ? tactics.freeCaptures[0] : null;
     const urgentHang    = tactics.hangingMyPieces.length > 0 ? tactics.hangingMyPieces[0] : null;
@@ -2594,6 +2594,14 @@ function getBestMoveSync(gameState, botPosition, difficulty, settingsOverride) {
         }
       }
     }
+  }
+
+  // Random move chance for easy/medium variety. Runs AFTER instant bailouts
+  // so urgent tactical situations are still handled correctly.
+  if (settings.randomness > 0 && Math.random() < settings.randomness) {
+    const idx = Math.floor(Math.random() * legalMoves.length);
+    console.log(`[AI] Random move selected (difficulty: ${difficulty})`);
+    return legalMoves[idx];
   }
 
   const tacticalSet = tacticalCandidates.length > 0

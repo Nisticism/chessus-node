@@ -174,6 +174,7 @@ const GameList = () => {
     if (game.lose_all_pieces_condition) conditions.push("Lose All Pieces");
     if (game.stalemate_win_condition) conditions.push("Stalemate Win");
     if (game.points_to_win != null) conditions.push("Points");
+    if (game.illegal_move_limit > 0) conditions.push(`Illegal Move Limit (${game.illegal_move_limit})`);
     // forced_capture_condition is a movement mechanic, not a win condition —
     // it is shown in the game detail page under Special Rules, not here.
     return conditions.length > 0 ? conditions.join(", ") : "Capture (default)";

@@ -202,6 +202,25 @@ const Step2WinConditions = ({ gameData, updateGameData }) => {
         />
       </div>
 
+      <ToggleRow
+        title="Illegal Move Limit"
+        tooltip="When enabled, a player who attempts this many illegal moves loses the game. The server silently rejects each illegal attempt and increments a per-player counter; no reason is given. Especially useful alongside the 'Hidden Enemy Pieces' game mechanic (where the player cannot see what's blocking them), but works in any game. Inspired by the illegal-move rule used in Tsuitate Shogi."
+        checked={(gameData.illegal_move_limit ?? 0) > 0}
+        onChange={(val) => handleChange("illegal_move_limit", val ? 8 : 0)}
+      >
+        <div className={styles["sub-field"]}>
+          <label className={styles["form-label"]}>Illegal moves allowed before loss</label>
+          <NumberInput
+            value={gameData.illegal_move_limit || 8}
+            onChange={(val) => handleChange("illegal_move_limit", Math.max(1, Math.min(100, val)))}
+            options={{ min: 1, max: 100, placeholder: "8", className: styles["form-input-small"] }}
+          />
+          <p className={styles["field-hint"]}>
+            Tsuitate Shogi traditionally uses 8. Pairs best with the Hidden Enemy Pieces game mechanic.
+          </p>
+        </div>
+      </ToggleRow>
+
       <div className={styles["section-divider"]}></div>
       <h2 style={{ marginTop: '32px' }}>Draw Conditions</h2>
       <p className={styles["step-description"]}>
@@ -498,6 +517,13 @@ const Step2WinConditions = ({ gameData, updateGameData }) => {
           onChange={(val) => handleChange("permanent_fog_reveal", val)}
         />
       </ToggleRow>
+
+      <ToggleRow
+        title="Hidden Enemy Pieces"
+        tooltip="When enabled, enemy pieces are completely hidden from each player during the live game. You see only your own pieces. Opponent move history, capture identities, and check sources are anonymized while the game is active. The full board and history are revealed once the game ends. Pairs well with the Illegal Move Limit win condition above. Inspired by Tsuitate Shogi (衝立将棋, 'screen shogi') — a Japanese variant played with a screen between the two boards."
+        checked={gameData.hide_enemy_pieces === true || gameData.hide_enemy_pieces === 1}
+        onChange={(val) => handleChange("hide_enemy_pieces", val)}
+      />
 
       <ToggleRow
         title="Forced Capture"

@@ -2355,6 +2355,11 @@ const GameTypeView = () => {
       winConditions.push(ptLine);
     }
 
+    // Illegal Move Limit — a loss condition triggered by repeated illegal attempts.
+    if (game.illegal_move_limit && Number(game.illegal_move_limit) > 0) {
+      winConditions.push(`• **Illegal Move Limit**: A player who attempts ${game.illegal_move_limit} illegal moves loses the game. The server silently rejects each illegal attempt without revealing why — the player only sees a private counter increment. The turn does not pass on a rejected attempt; the player must try a different move. Especially relevant alongside Hidden Enemy Pieces, where players cannot see what blocks them.\n   ◦ *Adapted from the illegal-move rule used in Tsuitate Shogi.*`);
+    }
+
     if (winConditions.length > 0) {
       // Build piece links for win condition pieces
       const winPieceLinks = [];
@@ -2472,6 +2477,11 @@ const GameTypeView = () => {
       mechanicsContent.push(flankDesc);
     }
 
+    // Hidden Enemy Pieces — a perspective-restricting mechanic.
+    if (game.hide_enemy_pieces) {
+      mechanicsContent.push(`**Hidden Enemy Pieces**\nEnemy pieces are completely hidden from each player while the game is active — you see only your own pieces. Opponent moves are anonymized in the move history (you see only that a move was made, and whether it captured or gave check), captured-piece identities are concealed, and check notifications never reveal the attacking piece or its square. The full board and complete move history are revealed once the game ends.\n\n*Inspired by Tsuitate Shogi (衝立将棋, "screen shogi"), a Japanese shogi variant played with a physical screen between the two boards.*`);
+    }
+
     if (mechanicsContent.length > 0) {
       // Build piece links for placeable pieces
       const mechPieceLinks = [];
@@ -2513,6 +2523,9 @@ const GameTypeView = () => {
         : '';
       specialRulesContent.push(`**Fog of War**\nEach player can only see squares that are reachable by movement or attack from their own pieces. Squares outside this visible area are hidden by a smoky fog overlay — enemy pieces and special squares within the fog are concealed. Visibility updates every time a piece moves.${permanentRevealNote} This option may be toggled on or off by the host when creating a game.`);
     }
+
+    // Hidden Enemy Pieces mechanic — listed under Gameplay Mechanics below.
+    // Illegal Move Limit is listed under Win Conditions above.
 
     // Add the combined Special Rules section if any content exists.
     // Note: pieceLinks (visual list) is intentionally omitted here — promotion-target pieces are

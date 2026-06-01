@@ -1116,6 +1116,20 @@ export const getDirectionChangeMoves = (piece, fromX, fromY, playerPosition, boa
 export const formatMoveNotation = (move, includeFrom = true, boardHeight = 8) => {
   if (!move) return '';
 
+  // Anonymized opponent move (Hidden Enemy Pieces / fog mode). The server
+  // strips from/to/piece info; we surface only the fact that a move happened
+  // and any side effects the viewer is allowed to know about.
+  if (move.opponentMove) {
+    const parts = ['\u2026']; // horizontal ellipsis
+    if (move.capture || move.ownPiecesCaptured?.length) parts.push('x');
+    if (move.isCastling) parts.push('O-O');
+    if (move.isRangedAttack) parts.push('\u2192');
+    if (move.promoted) parts.push('=');
+    if (move.isCheckmate) parts.push('#');
+    else if (move.isCheck) parts.push('+');
+    return parts.join('');
+  }
+
   // Place-type moves (piece placement action — no 'from' square)
   if (move.type === 'place') {
     if (!move.to) return '';

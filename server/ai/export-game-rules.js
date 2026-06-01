@@ -11,7 +11,7 @@ const db_pool = require('../../configs/db');
 
 // This must match Cargo.toml [package] version in ai-engine-rs/.
 // Bump both together whenever a protocol.rs change breaks compatibility.
-const TRAINER_VERSION = '1.2.9';
+const TRAINER_VERSION = '1.3.0';
 // Minimum binary version that can still train and upload. Bump this only when
 // a protocol-breaking change requires users to get a new binary. As long as
 // you only add optional fields, leave this at 1.0.0 so existing binaries keep
@@ -362,6 +362,12 @@ async function exportGameRules(gameTypeId) {
       hill_turns: g.hill_turns == null ? null : intOr(g.hill_turns, null),
       draw_move_limit: g.draw_move_limit == null ? null : intOr(g.draw_move_limit, null),
       repetition_draw_count: g.repetition_draw_count == null ? null : intOr(g.repetition_draw_count, null),
+      // Hidden-pieces fog of war + illegal-move-limit loss condition.
+      // The bot cheats (sees the full board) so the trainer doesn't need
+      // to model fog itself, but the loss condition must be honored so
+      // self-play games can end via that path.
+      hide_enemy_pieces: toBool(g.hide_enemy_pieces),
+      illegal_move_limit: intOr(g.illegal_move_limit, 0),
       lose_all_pieces_condition: toBool(g.lose_all_pieces_condition),
       stalemate_win_condition: toBool(g.stalemate_win_condition),
       no_moves_condition: toBool(g.no_moves_condition),

@@ -1106,6 +1106,55 @@
     margin-left: 2px;
   }
 
+  // ── Castle-alternative indicator ─────────────────────────────────────────
+  // Shown when a square has BOTH a regular move and a castling move.
+  // Small offset dot above the main move-dot so both are visible.
+  .castle-alt-dot {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 9px;
+    height: 9px;
+    margin-top: -22px; // sit above the centered main dot
+    margin-left: -4.5px;
+    border-radius: 50%;
+    background: rgba(255, 200, 60, 0.85);
+    box-shadow: 0 0 0 1.5px rgba(0, 0, 0, 0.35);
+    pointer-events: none;
+    z-index: 6;
+    transition: transform 120ms ease, background 120ms ease, box-shadow 120ms ease;
+    &.castle-armed {
+      transform: scale(1.6);
+      background: rgba(255, 235, 120, 1);
+      box-shadow: 0 0 0 2px rgba(120, 70, 0, 0.9), 0 0 10px 2px rgba(255, 220, 80, 0.75);
+    }
+  }
+
+  // Charging ring shown while user holds the mouse on a dual-action
+  // (move + castle) square. Pulses/grows for ~1 second to signal the
+  // hold-to-castle gesture; if released before completion the parent
+  // removes the element and the timer resets.
+  .castle-charging-ring {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 22px;
+    height: 22px;
+    margin-top: -11px;
+    margin-left: -11px;
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 6;
+    border: 2px solid rgba(255, 215, 60, 0.95);
+    box-shadow: 0 0 6px 1px rgba(255, 215, 60, 0.6);
+    animation: castle-charge 1000ms ease-out forwards;
+  }
+
+  @keyframes castle-charge {
+    0%   { transform: scale(0.6); opacity: 0.4; border-width: 2px; }
+    100% { transform: scale(1.9); opacity: 1;   border-width: 3px; }
+  }
+
   &:hover:not(.selected) {
     filter: brightness(1.1);
   }
