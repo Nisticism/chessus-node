@@ -5672,11 +5672,12 @@ const LiveGame = () => {
         // the secondary castle-armed indicator takes over so the user has unambiguous feedback.
         const activeRegularMove = regularMove || hoveredRegularMove;
         const activeIsRanged = isRangedMove || isRangedHover || isRangedDragTarget || isRangedSelectedTarget;
-        const dotBg = { move: 'rgba(33,150,243,0.55)', capture: 'rgba(220,60,60,0.7)', first: 'rgba(255,215,0,0.65)', custom: 'rgba(0,188,150,0.55)' };
+        const dotBg = { move: 'rgba(33,150,243,0.55)', capture: 'rgba(220,60,60,0.7)', first: 'rgba(255,215,0,0.65)', custom: 'rgba(0,188,150,0.55)', castle: 'rgba(255,200,60,0.85)' };
         const dotType = (activeRegularMove && !isImpassable && !isCastleArmed)
           ? (activeRegularMove.isCustomMove || activeRegularMove.isCustomAttack ? 'custom'
             : activeRegularMove.isFirstMoveOnly ? 'first'
             : activeRegularMove.isCapture ? 'capture'
+            : activeRegularMove.isCastling ? 'castle'
             : 'move')
           : null;
 
