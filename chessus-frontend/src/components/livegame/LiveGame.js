@@ -4024,6 +4024,16 @@ const LiveGame = () => {
           pieceWidth: selectedPiece.piece_width || 1,
           pieceHeight: selectedPiece.piece_height || 1
         };
+        if (move.isCastling) {
+          premoveData.isCastling = true;
+          premoveData.castlingWith = move.castlingWith;
+          premoveData.castlingDirection = move.castlingDirection;
+        }
+        if (move.isHopCapture) {
+          premoveData.isHopCapture = true;
+          premoveData.hopCapturedPieceIds = move.hopCapturedPieceIds;
+        }
+        if (move.via) premoveData.via = move.via;
         setPremove(premoveData); // Set local state
         sendPremove(parseInt(gameId), premoveData); // Send to server
         setSelectedPiece(null);
@@ -4425,6 +4435,16 @@ const LiveGame = () => {
           pieceWidth: draggedPiece.piece_width || 1,
           pieceHeight: draggedPiece.piece_height || 1
         };
+        if (validMove.isCastling) {
+          premoveData.isCastling = true;
+          premoveData.castlingWith = validMove.castlingWith;
+          premoveData.castlingDirection = validMove.castlingDirection;
+        }
+        if (validMove.isHopCapture) {
+          premoveData.isHopCapture = true;
+          premoveData.hopCapturedPieceIds = validMove.hopCapturedPieceIds;
+        }
+        if (validMove.via) premoveData.via = validMove.via;
         setPremove(premoveData);
         sendPremove(parseInt(gameId), premoveData);
       }
@@ -4709,6 +4729,16 @@ const LiveGame = () => {
                 pieceWidth: pw,
                 pieceHeight: ph
               };
+              if (validMove.isCastling) {
+                premoveData.isCastling = true;
+                premoveData.castlingWith = validMove.castlingWith;
+                premoveData.castlingDirection = validMove.castlingDirection;
+              }
+              if (validMove.isHopCapture) {
+                premoveData.isHopCapture = true;
+                premoveData.hopCapturedPieceIds = validMove.hopCapturedPieceIds;
+              }
+              if (validMove.via) premoveData.via = validMove.via;
               setPremove(premoveData);
               sendPremove(parseInt(gameId), premoveData);
             }
