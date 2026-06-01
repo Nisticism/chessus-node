@@ -2638,10 +2638,10 @@ app.get("/api/games", optionalAuthenticate, async (req, res) => {
         orderClause = 'ORDER BY upvote_count DESC, gt.id DESC';
         break;
       case 'last_played':
-        orderClause = 'ORDER BY gt.last_played_at DESC NULLS LAST, gt.id DESC';
+        orderClause = 'ORDER BY gt.last_played_at DESC, gt.id DESC';
         break;
       case 'alphabetical':
-        orderClause = 'ORDER BY gt.game_name ASC';
+        orderClause = 'ORDER BY TRIM(gt.game_name) ASC';
         break;
       case 'newest':
       default:
@@ -2890,7 +2890,7 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
     // Dynamic UPDATE builder � column name and value are always co-located so
     // adding a new column in future cannot cause a placeholder/values mismatch.
     const updateMap = {
-      game_name:                             gameData.game_name,
+      game_name:                             (gameData.game_name || '').trim(),
       descript:                              gameData.descript,
       rules:                                 gameData.rules,
       mate_condition:                        gameData.mate_condition || false,
@@ -7506,7 +7506,7 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
     const insertMap = {
       creator_id,
       is_anonymous_creator,
-      game_name:                             gameData.game_name,
+      game_name:                             (gameData.game_name || '').trim(),  
       descript:                              gameData.descript,
       rules:                                 gameData.rules,
       mate_condition:                        gameData.mate_condition || false,
