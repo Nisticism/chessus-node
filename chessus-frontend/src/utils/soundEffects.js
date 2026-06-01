@@ -113,23 +113,48 @@ class SoundManager {
       const cleanup = () => {
         this.activeSounds.delete(sound);
       };
-      sound.addEventListener('ended', cleanup, { once: true });
-      sound.addEventListener('error', cleanup, { once: true });
+      const cleanupWithCancel = () => {
+        clearTimeout(safety);
+        sound.removeEventListener('timeupdate', onTimeUpdate);
+        cleanup();
+      };
+      sound.addEventListener('ended', cleanupWithCancel, { once: true });
+      sound.addEventListener('error', cleanupWithCancel, { once: true });
 
-      // Safety-net cap: 2 seconds. Our wav files are well under that, but a
-      // browser audio glitch could leave a clone in 'paused mid-play' state.
-      // We deliberately do NOT pre-clip short sounds anymore — the old 250ms
-      // cap on 'move' could chop the clip in half when the browser delayed
-      // playback start (which is the most common cause of "no sound played").
+      // Clip the sound to a short window so rapid events (move, capture, check)
+      // don't overlap badly. We use 'timeupdate' (fires ~4x/s during real playback)
+      // so the clip timer only starts counting AFTER the browser has actually
+      // begun producing audio — avoiding the old bug where a pre-scheduled
+      // setTimeout fired before playback started and cut the clip to 0ms.
+      // Durations: move 0.35s, check 0.4s, everything else 0.7s.
+      const clipMs = soundName === 'move' ? 350 : soundName === 'check' ? 400 : 700;
+      let clipFired = false;
+      let playbackStartedAt = null;
+      const onTimeUpdate = () => {
+        if (clipFired) return;
+        if (playbackStartedAt === null) playbackStartedAt = Date.now();
+        if (Date.now() - playbackStartedAt >= clipMs) {
+          clipFired = true;
+          sound.removeEventListener('timeupdate', onTimeUpdate);
+          try { sound.pause(); } catch (e) { /* ignore */ }
+          cleanup();
+        }
+      };
+      sound.addEventListener('timeupdate', onTimeUpdate);
+
+      // Safety-net: if timeupdate never fires (e.g. very short file already ended),
+      // rely on the 'ended' handler above which calls cleanup().
+      // Hard cap at 2s to guard against stalled clones.
       const safety = setTimeout(() => {
+        clipFired = true;
+        sound.removeEventListener('timeupdate', onTimeUpdate);
         try { sound.pause(); } catch (e) { /* ignore */ }
         cleanup();
       }, 2000);
-      sound.addEventListener('ended', () => clearTimeout(safety), { once: true });
-      sound.addEventListener('error', () => clearTimeout(safety), { once: true });
 
       sound.play().catch(err => {
         clearTimeout(safety);
+        sound.removeEventListener('timeupdate', onTimeUpdate);
         cleanup();
         // If the tab was hidden, store for replay on next turn start
         if (document.visibilityState === 'hidden') {

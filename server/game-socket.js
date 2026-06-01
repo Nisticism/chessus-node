@@ -11200,9 +11200,12 @@ function wouldMoveLeaveInCheck(gameState, move, playerPosition) {
       }
     }
   } else {
-    const capturedPieceIndex = simulatedPieces.findIndex(p => 
-      p.id !== pieceId && doesPieceOccupySquare(p, to.x, to.y)
-    );
+    const capturedPieceIndex = simulatedPieces.findIndex(p => {
+      if (p.id === pieceId) return false;
+      if (!doesPieceOccupySquare(p, to.x, to.y)) return false;
+      const pOwner = p.team || p.player_id;
+      return pOwner !== pieceOwner; // Only enemies — friendly castling partner must not be treated as a capture target
+    });
     if (capturedPieceIndex !== -1) {
       const targetPiece = simulatedPieces[capturedPieceIndex];
       enemiesAtDest.push(targetPiece);
@@ -11245,7 +11248,23 @@ function wouldMoveLeaveInCheck(gameState, move, playerPosition) {
     simulatedPieces[movingPieceIndex].x = to.x;
     simulatedPieces[movingPieceIndex].y = to.y;
   }
-  
+
+  // For castling moves, also update the partner's position to its post-castle square.
+  // Without this the check simulation runs with the partner absent or at its pre-castle
+  // position, which produces false-positive "in check" results when the partner would
+  // normally block enemy attacks from the opposite side.
+  if (move.isCastling && move.castlingWith && move.castlingDirection) {
+    const castlingPartnerIndex = simulatedPieces.findIndex(p => p.id === move.castlingWith);
+    if (castlingPartnerIndex !== -1) {
+      if (move.castlingDirection === 'left') {
+        simulatedPieces[castlingPartnerIndex].x = to.x + 1;
+      } else {
+        simulatedPieces[castlingPartnerIndex].x = to.x - 1;
+      }
+      simulatedPieces[castlingPartnerIndex].y = to.y;
+    }
+  }
+
   // Create a simulated game state
   const simulatedGameState = {
     ...gameState,
