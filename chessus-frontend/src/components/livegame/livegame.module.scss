@@ -82,6 +82,54 @@
       color: #ff4444;
       font-size: 0.9rem;
     }
+
+    .illegal-move-counter-inline {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 0.8rem;
+      color: rgba(255, 255, 255, 0.55);
+      flex-wrap: wrap;
+      justify-content: center;
+
+      .illegal-move-counter-label {
+        font-size: 0.72rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: rgba(255, 255, 255, 0.4);
+        margin-right: 2px;
+      }
+
+      .illegal-move-counter-player {
+        font-weight: 600;
+        font-size: 0.78rem;
+        &.player-white { color: #ccc; }
+        &.player-black { color: #888; }
+      }
+
+      .illegal-move-counter-value {
+        font-family: 'Courier New', monospace;
+        font-weight: 700;
+        color: var(--text-heading);
+        &.near-limit { color: #e05050; }
+      }
+
+      .illegal-move-counter-sep {
+        color: rgba(255, 255, 255, 0.25);
+        font-size: 0.75rem;
+      }
+
+      .illegal-move-counter-limit {
+        font-family: 'Courier New', monospace;
+        color: rgba(255, 255, 255, 0.35);
+      }
+
+      .illegal-move-counter-divider {
+        color: rgba(255, 255, 255, 0.2);
+        margin: 0 2px;
+      }
+    }
   }
 
   .header-actions {

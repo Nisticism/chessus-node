@@ -5764,14 +5764,23 @@ function initializeSocket(server) {
               );
             } catch (e) { console.error('Failed to persist illegal_move_counts:', e.message); }
 
-            socket.emit("illegalMove", {
+            const illegalPayload = {
               gameId,
+              position: pos,
               attemptsMade,
               attemptsRemaining,
               limit,
+              illegalMoveCounts: { ...gameState.illegalMoveCounts },
               // Reason is only included for non-fog games (transparent error).
               ...(gameState.hideEnemyPieces ? {} : { reason: moveResult.reason || 'Illegal move' })
-            });
+            };
+            if (gameState.hideEnemyPieces) {
+              // HEP mode: only notify the offending player to avoid leaking move info.
+              socket.emit("illegalMove", illegalPayload);
+            } else {
+              // Broadcast to room so both players see each other's counter update.
+              io.to(`game-${gameId}`).emit("illegalMove", illegalPayload);
+            }
 
             if (attemptsRemaining <= 0) {
               // Player has exhausted their attempts — they lose.

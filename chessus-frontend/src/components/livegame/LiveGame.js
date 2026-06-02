@@ -6536,6 +6536,24 @@ const LiveGame = () => {
                 >×</button>
               </span>
             )}
+            {(gameState.illegalMoveLimit > 0) && (
+              <div className={styles["illegal-move-counter-inline"]}>
+                <span className={styles["illegal-move-counter-label"]}>{gameState.illegalMoveLabel || 'Illegal moves'}:</span>
+                <span className={`${styles["illegal-move-counter-player"]} ${styles["player-white"]}`}>{player1?.username || 'P1'}</span>
+                <span className={`${styles["illegal-move-counter-value"]}${
+                  (illegalMoveCounts[1] || 0) >= Math.max(1, gameState.illegalMoveLimit - 1) ? ` ${styles["near-limit"]}` : ''
+                }`}>{illegalMoveCounts[1] || 0}</span>
+                <span className={styles["illegal-move-counter-sep"]}>/</span>
+                <span className={styles["illegal-move-counter-limit"]}>{gameState.illegalMoveLimit}</span>
+                <span className={styles["illegal-move-counter-divider"]}>·</span>
+                <span className={`${styles["illegal-move-counter-player"]} ${styles["player-black"]}`}>{player2?.username || 'P2'}</span>
+                <span className={`${styles["illegal-move-counter-value"]}${
+                  (illegalMoveCounts[2] || 0) >= Math.max(1, gameState.illegalMoveLimit - 1) ? ` ${styles["near-limit"]}` : ''
+                }`}>{illegalMoveCounts[2] || 0}</span>
+                <span className={styles["illegal-move-counter-sep"]}>/</span>
+                <span className={styles["illegal-move-counter-limit"]}>{gameState.illegalMoveLimit}</span>
+              </div>
+            )}
           </div>
         )}
         
@@ -7298,36 +7316,6 @@ const LiveGame = () => {
             <span className={`${styles["piece-count-tracker-player"]} ${styles["player-black"]}`}>
               {player2?.username || 'Player 2'}
             </span>
-          </div>
-        </div>
-      )}
-
-      {/* Illegal Move Counter — only when game type has a limit */}
-      {(gameState.illegalMoveLimit > 0) && (
-        <div className={styles["illegal-move-counter"]}>
-          <span className={styles["illegal-move-counter-label"]}>{gameState.illegalMoveLabel || 'Illegal moves'}</span>
-          <div className={styles["illegal-move-counter-row"]}>
-            <span className={`${styles["illegal-move-counter-player"]} ${styles["player-white"]}`}>
-              {player1?.username || 'P1'}
-            </span>
-            <span className={`${styles["illegal-move-counter-value"]}${
-              (illegalMoveCounts[1] || 0) >= Math.max(1, gameState.illegalMoveLimit - 1) ? ` ${styles["near-limit"]}` : ''
-            }`}>
-              {illegalMoveCounts[1] || 0}
-            </span>
-            <span className={styles["illegal-move-counter-sep"]}>/</span>
-            <span className={styles["illegal-move-counter-limit"]}>{gameState.illegalMoveLimit}</span>
-            <span className={styles["illegal-move-counter-divider"]}>·</span>
-            <span className={`${styles["illegal-move-counter-player"]} ${styles["player-black"]}`}>
-              {player2?.username || 'P2'}
-            </span>
-            <span className={`${styles["illegal-move-counter-value"]}${
-              (illegalMoveCounts[2] || 0) >= Math.max(1, gameState.illegalMoveLimit - 1) ? ` ${styles["near-limit"]}` : ''
-            }`}>
-              {illegalMoveCounts[2] || 0}
-            </span>
-            <span className={styles["illegal-move-counter-sep"]}>/</span>
-            <span className={styles["illegal-move-counter-limit"]}>{gameState.illegalMoveLimit}</span>
           </div>
         </div>
       )}
