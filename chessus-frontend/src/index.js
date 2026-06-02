@@ -59,9 +59,16 @@ const clearAppCachesIfNeeded = async () => {
 //    multiple times" and may replace the active callback.  We call the real initialize()
 //    only on the first invocation but keep a live reference to the latest callback so
 //    whichever page is currently showing handles the credential response correctly.
+//
+// The patch is idempotent (guarded by __gsiPatched) so it is safe to call multiple times.
+// useLoadGsiScript removes/re-adds the script tag on cleanup (React StrictMode double-
+// mount), causing onScriptLoadSuccess to fire again.  Without the guard, that would reset
+// gsiInitialized and let initialize() slip through a second time, re-triggering Google's
+// "called multiple times" warning.
 const patchGoogleIdentityServices = () => {
   const id = window?.google?.accounts?.id;
-  if (!id) return;
+  if (!id || id.__gsiPatched) return;
+  id.__gsiPatched = true;
 
   // --- patch renderButton ---
   const origRenderButton = id.renderButton;

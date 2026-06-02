@@ -122,7 +122,9 @@ const Register = () => {
     dispatch(googleLogin(credentialResponse.credential))
       .then((data) => {
         trackRegistration('google');
-        navigate(`/profile/${data.result.username}`);
+        // Hard redirect — same reason as Login.js: ensures the next page
+        // is loaded with the correct COOP policy for its route.
+        window.location.href = `/profile/${data.result.username}`;
       })
       .catch(() => {
         setMessageDisplay(true);

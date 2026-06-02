@@ -253,6 +253,12 @@ const LiveGame = () => {
   const dragCastleHoverRef = useRef(null); // { x, y } currently-armed-square during drag
   const [castleHoldSquare, setCastleHoldSquare] = useState(null); // { x, y }
   const [castleArmedSquare, setCastleArmedSquare] = useState(null); // { x, y }
+  // Illegal-move counters — initialized from gameState and kept in sync via
+  // 'illegalMove' events so the display updates immediately without waiting
+  // for a full gameState re-broadcast.
+  const [illegalMoveCounts, setIllegalMoveCounts] = useState(() => ({
+    ...(gameState?.illegalMoveCounts || { 1: 0, 2: 0 })
+  }));
   const [showBoardNotation, setShowBoardNotation] = useState(true);
   const [showBadges, setShowBadges] = useState(true);
   const [soundEnabled, setSoundEnabled] = useState(() => {
@@ -1474,8 +1480,15 @@ const LiveGame = () => {
     // Hidden Enemy Pieces / Illegal Move Limit: server emits "illegalMove" when
     // a move is rejected in a game with illegal_move_limit > 0. The reason is
     // intentionally suppressed for fog (hide_enemy_pieces) games.
-    const unsubscribeIllegalMove = onGameEvent("illegalMove", ({ gameId: imGameId, attemptsMade, attemptsRemaining, limit, reason }) => {
+    const unsubscribeIllegalMove = onGameEvent("illegalMove", ({ gameId: imGameId, position, attemptsMade, attemptsRemaining, limit, reason, illegalMoveCounts: updatedCounts }) => {
       if (parseInt(imGameId) !== parseInt(gameId)) return;
+      // Sync counter state — prefer the full counts map from the event; fall
+      // back to updating just the position whose count we know.
+      if (updatedCounts && typeof updatedCounts === 'object') {
+        setIllegalMoveCounts({ ...updatedCounts });
+      } else if (position != null && attemptsMade != null) {
+        setIllegalMoveCounts(prev => ({ ...prev, [position]: attemptsMade }));
+      }
       const optimisticSnapshot = optimisticMoveSnapshotRef.current;
       if (optimisticSnapshot) {
         setGameState((prev) => ({
@@ -7285,6 +7298,36 @@ const LiveGame = () => {
             <span className={`${styles["piece-count-tracker-player"]} ${styles["player-black"]}`}>
               {player2?.username || 'Player 2'}
             </span>
+          </div>
+        </div>
+      )}
+
+      {/* Illegal Move Counter — only when game type has a limit */}
+      {(gameState.illegalMoveLimit > 0) && (
+        <div className={styles["illegal-move-counter"]}>
+          <span className={styles["illegal-move-counter-label"]}>Illegal moves</span>
+          <div className={styles["illegal-move-counter-row"]}>
+            <span className={`${styles["illegal-move-counter-player"]} ${styles["player-white"]}`}>
+              {player1?.username || 'P1'}
+            </span>
+            <span className={`${styles["illegal-move-counter-value"]}${
+              (illegalMoveCounts[1] || 0) >= Math.max(1, gameState.illegalMoveLimit - 1) ? ` ${styles["near-limit"]}` : ''
+            }`}>
+              {illegalMoveCounts[1] || 0}
+            </span>
+            <span className={styles["illegal-move-counter-sep"]}>/</span>
+            <span className={styles["illegal-move-counter-limit"]}>{gameState.illegalMoveLimit}</span>
+            <span className={styles["illegal-move-counter-divider"]}>·</span>
+            <span className={`${styles["illegal-move-counter-player"]} ${styles["player-black"]}`}>
+              {player2?.username || 'P2'}
+            </span>
+            <span className={`${styles["illegal-move-counter-value"]}${
+              (illegalMoveCounts[2] || 0) >= Math.max(1, gameState.illegalMoveLimit - 1) ? ` ${styles["near-limit"]}` : ''
+            }`}>
+              {illegalMoveCounts[2] || 0}
+            </span>
+            <span className={styles["illegal-move-counter-sep"]}>/</span>
+            <span className={styles["illegal-move-counter-limit"]}>{gameState.illegalMoveLimit}</span>
           </div>
         </div>
       )}

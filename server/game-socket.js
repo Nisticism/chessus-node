@@ -719,15 +719,25 @@ async function applyIllegalMoveAttempt(io, gameId, gameState, offendingPlayer, r
   // fall back to the room (the client filters by gameId).
   const payload = {
     gameId,
+    position: pos,
     attemptsMade,
     attemptsRemaining,
     limit,
+    illegalMoveCounts: { ...gameState.illegalMoveCounts },
     ...(gameState.hideEnemyPieces ? {} : { reason: reason || 'Illegal move' })
   };
   try {
-    const sockId = userSockets.get(String(offendingPlayer.id));
-    if (sockId) io.to(sockId).emit('illegalMove', payload);
-    else io.to(`game-${gameId}`).emit('illegalMove', payload);
+    if (gameState.hideEnemyPieces) {
+      // HEP mode: only tell the offending player (leaking counts would reveal
+      // that they just made a move, which is information in a fog-of-war game).
+      const sockId = userSockets.get(String(offendingPlayer.id));
+      if (sockId) io.to(sockId).emit('illegalMove', payload);
+      else io.to(`game-${gameId}`).emit('illegalMove', payload);
+    } else {
+      // Non-HEP: broadcast to the whole room so both players (and spectators)
+      // see each other's counter update in real time.
+      io.to(`game-${gameId}`).emit('illegalMove', payload);
+    }
   } catch (_) { try { io.to(`game-${gameId}`).emit('illegalMove', payload); } catch (_) {} }
 
   if (attemptsRemaining > 0) return;

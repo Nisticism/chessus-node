@@ -680,6 +680,76 @@
   }
 }
 
+// Illegal-move counter — displayed below clocks when illegal_move_limit is set
+.illegal-move-counter {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 14px;
+  background: var(--bg-dark);
+  border-radius: 8px;
+  margin-top: 8px;
+  width: 100%;
+  max-width: 700px;
+  align-self: center;
+  box-sizing: border-box;
+
+  .illegal-move-counter-label {
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #666;
+  }
+
+  .illegal-move-counter-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .illegal-move-counter-player {
+    font-size: 0.82rem;
+    font-weight: 600;
+
+    &.player-white { color: #e0e0e0; }
+    &.player-black { color: #999; }
+  }
+
+  .illegal-move-counter-value {
+    font-size: 1.05rem;
+    font-weight: 700;
+    font-family: 'Courier New', monospace;
+    color: var(--text-heading);
+    min-width: 18px;
+    text-align: center;
+
+    &.near-limit {
+      color: #e05050;
+    }
+  }
+
+  .illegal-move-counter-sep {
+    color: #555;
+    font-size: 0.85rem;
+  }
+
+  .illegal-move-counter-limit {
+    font-size: 0.85rem;
+    color: #666;
+    font-family: 'Courier New', monospace;
+    min-width: 18px;
+    text-align: center;
+  }
+
+  .illegal-move-counter-divider {
+    color: #444;
+    font-size: 1.1rem;
+    margin: 0 4px;
+  }
+}
+
 // Game settings
 .game-settings {
   background: var(--bg-dark);

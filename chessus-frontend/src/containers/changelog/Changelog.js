@@ -4,6 +4,15 @@ import styles from "./changelog.module.scss";
 
 const changelogData = [
   {
+    date: "June 2, 2026",
+    title: "Fixed Google Sign-In",
+    items: [
+      "Fixed Google Sign-In failing with a white popup window and 'postMessage' error. The root cause was that the site's cross-origin isolation headers (needed for Fairy Stockfish's multi-threaded engine) were also applied to the login and register pages, which prevented Google's sign-in popup from communicating back in non-Chrome browsers. Login and register pages are now served without those headers so sign-in works on all browsers. Modern Chrome was unaffected (it uses a browser-native flow instead of a popup).",
+      "Fixed a 'Sign In With Google' button rendering issue caused by the Google SDK receiving 'undefined' as a literal URL parameter — the button would show as a blank space in some browsers.",
+      "Fixed spurious 'google.accounts.id.initialize() is called multiple times' console warning when navigating between the sign-in and register pages.",
+    ],
+  },
+  {
     date: "June 1, 2026",
     title: "Castle-on-drag hold timer",
     items: [

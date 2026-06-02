@@ -68,7 +68,12 @@ const Login = (props) => {
     dispatch(googleLogin(credentialResponse.credential))
       .then((data) => {
         trackLogin('google');
-        navigate(`/profile/${data.result.username}`);
+        // Hard redirect so the new page is loaded fresh with the correct
+        // COOP policy.  Login is served without COOP (to allow the Google
+        // Sign-In popup flow); game pages need COOP same-origin for
+        // SharedArrayBuffer.  A client-side navigate() would keep the
+        // no-COOP policy for the rest of the session.
+        window.location.href = `/profile/${data.result.username}`;
       })
       .catch(() => {
         setLoading(false);
