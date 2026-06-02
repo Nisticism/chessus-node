@@ -46,10 +46,57 @@ const clearAppCachesIfNeeded = async () => {
   window.location.replace(`${window.location.pathname}${window.location.search}${separator}cacheRefreshed=1${window.location.hash}`);
 };
 
+// Patch Google Identity Services to fix two known issues with @react-oauth/google:
+//
+// 1. renderButton passes undefined values (shape, locale, click_listener, etc.) to the
+//    iframe URL as the literal string "undefined", which can cause the Sign In With
+//    Google button iframe to fail to load (showing chrome-error://chromewebdata/ in the
+//    button's iframe container) when COOP/COEP headers are active or when Chrome enforces
+//    FedCM for buttons.  We strip undefined values before forwarding to the real call.
+//
+// 2. initialize() is called once per mounted <GoogleLogin> component.  Navigating between
+//    Login and Register causes the warning "google.accounts.id.initialize() is called
+//    multiple times" and may replace the active callback.  We call the real initialize()
+//    only on the first invocation but keep a live reference to the latest callback so
+//    whichever page is currently showing handles the credential response correctly.
+const patchGoogleIdentityServices = () => {
+  const id = window?.google?.accounts?.id;
+  if (!id) return;
+
+  // --- patch renderButton ---
+  const origRenderButton = id.renderButton;
+  id.renderButton = (element, options) => {
+    const clean = {};
+    for (const [k, v] of Object.entries(options || {})) {
+      if (v !== undefined) clean[k] = v;
+    }
+    return origRenderButton.call(id, element, clean);
+  };
+
+  // --- patch initialize ---
+  const origInitialize = id.initialize;
+  let gsiInitialized = false;
+  let latestCallback = null;
+  id.initialize = (options) => {
+    latestCallback = options.callback;
+    if (!gsiInitialized) {
+      gsiInitialized = true;
+      return origInitialize.call(id, {
+        ...options,
+        callback: (response) => latestCallback?.(response),
+      });
+    }
+    // Already initialized — callback reference is already updated above; no-op.
+  };
+};
+
 const renderApp = () => {
   const root = ReactDOM.createRoot(document.getElementById('root'));
   root.render(
-    <GoogleOAuthProvider clientId={process.env.REACT_APP_GOOGLE_CLIENT_ID}>
+    <GoogleOAuthProvider
+      clientId={process.env.REACT_APP_GOOGLE_CLIENT_ID}
+      onScriptLoadSuccess={patchGoogleIdentityServices}
+    >
       <Provider store={store}>
         <BrowserRouter future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
           <App />
