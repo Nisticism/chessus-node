@@ -3586,6 +3586,7 @@ function initializeSocket(server) {
           // the game type has hide_enemy_pieces or fog_of_war). Default 'all'.
           hideEnemyPieces: !!gameType?.hide_enemy_pieces,
           illegalMoveLimit: Number(gameType?.illegal_move_limit) || 0,
+          illegalMoveLabel: gameType?.illegal_move_label || null,
           illegalMoveCounts: { 1: 0, 2: 0 },
           spectatorVisibility,
           actionsThisTurn: 0
@@ -4947,6 +4948,7 @@ function initializeSocket(server) {
             fogOfWarEnabled: joinGameOtherData.fogOfWarEnabled != null ? !!joinGameOtherData.fogOfWarEnabled : (gameType?.fog_of_war ? true : false),
             hideEnemyPieces: !!gameType?.hide_enemy_pieces,
             illegalMoveLimit: Number(gameType?.illegal_move_limit) || 0,
+            illegalMoveLabel: gameType?.illegal_move_label || null,
             illegalMoveCounts: { 1: 0, 2: 0 },
             spectatorVisibility: game.spectator_visibility || 'all',
             anonCorresPlayers: joinGameOtherData.anonCorresPlayers || null,
@@ -9312,6 +9314,7 @@ function initializeSocket(server) {
             fogOfWarEnabled: otherData?.fogOfWarEnabled != null ? !!otherData.fogOfWarEnabled : (gameType?.fog_of_war ? true : false),
             hideEnemyPieces: !!gameType?.hide_enemy_pieces,
             illegalMoveLimit: Number(gameType?.illegal_move_limit) || 0,
+            illegalMoveLabel: gameType?.illegal_move_label || null,
             illegalMoveCounts: (() => {
               try {
                 if (game.illegal_move_counts) {

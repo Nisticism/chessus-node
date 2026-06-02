@@ -206,8 +206,21 @@ const Step2WinConditions = ({ gameData, updateGameData }) => {
           />
           <p className={styles["field-hint"]}>
             Tsuitate Shogi traditionally uses 8. Pairs best with the Hidden Enemy Pieces game mechanic.
-          </p>
-        </div>
+          </p>          <div className={styles["form-group"]} style={{ marginTop: '0.9rem' }}>
+            <label className={styles["form-label"]}>
+              Counter label{' '}
+              <InfoTooltip text="Rename the illegal-move counter shown to players during the game. Leave blank to use the default 'Illegal moves' label. Example: 'Kintē counter'." />
+            </label>
+            <input
+              type="text"
+              maxLength={50}
+              placeholder="Illegal moves"
+              value={gameData.illegal_move_label || ''}
+              onChange={(e) => handleChange('illegal_move_label', e.target.value.slice(0, 50) || null)}
+              className={styles["form-input-small"]}
+            />
+            <p className={styles["field-hint"]}>Max 50 characters.</p>
+          </div>        </div>
       </ToggleRow>
 
       {/* Optional Condition ID — not yet implemented in game logic; hidden until used */}

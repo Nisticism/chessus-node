@@ -857,6 +857,7 @@ const migrations = [
   // --- Hidden enemy pieces (fog of war) + illegal-move-limit win condition ---
   { table: 'game_types', column: 'hide_enemy_pieces', sql: "ALTER TABLE game_types ADD COLUMN hide_enemy_pieces TINYINT(1) NOT NULL DEFAULT 0", description: "When 1, enemy pieces are hidden from each player during live play (fog of war)." },
   { table: 'game_types', column: 'illegal_move_limit', sql: "ALTER TABLE game_types ADD COLUMN illegal_move_limit INT NOT NULL DEFAULT 0", description: "When > 0, a player who attempts this many illegal moves loses the game (1-100)." },
+  { table: 'game_types', column: 'illegal_move_label', sql: "ALTER TABLE game_types ADD COLUMN illegal_move_label VARCHAR(50) DEFAULT NULL", description: "Optional custom label for the illegal-move counter in live games (max 50 chars). NULL means the default 'Illegal moves' label is used." },
   { table: 'games', column: 'illegal_move_counts', sql: "ALTER TABLE games ADD COLUMN illegal_move_counts VARCHAR(255) DEFAULT NULL", description: "JSON map of playerPosition -> illegal-move attempt count for the live game." },
   { table: 'games', column: 'spectator_visibility', sql: "ALTER TABLE games ADD COLUMN spectator_visibility VARCHAR(16) NOT NULL DEFAULT 'all'", description: "Spectator visibility mode for hidden-piece games: 'all' | 'player1' | 'player2'." }
 ];

@@ -7305,7 +7305,7 @@ const LiveGame = () => {
       {/* Illegal Move Counter — only when game type has a limit */}
       {(gameState.illegalMoveLimit > 0) && (
         <div className={styles["illegal-move-counter"]}>
-          <span className={styles["illegal-move-counter-label"]}>Illegal moves</span>
+          <span className={styles["illegal-move-counter-label"]}>{gameState.illegalMoveLabel || 'Illegal moves'}</span>
           <div className={styles["illegal-move-counter-row"]}>
             <span className={`${styles["illegal-move-counter-player"]} ${styles["player-white"]}`}>
               {player1?.username || 'P1'}
