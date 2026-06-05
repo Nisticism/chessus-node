@@ -4,6 +4,18 @@ import styles from "./changelog.module.scss";
 
 const changelogData = [
   {
+    date: "June 4, 2026",
+    title: "Safari fixes, logout fix, illegal-move counter sync",
+    items: [
+      "Fixed: Fairy Stockfish now works on Safari 15.2+ (and any other cross-origin-isolated browser). The engine's Web Worker now checks for SharedArrayBuffer support before attempting to load the pthreads WebAssembly build; if the capability is missing, it immediately signals a graceful error and the server-side fallback bot takes over instead of freezing the bot's turn.",
+      "Fixed: when navigating to the login or register page from a game page via the in-app links, Google Sign-In showed a blank white window. The login/register pages now detect if they are still running in a cross-origin-isolated context (because no full page load occurred) and force a hard reload so the server sends the correct headers.",
+      "Fixed: clicking 'Log Out' the first time after signing in would cancel and re-authenticate the socket instead of actually signing out. The Redux store is now cleared synchronously before the API call, preventing a race where the socket reconnected and re-authenticated during the async window.",
+      "Fixed: the illegal-move counter didn't update for one player until they also made an illegal move. The server now includes the current counts in every 'moveMade' payload, so both sides stay in sync after each legal move — even in Hidden Enemy Pieces games where the 'illegalMove' event is intentionally only sent to the offending player.",
+      "Fixed: 'Copy' buttons for the game invite link, AI trainer key, and AI training public link would silently fail on older Safari and any browser without the Clipboard API. They now fall back to the legacy document.execCommand('copy') approach.",
+      "Fixed: upon promotion in Hidden Enemy Pieces games, the promoted piece briefly flashed its type to the opponent. The server now strips promoted-piece identity fields from the broadcast before sending to the other player, and the 'moveMade' event before the promotion modal is now fog-filtered correctly.",
+    ],
+  },
+  {
     date: "June 2, 2026",
     title: "Fixed Google Sign-In",
     items: [
