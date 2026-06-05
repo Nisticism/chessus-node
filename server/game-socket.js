@@ -182,6 +182,18 @@ function fogFilterPayload(payload, gameState, viewerPos) {
     out.move = m;
   }
 
+  // Strip promoted-piece identity fields for opponents in fog games.
+  // The pieces array is already filtered above; these extra top-level fields
+  // would reveal the new piece type to a player who shouldn't see it.
+  if (out.promotedPiece && typeof out.promotedPiece === 'object') {
+    const pieceOwner = _ownerPosition(out.promotedPiece);
+    if (pieceOwner !== viewerPos) {
+      out.promotedPiece = null;
+      out.newPieceId = null;
+      out.newPieceName = null;
+    }
+  }
+
   return out;
 }
 
@@ -211,6 +223,33 @@ function emitToGameRoom(io, gameState, event, payload) {
     const viewerPos = getViewerPosition(gameState, userId);
     const filtered = fogFilterPayload(payload, gameState, viewerPos);
     sock.emit(event, filtered);
+  }
+}
+
+/**
+ * Like emitToGameRoom but skips one socket (e.g. the player who just moved,
+ * who has already received a more specific event). Fog filtering still applies
+ * to everyone else in the room.
+ */
+function emitToGameRoomExcept(io, gameState, event, payload, excludeSocketId) {
+  if (!io || !gameState) return;
+  const gameId = gameState.id;
+  const room = `game-${gameId}`;
+  const roomSet = io.sockets.adapter.rooms.get(room);
+  if (!roomSet || roomSet.size === 0) return;
+  for (const socketId of roomSet) {
+    if (socketId === excludeSocketId) continue;
+    const sock = io.sockets.sockets.get(socketId);
+    if (!sock) continue;
+    if (!gameState.hideEnemyPieces || gameState.status === 'completed') {
+      sock.emit(event, payload);
+    } else {
+      const sockUser = playerSockets.get(socketId);
+      const sockUserId = sockUser && typeof sockUser === 'object' ? sockUser.id : sockUser;
+      const viewerPos = getViewerPosition(gameState, sockUserId);
+      const filtered = fogFilterPayload(payload, gameState, viewerPos);
+      sock.emit(event, filtered);
+    }
   }
 }
 
@@ -2959,6 +2998,26 @@ function initializeSocket(server) {
       } catch (error) {
         console.error("Error in authenticate handler:", error);
         socket.emit("error", { message: "Authentication failed" });
+      }
+    });
+
+    // Explicit logout: client cleared its auth state and wants this socket
+    // removed from online tracking immediately (without waiting for disconnect).
+    socket.on("deauthenticate", () => {
+      try {
+        const userId = socket.userId;
+        const username = socket.username;
+        if (userId) {
+          playerSockets.delete(socket.id);
+          userSockets.delete(userId.toString());
+          onlineUsers.delete(userId);
+          socket.userId = null;
+          socket.username = null;
+          console.log(`User ${username} (ID: ${userId}) deauthenticated socket ${socket.id} (logout)`);
+          io.emit('onlineUsers', Array.from(onlineUsers));
+        }
+      } catch (err) {
+        console.error('Error in deauthenticate handler:', err);
       }
     });
 
@@ -6068,8 +6127,11 @@ function initializeSocket(server) {
             }
           });
 
-          // Also broadcast the move to other players (but not the promotion modal)
-          socket.to(`game-${gameId}`).emit("moveMade", {
+          // Also broadcast the move to other players (but not the promotion modal).
+          // Use emitToGameRoomExcept so fog filtering is applied for hide_enemy_pieces
+          // games — without this, the opponent would briefly see the enemy piece
+          // at the promotion square before it disappears on piecePromoted.
+          emitToGameRoomExcept(io, gameState, "moveMade", {
             gameId,
             move: moveRecord,
             gameState: {
@@ -6081,7 +6143,7 @@ function initializeSocket(server) {
               pendingPromotion: true,
               controlSquareTracking: gameState.controlSquareTracking
             }
-          });
+          }, socket.id);
 
           console.log(`Promotion required in game ${gameId} for piece ${moveResult.promotionEligible.pieceId}`);
           return; // Wait for promotion choice before continuing
@@ -7867,7 +7929,11 @@ function initializeSocket(server) {
               actionsThisTurn: gameState.actionsThisTurn || 0,
               actionsPerTurn: gameState.gameType?.actions_per_turn || 1,
               ...(gameState.isCorrespondence ? { moveDeadline: gameState.moveDeadline } : {}),
-              ...((gameState.gameType?.points_to_win != null || gameState.gameType?.draw_equal_points_at_turn != null || gameState.gameType?.draw_equal_points_consecutive != null) ? { playerScores: { 1: getPlayerScore(gameState, 1), 2: getPlayerScore(gameState, 2) } } : {})
+              ...((gameState.gameType?.points_to_win != null || gameState.gameType?.draw_equal_points_at_turn != null || gameState.gameType?.draw_equal_points_consecutive != null) ? { playerScores: { 1: getPlayerScore(gameState, 1), 2: getPlayerScore(gameState, 2) } } : {}),
+              // Always include illegalMoveCounts so the opponent's counter stays in sync
+              // even in HEP games where the `illegalMove` event is only sent to the
+              // offending player (to avoid leaking "who just tried to move" information).
+              ...(gameState.illegalMoveLimit > 0 ? { illegalMoveCounts: { ...gameState.illegalMoveCounts } } : {})
             },
             ...(moveClockMultipliers && Object.keys(moveClockMultipliers).length > 0 ? { clockMultipliers: moveClockMultipliers } : { clockMultipliers: {} }),
             ...(regenPieces && regenPieces.length > 0 ? { regenPieces } : {}),
