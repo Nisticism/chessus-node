@@ -1924,7 +1924,20 @@ const AnalysisSection = ({ gameTypes, initialGameTypeId }) => {
                 <button
                   type="button"
                   className={styles.copyBtn}
-                  onClick={() => navigator.clipboard.writeText(publicLink)}
+                  onClick={() => {
+                    if (navigator.clipboard && navigator.clipboard.writeText) {
+                      navigator.clipboard.writeText(publicLink).catch(() => {});
+                    } else {
+                      const el = document.createElement('textarea');
+                      el.value = publicLink;
+                      el.style.position = 'fixed';
+                      el.style.opacity = '0';
+                      document.body.appendChild(el);
+                      el.select();
+                      try { document.execCommand('copy'); } catch (_) {}
+                      document.body.removeChild(el);
+                    }
+                  }}
                   title="Copy shareable link to clipboard"
                 >
                   📋 Copy

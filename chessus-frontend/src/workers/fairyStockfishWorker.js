@@ -27,6 +27,25 @@
  *    classical eval automatically).
  */
 
+// ── Browser capability gate ──────────────────────────────────────────────────
+// The fairy-stockfish-nnue.wasm package is built with Emscripten pthreads,
+// which requires SharedArrayBuffer (cross-origin isolation: COOP same-origin +
+// COEP credentialless).  Safari < 15.2 does not expose SharedArrayBuffer at
+// all; we must check before attempting to load the WASM or we'll get a
+// cryptic LinkError that is hard to debug.
+if (typeof SharedArrayBuffer === 'undefined' || typeof Atomics === 'undefined') {
+  self.postMessage({
+    type: 'error',
+    message:
+      'Fairy Stockfish requires SharedArrayBuffer (cross-origin isolation). ' +
+      'This browser or context does not support it. ' +
+      'Safari 15.2+, Chrome 89+, and Firefox 79+ support it when the page is ' +
+      'served with Cross-Origin-Opener-Policy and Cross-Origin-Embedder-Policy headers.',
+  });
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
+
 let enginePromise = null;
 let engine = null;
 let currentResolve = null;
@@ -41,9 +60,15 @@ async function loadEngine() {
     // pull it in via importScripts so the worker can use it directly. We must
     // tell Emscripten where stockfish.wasm lives via `locateFile` -- otherwise
     // it tries to resolve it relative to this bundled worker URL and 404s.
-    const base = (self.location && self.location.origin
+    //
+    // When webpack/CRA bundles a worker with `new Worker(new URL(...))`, the
+    // worker is served from the same origin (not a blob: URL) in most setups.
+    // But if the origin is somehow null (e.g. a blob: or data: worker context)
+    // fall back to a relative path so importScripts still resolves correctly.
+    const origin = (self.location && self.location.origin && self.location.origin !== 'null')
       ? self.location.origin
-      : '') + '/fairy-stockfish/';
+      : '';
+    const base = origin + '/fairy-stockfish/';
     let Stockfish;
     try {
       // eslint-disable-next-line no-undef

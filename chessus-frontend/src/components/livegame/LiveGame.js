@@ -913,7 +913,15 @@ const LiveGame = () => {
     if (fairyStartedForRef.current === gtid) return;
     fairyStartedForRef.current = gtid;
     fairyStockfish.startEngine(fairyTranslation.variantIni, fairyTranslation.variantName)
-      .catch((err) => console.error('[FairyStockfish] startEngine failed', err));
+      .catch((err) => {
+        console.error('[FairyStockfish] startEngine failed; tripping circuit-breaker so server fallback takes over', err);
+        // Trip the circuit breaker immediately so every subsequent bot turn
+        // goes to the server fallback instead of waiting on an engine that
+        // will never be ready. This covers Safari < 15.2 (no SharedArrayBuffer)
+        // and any other browser that can't run the pthreads WASM build.
+        fairyDisabledForGameRef.current = true;
+        setFairyEngineDisabled(true);
+      });
   }, [isFairyClientBot, fairyTranslation, fairyStockfish]);
 
   // Keep gameStateRef in sync so async engine callbacks see the latest state.
@@ -1210,6 +1218,12 @@ const LiveGame = () => {
         setInCheck(newState.inCheck || false);
         setCheckedPieces(newState.checkedPieces || []);
         if (newState.playerScores) setPlayerScores(newState.playerScores);
+        // Sync illegal-move counter from every moveMade event so the opponent's
+        // display stays current in HEP games (where the `illegalMove` event is
+        // only sent to the offending player, not the full room).
+        if (newState.illegalMoveCounts && typeof newState.illegalMoveCounts === 'object') {
+          setIllegalMoveCounts({ ...newState.illegalMoveCounts });
+        }
 
         // Show mid-turn checkmate message if detected
         if (midTurnCheckmate) {
@@ -1445,6 +1459,11 @@ const LiveGame = () => {
         setGameState(state);
         setLoading(false);
         if (state.playerScores) setPlayerScores(state.playerScores);
+        // Restore illegal-move counters on reconnect / page restore so the
+        // display matches the server-side persisted counts.
+        if (state.illegalMoveCounts && typeof state.illegalMoveCounts === 'object') {
+          setIllegalMoveCounts({ ...state.illegalMoveCounts });
+        }
         // Restore pending draw offer state from server (handles reconnect/rejoin)
         if (state.pendingDrawOffer) {
           if (state.pendingDrawOffer.from === currentUser?.id) {
@@ -6813,7 +6832,21 @@ const LiveGame = () => {
                         />
                         <button 
                           className={`${styles.btn} ${styles["btn-small"]}`}
-                          onClick={() => navigator.clipboard.writeText(gameUrl)}
+                          onClick={() => {
+                            if (navigator.clipboard && navigator.clipboard.writeText) {
+                              navigator.clipboard.writeText(gameUrl).catch(() => {});
+                            } else {
+                              // Fallback for Safari <13.1 and other browsers without Clipboard API
+                              const el = document.createElement('textarea');
+                              el.value = gameUrl;
+                              el.style.position = 'fixed';
+                              el.style.opacity = '0';
+                              document.body.appendChild(el);
+                              el.select();
+                              try { document.execCommand('copy'); } catch (_) {}
+                              document.body.removeChild(el);
+                            }
+                          }}
                         >
                           Copy
                         </button>

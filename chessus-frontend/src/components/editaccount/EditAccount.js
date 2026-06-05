@@ -663,7 +663,22 @@ const EditAccount = (props) => {
                             </code>
                             <button
                               type="button"
-                              onClick={() => { navigator.clipboard.writeText(trainerNewKey); setTrainerKeysCopied(true); setTimeout(() => setTrainerKeysCopied(false), 2000); }}
+                              onClick={() => {
+                                if (navigator.clipboard && navigator.clipboard.writeText) {
+                                  navigator.clipboard.writeText(trainerNewKey).catch(() => {});
+                                } else {
+                                  const el = document.createElement('textarea');
+                                  el.value = trainerNewKey;
+                                  el.style.position = 'fixed';
+                                  el.style.opacity = '0';
+                                  document.body.appendChild(el);
+                                  el.select();
+                                  try { document.execCommand('copy'); } catch (_) {}
+                                  document.body.removeChild(el);
+                                }
+                                setTrainerKeysCopied(true);
+                                setTimeout(() => setTrainerKeysCopied(false), 2000);
+                              }}
                               style={{ background: '#27ae60', border: 'none', color: '#fff', borderRadius: 4, padding: '4px 12px', cursor: 'pointer', fontSize: '0.85em', whiteSpace: 'nowrap' }}
                             >
                               {trainerKeysCopied ? 'Copied!' : 'Copy'}
