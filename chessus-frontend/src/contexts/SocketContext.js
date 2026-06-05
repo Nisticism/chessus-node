@@ -35,6 +35,7 @@ export const SocketProvider = ({ children }) => {
   const reconnectAttempts = useRef(0);
   const lastAuthRef = useRef(null); // Track last auth to prevent duplicate emits
   const dispatchRef = useRef(dispatch);
+  const prevUserRef = useRef(user); // Track previous user to detect logout transition
 
   // Keep dispatch ref current
   useEffect(() => {
@@ -129,18 +130,27 @@ export const SocketProvider = ({ children }) => {
     };
   }, []);
 
-  // Re-authenticate when user changes
+  // Re-authenticate when user changes; deauthenticate on logout.
   useEffect(() => {
-    if (socket && connected && user) {
-      // Prevent duplicate auth for the same user/socket combination
-      const authKey = `${user.id}-${socket.id}`;
-      if (lastAuthRef.current === authKey) return;
-      lastAuthRef.current = authKey;
+    const wasLoggedIn = prevUserRef.current != null;
+    prevUserRef.current = user;
 
-      socket.emit('authenticate', {
-        userId: user.id,
-        username: user.username
-      });
+    if (socket && connected) {
+      if (user) {
+        // Prevent duplicate auth for the same user/socket combination
+        const authKey = `${user.id}-${socket.id}`;
+        if (lastAuthRef.current === authKey) return;
+        lastAuthRef.current = authKey;
+        socket.emit('authenticate', {
+          userId: user.id,
+          username: user.username
+        });
+      } else if (wasLoggedIn) {
+        // User just logged out — tell the server to clean up this socket
+        // so it is no longer tracked as online or authenticated.
+        lastAuthRef.current = null;
+        socket.emit('deauthenticate');
+      }
     }
   }, [user, socket, connected]);
 

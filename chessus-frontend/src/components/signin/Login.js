@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { Navigate, useNavigate, useLocation, Link } from 'react-router-dom';
 import { login, googleLogin } from "../../actions/auth";
@@ -29,6 +29,17 @@ const Login = (props) => {
   const [ messageDisplay, setMessageDisplay ] = useState(false);
   const location = useLocation();
   const authMessage = location.state?.message;
+
+  // If this page was reached via client-side (React Router) navigation from a
+  // cross-origin-isolated page (e.g. a game page that uses Fairy Stockfish),
+  // force a hard reload so the server can respond with the correct unsafe-none
+  // COOP/COEP headers.  Under COOP same-origin, Google Sign-In's iframe cannot
+  // communicate with the parent page and shows a blank white window.
+  useEffect(() => {
+    if (window.crossOriginIsolated) {
+      window.location.replace(window.location.href);
+    }
+  }, []);
 
   const dispatch = useDispatch();
 

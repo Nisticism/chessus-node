@@ -185,10 +185,13 @@ export const twitchLogin = (code, redirectUri) => async (dispatch) => {
 };
 
 export const logout = () => async (dispatch) => {
-  await AuthService.logout();
-  dispatch({
-    type: LOGOUT,
-  });
+  // Clear client-side auth state IMMEDIATELY (synchronously) so no further
+  // socket re-authentication can occur during the async API call window.
+  localStorage.removeItem('user');
+  dispatch({ type: LOGOUT });
+  // Invalidate the server-side refresh token in the background.
+  // We don't await this — the user is already logged out locally.
+  AuthService.logout().catch(() => {});
 };
 
 export const deleteUser = (username, admin_id) => async (dispatch) => {

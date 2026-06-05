@@ -23,13 +23,27 @@
  * Production: the reverse proxy / static host serving the React build MUST
  * send the same two headers. Without them, Fairy Stockfish will fail to load
  * in prod with the same LinkError.
+ *
+ * Login / Register exception: COOP same-origin sets window.opener = null in
+ * any cross-origin popup.  Google Sign-In uses an iframe + postMessage flow
+ * that breaks under COOP isolation, showing a blank white window.  Auth pages
+ * are therefore served with unsafe-none COOP/COEP so Google's GSI button can
+ * communicate.  This mirrors the map{} blocks in nginx-site.conf.
  */
 module.exports = function setupMiddlewares(app) {
   // eslint-disable-next-line no-console
   console.log('[setupProxy] Registering COOP/COEP headers for cross-origin isolation (required by Fairy Stockfish WASM)');
   app.use((req, res, next) => {
-    res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
-    res.setHeader('Cross-Origin-Embedder-Policy', 'credentialless');
+    // Auth pages must not be cross-origin isolated — Google Sign-In's iframe/
+    // postMessage flow breaks when COOP is same-origin.  Matches nginx-site.conf.
+    const isAuthPage = /^\/(login|register)(\/.*)?$/.test(req.path || '');
+    if (isAuthPage) {
+      res.setHeader('Cross-Origin-Opener-Policy', 'unsafe-none');
+      res.setHeader('Cross-Origin-Embedder-Policy', 'unsafe-none');
+    } else {
+      res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+      res.setHeader('Cross-Origin-Embedder-Policy', 'credentialless');
+    }
     next();
   });
 };
