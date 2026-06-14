@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useSelector, useDispatch } from "react-redux";
 import styles from "./home.module.scss";
 import { getGames } from "../../actions/games";
@@ -23,6 +23,7 @@ import {
 
 const Home = () => {
   const dispatch = useDispatch();
+  const navigate = useNavigate();
   const { user: currentUser } = useSelector((state) => state.authReducer);
   const allGames = useSelector((state) => state.games);
   const allPieces = useSelector((state) => state.pieces);
@@ -117,7 +118,7 @@ const Home = () => {
     const fetchPopularGames = async () => {
       try {
         setPopularGamesLoading(true);
-        const response = await fetch(`${API_URL}games/popular?limit=3`);
+        const response = await fetch(`${API_URL}games/popular?limit=9`);
         if (response.ok) {
           const data = await response.json();
           if (data && data.length > 0) {
@@ -472,10 +473,50 @@ const Home = () => {
           <h2>Explore the Grove</h2>
           <p>
             {popularGames.length > 0 
-              ? "Try out our featured games - click a piece to select it, then click a valid square to move!"
+              ? "Try out our featured games - click a card to preview it, then play directly!"
               : "Explore different piece configurations and game setups"}
           </p>
         </div>
+
+        {/* Popular & Featured Games Grid — shown right below the section header */}
+        {!popularGamesLoading && popularGames.length > 0 && (
+          <div className={styles["popular-games-section"]}>
+            <div className={styles["popular-games-grid"]}>
+              {popularGames.map((game, index) => (
+                <div
+                  key={game.id}
+                  className={`${styles["popular-game-card"]} ${selectedGameIndex === index ? styles["selected"] : ''}`}
+                  onClick={() => setSelectedGameIndex(index)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => e.key === 'Enter' && setSelectedGameIndex(index)}
+                  aria-label={`Preview ${game.game_name || `Game ${index + 1}`}`}
+                >
+                  <div className={styles["popular-game-card-top"]}>
+                    <span className={game.featured_order != null ? styles["badge-featured"] : styles["badge-popular"]}>
+                      {game.featured_order != null ? '★ Featured' : '▲ Popular'}
+                    </span>
+                    <Link
+                      to={`/play?gameTypeId=${game.id}`}
+                      className={styles["popular-game-play-btn"]}
+                      onClick={(e) => e.stopPropagation()}
+                      title={`Play ${game.game_name || 'this game'}`}
+                    >
+                      ▶
+                    </Link>
+                  </div>
+                  <div className={styles["popular-game-name"]}>
+                    {game.game_name || game.name || `Game ${index + 1}`}
+                  </div>
+                  <div className={styles["popular-game-meta"]}>
+                    {game.board_width}×{game.board_height} board
+                    {' · '}{game.play_count || 0} {(game.play_count || 0) === 1 ? 'game' : 'games'} played
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className={styles["board-showcase"]}>
           <div className={styles["interactive-board-container"]}>
@@ -489,22 +530,12 @@ const Home = () => {
                     lightSquareColor={lightSquareColor}
                     darkSquareColor={darkSquareColor}
                   />
-                  <div className={styles["board-controls"]}>
-                    {popularGames.map((game, index) => (
-                      <button 
-                        key={game.id}
-                        className={`${styles["control-button"]} ${selectedGameIndex === index ? styles.active : ''}`}
-                        onClick={() => setSelectedGameIndex(index)}
-                      >
-                        {game.game_name || game.name || `Game ${index + 1}`}
-                      </button>
-                    ))}
+                  <div className={styles["play-count-tag"]}>
+                    <strong>{popularGames[selectedGameIndex]?.game_name || popularGames[selectedGameIndex]?.name || 'Game'}</strong>
+                    {popularGames[selectedGameIndex]?.play_count > 0 && (
+                      <span> &middot; {popularGames[selectedGameIndex].play_count} {popularGames[selectedGameIndex].play_count === 1 ? 'game' : 'games'} played</span>
+                    )}
                   </div>
-                  {popularGames[selectedGameIndex]?.play_count > 0 && (
-                    <div className={styles["play-count-tag"]}>
-                      {popularGames[selectedGameIndex].play_count} {popularGames[selectedGameIndex].play_count === 1 ? 'game' : 'games'} played
-                    </div>
-                  )}
                 </>
               ) : (
                 <>

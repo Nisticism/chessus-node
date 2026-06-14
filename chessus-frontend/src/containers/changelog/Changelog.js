@@ -4,6 +4,17 @@ import styles from "./changelog.module.scss";
 
 const changelogData = [
   {
+    date: "June 13, 2026",
+    title: "Promote to another player's or neutral pieces",
+    items: [
+      "Game wizard: when customizing a piece's promotion options (Step 4 → Promotion Options), you can now choose which player a promotion target becomes. A new owner selector (Player 1, Player 2, …, or Neutral) lets you add the same piece type once per side. By default targets promote to your own side, but you can now let a piece promote into an opponent's piece or a neutral piece. The selected-pieces summary and picker show each target with the correct player-colored image and an owner badge.",
+      "In-game: the promotion modal now shows one image per piece per target player. Choosing a target that belongs to another player immediately transfers that piece's control to them; choosing a neutral target makes the piece neutral (controlled by all players), just like other neutral pieces.",
+      "Mirror Pieces now swaps the owner references inside custom promotion options so a mirrored piece promotes to the correct side. Fill Row continues to copy promotion options to every square it fills.",
+      "Game detail page: the Promotion section now describes cross-player and neutral promotion targets, noting which player each customized target becomes.",
+      "These per-player promotion options save and persist correctly across game edits, and are reflected in the sandbox tester.",
+    ],
+  },
+  {
     date: "June 4, 2026",
     title: "Safari fixes, logout fix, illegal-move counter sync",
     items: [
@@ -13,6 +24,7 @@ const changelogData = [
       "Fixed: the illegal-move counter didn't update for one player until they also made an illegal move. The server now includes the current counts in every 'moveMade' payload, so both sides stay in sync after each legal move — even in Hidden Enemy Pieces games where the 'illegalMove' event is intentionally only sent to the offending player.",
       "Fixed: 'Copy' buttons for the game invite link, AI trainer key, and AI training public link would silently fail on older Safari and any browser without the Clipboard API. They now fall back to the legacy document.execCommand('copy') approach.",
       "Fixed: upon promotion in Hidden Enemy Pieces games, the promoted piece briefly flashed its type to the opponent. The server now strips promoted-piece identity fields from the broadcast before sending to the other player, and the 'moveMade' event before the promotion modal is now fog-filtered correctly.",
+      "Home page: the featured/popular 3×9 game grid now appears directly below the 'Explore the Grove' heading. Each card shows the board size and play count in plain English (including '0 games played'), and includes a ▶ play button that opens the Play page with that game pre-selected.",
     ],
   },
   {

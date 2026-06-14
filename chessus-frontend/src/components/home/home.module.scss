@@ -267,6 +267,126 @@
   margin-top: 10px;
   color: var(--text-dim);
   font-size: 0.9rem;
+
+  strong {
+    color: var(--text-heading);
+  }
+}
+
+// Popular & Featured Games Grid
+.popular-games-section {
+  margin-bottom: 36px;
+}
+
+.popular-games-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.popular-game-card {
+  background: linear-gradient(135deg, var(--panel-bg-start) 0%, var(--panel-bg-end) 100%);
+  border: 2px solid var(--panel-card-border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  max-width: 320px;
+  justify-self: stretch;
+
+  &:hover {
+    transform: translateY(-3px);
+    border-color: var(--border-bright);
+    box-shadow: 0 8px 24px rgba(var(--accent-rgb), 0.18);
+  }
+
+  &.selected {
+    border-color: var(--accent-primary);
+    background: linear-gradient(135deg, rgba(var(--accent-rgb), 0.1) 0%, var(--panel-bg-end) 100%);
+    box-shadow: 0 0 0 1px var(--accent-primary), 0 6px 20px rgba(var(--accent-rgb), 0.2);
+  }
+}
+
+.popular-game-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.popular-game-play-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--accent-primary);
+  color: var(--text-heading);
+  font-size: 0.65rem;
+  text-decoration: none;
+  flex-shrink: 0;
+  padding-left: 2px; // optical centering for ▶
+  transition: background 0.15s ease, transform 0.15s ease;
+
+  &:hover {
+    background: var(--button-primary-hover, var(--accent-primary));
+    transform: scale(1.12);
+  }
+}
+
+.badge-featured {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: linear-gradient(135deg, rgba(255, 200, 50, 0.22) 0%, rgba(255, 150, 0, 0.18) 100%);
+  color: #f5c430;
+  border: 1px solid rgba(255, 200, 50, 0.38);
+  align-self: flex-start;
+  width: fit-content;
+}
+
+.badge-popular {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: linear-gradient(135deg, rgba(var(--accent-rgb), 0.18) 0%, rgba(var(--accent-rgb), 0.1) 100%);
+  color: var(--accent-primary-text);
+  border: 1px solid rgba(var(--accent-rgb), 0.32);
+  align-self: flex-start;
+  width: fit-content;
+}
+
+.popular-game-name {
+  font-size: 0.97rem;
+  font-weight: 600;
+  color: var(--text-heading);
+  line-height: 1.3;
+  margin-top: 1px;
+}
+
+.popular-game-meta {
+  font-size: 0.8rem;
+  color: var(--text-dim);
 }
 
 // PlayablePreviewBoard styles
@@ -632,6 +752,10 @@
     max-width: 100%;
     width: 100%;
   }
+
+  .popular-games-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
 }
 
 // Responsive - tablet and mobile
@@ -699,6 +823,14 @@
     min-width: 100px;
     padding: 8px 12px;
     font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
+  }
+
+  .popular-games-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .popular-game-card {
+    max-width: 100%;
   }
 
   .board-info {
