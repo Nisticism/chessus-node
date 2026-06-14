@@ -601,7 +601,7 @@ export const SocketProvider = ({ children }) => {
   // Simul-turns: deliver a player's promotion target for a buffered move
   // that landed on a promotion square. The submission stays "awaiting
   // promotion" until this fires, then the round can resolve.
-  const simulPromotionChoice = useCallback((gameId, pieceId, promoteToPieceId) => {
+  const simulPromotionChoice = useCallback((gameId, pieceId, promoteToPieceId, promoteToPlayerId = null) => {
     if (!socket || !connected) {
       console.error('Not connected');
       return;
@@ -611,6 +611,7 @@ export const SocketProvider = ({ children }) => {
       userId: getAnonPlayerId(gameId),
       pieceId,
       promoteToPieceId,
+      promoteToPlayerId,
     });
   }, [socket, connected, getAnonPlayerId]);
 
@@ -754,7 +755,7 @@ export const SocketProvider = ({ children }) => {
   }, [socket, connected, getAnonPlayerId]);
 
   // Promote a piece
-  const promotePiece = useCallback((gameId, pieceId, promoteToPieceId) => {
+  const promotePiece = useCallback((gameId, pieceId, promoteToPieceId, promoteToPlayerId = null) => {
     if (!socket || !connected) {
       console.error('Not connected');
       return;
@@ -764,7 +765,8 @@ export const SocketProvider = ({ children }) => {
       gameId,
       userId: getAnonPlayerId(gameId),
       pieceId,
-      promoteToPieceId
+      promoteToPieceId,
+      promoteToPlayerId
     });
   }, [socket, connected, getAnonPlayerId]);
 

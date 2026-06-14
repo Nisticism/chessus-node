@@ -5233,8 +5233,14 @@ const LiveGame = () => {
   const handlePromotionSelect = useCallback((selectedPiece) => {
     if (!promotionData) return;
 
+    // The chosen option may target a specific player (cross-player / neutral
+    // promotion). Pass it along so the server hands the piece to the right side.
+    const targetPlayer = selectedPiece.promotion_target_player != null
+      ? selectedPiece.promotion_target_player
+      : null;
+
     if (promotionIsSimul) {
-      simulPromotionChoice(parseInt(gameId), promotionData.pieceId, selectedPiece.piece_id);
+      simulPromotionChoice(parseInt(gameId), promotionData.pieceId, selectedPiece.piece_id, targetPlayer);
       // Hide the modal immediately — server doesn't echo a per-player ack
       // before the round resolves and we don't want to leave it visible.
       setShowPromotionModal(false);
@@ -5244,7 +5250,7 @@ const LiveGame = () => {
       return;
     }
 
-    promotePiece(parseInt(gameId), promotionData.pieceId, selectedPiece.piece_id);
+    promotePiece(parseInt(gameId), promotionData.pieceId, selectedPiece.piece_id, targetPlayer);
     // Don't close modal yet - wait for piecePromoted event
   }, [gameId, promotePiece, promotionData, promotionIsSimul, simulPromotionChoice]);
 

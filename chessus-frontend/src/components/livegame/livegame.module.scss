@@ -2639,6 +2639,19 @@
     white-space: nowrap;
     max-width: 100%;
   }
+
+  .promotion-owner-badge {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 2px 7px;
+    border-radius: 10px;
+    background: rgba(117, 124, 252, 0.25);
+    border: 1px solid rgba(117, 124, 252, 0.55);
+    color: var(--text-heading);
+    white-space: nowrap;
+  }
 }
 
 .promotion-modal-actions {

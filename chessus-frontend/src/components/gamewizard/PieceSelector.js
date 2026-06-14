@@ -5,6 +5,7 @@ import PiecesService from "../../services/pieces.service";
 import InfoTooltip from "../piecewizard/InfoTooltip";
 import NumberInput from "../common/NumberInput";
 import ToggleSwitch from "../common/ToggleSwitch";
+import { normalizePromotionOverride, serializePromotionOverride } from "../../helpers/promotionOverride";
 
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";
 
@@ -121,24 +122,30 @@ const PieceSelector = ({
   );
 
   // Promotion options state (per-placement override)
-  const initialPromotionOverrideIds = (() => {
-    const v = currentPlacement?.promotion_pieces_override;
-    if (!v) return [];
-    if (Array.isArray(v)) return v.map(Number);
-    try {
-      const p = JSON.parse(v);
-      return Array.isArray(p) ? p.map(Number) : [];
-    } catch { return []; }
+  // Entries are { id:<pieceId>, player:<playerNumber|0 neutral> }. Legacy
+  // plain-number data (own-side promotion) is resolved to the promoting
+  // piece's player on load so the UI is fully explicit from here on.
+  const initialPromotionPlayer = (() => {
+    if (currentPlacement?.is_neutral) return 0;
+    if (currentPlacement?.player_id != null) return Number(currentPlacement.player_id);
+    return getInitialPlayerId();
+  })();
+  const initialPromotionOverrideEntries = (() => {
+    const entries = normalizePromotionOverride(currentPlacement?.promotion_pieces_override);
+    return entries.map(e => ({ id: e.id, player: e.player == null ? initialPromotionPlayer : e.player }));
   })();
   const [promotionSectionOpen, setPromotionSectionOpen] = useState(
-    initialPromotionOverrideIds.length > 0 ||
+    initialPromotionOverrideEntries.length > 0 ||
     !!currentPlacement?.can_promote_to_checkmate ||
     !!currentPlacement?.can_promote_to_capture ||
     !!currentPlacement?.disable_promotion
   );
   const [disablePromotion, setDisablePromotion] = useState(!!currentPlacement?.disable_promotion);
-  const [customizePromotion, setCustomizePromotion] = useState(initialPromotionOverrideIds.length > 0);
-  const [promotionPieceIds, setPromotionPieceIds] = useState(initialPromotionOverrideIds);
+  const [customizePromotion, setCustomizePromotion] = useState(initialPromotionOverrideEntries.length > 0);
+  const [promotionPieceEntries, setPromotionPieceEntries] = useState(initialPromotionOverrideEntries);
+  // Which player a newly-added promotion target is assigned to. Defaults to the
+  // player whose piece is currently being edited (own side).
+  const [promotionTargetPlayer, setPromotionTargetPlayer] = useState(initialPromotionPlayer);
   const [canPromoteToCheckmate, setCanPromoteToCheckmate] = useState(!!currentPlacement?.can_promote_to_checkmate);
   const [limitCheckmateOriginal, setLimitCheckmateOriginal] = useState(!!currentPlacement?.limit_promote_checkmate_to_original);
   const [canPromoteToCapture, setCanPromoteToCapture] = useState(!!currentPlacement?.can_promote_to_capture);
@@ -353,7 +360,7 @@ const PieceSelector = ({
       is_neutral: isNeutral,
       neutral_image_index: isNeutral ? neutralImageIndex : null,
       // Promotion options (per-placement override)
-      promotion_pieces_override: customizePromotion && promotionPieceIds.length > 0 ? JSON.stringify(promotionPieceIds) : null,
+      promotion_pieces_override: customizePromotion && promotionPieceEntries.length > 0 ? serializePromotionOverride(promotionPieceEntries) : null,
       can_promote_to_checkmate: !!canPromoteToCheckmate,
       limit_promote_checkmate_to_original: !!(canPromoteToCheckmate && limitCheckmateOriginal),
       can_promote_to_capture: !!canPromoteToCapture,
@@ -423,8 +430,34 @@ const PieceSelector = ({
     return ids;
   }, [piecePlacements, selectedPieceId]);
 
-  // Cap the customizable promotion-target list to (unique types on board) + 8
-  const promotionTargetCap = uniquePlacedPieceIds.size + 8;
+  // Cap the customizable promotion-target list. Each piece type may be added
+  // once per player (player 1..N plus neutral), so scale the base cap by the
+  // number of selectable owners.
+  const promotionOwnerCount = Math.max(1, Number(playerCount) || 1) + 1; // +1 for neutral
+  const promotionTargetCap = (uniquePlacedPieceIds.size + 8) * promotionOwnerCount;
+
+  // List of selectable owners for a promotion target: each player plus neutral.
+  const promotionPlayerOptions = React.useMemo(() => {
+    const opts = [];
+    const n = Math.max(1, Number(playerCount) || 1);
+    for (let i = 1; i <= n; i++) opts.push({ value: i, label: `Player ${i}` });
+    opts.push({ value: 0, label: 'Neutral' });
+    return opts;
+  }, [playerCount]);
+
+  // Resolve the correct image thumbnail for a piece given a target player
+  // (player 1 -> image[0], player 2 -> image[1], neutral -> image[0]).
+  const getPromotionThumb = React.useCallback((p, player) => {
+    if (!p) return null;
+    try {
+      const arr = JSON.parse(p.image_location || '[]');
+      if (Array.isArray(arr) && arr.length > 0) {
+        const idx = player === 0 ? 0 : Math.min(Math.max(0, (player || 1) - 1), arr.length - 1);
+        return getImageUrl(arr[idx] || arr[0]);
+      }
+    } catch { /* ignore */ }
+    return null;
+  }, []);
 
   // Pieces eligible to appear in the customize-promotion picker: cap to N pieces total.
   // Prefer pieces already on the board first, then fill with other pieces (alphabetical).
@@ -460,14 +493,23 @@ const PieceSelector = ({
 
   React.useEffect(() => { setPromotionPiecePage(1); }, [promotionSearchTerm]);
 
-  const togglePromotionPieceId = (pid) => {
+  // Toggle a promotion target for the currently-selected target player. The
+  // same piece type can be added once per player (id+player is the identity).
+  const togglePromotionPieceEntry = (pid, player) => {
     const id = Number(pid);
-    setPromotionPieceIds(prev => {
-      if (prev.includes(id)) return prev.filter(x => x !== id);
-      // Cap at promotionTargetCap so users can't pick more than the limit
+    const pl = Number(player);
+    setPromotionPieceEntries(prev => {
+      const exists = prev.some(e => e.id === id && e.player === pl);
+      if (exists) return prev.filter(e => !(e.id === id && e.player === pl));
       if (prev.length >= promotionTargetCap) return prev;
-      return [...prev, id];
+      return [...prev, { id, player: pl }];
     });
+  };
+
+  const removePromotionPieceEntry = (pid, player) => {
+    const id = Number(pid);
+    const pl = Number(player);
+    setPromotionPieceEntries(prev => prev.filter(e => !(e.id === id && e.player === pl)));
   };
 
   // Calculate max castling distance based on closest castling partner piece
@@ -919,16 +961,36 @@ const PieceSelector = ({
                   checked={customizePromotion}
                   onChange={(v) => {
                     setCustomizePromotion(v);
-                    if (!v) setPromotionPieceIds([]);
+                    if (!v) setPromotionPieceEntries([]);
                   }}
                   label="Customize promotion options"
-                  tooltip={<InfoTooltip text={`Override which pieces this piece can promote into. Up to ${promotionTargetCap} pieces (the number of unique piece types on the board, plus 8) may be selected. If left unchecked, default behavior applies.`} />}
+                  tooltip={<InfoTooltip text={`Override which pieces this piece can promote into. Each piece type can be added once per player (including neutral). Use the owner selector below to choose whether a target becomes your own, the opponent's, or a neutral piece when promoted. If left unchecked, default behavior applies.`} />}
                 />
 
                   {customizePromotion && (
                     <div style={{ marginLeft: '20px', borderLeft: '3px solid var(--button-border)', paddingLeft: '12px', marginTop: '8px' }}>
+                      {/* Target owner selector — controls which player a newly
+                          added promotion target becomes when chosen in-game. */}
+                      <div style={{ marginBottom: '10px' }}>
+                        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>
+                          Add promotion targets as: <InfoTooltip text="Choose the owner for pieces you add below. 'Player N' makes the promoted piece belong to that player; 'Neutral' makes it a neutral piece controlled by all players. Defaults to this placement's own player." />
+                        </div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
+                          {promotionPlayerOptions.map(opt => (
+                            <label key={`ptp-${opt.value}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 13, cursor: 'pointer' }}>
+                              <input
+                                type="radio"
+                                name="promotionTargetPlayer"
+                                checked={promotionTargetPlayer === opt.value}
+                                onChange={() => setPromotionTargetPlayer(opt.value)}
+                              />
+                              {opt.label}
+                            </label>
+                          ))}
+                        </div>
+                      </div>
                       {/* Selected pieces summary (always visible regardless of search/page) */}
-                      {promotionPieceIds.length > 0 && (
+                      {promotionPieceEntries.length > 0 && (
                         <div style={{ marginBottom: '10px' }}>
                           <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>Selected pieces:</div>
                           <div style={{
@@ -940,19 +1002,14 @@ const PieceSelector = ({
                             borderRadius: '6px',
                             border: '1px solid rgba(117,124,252,0.3)'
                           }}>
-                            {promotionPieceIds.map(pid => {
-                              const p = pieces.find(pp => Number(pp.id || pp.piece_id) === Number(pid));
-                              const name = p?.piece_name || `#${pid}`;
-                              let thumb = null;
-                              if (p) {
-                                try {
-                                  const arr = JSON.parse(p.image_location || '[]');
-                                  if (Array.isArray(arr) && arr.length > 0) thumb = getImageUrl(arr[(selectedPlayerId - 1) || 0] || arr[0]);
-                                } catch { thumb = null; }
-                              }
+                            {promotionPieceEntries.map(entry => {
+                              const p = pieces.find(pp => Number(pp.id || pp.piece_id) === Number(entry.id));
+                              const name = p?.piece_name || `#${entry.id}`;
+                              const ownerLabel = entry.player === 0 ? 'Neutral' : `P${entry.player}`;
+                              const thumb = getPromotionThumb(p, entry.player);
                               return (
                                 <div
-                                  key={`sel-${pid}`}
+                                  key={`sel-${entry.id}-${entry.player}`}
                                   style={{
                                     display: 'inline-flex',
                                     alignItems: 'center',
@@ -969,9 +1026,16 @@ const PieceSelector = ({
                                     <div style={{ width: 20, height: 20, background: 'rgba(255,255,255,0.1)', borderRadius: 2 }} />
                                   )}
                                   <span>{name}</span>
+                                  <span style={{
+                                    fontSize: 10,
+                                    fontWeight: 600,
+                                    padding: '1px 4px',
+                                    borderRadius: 3,
+                                    backgroundColor: entry.player === 0 ? 'rgba(160,160,160,0.35)' : 'rgba(117,124,252,0.45)'
+                                  }}>{ownerLabel}</span>
                                   <button
                                     type="button"
-                                    onClick={() => togglePromotionPieceId(pid)}
+                                    onClick={() => removePromotionPieceEntry(entry.id, entry.player)}
                                     title="Remove"
                                     style={{
                                       background: 'transparent',
@@ -998,7 +1062,7 @@ const PieceSelector = ({
                         style={{ marginBottom: '8px', maxWidth: '260px' }}
                       />
                       <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '6px' }}>
-                        {promotionPieceIds.length} / {promotionTargetCap} selected
+                        {promotionPieceEntries.length} / {promotionTargetCap} selected
                       </div>
                       <div style={{
                         display: 'grid',
@@ -1012,16 +1076,12 @@ const PieceSelector = ({
                       }}>
                         {paginatedPromotionPicker.map(p => {
                           const pid = Number(p.id || p.piece_id);
-                          const isSel = promotionPieceIds.includes(pid);
-                          let thumb = null;
-                          try {
-                            const arr = JSON.parse(p.image_location || '[]');
-                            if (Array.isArray(arr) && arr.length > 0) thumb = getImageUrl(arr[(selectedPlayerId - 1) || 0] || arr[0]);
-                          } catch { thumb = null; }
+                          const isSel = promotionPieceEntries.some(e => e.id === pid && e.player === promotionTargetPlayer);
+                          const thumb = getPromotionThumb(p, promotionTargetPlayer);
                           return (
                             <div
                               key={pid}
-                              onClick={() => togglePromotionPieceId(pid)}
+                              onClick={() => togglePromotionPieceEntry(pid, promotionTargetPlayer)}
                               style={{
                                 display: 'flex',
                                 flexDirection: 'column',

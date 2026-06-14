@@ -1725,10 +1725,11 @@ async function handleSimulMoveSubmission(io, socket, gameState, gameId, userId, 
   // an `awaitingPromotion` state — the player must follow up with a
   // `simulPromotionChoice` before the round can resolve.
   const promoteToPieceId = (move && move.promoteToPieceId != null) ? Number(move.promoteToPieceId) : null;
+  const promoteToPlayerId = (move && move.promoteToPlayerId != null) ? Number(move.promoteToPlayerId) : null;
   const awaitingPromotion = !!proposal.promotionRequired && promoteToPieceId == null;
   gameState.pendingSimulMoves[userId] = {
     move,
-    proposal: { ...proposal, promoteToPieceId },
+    proposal: { ...proposal, promoteToPieceId, promoteToPlayerId },
     awaitingPromotion,
     submittedAt: Date.now(),
   };
@@ -1761,6 +1762,7 @@ async function handleSimulMoveSubmission(io, socket, gameState, gameId, userId, 
           // If only one option, auto-pick it (matches non-simul flow).
           if (eligibility.options.length === 1) {
             gameState.pendingSimulMoves[userId].proposal.promoteToPieceId = Number(eligibility.options[0].piece_id);
+            gameState.pendingSimulMoves[userId].proposal.promoteToPlayerId = eligibility.options[0].promotion_target_player != null ? Number(eligibility.options[0].promotion_target_player) : null;
             gameState.pendingSimulMoves[userId].awaitingPromotion = false;
           } else {
             socket.emit('simulPromotionRequired', {
@@ -1819,7 +1821,7 @@ async function tryResolveSimulRoundIfReady(io, gameId, gameState) {
  * Apply a simul-turns player's promotion choice to a buffered proposal.
  * Validates the chosen target is in the player's current legal options.
  */
-async function handleSimulPromotionChoice(io, socket, gameState, gameId, userId, pieceId, promoteToPieceId) {
+async function handleSimulPromotionChoice(io, socket, gameState, gameId, userId, pieceId, promoteToPieceId, promoteToPlayerId = null) {
   if (!isSimulTurns(gameState)) {
     return socket.emit('error', { message: 'Promotion choice handler is only for simul-turns games.' });
   }
@@ -1842,11 +1844,20 @@ async function handleSimulPromotionChoice(io, socket, gameState, gameId, userId,
   // somehow; in practice both submissions wait for both promotions).
   const eligibility = await checkPromotionEligibility(piece, { x: pending.proposal.destX, y: pending.proposal.destY }, gameState);
   const options = (eligibility && eligibility.options) || [];
-  const allowedIds = new Set(options.map(o => Number(o.piece_id)));
-  if (!allowedIds.has(Number(promoteToPieceId))) {
+  // Match on (piece id, target player) so cross-player / neutral promotions
+  // resolve to the intended owner. Fall back to piece id only.
+  let chosenOption = null;
+  if (promoteToPlayerId != null) {
+    chosenOption = options.find(o => Number(o.piece_id) === Number(promoteToPieceId) && Number(o.promotion_target_player) === Number(promoteToPlayerId));
+  }
+  if (!chosenOption) {
+    chosenOption = options.find(o => Number(o.piece_id) === Number(promoteToPieceId));
+  }
+  if (!chosenOption) {
     return socket.emit('error', { message: 'That promotion choice is no longer allowed (e.g. royal-cap reached).' });
   }
   pending.proposal.promoteToPieceId = Number(promoteToPieceId);
+  pending.proposal.promoteToPlayerId = chosenOption.promotion_target_player != null ? Number(chosenOption.promotion_target_player) : null;
   pending.awaitingPromotion = false;
   socket.emit('simulPromotionAccepted', { gameId, pieceId, promoteToPieceId: Number(promoteToPieceId) });
   await tryResolveSimulRoundIfReady(io, gameId, gameState);
@@ -2212,7 +2223,17 @@ async function resolveSimulRound(io, gameId, gameState) {
           message: `Your earlier promotion choice was no longer legal — auto-promoted to ${eligibility.options[0].piece_name}.`,
         });
       }
-      const promotedPiece = await applyPromotionToPiece(gameState, movedPiece.id, chosenId);
+      // Resolve which player the chosen option hands the piece to (cross-player
+      // / neutral promotion). Match on (id, player) when the player was
+      // specified, otherwise take the first option for that piece id.
+      const wantPlayer = sv.promoteToPlayerId != null ? Number(sv.promoteToPlayerId) : null;
+      const chosenOption = (wantPlayer != null
+        ? eligibility.options.find(o => Number(o.piece_id) === chosenId && Number(o.promotion_target_player) === wantPlayer)
+        : null) || eligibility.options.find(o => Number(o.piece_id) === chosenId);
+      const chosenPlayer = chosenOption && chosenOption.promotion_target_player != null
+        ? Number(chosenOption.promotion_target_player)
+        : null;
+      const promotedPiece = await applyPromotionToPiece(gameState, movedPiece.id, chosenId, chosenPlayer);
       if (promotedPiece) {
         promotionsThisRound.push({
           playerId: sv.playerId,
@@ -2653,6 +2674,7 @@ async function submitBotSimulMove(io, gameId, gameState) {
       // the AI's `chooseBestPromotion`. Skipped (no options) is fine — the
       // promotion phase will just no-op.
       let botPromoteToPieceId = null;
+      let botPromoteToPlayerId = null;
       if (proposal.promotionRequired) {
         try {
           const piece = (gameState.pieces || []).find(p => String(p.id) === String(proposal.sourcePieceId));
@@ -2660,8 +2682,13 @@ async function submitBotSimulMove(io, gameId, gameState) {
             const eligibility = await checkPromotionEligibility(piece, { x: proposal.destX, y: proposal.destY }, gameState);
             const opts = (eligibility && eligibility.options) || [];
             if (opts.length > 0) {
-              const best = aiEngine.chooseBestPromotion(opts) || opts[0];
+              // Prefer own-side promotion targets for the bot.
+              const botOwner = piece.player_id != null ? piece.player_id : (piece.team || piece.player_number || 1);
+              const ownSide = opts.filter(o => o.promotion_target_player == null || Number(o.promotion_target_player) === Number(botOwner));
+              const pool = ownSide.length > 0 ? ownSide : opts;
+              const best = aiEngine.chooseBestPromotion(pool) || pool[0];
               botPromoteToPieceId = Number(best.piece_id);
+              botPromoteToPlayerId = best.promotion_target_player != null ? Number(best.promotion_target_player) : null;
             }
           }
         } catch (e) {
@@ -2670,8 +2697,8 @@ async function submitBotSimulMove(io, gameId, gameState) {
       }
 
       gameState.pendingSimulMoves[bot.id] = {
-        move: { ...move, promoteToPieceId: botPromoteToPieceId },
-        proposal: { ...proposal, promoteToPieceId: botPromoteToPieceId },
+        move: { ...move, promoteToPieceId: botPromoteToPieceId, promoteToPlayerId: botPromoteToPlayerId },
+        proposal: { ...proposal, promoteToPieceId: botPromoteToPieceId, promoteToPlayerId: botPromoteToPlayerId },
         awaitingPromotion: false,
         submittedAt: Date.now(),
       };
@@ -6006,7 +6033,7 @@ function initializeSocket(server) {
             const autoChoice = moveResult.promotionEligible.options[0];
             console.log(`Auto-promoting piece ${moveResult.promotionEligible.pieceId} to ${autoChoice.piece_name} (only 1 option)`);
 
-            const promotedPiece = await applyPromotionToPiece(gameState, moveResult.promotionEligible.pieceId, autoChoice.piece_id);
+            const promotedPiece = await applyPromotionToPiece(gameState, moveResult.promotionEligible.pieceId, autoChoice.piece_id, autoChoice.promotion_target_player);
             gameState.pendingPromotion = null;
 
             if (promotedPiece) {
@@ -6621,7 +6648,7 @@ function initializeSocket(server) {
                 console.log(`Auto-promoting premove piece ${premoveResult.promotionEligible.pieceId} to ${autoChoice.piece_name} (only 1 option)`);
 
                 // Apply the promotion inline
-                const promotedPiece = await applyPromotionToPiece(gameState, premoveResult.promotionEligible.pieceId, autoChoice.piece_id);
+                const promotedPiece = await applyPromotionToPiece(gameState, premoveResult.promotionEligible.pieceId, autoChoice.piece_id, autoChoice.promotion_target_player);
                 gameState.pendingPromotion = null;
 
                 if (promotedPiece) {
@@ -7999,12 +8026,12 @@ function initializeSocket(server) {
     // The player's submission stays in the awaitingPromotion state until
     // this fires; once both players' submissions are non-awaiting, the
     // round resolves.
-    socket.on("simulPromotionChoice", async ({ gameId, userId, pieceId, promoteToPieceId }) => {
+    socket.on("simulPromotionChoice", async ({ gameId, userId, pieceId, promoteToPieceId, promoteToPlayerId }) => {
       try {
         const gameIdStr = String(gameId);
         const gameState = activeGames.get(gameIdStr);
         if (!gameState) return socket.emit("error", { message: "Game not found" });
-        await handleSimulPromotionChoice(io, socket, gameState, gameId, userId, pieceId, promoteToPieceId);
+        await handleSimulPromotionChoice(io, socket, gameState, gameId, userId, pieceId, promoteToPieceId, promoteToPlayerId);
       } catch (err) {
         console.error("simulPromotionChoice error:", err);
         socket.emit("error", { message: "Failed to submit promotion choice" });
@@ -8071,7 +8098,7 @@ function initializeSocket(server) {
     // Handle piece promotion
     socket.on("promotePiece", async (data) => {
       try {
-        const { gameId, userId, pieceId, promoteToPieceId } = data;
+        const { gameId, userId, pieceId, promoteToPieceId, promoteToPlayerId } = data;
         const gameIdStr = gameId.toString();
         const gameState = activeGames.get(gameIdStr);
 
@@ -8097,12 +8124,27 @@ function initializeSocket(server) {
         }
 
         const piece = gameState.pieces[pieceIndex];
+        const promotingOwner = piece.player_id != null ? piece.player_id : (piece.team || piece.player_number || 1);
 
-        // Find the promotion target piece data
-        const targetPieceData = pendingPromotion.options.find(p => p.piece_id === promoteToPieceId);
+        // Find the promotion target option. When the client specifies a target
+        // player (cross-player / neutral promotion), match on both piece id and
+        // player so the same piece type can resolve to different owners.
+        let targetPieceData = null;
+        if (promoteToPlayerId != null) {
+          targetPieceData = pendingPromotion.options.find(p =>
+            p.piece_id === promoteToPieceId && Number(p.promotion_target_player) === Number(promoteToPlayerId));
+        }
+        if (!targetPieceData) {
+          targetPieceData = pendingPromotion.options.find(p => p.piece_id === promoteToPieceId);
+        }
         if (!targetPieceData) {
           return socket.emit("error", { message: "Invalid promotion choice" });
         }
+        // The option is authoritative about which player ends up owning the
+        // promoted piece (prevents promoting to an unlisted player).
+        const resolvedTargetPlayer = targetPieceData.promotion_target_player != null
+          ? Number(targetPieceData.promotion_target_player)
+          : promotingOwner;
 
         // Apply the promotion using the shared helper, which loads the piece
         // definition AND the per-game junction overrides (so flags such as
@@ -8110,7 +8152,7 @@ function initializeSocket(server) {
         // are correctly propagated to the promoted piece).
         let promotedPiece;
         try {
-          promotedPiece = await applyPromotionToPiece(gameState, pieceId, promoteToPieceId);
+          promotedPiece = await applyPromotionToPiece(gameState, pieceId, promoteToPieceId, resolvedTargetPlayer);
         } catch (promoErr) {
           console.error('Error applying promotion:', promoErr);
           return socket.emit("error", { message: "Failed to promote piece" });
@@ -8126,8 +8168,14 @@ function initializeSocket(server) {
         // Clear pending promotion
         gameState.pendingPromotion = null;
 
-        // Check if the promoted piece has free_move_after_promotion enabled
-        const hasFreeMoveAfterPromotion = fullPieceData.free_move_after_promotion === 1 || fullPieceData.free_move_after_promotion === true;
+        // Check if the promoted piece has free_move_after_promotion enabled.
+        // A free move only makes sense when the piece still belongs to the
+        // promoting player — if it became the opponent's or a neutral piece,
+        // skip the free move and switch turns normally.
+        const promotedOwner = promotedPiece.player_id != null ? promotedPiece.player_id : (promotedPiece.team || 0);
+        const stillOwnedByPromoter = !promotedPiece.is_neutral && promotedOwner === promotingOwner;
+        const hasFreeMoveAfterPromotion = stillOwnedByPromoter &&
+          (fullPieceData.free_move_after_promotion === 1 || fullPieceData.free_move_after_promotion === true);
         
         if (hasFreeMoveAfterPromotion) {
           // Store that this piece can take a free move (don't switch turns yet)
@@ -12591,10 +12639,20 @@ function attachPromotionToLastMove(gameState, promotedPiece, fallbackPieceId) {
   };
 }
 
-async function applyPromotionToPiece(gameState, pieceId, promoteToPieceId) {  const pieceIndex = gameState.pieces.findIndex(p => p.id === pieceId);
+async function applyPromotionToPiece(gameState, pieceId, promoteToPieceId, promoteToTargetPlayer = null) {  const pieceIndex = gameState.pieces.findIndex(p => p.id === pieceId);
   if (pieceIndex === -1) return null;
 
   const piece = gameState.pieces[pieceIndex];
+
+  // Resolve the player who will OWN the promoted piece. Defaults to the
+  // promoting piece's own side; a per-placement promotion target may instead
+  // hand the piece to another player (cross-player promotion) or to the
+  // neutral side (player 0).
+  const originalOwner = piece.player_id != null ? piece.player_id : (piece.team || piece.player_number || 1);
+  const targetPlayer = (promoteToTargetPlayer != null && Number.isFinite(Number(promoteToTargetPlayer)))
+    ? Number(promoteToTargetPlayer)
+    : originalOwner;
+  const isNeutralTarget = targetPlayer === 0;
 
   const [[fullPieceData]] = await db_pool.query(
     `SELECT * FROM pieces WHERE id = ?`,
@@ -12603,12 +12661,12 @@ async function applyPromotionToPiece(gameState, pieceId, promoteToPieceId) {  co
   if (!fullPieceData) return null;
 
   // Look up per-game junction overrides for this target piece.
-  // Prefer a row matching the same player_number (for symmetric customizations);
+  // Prefer a row matching the target player_number (for symmetric customizations);
   // otherwise fall back to any row for this piece_id in this game type.
   let junctionOverrides = null;
   try {
     if (gameState.gameTypeId) {
-      const playerNum = piece.player_id != null ? piece.player_id : (piece.team || piece.player_number || 1);
+      const playerNum = targetPlayer;
       const [junctionRows] = await db_pool.query(
         `SELECT * FROM game_type_pieces
          WHERE game_type_id = ? AND piece_id = ?
@@ -12631,8 +12689,8 @@ async function applyPromotionToPiece(gameState, pieceId, promoteToPieceId) {  co
     try {
       const images = JSON.parse(imageLocation);
       if (Array.isArray(images) && images.length > 0) {
-        const playerIndex = (piece.player_id != null ? piece.player_id : (piece.team || piece.player_number || 1));
-        const imageIdx = playerIndex === 0 ? 0 : playerIndex - 1;
+        // Image index follows the TARGET player (neutral uses index 0).
+        const imageIdx = isNeutralTarget ? 0 : Math.max(0, targetPlayer - 1);
         const overrideIdx = junctionOverrides && junctionOverrides.image_index != null
           ? junctionOverrides.image_index
           : null;
@@ -12820,6 +12878,13 @@ async function applyPromotionToPiece(gameState, pieceId, promoteToPieceId) {  co
     require_direction_change_capture: fullPieceData.require_direction_change_capture,
     moveCount: 0,
     hasMoved: false,
+    // Ownership of the promoted piece. Cross-player / neutral promotion can
+    // hand the piece to a different player than the one who promoted it.
+    player_id: isNeutralTarget ? 0 : targetPlayer,
+    team: isNeutralTarget ? 0 : targetPlayer,
+    player_number: isNeutralTarget ? 0 : targetPlayer,
+    player: isNeutralTarget ? 0 : targetPlayer,
+    is_neutral: isNeutralTarget,
     // Reset per-placement promotion flags so they cannot carry over from the
     // promoting piece via the ...piece spread above.  The junctionOverrides
     // block below re-applies the TARGET piece's own configuration when a
@@ -12998,35 +13063,56 @@ async function getPromotionOptions(gameState, promotingPiece) {
   // Per-placement override (set in game wizard Step 4 → Promotion Options).
   // Falls back to piece-level default (promotion_pieces_ids on pieces table),
   // then to the full default behaviour when both are null/empty.
+  //
+  // Entries may be plain piece IDs (legacy → own-side promotion) or objects
+  // { id, player } where player is an explicit player number, 0 for neutral,
+  // or null for own-side. Each (id, player) pair becomes its own promotion
+  // option so the same piece type can promote to different players.
   let overrideRaw = promotingPiece.promotion_pieces_override || promotingPiece.promotion_pieces_ids;
-  let overrideIds = null;
+  let overrideEntries = null;
   if (overrideRaw) {
     try {
       const parsed = typeof overrideRaw === 'string' ? JSON.parse(overrideRaw) : overrideRaw;
-      if (Array.isArray(parsed) && parsed.length > 0) overrideIds = parsed.map(Number);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        const entries = [];
+        for (const entry of parsed) {
+          if (entry == null) continue;
+          if (typeof entry === 'object') {
+            const id = Number(entry.id != null ? entry.id : entry.piece_id);
+            if (!Number.isFinite(id)) continue;
+            const rawPlayer = entry.player != null ? entry.player : entry.player_id;
+            const player = rawPlayer == null ? null : Number(rawPlayer);
+            entries.push({ id, player: Number.isFinite(player) ? player : null });
+          } else {
+            const id = Number(entry);
+            if (!Number.isFinite(id)) continue;
+            entries.push({ id, player: null });
+          }
+        }
+        if (entries.length > 0) overrideEntries = entries;
+      }
     } catch (e) {
       console.error('Error parsing promotion_pieces_override:', e);
     }
   }
 
-  if (overrideIds) {
-    // Per-placement override is an explicit allow-list of piece IDs. We still
-    // honor "limit promote to original starting count" gates so a player
-    // can't, e.g., promote to a third king when they started with two.
+  if (overrideEntries) {
+    // Per-placement override is an explicit allow-list. We still honor
+    // "limit promote to original starting count" gates so a player can't,
+    // e.g., promote to a third king when they started with two. Counts are
+    // taken against the player who will OWN the promoted piece (the target).
     const limitCheckmate = !!promotingPiece.limit_promote_checkmate_to_original;
     const limitCapture = !!promotingPiece.limit_promote_capture_to_original;
 
     const sourcePiecesForLimits = gameState.initialPieces || pieces;
-    const countByPieceId = (collection, pid) =>
-      collection.filter(p => parseInt(p.piece_id) === parseInt(pid) && (p.player_id || p.team) === pieceOwner).length;
+    const countByPieceId = (collection, pid, ownerId) =>
+      collection.filter(p => parseInt(p.piece_id) === parseInt(pid) && (p.player_id || p.team) === ownerId).length;
 
     // Build a map of which override pieces have checkmate / capture-loss rules.
-    // Prefer junction-table flags from initialPieces (per-placement), and fall
-    // back to the underlying piece-table flags if the player never started with
-    // that piece type.
+    const overrideIdSet = new Set(overrideEntries.map(e => e.id));
     const ruleFlagsByPieceId = new Map();
     for (const p of sourcePiecesForLimits) {
-      if (!overrideIds.includes(parseInt(p.piece_id))) continue;
+      if (!overrideIdSet.has(parseInt(p.piece_id))) continue;
       const existing = ruleFlagsByPieceId.get(parseInt(p.piece_id)) || { checkmate: false, capture: false };
       if (p.ends_game_on_checkmate) existing.checkmate = true;
       if (p.ends_game_on_capture) existing.capture = true;
@@ -13034,7 +13120,12 @@ async function getPromotionOptions(gameState, promotingPiece) {
     }
 
     const eligiblePieces = [];
-    for (const pieceId of overrideIds) {
+    for (const entry of overrideEntries) {
+      const pieceId = entry.id;
+      // Resolve the target owner: explicit player, 0 = neutral, null = own side.
+      const targetPlayer = entry.player == null ? pieceOwner : entry.player;
+      const isNeutralTarget = targetPlayer === 0;
+
       // Look up rule flags — fall back to the pieces table for IDs not in the
       // starting set so a player can't sidestep the limit by picking a piece
       // type they never owned.
@@ -13054,21 +13145,22 @@ async function getPromotionOptions(gameState, promotingPiece) {
         }
       }
 
-      // Apply limits-to-original gates
-      if (flags.checkmate && limitCheckmate) {
-        const original = countByPieceId(sourcePiecesForLimits, pieceId);
-        const current = countByPieceId(pieces, pieceId);
+      // Apply limits-to-original gates (skipped for neutral targets, which
+      // have no single owner to count against).
+      if (flags.checkmate && limitCheckmate && !isNeutralTarget) {
+        const original = countByPieceId(sourcePiecesForLimits, pieceId, targetPlayer);
+        const current = countByPieceId(pieces, pieceId, targetPlayer);
         if (current >= original) continue;
       }
-      if (flags.capture && limitCapture) {
-        const original = countByPieceId(sourcePiecesForLimits, pieceId);
-        const current = countByPieceId(pieces, pieceId);
+      if (flags.capture && limitCapture && !isNeutralTarget) {
+        const original = countByPieceId(sourcePiecesForLimits, pieceId, targetPlayer);
+        const current = countByPieceId(pieces, pieceId, targetPlayer);
         if (current >= original) continue;
       }
 
       const existingPiece = pieces.find(p => parseInt(p.piece_id) === parseInt(pieceId));
       if (existingPiece) {
-        eligiblePieces.push({ ...existingPiece });
+        eligiblePieces.push({ ...existingPiece, promotion_target_player: targetPlayer });
       } else {
         try {
           const [[pieceData]] = await db_pool.query(
@@ -13079,6 +13171,7 @@ async function getPromotionOptions(gameState, promotingPiece) {
             eligiblePieces.push({
               ...pieceData,
               piece_id: pieceData.id,
+              promotion_target_player: targetPlayer,
               // Remap DB column names to JS conventions used elsewhere
               ratio_movement_1: pieceData.ratio_one_movement,
               ratio_movement_2: pieceData.ratio_two_movement,
@@ -13168,7 +13261,9 @@ async function getPromotionOptions(gameState, promotingPiece) {
       }
     }
 
-    eligiblePieces.push({ ...pieceData });
+    // Default promotion keeps the piece on the promoting player's own side
+    // (neutral promoters stay neutral, pieceOwner === 0).
+    eligiblePieces.push({ ...pieceData, promotion_target_player: pieceOwner });
   }
 
   return eligiblePieces;
@@ -17752,10 +17847,21 @@ async function _processBotTurnInner(io, gameId, gameState, precomputedMove = nul
 
       if (moveResult.promotionEligible && moveResult.promotionEligible.options && moveResult.promotionEligible.options.length > 0) {
 
-        const bestPromo = aiEngine.chooseBestPromotion(moveResult.promotionEligible.options);
+        // Prefer promotion options that keep the piece on the bot's own side —
+        // cross-player / neutral targets would hand material to the opponent.
+        const promoPieceForBot = gameState.pieces.find(p => p.id === moveResult.promotionEligible.pieceId);
+        const botPromoOwner = promoPieceForBot
+          ? (promoPieceForBot.player_id != null ? promoPieceForBot.player_id : (promoPieceForBot.team || promoPieceForBot.player_number || 1))
+          : null;
+        const ownSideOptions = botPromoOwner != null
+          ? moveResult.promotionEligible.options.filter(o => o.promotion_target_player == null || Number(o.promotion_target_player) === Number(botPromoOwner))
+          : moveResult.promotionEligible.options;
+        const botPromoOptions = ownSideOptions.length > 0 ? ownSideOptions : moveResult.promotionEligible.options;
+
+        const bestPromo = aiEngine.chooseBestPromotion(botPromoOptions);
         if (bestPromo && bestPromo.piece_id) {
           try {
-            const promoted = await applyPromotionToPiece(gameState, moveResult.promotionEligible.pieceId, bestPromo.piece_id);
+            const promoted = await applyPromotionToPiece(gameState, moveResult.promotionEligible.pieceId, bestPromo.piece_id, bestPromo.promotion_target_player);
             if (promoted) {
               attachPromotionToLastMove(gameState, promoted);
               console.log(`[Bot] Auto-promoted to ${promoted.piece_name} in game ${gameId}`);
@@ -18259,7 +18365,7 @@ async function _processBotTurnInner(io, gameId, gameState, precomputedMove = nul
                 const pmAutoChoice = premoveResult.promotionEligible.options[0];
                 console.log(`[Bot] Auto-promoting premove piece ${premoveResult.promotionEligible.pieceId} to ${pmAutoChoice.piece_name} (only 1 option)`);
 
-                const pmPromotedPiece = await applyPromotionToPiece(gameState, premoveResult.promotionEligible.pieceId, pmAutoChoice.piece_id);
+                const pmPromotedPiece = await applyPromotionToPiece(gameState, premoveResult.promotionEligible.pieceId, pmAutoChoice.piece_id, pmAutoChoice.promotion_target_player);
                 gameState.pendingPromotion = null;
 
                 if (pmPromotedPiece) {

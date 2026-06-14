@@ -690,7 +690,11 @@ const GameTypeView = () => {
                   const v = typeof placement.promotion_pieces_override === 'string'
                     ? JSON.parse(placement.promotion_pieces_override)
                     : placement.promotion_pieces_override;
-                  if (Array.isArray(v)) v.forEach(id => { if (id != null) pieceIds.add(Number(id)); });
+                  if (Array.isArray(v)) v.forEach(entry => {
+                    // Entries may be plain IDs (legacy) or { id, player } objects.
+                    const id = (entry != null && typeof entry === 'object') ? (entry.id ?? entry.piece_id) : entry;
+                    if (id != null) pieceIds.add(Number(id));
+                  });
                 } catch { /* ignore */ }
               }
             });
@@ -2005,24 +2009,44 @@ const GameTypeView = () => {
             const pd = pieceDataMap[pid] || placement;
             const pieceName = pd.piece_name || placement.piece_name || 'Unknown Piece';
 
-            // Parse override
-            let overrideIds = null;
+            // Parse override — entries are plain IDs (legacy → own side) or
+            // { id, player } objects (per-player / neutral promotion targets).
+            let overrideEntries = null;
             if (placement.promotion_pieces_override) {
               try {
                 const parsed = typeof placement.promotion_pieces_override === 'string'
                   ? JSON.parse(placement.promotion_pieces_override)
                   : placement.promotion_pieces_override;
-                if (Array.isArray(parsed) && parsed.length > 0) overrideIds = parsed.map(Number);
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                  overrideEntries = parsed.map(entry => {
+                    if (entry != null && typeof entry === 'object') {
+                      const id = Number(entry.id ?? entry.piece_id);
+                      const rawPlayer = entry.player ?? entry.player_id;
+                      const player = rawPlayer == null ? null : Number(rawPlayer);
+                      return Number.isFinite(id) ? { id, player } : null;
+                    }
+                    const id = Number(entry);
+                    return Number.isFinite(id) ? { id, player: null } : null;
+                  }).filter(Boolean);
+                  if (overrideEntries.length === 0) overrideEntries = null;
+                }
               } catch (e) { /* ignore */ }
             }
 
             let promotesTo;
-            if (overrideIds) {
-              promotesTo = overrideIds.map(pid2 => {
-                const pd2 = pieceDataMap[pid2];
-                const name = pd2?.piece_name || `Piece #${pid2}`;
-                if (pd2?.piece_name) promotionTargetLinks.set(pd2.piece_name, pid2);
-                return `**${name}**`;
+            if (overrideEntries) {
+              const promoterPlayer = placement.player_id;
+              promotesTo = overrideEntries.map(entry => {
+                const pd2 = pieceDataMap[entry.id];
+                const name = pd2?.piece_name || `Piece #${entry.id}`;
+                if (pd2?.piece_name) promotionTargetLinks.set(pd2.piece_name, entry.id);
+                // Note the owner when the target is not the promoting player's
+                // own side (cross-player or neutral promotion).
+                let ownerNote = '';
+                if (entry.player != null && entry.player !== promoterPlayer) {
+                  ownerNote = entry.player === 0 ? ' _(neutral)_' : ` _(Player ${entry.player})_`;
+                }
+                return `**${name}**${ownerNote}`;
               }).join(', ');
             } else {
               // Default promotion: list every eligible starting piece type for this
@@ -2079,7 +2103,7 @@ const GameTypeView = () => {
         }
       }
 
-      promoContent += `\n\n**Promotion Rules:**\n• Move a promotable piece onto a promotion square\n• Choose which piece to transform into\n• The promoted piece keeps the same position and player ownership\n• When a "limit to original count" rule applies, the relevant piece is hidden from the promotion modal once the player already owns the original starting count`;
+      promoContent += `\n\n**Promotion Rules:**\n• Move a promotable piece onto a promotion square\n• Choose which piece to transform into\n• The promoted piece keeps the same position. It normally keeps the same player ownership, but a customized promotion option can hand the piece to another player or make it neutral — the promotion modal shows one image per target, and choosing an opponent's or neutral target transfers control accordingly (a neutral piece is controlled by all players)\n• When a "limit to original count" rule applies, the relevant piece is hidden from the promotion modal once the player already owns the original starting count`;
 
       // Extra note for simul-turns + promotion games: explains how the
       // royal-cap rule plays out when a royal was captured this round.

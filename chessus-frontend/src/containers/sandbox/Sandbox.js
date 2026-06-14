@@ -15,6 +15,7 @@ import NumberInput from "../../components/common/NumberInput";
 import { applySvgStretchBackground } from "../../helpers/svgStretchUtils";
 import SquareHighlightOverlay from "../../components/common/SquareHighlightOverlay";
 import { handlePieceImageError } from "../../utils/pieceFallback";
+import { normalizePromotionOverride } from "../../helpers/promotionOverride";
 
 /* eslint-disable react-hooks/exhaustive-deps */
 
@@ -4317,17 +4318,18 @@ const Sandbox = () => {
         const sb = sandboxes.find(s => s.id === promotionPending.sandboxId);
         if (!sb) return null;
         const movedPiece = sb.pieces.find(p => p.id === promotionPending.pieceId);
-        // Determine promotion candidates
+        const promoterPlayer = movedPiece?.player_id ?? movedPiece?.team ?? 1;
+        // Determine promotion candidates. Each candidate carries a
+        // promotion_target_player describing which side it becomes when chosen
+        // (own side, opponent, or neutral).
         let candidates = [];
         if (movedPiece?.promotion_pieces_override) {
-          try {
-            const ids = typeof movedPiece.promotion_pieces_override === 'string'
-              ? JSON.parse(movedPiece.promotion_pieces_override)
-              : movedPiece.promotion_pieces_override;
-            if (Array.isArray(ids)) {
-              candidates = ids.map(id => fullPiecesList.find(p => p.piece_id === id || p.id === id)).filter(Boolean);
-            }
-          } catch (_) { /* ignore */ }
+          const entries = normalizePromotionOverride(movedPiece.promotion_pieces_override);
+          candidates = entries.map(entry => {
+            const full = fullPiecesList.find(p => p.piece_id === entry.id || p.id === entry.id);
+            if (!full) return null;
+            return { ...full, promotion_target_player: entry.player == null ? promoterPlayer : entry.player };
+          }).filter(Boolean);
         }
         if (candidates.length === 0) {
           // Fallback: all pieces from the same game-type (pieces_string), excluding the moved one
@@ -4345,13 +4347,15 @@ const Sandbox = () => {
             if (seen.has(pid)) continue;
             seen.add(pid);
             const full = fullPiecesList.find(p => p.piece_id === pid || p.id === pid);
-            if (full && full.piece_id !== movedPiece?.piece_id) candidates.push(full);
+            if (full && full.piece_id !== movedPiece?.piece_id) candidates.push({ ...full, promotion_target_player: promoterPlayer });
           }
         }
-        if (candidates.length === 0) candidates = fullPiecesList.slice(0, 12);
+        if (candidates.length === 0) candidates = fullPiecesList.slice(0, 12).map(c => ({ ...c, promotion_target_player: promoterPlayer }));
 
         const applyPromotion = (chosen) => {
           if (chosen && movedPiece) {
+            const targetPlayer = chosen.promotion_target_player != null ? Number(chosen.promotion_target_player) : promoterPlayer;
+            const isNeutralTarget = targetPlayer === 0;
             const normalized = {
               ...chosen,
               ratio_movement_1: chosen.ratio_movement_1 || chosen.ratio_one_movement,
@@ -4370,8 +4374,11 @@ const Sandbox = () => {
                   id: p.id,
                   x: p.x,
                   y: p.y,
-                  team: p.team,
-                  player_id: p.player_id,
+                  // Ownership follows the chosen promotion target (cross-player
+                  // / neutral promotion transfers control).
+                  team: isNeutralTarget ? 0 : targetPlayer,
+                  player_id: isNeutralTarget ? 0 : targetPlayer,
+                  is_neutral: isNeutralTarget,
                   move_count: p.move_count,
                   current_hp: chosen.hit_points ?? p.current_hp,
                   piece_id: chosen.piece_id || chosen.id,
@@ -4393,24 +4400,35 @@ const Sandbox = () => {
               </div>
               <div style={{ padding: '0.75rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))', gap: '0.5rem' }}>
                 {candidates.map(c => {
+                  const targetPlayer = c.promotion_target_player != null ? Number(c.promotion_target_player) : promoterPlayer;
                   let imgSrc = '';
                   try {
                     const loc = c.image_location;
                     if (loc) {
                       const parsed = typeof loc === 'string' ? JSON.parse(loc) : loc;
-                      const first = Array.isArray(parsed) ? parsed[0] : parsed;
-                      imgSrc = first?.startsWith('http') ? first : `${ASSET_URL}${first}`;
+                      if (Array.isArray(parsed) && parsed.length > 0) {
+                        const idx = targetPlayer === 0 ? 0 : Math.min(Math.max(0, targetPlayer - 1), parsed.length - 1);
+                        const sel = parsed[idx] || parsed[0];
+                        imgSrc = sel?.startsWith('http') ? sel : `${ASSET_URL}${sel}`;
+                      } else {
+                        const first = Array.isArray(parsed) ? parsed[0] : parsed;
+                        imgSrc = first?.startsWith('http') ? first : `${ASSET_URL}${first}`;
+                      }
                     }
                   } catch (_) { /* ignore */ }
+                  const ownerBadge = targetPlayer !== promoterPlayer
+                    ? (targetPlayer === 0 ? 'Neutral' : `Player ${targetPlayer}`)
+                    : null;
                   return (
                     <button
-                      key={c.piece_id || c.id}
+                      key={`${c.piece_id || c.id}-${targetPlayer}`}
                       onClick={() => applyPromotion(c)}
                       style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '0.5rem', background: 'none', border: '1px solid #555', borderRadius: 4, cursor: 'pointer', color: 'inherit' }}
                     >
                       {imgSrc && <img src={imgSrc} alt={c.piece_name} style={{ width: 48, height: 48, objectFit: 'contain' }}
-                        onError={(e) => handlePieceImageError(e, c.piece_name, movedPiece?.player_id || 1)} />}
+                        onError={(e) => handlePieceImageError(e, c.piece_name, targetPlayer || 1)} />}
                       <span style={{ fontSize: 12, marginTop: 4 }}>{c.piece_name}</span>
+                      {ownerBadge && <span style={{ fontSize: 10, marginTop: 2, padding: '1px 5px', borderRadius: 8, background: 'rgba(117,124,252,0.3)' }}>{ownerBadge}</span>}
                     </button>
                   );
                 })}

@@ -12,18 +12,24 @@ const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";
  * @param {Function} props.onCancel - Callback when promotion is cancelled
  */
 const PromotionModal = ({ promotionOptions, promotingPiece, onSelect, onCancel, onMinimize }) => {
-  // Helper to get image URL
+  // Helper to get image URL for a piece, honoring the option's target player
+  // (cross-player / neutral promotion shows that player's coloured image).
   const getImageUrl = (piece) => {
+    // The player whose image should be shown. Falls back to the promoting
+    // piece's player for legacy/own-side options.
+    const targetPlayer = piece.promotion_target_player != null
+      ? piece.promotion_target_player
+      : (promotingPiece.player_id || promotingPiece.team || 1);
     // Check if image is an array (from image_location)
     if (piece.image_location) {
       try {
         const images = JSON.parse(piece.image_location);
         if (Array.isArray(images) && images.length > 0) {
-          // Use player position to select correct image (0 = player 1, 1 = player 2),
-          // unless a per-placement image_index override is set on the piece.
-          const playerIndex = (promotingPiece.player_id || promotingPiece.team || 1) - 1;
+          // Neutral (0) uses index 0; player N uses index N-1, unless a
+          // per-placement image_index override is set on the piece.
+          const playerIndex = targetPlayer === 0 ? 0 : Math.max(0, targetPlayer - 1);
           const overrideIdx = (piece.image_index != null && piece.image_index >= 0) ? piece.image_index : null;
-          const idx = overrideIdx != null ? Math.min(overrideIdx, images.length - 1) : playerIndex;
+          const idx = overrideIdx != null ? Math.min(overrideIdx, images.length - 1) : Math.min(playerIndex, images.length - 1);
           const imagePath = images[idx] || images[0];
           if (imagePath.startsWith('http')) {
             return imagePath;
@@ -44,6 +50,15 @@ const PromotionModal = ({ promotionOptions, promotingPiece, onSelect, onCancel, 
     }
     
     return null;
+  };
+
+  // Owner badge label for cross-player / neutral promotion options. Returns
+  // null when the option just promotes to the promoting player's own side.
+  const getOwnerBadge = (piece) => {
+    const promoterPlayer = promotingPiece.player_id || promotingPiece.team || 1;
+    const target = piece.promotion_target_player;
+    if (target == null || target === promoterPlayer) return null;
+    return target === 0 ? 'Neutral' : `Player ${target}`;
   };
 
   // Check if there are no valid promotion options
@@ -73,12 +88,13 @@ const PromotionModal = ({ promotionOptions, promotingPiece, onSelect, onCancel, 
         <div className={styles["promotion-options"]}>
           {promotionOptions.map((piece, index) => {
             const imageUrl = getImageUrl(piece);
+            const ownerBadge = getOwnerBadge(piece);
             return (
               <button
-                key={piece.id || piece.piece_id || index}
+                key={`${piece.id || piece.piece_id || index}-${piece.promotion_target_player ?? 'own'}`}
                 className={styles["promotion-option"]}
                 onClick={() => onSelect(piece)}
-                title={piece.piece_name || 'Piece'}
+                title={ownerBadge ? `${piece.piece_name || 'Piece'} (${ownerBadge})` : (piece.piece_name || 'Piece')}
               >
                 {imageUrl ? (
                   <img 
@@ -90,6 +106,9 @@ const PromotionModal = ({ promotionOptions, promotingPiece, onSelect, onCancel, 
                   <span className={styles["piece-name"]}>{piece.piece_name || '?'}</span>
                 )}
                 <span className={styles["piece-label"]}>{piece.piece_name || 'Unknown'}</span>
+                {ownerBadge && (
+                  <span className={styles["promotion-owner-badge"]}>{ownerBadge}</span>
+                )}
               </button>
             );
           })}

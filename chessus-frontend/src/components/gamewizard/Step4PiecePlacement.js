@@ -13,6 +13,7 @@ import {
 } from "../../helpers/pieceMovementUtils";
 
 import { applySvgStretchBackground } from "../../helpers/svgStretchUtils";
+import { remapPromotionOverridePlayers } from "../../helpers/promotionOverride";
 import FairyStockfishInfoNote from "../common/FairyStockfishInfoNote";
 import InfoTooltip from "../piecewizard/InfoTooltip";
 import useUndoStack from "../../hooks/useUndoStack";
@@ -1552,9 +1553,13 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
         piece_width: pw,
         piece_height: ph,
         player_id: targetPlayerId,
-        // Promotion options mirror as-is (player-agnostic)
+        // Promotion options: swap player references so own-side/opponent targets
+        // mirror correctly to the target side (neutral and own-side stay as-is).
         disable_promotion: sourcePiece.disable_promotion || false,
-        promotion_pieces_override: sourcePiece.promotion_pieces_override ?? null,
+        promotion_pieces_override: remapPromotionOverridePlayers(
+          sourcePiece.promotion_pieces_override ?? null,
+          { [Number(sourcePlayerId)]: Number(targetPlayerId), [Number(targetPlayerId)]: Number(sourcePlayerId) }
+        ),
         can_promote_to_checkmate: sourcePiece.can_promote_to_checkmate || false,
         limit_promote_checkmate_to_original: sourcePiece.limit_promote_checkmate_to_original || false,
         can_promote_to_capture: sourcePiece.can_promote_to_capture || false,

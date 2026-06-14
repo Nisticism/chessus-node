@@ -160,13 +160,23 @@ async function exportGameRules(gameTypeId) {
     p.limit_promote_capture_to_original ? 1 : 0,
     p.disable_promotion ? 1 : 0,
     (() => {
-      // Normalize promotion_pieces_override: sorted IDs so order doesn't
-      // create spurious virtual template splits.
+      // Normalize promotion_pieces_override into a stable signature. Entries
+      // may be plain IDs (legacy) or { id, player } objects (per-player /
+      // neutral promotion). Encode id:player so distinct owner configs don't
+      // merge into the same virtual template.
       let raw = p.promotion_pieces_override;
       if (!raw) return '';
       if (typeof raw === 'string') { try { raw = JSON.parse(raw); } catch (e) { return ''; } }
       if (!Array.isArray(raw) || raw.length === 0) return '';
-      return [...raw].map(Number).sort((a, b) => a - b).join(',');
+      return raw.map(entry => {
+        if (entry != null && typeof entry === 'object') {
+          const id = Number(entry.id != null ? entry.id : entry.piece_id);
+          const player = entry.player != null ? Number(entry.player) : '';
+          return Number.isFinite(id) ? `${id}:${player}` : '';
+        }
+        const id = Number(entry);
+        return Number.isFinite(id) ? `${id}:` : '';
+      }).filter(Boolean).sort().join(',');
     })(),
   ].join('|');
 
@@ -263,7 +273,12 @@ async function exportGameRules(gameTypeId) {
   const parseIds = (raw) => {
     if (!raw) return [];
     if (typeof raw === 'string') { try { raw = JSON.parse(raw); } catch (e) { return []; } }
-    return Array.isArray(raw) ? raw.map(Number).filter(Number.isFinite) : [];
+    if (!Array.isArray(raw)) return [];
+    // Entries may be plain IDs (legacy) or { id, player } objects.
+    return raw.map(entry => {
+      const id = (entry != null && typeof entry === 'object') ? (entry.id != null ? entry.id : entry.piece_id) : entry;
+      return Number(id);
+    }).filter(Number.isFinite);
   };
   for (const p of pieces) {
     for (const rid of parseIds(p.promotion_pieces_override)) {

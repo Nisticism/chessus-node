@@ -853,16 +853,34 @@ const getPiecesForGameType = async (gameTypeId) => {
  * @returns {Promise<Object>} Insert result
  */
 const addPieceToGameType = async (gameTypeId, pieceId, x, y, playerNumber = 1, endsGameOnCheckmate = false, endsGameOnCapture = false, manualCastlingPartners = false, castlingPartnerLeftKey = null, castlingPartnerRightKey = null, canControlSquares = false, castlingDistance = 2, hitPoints = 1, attackDamage = 1, showHpAd = false, hpRegen = 0, cannotBeCaptured = false, showRegen = false, burnDamage = 0, burnDuration = 0, showBurn = false, trample = false, trampleRadius = 0, ghostwalk = false, dieOnCapture = false, attackRadius = 0, imageIndex = null, promotionPiecesOverride = null, canPromoteToCheckmate = false, limitPromoteCheckmateToOriginal = false, canPromoteToCapture = false, limitPromoteCaptureToOriginal = false, capturePointsGain = 0, capturePointsLoss = 0, cannotMoveOutsideZone = false, isNeutral = false, dieOnCaptureGrantsWin = false, disablePromotion = false) => {
-  // Normalize promotionPiecesOverride: accept null, JSON string, or array
+  // Normalize promotionPiecesOverride: accept null, JSON string, or array.
+  // Entries may be plain piece IDs (legacy → own-side promotion) or objects
+  // { id, player } where player is a player number, 0 for neutral, or null
+  // for own-side. We preserve the object form so per-player promotion targets
+  // survive a round-trip.
   let promoOverrideJson = null;
   if (promotionPiecesOverride != null) {
+    let arr = promotionPiecesOverride;
     if (typeof promotionPiecesOverride === 'string') {
-      try {
-        const parsed = JSON.parse(promotionPiecesOverride);
-        if (Array.isArray(parsed) && parsed.length > 0) promoOverrideJson = JSON.stringify(parsed.map(Number));
-      } catch (e) { /* ignore malformed */ }
-    } else if (Array.isArray(promotionPiecesOverride) && promotionPiecesOverride.length > 0) {
-      promoOverrideJson = JSON.stringify(promotionPiecesOverride.map(Number));
+      try { arr = JSON.parse(promotionPiecesOverride); } catch (e) { arr = null; }
+    }
+    if (Array.isArray(arr) && arr.length > 0) {
+      const normalized = [];
+      for (const entry of arr) {
+        if (entry == null) continue;
+        if (typeof entry === 'object') {
+          const id = Number(entry.id != null ? entry.id : entry.piece_id);
+          if (!Number.isFinite(id)) continue;
+          const rawPlayer = entry.player != null ? entry.player : entry.player_id;
+          const player = rawPlayer == null ? null : Number(rawPlayer);
+          normalized.push({ id, player: Number.isFinite(player) ? player : null });
+        } else {
+          const id = Number(entry);
+          if (!Number.isFinite(id)) continue;
+          normalized.push({ id, player: null });
+        }
+      }
+      if (normalized.length > 0) promoOverrideJson = JSON.stringify(normalized);
     }
   }
   const result = await query(`
