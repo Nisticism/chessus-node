@@ -60,7 +60,13 @@ const Login = (props) => {
     dispatch(login(username, password))
       .then(() => {
         trackLogin('email');
-        navigate(`/profile/${username}`);
+        // Hard redirect (not client-side navigate) so the destination page is
+        // loaded fresh with the correct COOP/COEP headers. /login is served
+        // with unsafe-none COOP/COEP for the Google Sign-In popup flow; game
+        // pages need COOP same-origin so SharedArrayBuffer (and Fairy
+        // Stockfish) is available. A client-side navigate() would keep the
+        // no-isolation policy for the rest of the session and break the engine.
+        window.location.href = `/profile/${username}`;
       })
       .catch(() => {
         setLoading(false);

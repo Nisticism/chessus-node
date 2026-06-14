@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import { useNavigate, Link } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { isEmail } from "validator";
 import { register, login, googleLogin } from "../../actions/auth";
 import { GoogleLogin } from "@react-oauth/google";
@@ -60,7 +60,6 @@ const Register = () => {
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const { message } = useSelector(state => state.message);
   const dispatch = useDispatch();
-  const navigate = useNavigate();
 
   // If this page was reached via client-side (React Router) navigation from a
   // cross-origin-isolated page (e.g. a game page that uses Fairy Stockfish),
@@ -114,7 +113,13 @@ const Register = () => {
         trackRegistration('email');
         dispatch(login(username, password))
         .then(() => {
-          navigate("/profile/" + username);
+          // Hard redirect (not client-side navigate) so the destination page
+          // is loaded fresh with the correct COOP/COEP headers. /register is
+          // served with unsafe-none COOP/COEP for the Google Sign-In popup
+          // flow; game pages need COOP same-origin so SharedArrayBuffer (and
+          // Fairy Stockfish) is available. A client-side navigate() would keep
+          // the no-isolation policy for the rest of the session.
+          window.location.href = `/profile/${username}`;
         })
       })
       .catch(() => {

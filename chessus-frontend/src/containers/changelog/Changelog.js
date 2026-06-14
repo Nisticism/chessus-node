@@ -14,6 +14,7 @@ const changelogData = [
       "These per-player promotion options save and persist correctly across game edits, and are reflected in the sandbox tester.",
       "Fixed: in games with tight starting formations (pieces from both players on adjacent rows), the first move always required drag-and-drop; click-to-move would silently re-select the enemy piece instead of executing the capture. The guard that distinguishes 'click enemy piece to see its moves' from 'click enemy square to capture' now applies correctly before the first move is made.",
       "Fixed: copying in-game chat messages would omit the colon after the sender's username (it was rendered as a CSS pseudo-element). The colon is now part of the actual text and is fully selectable and copyable.",
+      "Fixed: the in-browser Fairy Stockfish bot could fail to start (falling back to the standard AI) after logging in or registering with email/password. The post-login redirect now reloads the page so the browser feature it needs (cross-origin isolation) is correctly enabled. Game pages also self-heal with a one-time reload if they detect the feature is missing.",
     ],
   },
   {

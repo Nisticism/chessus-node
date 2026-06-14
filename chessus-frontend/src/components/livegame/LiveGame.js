@@ -851,6 +851,27 @@ const LiveGame = () => {
   const isFairyClientBot = !!gameState?.botPlayer
     && gameState.botPlayer.difficulty === 'stockfish';
   const fairyStockfish = useFairyStockfish();
+
+  // Cross-origin isolation safety net: Fairy Stockfish needs SharedArrayBuffer,
+  // which is only available when the document was loaded with COOP same-origin +
+  // COEP headers (window.crossOriginIsolated === true). Game pages ARE served
+  // with those headers, but if the user reached this page via client-side SPA
+  // navigation from a non-isolated page (e.g. /login, served with unsafe-none),
+  // the isolation state from that original load sticks for the whole session.
+  // A single hard reload of THIS page re-fetches it with the correct headers.
+  // Guard with sessionStorage so we never loop if the server genuinely lacks
+  // the headers.
+  useEffect(() => {
+    if (!isFairyClientBot) return;
+    if (typeof window === 'undefined') return;
+    if (window.crossOriginIsolated) return;
+    const reloadKey = `coi-reload-${gameId}`;
+    if (sessionStorage.getItem(reloadKey)) return; // already tried once
+    sessionStorage.setItem(reloadKey, '1');
+    console.warn('[FairyStockfish] Page is not cross-origin isolated; reloading once to pick up COOP/COEP headers so SharedArrayBuffer is available.');
+    window.location.reload();
+  }, [isFairyClientBot, gameId]);
+
   const [fairyTranslation, setFairyTranslation] = useState(null); // { variantIni, variantName, charMap, boardWidth, boardHeight }
   const fairyStartedForRef = useRef(null); // gameTypeId we've already booted the engine for
   const fairyMoveInFlightRef = useRef(false);
