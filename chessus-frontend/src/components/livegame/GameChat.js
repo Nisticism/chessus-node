@@ -203,7 +203,7 @@ const GameChat = ({ gameId, currentUser, gameState, isPlayer, onUpdatePreference
                 }`}
               >
                 <span className={styles["chat-sender"]}>
-                  {msg.senderId === currentUser?.id ? "You" : msg.senderUsername}
+                  {msg.senderId === currentUser?.id ? "You" : msg.senderUsername}:
                 </span>
                 <span className={styles["chat-text"]}>{msg.content}</span>
               </div>

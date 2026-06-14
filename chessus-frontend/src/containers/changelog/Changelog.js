@@ -5,13 +5,15 @@ import styles from "./changelog.module.scss";
 const changelogData = [
   {
     date: "June 13, 2026",
-    title: "Promote to another player's or neutral pieces",
+    title: "Promote to another player's or neutral pieces; click-to-move fix; chat copy fix",
     items: [
       "Game wizard: when customizing a piece's promotion options (Step 4 → Promotion Options), you can now choose which player a promotion target becomes. A new owner selector (Player 1, Player 2, …, or Neutral) lets you add the same piece type once per side. By default targets promote to your own side, but you can now let a piece promote into an opponent's piece or a neutral piece. The selected-pieces summary and picker show each target with the correct player-colored image and an owner badge.",
       "In-game: the promotion modal now shows one image per piece per target player. Choosing a target that belongs to another player immediately transfers that piece's control to them; choosing a neutral target makes the piece neutral (controlled by all players), just like other neutral pieces.",
       "Mirror Pieces now swaps the owner references inside custom promotion options so a mirrored piece promotes to the correct side. Fill Row continues to copy promotion options to every square it fills.",
       "Game detail page: the Promotion section now describes cross-player and neutral promotion targets, noting which player each customized target becomes.",
       "These per-player promotion options save and persist correctly across game edits, and are reflected in the sandbox tester.",
+      "Fixed: in games with tight starting formations (pieces from both players on adjacent rows), the first move always required drag-and-drop; click-to-move would silently re-select the enemy piece instead of executing the capture. The guard that distinguishes 'click enemy piece to see its moves' from 'click enemy square to capture' now applies correctly before the first move is made.",
+      "Fixed: copying in-game chat messages would omit the colon after the sender's username (it was rendered as a CSS pseudo-element). The colon is now part of the actual text and is fully selectable and copyable.",
     ],
   },
   {

@@ -3859,8 +3859,13 @@ const LiveGame = () => {
     );
     
     // If clicking on opponent's piece, clear selection and return
-    // Unless a valid capture move overlaps with this enemy piece's footprint
-    if (clickedPiece && !isOwnPiece && !isPreviewMode) {
+    // Unless a valid capture move overlaps with this enemy piece's footprint.
+    // Apply even in preview/ready mode when a piece is already selected — without
+    // this, the first move of the game (which keeps status='ready' until the server
+    // processes it) re-selects the enemy piece instead of executing a capture.
+    // In preview mode with NO selected piece, we skip the guard so players can still
+    // click enemy pieces to see their moves.
+    if (clickedPiece && !isOwnPiece && (!isPreviewMode || selectedPiece)) {
       let hasCaptureForEnemy = false;
       if (selectedPiece) {
         const spw = selectedPiece.piece_width || 1;
