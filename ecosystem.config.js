@@ -95,6 +95,22 @@ module.exports = {
         ...(process.env.JWT_SECRET    && { JWT_SECRET:            process.env.JWT_SECRET }),
         ...(process.env.REMOTE_TRAINER_URL     && { REMOTE_TRAINER_URL:     process.env.REMOTE_TRAINER_URL }),
         ...(process.env.TRAINER_SHARED_SECRET  && { TRAINER_SHARED_SECRET:  process.env.TRAINER_SHARED_SECRET }),
+      },
+      // env_production mirrors env — PM2 uses this when you run with `--env production`
+      env_production: {
+        NODE_ENV: "production",
+        NODE_OPTIONS: "--max-old-space-size=900",
+        VERBOSE_GAME_LOG: process.env.VERBOSE_GAME_LOG || "0",
+        ...(process.env.DB_HOST       && { DB_HOST:               process.env.DB_HOST }),
+        ...(process.env.DB_USER       && { DB_USER:               process.env.DB_USER }),
+        ...(process.env.DB_PASSWORD   && { DB_PASSWORD:           process.env.DB_PASSWORD }),
+        ...(process.env.DB_NAME       && { DB_NAME:               process.env.DB_NAME }),
+        ...(process.env.DB_PORT       && { DB_PORT:               process.env.DB_PORT }),
+        ...(process.env.UPLOADS_DIR   && { UPLOADS_DIR:           process.env.UPLOADS_DIR }),
+        ...(process.env.FRONTEND_EC2_URL && { FRONTEND_EC2_URL:    process.env.FRONTEND_EC2_URL }),
+        ...(process.env.JWT_SECRET    && { JWT_SECRET:            process.env.JWT_SECRET }),
+        ...(process.env.REMOTE_TRAINER_URL     && { REMOTE_TRAINER_URL:     process.env.REMOTE_TRAINER_URL }),
+        ...(process.env.TRAINER_SHARED_SECRET  && { TRAINER_SHARED_SECRET:  process.env.TRAINER_SHARED_SECRET }),
       }
     }
   ]
