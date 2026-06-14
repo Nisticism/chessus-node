@@ -445,6 +445,11 @@ function buildOtherData(gameState, extraFields = {}) {
     // Persist the pending draw offer so it survives a server restart.
     ...(gameState.pendingDrawOffer ? { pendingDrawOffer: gameState.pendingDrawOffer } : {}),
     ...(gameState.repositionPhase ? { repositionPhase: gameState.repositionPhase } : {}),
+    // Persist correspondence deadline so it survives server restarts. Without
+    // this, every restart resets the clock to "now + full window", allowing a
+    // player to avoid timing out simply by waiting for a deploy.
+    ...(gameState.moveDeadline != null ? { moveDeadline: gameState.moveDeadline } : {}),
+    ...(gameState.lastMoveTime != null ? { lastMoveTime: gameState.lastMoveTime } : {}),
     ...extraFields
   });
 }
@@ -9531,11 +9536,16 @@ function initializeSocket(server) {
               } catch (_) {}
             }
             // If still missing (brand-new game, first move not yet made), anchor to
-            // now + full window so the clock starts ticking from this point.
+            // game start time + full window — NOT Date.now(). Using Date.now() here
+            // would reset the clock on every restart, letting a player avoid timeout
+            // by waiting for a deploy.
             if (!gameState.moveDeadline) {
               const allowedMs = gameState.correspondenceDays * 24 * 60 * 60 * 1000;
-              gameState.moveDeadline = Date.now() + allowedMs;
-              gameState.lastMoveTime = Date.now();
+              const anchor = gameState.startTime
+                ? new Date(gameState.startTime).getTime()
+                : Date.now();
+              gameState.moveDeadline = anchor + allowedMs;
+              gameState.lastMoveTime = anchor;
               try {
                 await db_pool.query(
                   'UPDATE games SET other_data = ? WHERE id = ?',
