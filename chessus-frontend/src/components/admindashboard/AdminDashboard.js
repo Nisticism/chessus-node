@@ -63,7 +63,7 @@ const AdminDashboard = () => {
   const [promoteLevel, setPromoteLevel] = useState(1);
   
   // Featured games states
-  const [featuredGames, setFeaturedGames] = useState([null, null, null]); // 3 slots
+  const [featuredGames, setFeaturedGames] = useState(Array(9).fill(null)); // 9 slots
   const [availableGames, setAvailableGames] = useState([]);
   const [featuredLoading, setFeaturedLoading] = useState(false);
 
@@ -625,10 +625,10 @@ const AdminDashboard = () => {
       );
       const { featured, allGames } = response.data;
       
-      // Build the 3 slots array
-      const slots = [null, null, null];
+      // Build the 9 slots array
+      const slots = Array(9).fill(null);
       featured.forEach(game => {
-        if (game.featured_order >= 1 && game.featured_order <= 3) {
+        if (game.featured_order >= 1 && game.featured_order <= 9) {
           slots[game.featured_order - 1] = game;
         }
       });
@@ -1768,12 +1768,12 @@ const AdminDashboard = () => {
     <div className={styles["featured-container"]}>
       <h2 style={{ marginBottom: '20px', color: 'var(--accent-primary)' }}>Featured Games on Homepage</h2>
       <p style={{ marginBottom: '30px', color: 'var(--text-dim)' }}>
-        Select up to 3 games to feature on the homepage. These games will be displayed in the "Explore the Grove" section.
-        Leave a slot empty to fall back to popular games.
+        Select up to 9 games to feature on the homepage. These games will be displayed in the "Explore the Grove" section above the popular games.
+        Leave a slot empty to fall back to popular games. Slots are shown in a 3&times;3 grid on the home page.
       </p>
       
       <div className={styles["featured-slots"]}>
-        {[0, 1, 2].map(slotIndex => (
+        {Array.from({length: 9}, (_, i) => i).map(slotIndex => (
           <div key={slotIndex} className={styles["featured-slot"]}>
             <label>Slot {slotIndex + 1}</label>
             <select
