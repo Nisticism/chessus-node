@@ -19471,6 +19471,7 @@ module.exports = {
   userSockets,
   reconcileOnlineUsers,
   getIO,
+  invalidateLobbyCache,
   // Pure game logic functions (used by AI engine)
   getPossibleMovesForPiece,
   getAllLegalMovesForPlayer,

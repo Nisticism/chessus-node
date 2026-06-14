@@ -3836,6 +3836,25 @@ const runMigrations = async () => {
     console.error('Error creating idx_games_status_start_time:', err.message);
   }
 
+  // Add composite index on games(is_correspondence, status) so the hourly
+  // correspondence expiry/low-time pollers can filter to just correspondence
+  // games BEFORE reading the large other_data MEDIUMTEXT blobs (those pollers
+  // run JSON_EXTRACT over other_data, which forces MySQL to read every blob it
+  // visits — limiting the visited rows first avoids scanning all games).
+  try {
+    const [idxRows] = await db_pool.query(
+      `SELECT 1 FROM information_schema.STATISTICS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'games' AND INDEX_NAME = 'idx_games_correspondence_status'
+       LIMIT 1`
+    );
+    if (idxRows.length === 0) {
+      await db_pool.query('CREATE INDEX idx_games_correspondence_status ON games (is_correspondence, status)');
+      console.log('✓ Created index idx_games_correspondence_status on games');
+    }
+  } catch (err) {
+    console.error('Error creating idx_games_correspondence_status:', err.message);
+  }
+
   // Add has_game_log column to ai_training_jobs so REMOTE_MODE servers can
   // determine whether a job's games.txt exists (without checking the remote
   // filesystem) and enable the Board Replay button accordingly.

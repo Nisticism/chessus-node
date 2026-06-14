@@ -11705,19 +11705,36 @@ function generateRefreshToken(user) {
 function trackFailedLogin(lockoutKey) {
   const attempts = loginAttempts.get(lockoutKey) || { count: 0 };
   attempts.count += 1;
+  attempts.lastAttempt = Date.now();
   if (attempts.count >= MAX_LOGIN_ATTEMPTS) {
     attempts.lockoutUntil = Date.now() + LOGIN_LOCKOUT_TIME;
   }
   loginAttempts.set(lockoutKey, attempts);
 }
 
-// Security: Clean up old lockout entries periodically (every hour)
+// Security: Clean up old lockout entries periodically (every hour).
+// Prune by age — NOT just expired lockouts — otherwise entries that never
+// reached the lockout threshold (e.g. a single failed attempt from a probing
+// bot) would accumulate forever and slowly leak memory. A hard size cap is a
+// final safety net against a flood of unique keys.
+const LOGIN_ATTEMPT_TTL_MS = Math.max(LOGIN_LOCKOUT_TIME, 60 * 60 * 1000);
+const LOGIN_ATTEMPTS_MAX_ENTRIES = 50000;
 setInterval(() => {
   const now = Date.now();
   for (const [key, value] of loginAttempts.entries()) {
-    if (value.lockoutUntil && now > value.lockoutUntil) {
+    const expiredLockout = value.lockoutUntil && now > value.lockoutUntil;
+    const stale = !value.lastAttempt || (now - value.lastAttempt) > LOGIN_ATTEMPT_TTL_MS;
+    if (expiredLockout || stale) {
       loginAttempts.delete(key);
     }
+  }
+  // Hard cap: if the map somehow still grows huge (e.g. credential-stuffing
+  // flood within a single window), drop the oldest entries.
+  if (loginAttempts.size > LOGIN_ATTEMPTS_MAX_ENTRIES) {
+    const sorted = [...loginAttempts.entries()]
+      .sort((a, b) => (a[1].lastAttempt || 0) - (b[1].lastAttempt || 0));
+    const toDrop = loginAttempts.size - LOGIN_ATTEMPTS_MAX_ENTRIES;
+    for (let i = 0; i < toDrop; i++) loginAttempts.delete(sorted[i][0]);
   }
 }, 60 * 60 * 1000);
 
@@ -14391,6 +14408,16 @@ app.set('io', io);
 server.listen(PORT, () => {
   console.log(`Server listening on ${PORT}`);
   console.log(`Socket.io ready for connections`);
+  // Report the ACTUAL V8 heap limit so it's immediately obvious from the logs
+  // whether --max-old-space-size took effect. If this prints ~700MB instead of
+  // the configured value (e.g. 900MB), the running process was NOT started with
+  // the ecosystem.config.js node_args — redeploy with `pm2 delete chessus-node
+  // && pm2 start ecosystem.config.js` to apply the heap cap.
+  try {
+    const v8 = require('v8');
+    const limitMB = Math.round(v8.getHeapStatistics().heap_size_limit / 1024 / 1024);
+    console.log(`[memory] V8 heap_size_limit = ${limitMB}MB (set via --max-old-space-size; expected ~900MB in production)`);
+  } catch (_) { /* ignore */ }
 });
 
 // Rolling memory history � keeps last 120 snapshots (2 hours at 1/min).
@@ -14399,6 +14426,11 @@ const MEMORY_HISTORY_MAX = 120;
 const memoryHistory = [];
 let peakRssMB = 0;
 let _memLogCount = 0; // throttle console output to every 5th sample (5 min)
+// Heap limit (bytes) used to compute memory-pressure %. Falls back to 0 if
+// unavailable, which disables the pressure-shedding branch.
+let _heapLimitBytes = 0;
+try { _heapLimitBytes = require('v8').getHeapStatistics().heap_size_limit || 0; } catch (_) {}
+let _lastPressureShedTs = 0;
 
 setInterval(() => {
   const m = process.memoryUsage();
@@ -14419,6 +14451,27 @@ setInterval(() => {
   // The in-memory chart still samples at 1-minute resolution.
   if (++_memLogCount % 5 === 0) {
     console.log(`[memory] heapUsed=${snapshot.heapUsed}MB heapTotal=${snapshot.heapTotal}MB rss=${snapshot.rss}MB external=${snapshot.external}MB activeGames=${snapshot.activeGames} onlineUsers=${snapshot.onlineUsers}`);
+  }
+
+  // ── Memory-pressure mitigation ──────────────────────────────────────────
+  // When heapUsed crosses 85% of the V8 limit we're at real risk of an OOM
+  // crash. Proactively shed reclaimable memory: drop the lobby caches and, if
+  // the process was started with --expose-gc, hint a collection. This buys
+  // headroom and turns a hard crash into a recoverable blip. Rate-limited to
+  // once per minute so we never thrash.
+  if (_heapLimitBytes > 0) {
+    const usedPct = m.heapUsed / _heapLimitBytes;
+    if (usedPct >= 0.85 && Date.now() - _lastPressureShedTs > 60_000) {
+      _lastPressureShedTs = Date.now();
+      console.warn(`[memory] HIGH PRESSURE: heapUsed=${snapshot.heapUsed}MB is ${Math.round(usedPct * 100)}% of the ${mb(_heapLimitBytes)}MB limit — shedding caches`);
+      try {
+        const gs = require('./game-socket');
+        if (typeof gs.invalidateLobbyCache === 'function') gs.invalidateLobbyCache();
+      } catch (_) {}
+      if (typeof global.gc === 'function') {
+        try { global.gc(); } catch (_) {}
+      }
+    }
   }
 }, 60_000);
 

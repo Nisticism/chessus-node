@@ -45,10 +45,21 @@ module.exports = {
       exec_mode: "fork",
       // Restart automatically if memory grows past this — well below OOM
       max_memory_restart: "1100M",
-      // Tell V8 to allow up to ~900MB of old-space heap.
+      // Tell V8 to allow up to ~900MB of old-space heap, and expose global.gc
+      // so the in-process memory watchdog (server/index.js) can hint a
+      // collection under high pressure.
       // max_memory_restart is set to 1100M so pm2 restarts cleanly before
       // the OS OOM killer fires (keep ~200MB gap above the V8 cap).
-      node_args: "--max-old-space-size=900",
+      //
+      // IMPORTANT: node_args only take effect when the process is (re)created.
+      // If you previously ran `pm2 start server/index.js` directly, the saved
+      // process will NOT have these flags — you MUST recreate it:
+      //     pm2 delete chessus-node
+      //     pm2 start ecosystem.config.js --env production
+      //     pm2 save
+      // Verify on boot: the log line "[memory] V8 heap_size_limit = NNNMb"
+      // should read ~900MB. If it reads ~700MB the flags did not apply.
+      node_args: "--max-old-space-size=900 --expose-gc",
       // Restart on crash with backoff
       autorestart: true,
       max_restarts: 10,
@@ -60,6 +71,13 @@ module.exports = {
       error_file: "./logs/pm2-error.log",
       env: {
         NODE_ENV: "production",
+        // Belt-and-suspenders heap cap: NODE_OPTIONS is inherited by the
+        // spawned process even in edge cases where node_args is not applied
+        // (e.g. a process resurrected from an older `pm2 save`). Keep this in
+        // sync with the --max-old-space-size value in node_args above.
+        // (--expose-gc is intentionally NOT here — it is not permitted in
+        // NODE_OPTIONS and lives in node_args instead.)
+        NODE_OPTIONS: "--max-old-space-size=900",
         // Gate the chattiest debug console.log lines (game-socket.js).
         // Set to "1" temporarily when troubleshooting a specific issue,
         // then unset and `pm2 restart chessus-node --update-env` to quiet
