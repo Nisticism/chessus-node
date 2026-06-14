@@ -9991,6 +9991,7 @@ app.get('/api/fairy-stockfish/translation/:gameTypeId', async (req, res) => {
         byPieceId: Object.fromEntries(charMap.byPieceId),
         royalChars: Array.from(charMap.royalChars),
         pawnChars: Array.from(charMap.pawnChars),
+        cannotBeCapturedIds: Array.from(charMap.cannotBeCapturedIds || []),
       },
       boardWidth: gameType.board_width,
       boardHeight: gameType.board_height,

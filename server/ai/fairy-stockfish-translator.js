@@ -131,6 +131,14 @@ function buildCharMap(pieceDefs, placements) {
   const royalChars = new Set();
   const pawnChars = new Set();
   const extinctionLossChars = new Set();
+  // Track piece IDs that have cannot_be_captured (excluding royals, which are
+  // already uncapturable in FS via the checkmate / capture-loss mechanic).
+  const cannotBeCapturedIds = new Set();
+  for (const p of pieceDefs) {
+    if (p && toBool(p.cannot_be_captured) && !royalIds.has(p.id)) {
+      cannotBeCapturedIds.add(p.id);
+    }
+  }
 
   // Assign K to first royal piece template (only one supported as primary royal).
   let kingAssigned = false;
@@ -183,7 +191,7 @@ function buildCharMap(pieceDefs, placements) {
     if (ch) extinctionLossChars.add(ch);
   }
 
-  return { byPieceId, royalChars, pawnChars, extinctionLossChars };
+  return { byPieceId, royalChars, pawnChars, extinctionLossChars, cannotBeCapturedIds };
 }
 
 // ---------- Betza translation ----------
@@ -764,7 +772,14 @@ function buildVariantINI(gameType, pieceDefs, placements, charMap) {
     const piece = pieceById.get(pid);
     if (!piece) continue;
     if (ch === 'K' || ch === 'P') continue; // builtin
-    const betza = pieceToBetza(piece);
+    // `cannot_be_captured` pieces get an off-board leaper Betza so FS can
+    // never legally move them (the board max is 12×12, so a (13,0) hop is
+    // always off-board). Combined with being rendered as the side-to-move's
+    // own piece in every FEN, the engine treats them as immovable obstacles
+    // it can neither capture nor move.
+    const betza = charMap.cannotBeCapturedIds.has(pid)
+      ? '(13,0)'
+      : pieceToBetza(piece);
     if (!betza) return null;
     lines.push(`customPiece${customIdx} = ${ch.toLowerCase()}:${betza}`);
     customIdx++;
@@ -821,7 +836,14 @@ function buildFENFromPlacements(placements, boardWidth, boardHeight, charMap) {
     // The start FEN only seeds the engine at boot - per-move FENs from
     // buildFEN() will re-render them as the opponent of side-to-move.
     const neutral = toBool(pl.is_neutral) || toInt(pl.player_number) === 0;
-    const player = neutral ? 2 : toInt(pl.player_number, 1);
+    // cannot_be_captured pieces are rendered as Player 1 (white) in the start
+    // FEN. The start position always has white to move, so this is consistent
+    // with the live-FEN rule of "render as same side as mover". Their off-board
+    // Betza ensures FS never tries to move or capture them.
+    const cannotCapture = charMap.cannotBeCapturedIds
+      ? charMap.cannotBeCapturedIds.has(toInt(pl.piece_id))
+      : false;
+    const player = cannotCapture ? 1 : (neutral ? 2 : toInt(pl.player_number, 1));
     // chessus y=0 (team 2's screen-top home) maps to grid row 0 (top FEN rank).
     grid[y][x] = player === 1 ? ch.toUpperCase() : ch.toLowerCase();
   }
@@ -877,9 +899,20 @@ function buildFEN(pieces, boardWidth, boardHeight, currentTurn, movesWithoutCapt
     // enemy of the side-to-move so the engine treats them as captureable
     // targets and never tries to move them itself.
     const neutral = toBool(p.is_neutral) || rawTeam === 0;
-    const team = neutral
-      ? (toInt(currentTurn, 1) === 1 ? 2 : 1)
-      : rawTeam;
+    // cannot_be_captured pieces are rendered as the same side as the
+    // side-to-move. Combined with their off-board (13,0) leaper Betza in the
+    // variant INI, FS treats them as immovable obstacles: it can neither
+    // capture them (own pieces are never capturable) nor move them (no legal
+    // moves). This lets games with cannot_be_captured pieces use FS normally.
+    const cannotCapture = charMap.cannotBeCapturedIds
+      ? charMap.cannotBeCapturedIds.has(toInt(p.piece_id))
+        || charMap.cannotBeCapturedIds.has(toInt(p.real_piece_id))
+      : false;
+    const team = cannotCapture
+      ? toInt(currentTurn, 1)
+      : neutral
+        ? (toInt(currentTurn, 1) === 1 ? 2 : 1)
+        : rawTeam;
     grid[y][x] = team === 1 ? ch.toUpperCase() : ch.toLowerCase();
   }
   const rankStrs = [];

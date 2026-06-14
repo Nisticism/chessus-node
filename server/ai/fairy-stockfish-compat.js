@@ -110,10 +110,10 @@ function pieceIncompatReasons(piece, isRoyal = false, isPawn = false) {
   }
   // Royal pieces (checkmate/capture-loss targets) are inherently uncapturable
   // in Fairy-Stockfish via the checkmate mechanic - don't flag them.
-  if (toBool(piece.cannot_be_captured) && !isRoyal) {
-    push('cannot_be_captured', 'Cannot be captured (non-royal).',
-      'Disable "Cannot be captured" in the piece wizard, or mark this piece as the checkmate / capture-loss target in Step 4 of the game wizard.');
-  }
+  // Non-royal cannot_be_captured pieces are now handled by the translator:
+  // they are assigned an off-board (13,0) leaper Betza (no legal moves) and
+  // rendered as the side-to-move's own piece in every FEN, so FS never
+  // captures or moves them. No incompatibility to report.
   if (toBool(piece.must_move_if_able)) {
     push('must_move_if_able', 'Must move if able.',
       'Disable "Must move if able" in the piece wizard (Step 4).');

@@ -30,8 +30,8 @@ const COPY = {
   },
   pieceSpecial: {
     title: "Fairy Stockfish compatibility - Special Abilities",
-    yes:  "Castling, promotion, en-passant",
-    no:   "Trample, ghostwalk, attack radius, capture allies, cannot-be-captured, must-move-if-able, chain capture, hit-points / attack damage",
+    yes:  "Castling, promotion, en-passant, cannot-be-captured (treated as immovable obstacle)",
+    no:   "Trample, ghostwalk, attack radius, capture allies, must-move-if-able, chain capture, hit-points / attack damage",
   },
 };
 

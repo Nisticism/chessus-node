@@ -49,6 +49,14 @@ export function buildFEN(pieces, boardWidth, boardHeight, currentTurn, movesWith
   for (let r = 0; r < boardHeight; r++) {
     grid.push(new Array(boardWidth).fill(null));
   }
+  // Build a fast lookup for cannot_be_captured piece IDs (sent from server in
+  // the translation bundle). These are always rendered as the side-to-move's
+  // own pieces so FS never tries to capture or move them.
+  const cannotBeCaptureSet = new Set(
+    Array.isArray(charMap.cannotBeCapturedIds)
+      ? charMap.cannotBeCapturedIds.map(Number)
+      : [],
+  );
   for (const p of pieces || []) {
     const x = toInt(p.x), y = toInt(p.y);
     if (x < 0 || x >= boardWidth || y < 0 || y >= boardHeight) continue;
@@ -61,9 +69,16 @@ export function buildFEN(pieces, boardWidth, boardHeight, currentTurn, movesWith
     // opposite of the side-to-move so the engine sees them as enemy
     // pieces it could capture, instead of trying to move them itself.
     const neutral = !!p.is_neutral || rawTeam === 0;
-    const team = neutral
-      ? (toInt(currentTurn, 1) === 1 ? 2 : 1)
-      : rawTeam;
+    // cannot_be_captured pieces are rendered as the same side as the
+    // side-to-move. Combined with their off-board Betza in the variant INI,
+    // FS will never capture or move them.
+    const cannotCapture = cannotBeCaptureSet.has(toInt(p.piece_id))
+      || cannotBeCaptureSet.has(toInt(p.real_piece_id));
+    const team = cannotCapture
+      ? toInt(currentTurn, 1)
+      : neutral
+        ? (toInt(currentTurn, 1) === 1 ? 2 : 1)
+        : rawTeam;
     grid[y][x] = team === 1 ? ch.toUpperCase() : ch.toLowerCase();
   }
   const ranks = [];
