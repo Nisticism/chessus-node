@@ -280,8 +280,10 @@
 
 .popular-games-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 320px));
   gap: 12px;
+  max-width: 984px; // 3×320px cards + 2×12px gaps
+  margin: 0 auto;
 }
 
 .popular-game-card {
@@ -298,7 +300,6 @@
   position: relative;
   overflow: hidden;
   width: 100%;
-  max-width: 320px;
   justify-self: stretch;
 
   &:hover {
@@ -382,6 +383,9 @@
   color: var(--text-heading);
   line-height: 1.3;
   margin-top: 1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .popular-game-meta {
@@ -827,10 +831,6 @@
 
   .popular-games-grid {
     grid-template-columns: 1fr;
-  }
-
-  .popular-game-card {
-    max-width: 100%;
   }
 
   .board-info {
