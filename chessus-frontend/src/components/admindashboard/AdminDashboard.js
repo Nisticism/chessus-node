@@ -33,6 +33,9 @@ const AdminDashboard = () => {
   const [pagination, setPagination] = useState({ page: 1, limit: 10, total: 0, totalPages: 0 });
   const [userSort, setUserSort] = useState({ sortBy: 'id', sortOrder: 'DESC' });
   const [loading, setLoading] = useState(true);
+  // Users tab search
+  const [userSearch, setUserSearch] = useState('');
+  const userSearchRef = useRef('');
   const [editingItem, setEditingItem] = useState(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editFormData, setEditFormData] = useState({});
@@ -51,6 +54,7 @@ const AdminDashboard = () => {
   const [showDonorModal, setShowDonorModal] = useState(false);
   const [donorUser, setDonorUser] = useState(null);
   const [donorAmount, setDonorAmount] = useState('');
+  const [donorHideBadge, setDonorHideBadge] = useState(false);
   const donorOverlayMouseDown = useRef(false);
 
   // Delete account confirm modal
@@ -203,8 +207,11 @@ const AdminDashboard = () => {
       const limit = pagination?.limit || 10;
       const sort = sortOverride || userSort;
       const sortParams = tab === 'users' ? `&sortBy=${sort.sortBy}&sortOrder=${sort.sortOrder}` : '';
+      const searchParam = tab === 'users' && userSearchRef.current
+        ? `&search=${encodeURIComponent(userSearchRef.current)}`
+        : '';
       const response = await axios.get(
-        `${API_URL}admin/${tab}?page=${page}&limit=${limit}${sortParams}`,
+        `${API_URL}admin/${tab}?page=${page}&limit=${limit}${sortParams}${searchParam}`,
         { headers: authHeader() }
       );
       setData(response.data.data);
@@ -971,6 +978,7 @@ const AdminDashboard = () => {
   const handleDonorClick = (user) => {
     setDonorUser(user);
     setDonorAmount(user.total_donations != null ? String(user.total_donations) : '');
+    setDonorHideBadge(user.hide_donation_badge === 1 || user.hide_donation_badge === true);
     setShowDonorModal(true);
   };
 
@@ -985,7 +993,7 @@ const AdminDashboard = () => {
     try {
       await axios.post(
         `${API_URL}admin/users/${donorUser.id}/set-donations`,
-        { amount },
+        { amount, hide_donation_badge: donorHideBadge },
         { headers: authHeader() }
       );
       setAlertType('success');
@@ -1060,8 +1068,44 @@ const AdminDashboard = () => {
     return <span style={{ fontSize: '0.75em' }}> {userSort.sortOrder === 'ASC' ? '↑' : '↓'}</span>;
   };
 
+  const handleUserSearchSubmit = (e) => {
+    if (e) e.preventDefault();
+    userSearchRef.current = userSearch.trim();
+    fetchData('users', 1);
+  };
+
+  const handleUserSearchClear = () => {
+    setUserSearch('');
+    userSearchRef.current = '';
+    fetchData('users', 1);
+  };
+
   const renderUsersTable = () => (
     <div className={styles["table-container"]}>
+      <form
+        onSubmit={handleUserSearchSubmit}
+        style={{ display: 'flex', gap: '8px', marginBottom: '12px', flexWrap: 'wrap', alignItems: 'center' }}
+      >
+        <input
+          type="text"
+          value={userSearch}
+          onChange={(e) => setUserSearch(e.target.value)}
+          placeholder="Search by username or email..."
+          style={{
+            flex: '1 1 240px',
+            minWidth: '200px',
+            padding: '8px 12px',
+            borderRadius: '6px',
+            border: '1px solid var(--border-color, #444)',
+            background: 'var(--bg-input, #1e1e1e)',
+            color: 'var(--text-light, #eee)'
+          }}
+        />
+        <button type="submit" className={styles["promote-btn"]}>Search</button>
+        {userSearchRef.current ? (
+          <button type="button" className={styles["cancel-btn"]} onClick={handleUserSearchClear}>Clear</button>
+        ) : null}
+      </form>
       <table className={styles["data-table"]}>
         <thead>
           <tr>
@@ -1085,13 +1129,14 @@ const AdminDashboard = () => {
               style={{ cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}
               title="Sort by last active"
             >Last Active{sortArrow('last_active_at')}</th>
+            <th>Donor</th>
             <th>Actions</th>
           </tr>
         </thead>
         <tbody>
           {!data || data.length === 0 ? (
             <tr>
-              <td colSpan="9" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-dim)' }}>
+              <td colSpan="10" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-dim)' }}>
                 {!data ? 'Loading...' : 'No users found'}
               </td>
             </tr>
@@ -1124,6 +1169,23 @@ const AdminDashboard = () => {
               <td>{user.elo || 1000}</td>
               <td style={{ whiteSpace: 'nowrap', fontSize: '0.85em', color: 'var(--text-light-gray)' }}>
                 {user.last_active_at ? formatLastActive(user.last_active_at) : 'Never'}
+              </td>
+              <td style={{ whiteSpace: 'nowrap', fontSize: '0.85em' }}>
+                <div>
+                  {Number(user.total_donations) >= 50
+                    ? '⭐ Gold'
+                    : Number(user.total_donations) >= 5
+                      ? '✦ Silver'
+                      : 'None'}
+                  {Number(user.total_donations) > 0 && (
+                    <span style={{ color: 'var(--text-dim)' }}> (${Number(user.total_donations).toFixed(2)})</span>
+                  )}
+                </div>
+                {(user.hide_donation_badge === 1 || user.hide_donation_badge === true) && (
+                  <div style={{ color: '#e0a93b', fontSize: '0.9em' }} title="This user donated anonymously, so their badge is hidden on their profile.">
+                    Anonymous (badge hidden)
+                  </div>
+                )}
               </td>
               <td>
                 <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
@@ -3678,6 +3740,16 @@ const AdminDashboard = () => {
               />
               <small style={{ color: 'var(--text-dim)', marginTop: 6, display: 'block' }}>
                 Silver badge: $5–$49.99 &nbsp;·&nbsp; Gold badge: $50+
+              </small>
+            </div>
+            <div className={styles["form-field"]} style={{ marginTop: 16 }}>
+              <ToggleSwitch
+                checked={donorHideBadge}
+                onChange={(v) => setDonorHideBadge(v)}
+                label="Anonymous donation (hide badge on profile)"
+              />
+              <small style={{ color: 'var(--text-dim)', marginTop: 6, display: 'block' }}>
+                When on, this user chose to donate anonymously and no badge is shown on their profile, even if they have donations. Turn this off to make their badge visible.
               </small>
             </div>
             <div className={styles["modal-footer"]}>

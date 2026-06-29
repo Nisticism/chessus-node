@@ -54,6 +54,7 @@ const Donate = () => {
     const success = params.get('success');
     const amount = params.get('amount');
     const method = params.get('method');
+    const sessionId = params.get('session_id');
     
     if (success === 'true' && amount) {
       setShowThankYou(true);
@@ -63,26 +64,26 @@ const Donate = () => {
       // Track successful donation
       trackDonation(parseFloat(amount));
       
-      // Send donation confirmation email
-      const confirmDonation = async () => {
-        if (currentUser && currentUser.email) {
+      // Stripe: confirm the donation server-side using the checkout session id.
+      // The server verifies the session directly with Stripe and credits it. This is
+      // a fallback for the Stripe webhook and is deduped against it, so the donation
+      // is recorded reliably whether or not the webhook fires. PayPal donations are
+      // already recorded in the PayPal onApprove handler, so they need nothing here.
+      if (method === 'stripe' && sessionId) {
+        const confirmStripeDonation = async () => {
           try {
             const API_URL = process.env.REACT_APP_API_URL;
-            await fetch(`${API_URL}/api/confirm-donation`, {
+            await fetch(`${API_URL}/api/confirm-stripe-donation`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                email: currentUser.email,
-                username: currentUser.username,
-                amount: parseFloat(amount)
-              })
+              body: JSON.stringify({ sessionId })
             });
           } catch (error) {
-            console.error('Failed to send donation confirmation email:', error);
+            console.error('Failed to confirm Stripe donation:', error);
           }
-        }
-      };
-      confirmDonation();
+        };
+        confirmStripeDonation();
+      }
       
       // Clear URL parameters
       setTimeout(() => {
@@ -167,7 +168,13 @@ const Donate = () => {
       const response = await fetch(`${API_URL}/api/create-stripe-checkout`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount })
+        body: JSON.stringify({
+          amount,
+          email: currentUser?.email,
+          username: currentUser?.username,
+          userId: currentUser?.id,
+          hideBadge: !!(donateAnonymously && currentUser),
+        })
       });
       
       if (!response.ok) {
@@ -219,6 +226,9 @@ const Donate = () => {
           return actions.order.create({
             purchase_units: [{
               description: 'GridGrove Donation',
+              // Carry attribution so the PayPal webhook can credit the right account.
+              // Format: userId|hideBadge
+              custom_id: `${currentUser?.id || ''}|${donateAnonymously && currentUser ? '1' : '0'}`,
               amount: {
                 currency_code: 'USD',
                 value: amount.toFixed(2)
@@ -230,6 +240,28 @@ const Donate = () => {
           const details = await actions.order.capture();
           console.log('PayPal payment successful:', details);
           await saveAnonymousPreference();
+          // Record the donation server-side (idempotent; deduped against the PayPal
+          // webhook via the capture id). The server re-verifies the order with PayPal
+          // when server credentials are configured.
+          try {
+            const capture = details?.purchase_units?.[0]?.payments?.captures?.[0];
+            const API_URL = process.env.REACT_APP_API_URL;
+            await fetch(`${API_URL}/api/record-paypal-donation`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                orderId: data.orderID,
+                captureId: capture?.id,
+                amount,
+                email: currentUser?.email || details?.payer?.email_address,
+                username: currentUser?.username,
+                userId: currentUser?.id,
+                hideBadge: !!(donateAnonymously && currentUser),
+              })
+            });
+          } catch (recErr) {
+            console.error('Failed to record PayPal donation:', recErr);
+          }
           window.location.href = `/donate?success=true&amount=${amount}&method=paypal`;
         },
         onCancel: () => {

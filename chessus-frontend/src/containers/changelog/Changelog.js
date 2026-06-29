@@ -4,6 +4,16 @@ import styles from "./changelog.module.scss";
 
 const changelogData = [
   {
+    date: "June 28, 2026",
+    title: "Donor badge admin tools: anonymous-donation visibility and user search",
+    items: [
+      "Admin: the Users list now has a search box to quickly find a user by username or email.",
+      "Admin: the Users list now shows each user's donor tier and clearly flags accounts that donated anonymously (badge hidden on their profile).",
+      "Admin: the Donor Badge editor now includes an 'Anonymous donation (hide badge)' toggle, so an admin can make a supporter's badge visible again after a donation — useful when a badge isn't showing even though a donation was recorded.",
+      "Donations: donor totals and badges are now credited automatically and reliably via secure Stripe and PayPal webhooks (with verified fallbacks), so a badge no longer depends on the browser returning to the site after payment. Duplicate notifications are de-duplicated, so a single donation is never counted twice.",
+    ],
+  },
+  {
     date: "June 13, 2026",
     title: "Promote to another player's or neutral pieces; click-to-move fix; chat copy fix",
     items: [

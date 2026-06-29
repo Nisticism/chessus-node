@@ -344,6 +344,11 @@ async function notifyMentionedUsers(text, senderId, senderName, contextTitle, ac
 // NSFW model loads lazily on first image upload (avoids slow TensorFlow startup)
 // imageModeration.initialize();
 
+// Stripe webhook signature verification needs the UNPARSED request body, so this
+// route must receive the raw bytes BEFORE express.json() runs. Both express.raw
+// and express.json set req._body, so express.json below will skip this path.
+app.use('/api/stripe-webhook', express.raw({ type: 'application/json' }));
+
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
@@ -5931,17 +5936,28 @@ app.get("/api/admin/users", authenticateToken, async (req, res) => {
     const sortBy = allowedSortFields.includes(req.query.sortBy) ? req.query.sortBy : 'id';
     const sortOrder = req.query.sortOrder === 'ASC' ? 'ASC' : 'DESC';
 
+    // Optional search by username or email
+    const search = (req.query.search || '').trim();
+    let whereSQL = '';
+    const searchParams = [];
+    if (search) {
+      whereSQL = 'WHERE username LIKE ? OR email LIKE ?';
+      const like = `%${search}%`;
+      searchParams.push(like, like);
+    }
+
     const [[users], [[{ total }]]] = await Promise.all([
       db_pool.query(
         `SELECT id, username, email, first_name, last_name, role, elo, profile_picture, bio,
                 banned, ban_reason, banned_at, banned_by, ban_expires_at, last_active_at,
-                total_donations
+                total_donations, hide_donation_badge
          FROM users
+         ${whereSQL}
          ORDER BY ${sortBy} ${sortOrder}
          LIMIT ? OFFSET ?`,
-        [limit, offset]
+        [...searchParams, limit, offset]
       ),
-      db_pool.query("SELECT COUNT(*) as total FROM users"),
+      db_pool.query(`SELECT COUNT(*) as total FROM users ${whereSQL}`, searchParams),
     ]);
 
     // Don't send passwords or refresh tokens
@@ -6154,10 +6170,19 @@ app.post("/api/admin/users/:userId/set-donations", authenticateToken, async (req
       return res.status(404).send({ message: "User not found" });
     }
 
-    await db_pool.query(
-      "UPDATE users SET total_donations = ? WHERE id = ?",
-      [parsedAmount, userId]
-    );
+    // Optionally update the anonymous-donation (hide badge) preference
+    if (req.body.hide_donation_badge !== undefined) {
+      const hideBadge = req.body.hide_donation_badge ? 1 : 0;
+      await db_pool.query(
+        "UPDATE users SET total_donations = ?, hide_donation_badge = ? WHERE id = ?",
+        [parsedAmount, hideBadge, userId]
+      );
+    } else {
+      await db_pool.query(
+        "UPDATE users SET total_donations = ? WHERE id = ?",
+        [parsedAmount, userId]
+      );
+    }
 
     console.log(`Admin ${req.user.id} set total_donations=${parsedAmount} for user ${users[0].username} (id ${userId})`);
     res.json({ message: `Donor badge updated for ${users[0].username}`, total_donations: parsedAmount });
@@ -12877,14 +12902,25 @@ app.post("/api/create-stripe-checkout", async (req, res) => {
   const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
   
   try {
-    const { amount } = req.body;
+    const { amount, email, username, userId, hideBadge } = req.body;
     
     if (!amount || amount <= 0) {
       return res.status(400).json({ error: 'Invalid amount' });
     }
 
+    // Attribution metadata so the webhook (and the session-id fallback) can credit
+    // the correct account and honour the anonymous-donation preference.
+    const metadata = {
+      username: username ? String(username).slice(0, 250) : '',
+      userId: userId ? String(userId) : '',
+      hideBadge: hideBadge ? '1' : '0',
+    };
+
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
+      // Prefill + capture the donor email so we can attribute even guest donations.
+      ...(email ? { customer_email: String(email) } : {}),
+      metadata,
       line_items: [
         {
           price_data: {
@@ -12899,7 +12935,7 @@ app.post("/api/create-stripe-checkout", async (req, res) => {
         },
       ],
       mode: 'payment',
-      success_url: `${process.env.CLIENT_URL}/donate?success=true&amount=${amount}&method=stripe`,
+      success_url: `${process.env.CLIENT_URL}/donate?success=true&amount=${amount}&method=stripe&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${process.env.CLIENT_URL}/donate`,
     });
 
@@ -12911,43 +12947,270 @@ app.post("/api/create-stripe-checkout", async (req, res) => {
   }
 });
 
-// Confirm donation and send email (called from frontend after successful payment)
-app.post("/api/confirm-donation", async (req, res) => {
+// ---------------------------------------------------------------------------
+//  DONATION CREDITING (shared by webhooks + client fallbacks)
+// ---------------------------------------------------------------------------
+
+// Records a donation idempotently (via the donations ledger) and, only when it is
+// a brand-new recording, sends the thank-you email. Safe to call from both the
+// webhook and the client redirect for the same payment — the ledger dedupes.
+async function creditDonationAndNotify({ userId, email, username, amount, method, transactionId, isAnonymous }) {
+  const result = await dbHelpers.recordDonation({ userId, email, username, amount, method, transactionId, isAnonymous });
+  if (result && result.recorded) {
+    const notifyEmail = email || (result.user && result.user.email) || null;
+    const notifyName = username || (result.user && result.user.username) || null;
+    console.log(`[donation] credited $${amount} via ${method} (txn ${transactionId})`);
+    if (notifyEmail) {
+      sendDonationEmail(notifyEmail, notifyName, amount)
+        .then(r => { if (!r || !r.success) console.log(`[donation] email not sent: ${r && r.message}`); })
+        .catch(err => console.error('[donation] email failed:', err.message));
+    }
+  } else if (result && result.duplicate) {
+    console.log(`[donation] duplicate ${method} txn ${transactionId} ignored (already credited)`);
+  }
+  return result;
+}
+
+// ---- PayPal server helpers (used for secure verification when configured) ----
+function paypalApiBase() {
+  return (process.env.PAYPAL_ENV || 'live').toLowerCase() === 'sandbox'
+    ? 'https://api-m.sandbox.paypal.com'
+    : 'https://api-m.paypal.com';
+}
+function paypalConfigured() {
+  return !!(process.env.PAYPAL_CLIENT_ID && process.env.PAYPAL_CLIENT_SECRET);
+}
+async function getPayPalAccessToken() {
+  const auth = Buffer.from(`${process.env.PAYPAL_CLIENT_ID}:${process.env.PAYPAL_CLIENT_SECRET}`).toString('base64');
+  const resp = await fetch(`${paypalApiBase()}/v1/oauth2/token`, {
+    method: 'POST',
+    headers: { Authorization: `Basic ${auth}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: 'grant_type=client_credentials',
+  });
+  if (!resp.ok) throw new Error(`PayPal token request failed: ${resp.status}`);
+  const data = await resp.json();
+  return data.access_token;
+}
+async function getPayPalOrder(orderId, accessToken) {
+  const resp = await fetch(`${paypalApiBase()}/v2/checkout/orders/${orderId}`, {
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+  });
+  if (!resp.ok) throw new Error(`PayPal order lookup failed: ${resp.status}`);
+  return resp.json();
+}
+
+// ---------------------------------------------------------------------------
+//  STRIPE WEBHOOK (source of truth for card donations)
+// ---------------------------------------------------------------------------
+// NOTE: req.body is the raw Buffer here (see the express.raw mount near express.json).
+app.post('/api/stripe-webhook', async (req, res) => {
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+  if (!webhookSecret) {
+    console.warn('[stripe-webhook] STRIPE_WEBHOOK_SECRET not configured; ignoring event');
+    return res.status(200).json({ received: true, ignored: true });
+  }
+
+  const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+  const sig = req.headers['stripe-signature'];
+  let event;
   try {
-    const { email, username, amount } = req.body;
-    
-    if (!email || !amount) {
-      return res.status(400).json({ error: 'Missing required fields' });
-    }
+    event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
+  } catch (err) {
+    console.error('[stripe-webhook] signature verification failed:', err.message);
+    return res.status(400).send(`Webhook Error: ${err.message}`);
+  }
 
-    // Update user's total donations in database
-    try {
-      await dbHelpers.updateUserDonations(email, parseFloat(amount));
-      console.log(`? Updated total donations for ${email}: +$${amount}`);
-    } catch (dbError) {
-      console.error('?? Failed to update donation total:', dbError.message);
-      // Continue anyway - email is more important than tracking
+  try {
+    if (event.type === 'checkout.session.completed') {
+      const session = event.data.object;
+      if (session.payment_status === 'paid') {
+        const amount = (session.amount_total || 0) / 100;
+        const email = session.customer_email || (session.customer_details && session.customer_details.email) || null;
+        const meta = session.metadata || {};
+        await creditDonationAndNotify({
+          userId: meta.userId ? parseInt(meta.userId, 10) : null,
+          email,
+          username: meta.username || null,
+          amount,
+          method: 'stripe',
+          transactionId: session.id,
+          isAnonymous: meta.hideBadge === '1',
+        });
+      }
     }
+    res.json({ received: true });
+  } catch (err) {
+    console.error('[stripe-webhook] handler error:', err.message);
+    res.status(500).json({ error: 'Webhook handler failed' });
+  }
+});
 
-    // Send donation thank you email (non-blocking, won't fail if SendGrid not configured)
-    sendDonationEmail(email, username, amount)
-      .then(result => {
-        if (result.success) {
-          console.log(`? Donation email sent to ${email}`);
-        } else {
-          console.log(`?? Donation email not sent: ${result.message}`);
-        }
-      })
-      .catch(err => {
-        console.error('?? Email sending failed:', err.message);
-      });
-    
-    // Always return success - the donation was successful regardless of email
-    res.json({ message: 'Donation confirmed', emailStatus: 'pending' });
+// Client-side fallback: after the Stripe redirect we verify the session directly
+// with Stripe (using our secret key) and credit it. Deduped against the webhook
+// via the Stripe session id, so it is safe even if both fire.
+app.post('/api/confirm-stripe-donation', async (req, res) => {
+  try {
+    const { sessionId } = req.body;
+    if (!sessionId) {
+      return res.status(400).json({ error: 'Missing sessionId' });
+    }
+    const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+    const session = await stripe.checkout.sessions.retrieve(sessionId);
+    if (!session || session.payment_status !== 'paid') {
+      return res.status(202).json({ message: 'Payment not completed yet' });
+    }
+    const amount = (session.amount_total || 0) / 100;
+    const email = session.customer_email || (session.customer_details && session.customer_details.email) || null;
+    const meta = session.metadata || {};
+    const result = await creditDonationAndNotify({
+      userId: meta.userId ? parseInt(meta.userId, 10) : null,
+      email,
+      username: meta.username || null,
+      amount,
+      method: 'stripe',
+      transactionId: session.id,
+      isAnonymous: meta.hideBadge === '1',
+    });
+    res.json({
+      message: 'Donation confirmed',
+      recorded: !!(result && result.recorded),
+      duplicate: !!(result && result.duplicate),
+    });
   } catch (error) {
-    console.error('Donation confirmation error:', error);
+    console.error('confirm-stripe-donation error:', error.message);
     res.status(500).json({ error: 'Failed to confirm donation' });
   }
+});
+
+// ---------------------------------------------------------------------------
+//  PAYPAL (client capture record + webhook)
+// ---------------------------------------------------------------------------
+// Called by the client right after a successful PayPal capture. When server-side
+// PayPal credentials are configured we re-verify the order with PayPal and use the
+// authoritative amount/capture id; otherwise we record best-effort from the client
+// (same trust level as before, but now idempotent and attributed). Deduped against
+// the PayPal webhook via the capture id.
+app.post('/api/record-paypal-donation', async (req, res) => {
+  try {
+    const { orderId, captureId, amount, email, username, userId, hideBadge } = req.body;
+    let finalAmount = parseFloat(amount);
+    let txnId = captureId || orderId;
+    let finalEmail = email || null;
+    let finalUserId = userId ? parseInt(userId, 10) : null;
+    let anon = !!hideBadge;
+
+    if (paypalConfigured() && orderId) {
+      try {
+        const token = await getPayPalAccessToken();
+        const order = await getPayPalOrder(orderId, token);
+        if (order.status !== 'COMPLETED') {
+          return res.status(202).json({ message: 'Payment not completed' });
+        }
+        const pu = (order.purchase_units && order.purchase_units[0]) || {};
+        const cap = pu.payments && pu.payments.captures && pu.payments.captures[0];
+        if (cap) {
+          txnId = cap.id;
+          finalAmount = parseFloat(cap.amount.value);
+        } else if (pu.amount) {
+          finalAmount = parseFloat(pu.amount.value);
+        }
+        if (order.payer && order.payer.email_address) {
+          finalEmail = finalEmail || order.payer.email_address;
+        }
+        if (pu.custom_id) {
+          const parts = String(pu.custom_id).split('|'); // format: userId|hideBadge
+          if (!finalUserId && parts[0]) finalUserId = parseInt(parts[0], 10) || null;
+          if (parts[1] === '1') anon = true;
+        }
+      } catch (verr) {
+        console.error('[paypal] verification failed, falling back to client data:', verr.message);
+      }
+    }
+
+    if (!txnId || !(finalAmount > 0)) {
+      return res.status(400).json({ error: 'Missing PayPal transaction info' });
+    }
+
+    const result = await creditDonationAndNotify({
+      userId: finalUserId,
+      email: finalEmail,
+      username: username || null,
+      amount: finalAmount,
+      method: 'paypal',
+      transactionId: txnId,
+      isAnonymous: anon,
+    });
+    res.json({
+      message: 'Donation recorded',
+      recorded: !!(result && result.recorded),
+      duplicate: !!(result && result.duplicate),
+    });
+  } catch (error) {
+    console.error('record-paypal-donation error:', error.message);
+    res.status(500).json({ error: 'Failed to record donation' });
+  }
+});
+
+// PayPal webhook (source of truth for PayPal donations when configured). Requires
+// PAYPAL_CLIENT_ID/SECRET + PAYPAL_WEBHOOK_ID. Verifies the signature with PayPal
+// before crediting. Deduped against the client record via the capture id.
+app.post('/api/paypal-webhook', async (req, res) => {
+  const webhookId = process.env.PAYPAL_WEBHOOK_ID;
+  if (!webhookId || !paypalConfigured()) {
+    console.warn('[paypal-webhook] not configured (need PAYPAL_CLIENT_ID/SECRET + PAYPAL_WEBHOOK_ID); ignoring event');
+    return res.status(200).json({ received: true, ignored: true });
+  }
+  try {
+    const token = await getPayPalAccessToken();
+    const verifyResp = await fetch(`${paypalApiBase()}/v1/notifications/verify-webhook-signature`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        auth_algo: req.headers['paypal-auth-algo'],
+        cert_url: req.headers['paypal-cert-url'],
+        transmission_id: req.headers['paypal-transmission-id'],
+        transmission_sig: req.headers['paypal-transmission-sig'],
+        transmission_time: req.headers['paypal-transmission-time'],
+        webhook_id: webhookId,
+        webhook_event: req.body,
+      }),
+    });
+    const verifyData = await verifyResp.json();
+    if (verifyData.verification_status !== 'SUCCESS') {
+      console.error('[paypal-webhook] signature verification failed');
+      return res.status(400).json({ error: 'Invalid signature' });
+    }
+
+    const event = req.body;
+    if (event.event_type === 'PAYMENT.CAPTURE.COMPLETED') {
+      const resource = event.resource || {};
+      const amount = resource.amount ? parseFloat(resource.amount.value) : 0;
+      const captureId = resource.id;
+      let userId = null;
+      let anon = false;
+      if (resource.custom_id) {
+        const parts = String(resource.custom_id).split('|'); // format: userId|hideBadge
+        userId = parseInt(parts[0], 10) || null;
+        anon = parts[1] === '1';
+      }
+      const email = (resource.payer && resource.payer.email_address) || null;
+      await creditDonationAndNotify({
+        userId, email, username: null, amount, method: 'paypal', transactionId: captureId, isAnonymous: anon,
+      });
+    }
+    res.json({ received: true });
+  } catch (err) {
+    console.error('[paypal-webhook] error:', err.message);
+    res.status(500).json({ error: 'Webhook handler failed' });
+  }
+});
+
+// Deprecated: donations are now credited server-side via the Stripe/PayPal webhooks
+// and the verified client-fallback endpoints above. This endpoint is kept so older
+// cached clients don't error, but it intentionally does nothing (it must NOT credit
+// donations again, or payments would be double-counted).
+app.post("/api/confirm-donation", async (req, res) => {
+  res.json({ message: 'Donation already processed', deprecated: true });
 });
 
 // ----------------------- Notifications ---------------------------

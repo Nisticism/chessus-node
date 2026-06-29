@@ -134,6 +134,24 @@ const tableMigrations = [
     )`,
     description: "Create tournament_participants table"
   },
+  {
+    table: 'donations',
+    sql: `CREATE TABLE IF NOT EXISTS donations (
+      id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      user_id INT UNSIGNED NULL,
+      email VARCHAR(255) NULL,
+      username VARCHAR(255) NULL,
+      amount DECIMAL(10,2) NOT NULL,
+      method VARCHAR(32) NOT NULL,
+      transaction_id VARCHAR(255) NOT NULL,
+      is_anonymous TINYINT(1) NOT NULL DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE KEY uniq_method_txn (method, transaction_id),
+      INDEX idx_donations_user_id (user_id),
+      INDEX idx_donations_email (email)
+    )`,
+    description: "Create donations ledger table for idempotent payment tracking (Stripe/PayPal webhooks)"
+  },
   // ============================================
   // LEGACY TABLE DEFINITIONS (HISTORICAL ONLY)
   // These definitions are kept for reference but are no longer used.

@@ -1133,6 +1133,74 @@ const updateUserDonations = async (email, amount) => {
   return result;
 };
 
+/**
+ * Idempotently record a donation in the ledger and credit the user's running total.
+ *
+ * The (method, transaction_id) pair is unique, so replays of the same Stripe/PayPal
+ * event (e.g. a webhook firing in addition to the client redirect) are ignored and
+ * never double-count. Returns { recorded, duplicate, user } so the caller can decide
+ * whether to send the thank-you email (only on a brand-new recording).
+ *
+ * @param {Object} args
+ * @param {number|null} args.userId - Account id, if known
+ * @param {string|null} args.email - Donor email, used to attribute when userId is absent
+ * @param {string|null} args.username - Donor username (for the email/greeting)
+ * @param {number} args.amount - Donation amount in dollars
+ * @param {string} args.method - 'stripe' | 'paypal' | etc.
+ * @param {string} args.transactionId - Provider transaction/session/capture id (dedupe key)
+ * @param {boolean} args.isAnonymous - When true, hide the donor badge on the profile
+ * @returns {Promise<{recorded:boolean, duplicate?:boolean, reason?:string, user?:Object|null}>}
+ */
+const recordDonation = async ({ userId, email, username, amount, method, transactionId, isAnonymous }) => {
+  const amt = parseFloat(amount);
+  if (!method || !transactionId || !(amt > 0)) {
+    return { recorded: false, reason: 'invalid' };
+  }
+
+  let insertResult;
+  try {
+    insertResult = await query(
+      `INSERT INTO chessusnode.donations
+         (user_id, email, username, amount, method, transaction_id, is_anonymous)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [userId || null, email || null, username || null, amt, method, String(transactionId), isAnonymous ? 1 : 0]
+    );
+  } catch (err) {
+    if (err && err.code === 'ER_DUP_ENTRY') {
+      return { recorded: false, duplicate: true };
+    }
+    throw err;
+  }
+
+  // Credit the matching user's cumulative total. Prefer the account id, fall back to email.
+  // For anonymous donations we also set hide_donation_badge (we never auto-unset it).
+  let user = null;
+  const hideClause = isAnonymous ? ', hide_donation_badge = 1' : '';
+  if (userId) {
+    await query(
+      `UPDATE chessusnode.users SET total_donations = COALESCE(total_donations, 0) + ?${hideClause} WHERE id = ?`,
+      [amt, userId]
+    );
+    const rows = await query(
+      "SELECT id, email, username, total_donations, hide_donation_badge FROM chessusnode.users WHERE id = ?",
+      [userId]
+    );
+    user = rows.length > 0 ? rows[0] : null;
+  } else if (email) {
+    await query(
+      `UPDATE chessusnode.users SET total_donations = COALESCE(total_donations, 0) + ?${hideClause} WHERE email = ?`,
+      [amt, email]
+    );
+    const rows = await query(
+      "SELECT id, email, username, total_donations, hide_donation_badge FROM chessusnode.users WHERE email = ?",
+      [email]
+    );
+    user = rows.length > 0 ? rows[0] : null;
+  }
+
+  return { recorded: true, ledgerId: insertResult.insertId, user };
+};
+
 // ----------------------- Notifications ---------------------------
 
 const createNotification = async ({ user_id, sender_id, type, title, content, related_id, action_url }) => {
@@ -1448,6 +1516,7 @@ module.exports = {
   deleteLike,
   getAllNews,
   updateUserDonations,
+  recordDonation,
   createNotification,
   findUnreadNotification,
   updateNotification,
