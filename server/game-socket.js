@@ -1380,22 +1380,23 @@ function randomizeBackRow(pieces, players, gameType) {
   const player1Pieces = piecesByPlayer[playerIds[0]];
   const player2Pieces = piecesByPlayer[playerIds[1]];
   
-  // Find the back row for each player (row with most pieces or furthest from center)
-  const player1Rows = {};
-  player1Pieces.forEach(p => {
-    player1Rows[p.y] = (player1Rows[p.y] || 0) + 1;
-  });
-  const player1BackRow = Object.keys(player1Rows).reduce((a, b) => 
-    player1Rows[a] > player1Rows[b] ? a : b
-  );
-  
-  const player2Rows = {};
-  player2Pieces.forEach(p => {
-    player2Rows[p.y] = (player2Rows[p.y] || 0) + 1;
-  });
-  const player2BackRow = Object.keys(player2Rows).reduce((a, b) => 
-    player2Rows[a] > player2Rows[b] ? a : b
-  );
+  // Find the back row for each player. Use the most-populated row, but break ties
+  // by choosing the row furthest from the board center. This keeps the two players'
+  // back rows symmetric — otherwise, when a player's pawn row and back row have the
+  // same piece count, a naive max could pick the back row for one player and the
+  // pawn row for the other, randomizing only one side.
+  const center = (boardHeight - 1) / 2;
+  const pickBackRow = (playerPieces) => {
+    const rowCounts = {};
+    playerPieces.forEach(p => { rowCounts[p.y] = (rowCounts[p.y] || 0) + 1; });
+    const rows = Object.keys(rowCounts).map(y => ({ y: parseInt(y), count: rowCounts[y] }));
+    const maxCount = Math.max(...rows.map(r => r.count));
+    return rows
+      .filter(r => r.count === maxCount)
+      .sort((a, b) => Math.abs(b.y - center) - Math.abs(a.y - center))[0].y;
+  };
+  const player1BackRow = pickBackRow(player1Pieces);
+  const player2BackRow = pickBackRow(player2Pieces);
   
   console.log(`Player 1 back row: ${player1BackRow}, Player 2 back row: ${player2BackRow}`);
   

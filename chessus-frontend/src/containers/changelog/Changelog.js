@@ -11,6 +11,7 @@ const changelogData = [
       "Admin: the Users list now shows each user's donor tier and clearly flags accounts that donated anonymously (badge hidden on their profile).",
       "Admin: the Donor Badge editor now includes an 'Anonymous donation (hide badge)' toggle, so an admin can make a supporter's badge visible again after a donation — useful when a badge isn't showing even though a donation was recorded.",
       "Donations: donor totals and badges are now credited automatically and reliably via secure Stripe and PayPal webhooks (with verified fallbacks), so a badge no longer depends on the browser returning to the site after payment. Duplicate notifications are de-duplicated, so a single donation is never counted twice.",
+      "Bug fix: in Back Row (Chess960-style) mirrored randomization, games where each player's pawn row and back row had the same number of pieces could randomize only one player's back row while shuffling the other player's pawns. Both sides now randomize symmetrically.",
     ],
   },
   {
