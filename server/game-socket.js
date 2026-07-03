@@ -450,8 +450,103 @@ function buildOtherData(gameState, extraFields = {}) {
     // player to avoid timing out simply by waiting for a deploy.
     ...(gameState.moveDeadline != null ? { moveDeadline: gameState.moveDeadline } : {}),
     ...(gameState.lastMoveTime != null ? { lastMoveTime: gameState.lastMoveTime } : {}),
+    // Persist per-player limited-reserve inventory (finite piece bank) so deploy
+    // counts survive a server restart / reconnect. Without this, a restart would
+    // refill every reserve and let players deploy pieces they had already spent.
+    ...(gameState.reserves ? { reserves: gameState.reserves } : {}),
     ...extraFields
   });
+}
+
+/**
+ * Build a fresh per-player limited-reserve inventory from a game type's
+ * placeable_pieces `reserve_counts`. Returns { 1: { [piece_id]: count }, 2: {...} }
+ * or null when the game type does not use limited reserves.
+ */
+function buildInitialReserves(otherGameData, playerCount = 2) {
+  if (!otherGameData || !otherGameData.finite_reserve || !otherGameData.place_pieces_action) return null;
+  const placeable = Array.isArray(otherGameData.placeable_pieces) ? otherGameData.placeable_pieces : [];
+  const reserves = {};
+  for (let p = 1; p <= playerCount; p++) reserves[p] = {};
+  for (const pp of placeable) {
+    if (pp.piece_id == null) continue;
+    const counts = pp.reserve_counts || {};
+    for (let p = 1; p <= playerCount; p++) {
+      const n = Math.max(0, Math.floor(Number(counts[String(p)] ?? 0)) || 0);
+      reserves[p][pp.piece_id] = n;
+    }
+  }
+  return reserves;
+}
+
+/**
+ * Ensure gameState.reserves is initialized when the game uses limited reserves.
+ * Lazy — only builds when undefined so persisted/live counts are never clobbered.
+ * Returns the reserves object (or null when limited reserves are not in use).
+ */
+function ensureReserves(gameState) {
+  if (!gameState) return null;
+  if (gameState.reserves) return gameState.reserves;
+  const built = buildInitialReserves(gameState.otherGameData || {}, gameState.gameType?.player_count || 2);
+  if (built) gameState.reserves = built;
+  return gameState.reserves || null;
+}
+
+/**
+ * Parse a game type's custom-square config (special_squares_string) once.
+ * Returns the object of { "y,x": cfg } or null.
+ */
+function parseCustomSquares(gameType) {
+  if (!gameType || !gameType.special_squares_string) return null;
+  try {
+    return typeof gameType.special_squares_string === 'string'
+      ? JSON.parse(gameType.special_squares_string)
+      : gameType.special_squares_string;
+  } catch { return null; }
+}
+
+/**
+ * When a player has any "confine placement to here" square, their placements are
+ * restricted to ONLY those squares. Returns a Set of "y,x" keys the player is
+ * confined to, or null when the player is not confined anywhere.
+ */
+function getPlacementConfinementZone(customSquares, playerPosition) {
+  if (!customSquares) return null;
+  let zone = null;
+  for (const key of Object.keys(customSquares)) {
+    const cfg = customSquares[key];
+    if (!cfg || !cfg.restrictPiecePlacement || !cfg.confinePlacementToHere) continue;
+    const to = cfg.restrictPiecePlacementTo || 'all';
+    if (to === 'all' || to === `p${playerPosition}`) {
+      if (!zone) zone = new Set();
+      zone.add(key);
+    }
+  }
+  return zone;
+}
+
+/**
+ * Authoritative "may this player deploy on (x,y)?" check combining the per-square
+ * placement restriction (restrictPiecePlacementTo) and confinement zones. Pass a
+ * precomputed confinement zone (from getPlacementConfinementZone) to avoid O(n^2)
+ * when checking many squares.
+ */
+function isPlacementSquareAllowed(customSquares, playerPosition, x, y, confinementZone = undefined) {
+  if (!customSquares) return true;
+  const key = `${y},${x}`;
+  const cfg = customSquares[key];
+  if (cfg && cfg.restrictPiecePlacement) {
+    const to = cfg.restrictPiecePlacementTo || 'all';
+    if (to === 'neutral') return false;
+    if (to !== 'all') {
+      const m = String(to).match(/^p(\d+)$/);
+      const allowedPos = m ? parseInt(m[1], 10) : null;
+      if (allowedPos !== null && playerPosition !== allowedPos) return false;
+    }
+  }
+  const zone = confinementZone === undefined ? getPlacementConfinementZone(customSquares, playerPosition) : confinementZone;
+  if (zone && !zone.has(key)) return false;
+  return true;
 }
 
 /**
@@ -1630,25 +1725,26 @@ function validateSimulMoveProposal(gameState, playerId, move) {
     if (x == null || y == null) return { ok: false, reason: 'Invalid placement target' };
     const occupied = (gameState.pieces || []).find(p => p.x === x && p.y === y);
     if (occupied) return { ok: false, reason: 'Square is occupied' };
-    // Check restrictPiecePlacement on the target square
-    if (gameState.gameType?.special_squares_string) {
-      try {
-        const customSquares = typeof gameState.gameType.special_squares_string === 'string'
-          ? JSON.parse(gameState.gameType.special_squares_string)
-          : gameState.gameType.special_squares_string;
-        const squareCfg = customSquares?.[`${y},${x}`];
-        if (squareCfg?.restrictPiecePlacement) {
-          const restriction = squareCfg.restrictPiecePlacementTo || 'all';
-          if (restriction !== 'all') {
-            const playerPosition = (gameState.players.find(p => p.id === playerId) || {}).position;
-            const match2 = String(restriction).match(/^p(\d+)$/);
-            const allowedPosition = match2 ? parseInt(match2[1], 10) : null;
-            if (restriction === 'neutral' || (allowedPosition !== null && playerPosition !== allowedPosition)) {
-              return { ok: false, reason: 'You are not allowed to place a piece on this square' };
-            }
-          }
-        }
-      } catch (_) { /* ignore */ }
+    // Check placement restrictions (per-square restriction + confinement zone)
+    {
+      const customSquares = parseCustomSquares(gameState.gameType);
+      const proposalPlayerPos = (gameState.players.find(p => p.id === playerId) || {}).position;
+      if (customSquares && !isPlacementSquareAllowed(customSquares, proposalPlayerPos, x, y)) {
+        return { ok: false, reason: 'You are not allowed to place a piece on this square' };
+      }
+    }
+    // Limited-reserve gating: block the deploy when this player has none of the
+    // requested piece type left in their finite reserve.
+    const proposalReserves = ensureReserves(gameState);
+    if (proposalReserves) {
+      const placeableEntry = (otherData.placeable_pieces || []).find(p => Number(p.piece_id) === Number(move.placePieceId))
+        || (otherData.placeable_pieces || [])[0];
+      const reserveKey = placeableEntry?.piece_id;
+      const proposalPlayerPosition = (gameState.players.find(p => p.id === playerId) || {}).position;
+      const remaining = reserveKey != null ? (proposalReserves[proposalPlayerPosition]?.[reserveKey] ?? 0) : 0;
+      if (remaining <= 0) {
+        return { ok: false, reason: 'You have no more of this piece type in your reserve' };
+      }
     }
     return { ok: true, kind: 'place', destX: x, destY: y, isPlace: true, placePieceId: move.placePieceId };
   }
@@ -1882,6 +1978,8 @@ function applySimulMovement(gameState, proposal, playerId, safelyMovingPieceIds)
     const placeable = (otherData.placeable_pieces || []).find(p => Number(p.id) === Number(proposal.placePieceId)) || (otherData.placeable_pieces || [])[0];
     if (!placeable) return { applied: false };
     const playerPosition = (gameState.players.find(p => p.id === playerId) || {}).position;
+    const simPlacedNeutral = !!placeable.is_neutral;
+    const simPlacedTeam = simPlacedNeutral ? 0 : playerPosition;
     const newPiece = {
       ...placeable,
       id: `placed_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
@@ -1889,14 +1987,23 @@ function applySimulMovement(gameState, proposal, playerId, safelyMovingPieceIds)
       piece_name: placeable.name || placeable.piece_name || 'Piece',
       x: proposal.destX,
       y: proposal.destY,
-      team: playerPosition,
-      player_id: playerPosition,
+      team: simPlacedTeam,
+      player_id: simPlacedTeam,
+      is_neutral: simPlacedNeutral,
       hit_points: placeable.hit_points ?? 1,
       current_hp: placeable.hit_points ?? 1,
       attack_damage: placeable.attack_damage ?? 1,
       image_location: placeable.image_location || null,
     };
     gameState.pieces.push(newPiece);
+    // Decrement the deploying player's limited reserve, if in use, and reset the
+    // 50-move draw counter (a deploy advances material like a pawn move/promotion).
+    const simulReserves = ensureReserves(gameState);
+    const simulReserveKey = placeable.piece_id;
+    if (simulReserves && simulReserves[playerPosition] && simulReserves[playerPosition][simulReserveKey] != null) {
+      simulReserves[playerPosition][simulReserveKey] = Math.max(0, simulReserves[playerPosition][simulReserveKey] - 1);
+    }
+    gameState.movesWithoutCapture = 0;
     return {
       applied: true,
       capturedPieceIds: [],
@@ -2597,7 +2704,7 @@ async function handleSimulReadyToStart(io, socket, gameState, gameId, userId) {
     initializeCastlingPartners(gameState);
     if (gameState.gameType?.repetition_draw_count) {
       try {
-        const initialPositionHash = getPositionHash(gameState.pieces, 1);
+        const initialPositionHash = getPositionHash(gameState.pieces, 1, gameState.reserves);
         gameState.positionHistory = { [initialPositionHash]: 1 };
       } catch (_) {}
     }
@@ -2650,6 +2757,7 @@ async function submitBotSimulMove(io, gameId, gameState) {
       // engine's verbose logging spam during simul-turn play.
       let bestMove;
       try {
+        ensureReserves(gameState); // ensure limited-reserve inventory is available to the engine
         bestMove = aiEngine.getBestMove(gameState, bot.position, bot.difficulty);
       } catch (e) {
         console.error('[Bot/Simul] getBestMove failed:', e);
@@ -5444,7 +5552,7 @@ function initializeSocket(server) {
           
           // Initialize position history with starting position (for N-fold repetition)
           if (gameState.gameType?.repetition_draw_count) {
-            const initialPositionHash = getPositionHash(gameState.pieces, 1); // Player 1 starts
+            const initialPositionHash = getPositionHash(gameState.pieces, 1, gameState.reserves); // Player 1 starts
             gameState.positionHistory = { [initialPositionHash]: 1 };
           }
           
@@ -5475,29 +5583,12 @@ function initializeSocket(server) {
             return socket.emit("error", { message: "Square is already occupied" });
           }
 
-          // Validate restrictPiecePlacement on the target square (custom squares only)
-          if (gameState.gameType?.special_squares_string) {
-            try {
-              const customSquares = typeof gameState.gameType.special_squares_string === 'string'
-                ? JSON.parse(gameState.gameType.special_squares_string)
-                : gameState.gameType.special_squares_string;
-              const squareCfg = customSquares?.[`${placeY},${placeX}`];
-              if (squareCfg?.restrictPiecePlacement) {
-                const restriction = squareCfg.restrictPiecePlacementTo || 'all';
-                if (restriction !== 'all') {
-                  const playerPosition = gameState.currentTurn; // 1 or 2
-                  const match = String(restriction).match(/^p(\d+)$/);
-                  const allowedPosition = match ? parseInt(match[1], 10) : null;
-                  if (restriction === 'neutral') {
-                    // 'neutral' means only neutral-owned pieces can be placed here;
-                    // per-turn placement always assigns the current player's team, so this blocks all.
-                    return socket.emit("error", { message: "Piece placement is not allowed on this square" });
-                  } else if (allowedPosition !== null && playerPosition !== allowedPosition) {
-                    return socket.emit("error", { message: "You are not allowed to place a piece on this square" });
-                  }
-                }
-              }
-            } catch (_) { /* ignore malformed special_squares_string */ }
+          // Validate placement restrictions (per-square restriction + confinement zone)
+          {
+            const customSquares = parseCustomSquares(gameState.gameType);
+            if (customSquares && !isPlacementSquareAllowed(customSquares, gameState.currentTurn, placeX, placeY)) {
+              return socket.emit("error", { message: "You are not allowed to place a piece on this square" });
+            }
           }
 
           // Resolve the placeable piece template
@@ -5508,6 +5599,17 @@ function initializeSocket(server) {
 
           if (!pieceTemplate) {
             return socket.emit("error", { message: "No valid piece to place" });
+          }
+
+          // Limited-reserve gating: when the game uses a finite piece bank, block the
+          // deploy if the current player has none of this piece type left in reserve.
+          const reserves = ensureReserves(gameState);
+          const reserveKey = pieceTemplate.piece_id;
+          if (reserves) {
+            const remaining = reserves[gameState.currentTurn]?.[reserveKey] ?? 0;
+            if (remaining <= 0) {
+              return socket.emit("error", { message: "You have no more of this piece type in your reserve" });
+            }
           }
 
           // If image_location is missing from template, look it up from the pieces table
@@ -5524,10 +5626,14 @@ function initializeSocket(server) {
             } catch (e) { /* ignore lookup errors */ }
           }
 
-          // Pick the correct image for the placing player
+          // Neutral placeable pieces deploy as neutral (controlled by all players),
+          // but still draw from the deploying player's own reserve.
+          const placedIsNeutral = !!pieceTemplate.is_neutral;
+          // Pick the correct image for the placing player (or the neutral image).
           const placedImageUrl = imageLocation
-            ? getImageUrlForPlayer(imageLocation, gameState.currentTurn)
+            ? getImageUrlForPlayer(imageLocation, gameState.currentTurn, placedIsNeutral ? (pieceTemplate.neutral_image_index ?? null) : null)
             : pieceTemplate.image_url;
+          const placedTeam = placedIsNeutral ? 0 : gameState.currentTurn;
 
           // Validate flanking if must_flank is enabled
           let flippedPieces = [];
@@ -5550,8 +5656,9 @@ function initializeSocket(server) {
               image_location: imageLocation,
               x: placeX,
               y: placeY,
-              team: gameState.currentTurn,
-              player_id: gameState.currentTurn,
+              team: placedTeam,
+              player_id: placedTeam,
+              is_neutral: placedIsNeutral,
               hit_points: pieceTemplate.hit_points ?? 1,
               current_hp: pieceTemplate.hit_points ?? 1,
               attack_damage: pieceTemplate.attack_damage ?? 1,
@@ -5575,8 +5682,9 @@ function initializeSocket(server) {
               image_location: imageLocation,
               x: placeX,
               y: placeY,
-              team: gameState.currentTurn,
-              player_id: gameState.currentTurn,
+              team: placedTeam,
+              player_id: placedTeam,
+              is_neutral: placedIsNeutral,
               hit_points: pieceTemplate.hit_points ?? 1,
               current_hp: pieceTemplate.hit_points ?? 1,
               attack_damage: pieceTemplate.attack_damage ?? 1,
@@ -5585,6 +5693,15 @@ function initializeSocket(server) {
             };
             gameState.pieces.push(newPiece);
           }
+
+          // Decrement the deploying player's reserve (limited reserves only).
+          if (reserves && reserves[gameState.currentTurn] && reserves[gameState.currentTurn][reserveKey] != null) {
+            reserves[gameState.currentTurn][reserveKey] = Math.max(0, reserves[gameState.currentTurn][reserveKey] - 1);
+          }
+          // A deployment advances material toward new pieces (like a pawn move /
+          // promotion), so it resets the 50-move draw counter. Applies to ALL
+          // piece placement, whether or not reserves are limited.
+          gameState.movesWithoutCapture = 0;
 
           // Record the placement move
           const placeMoveRecord = {
@@ -5753,7 +5870,8 @@ function initializeSocket(server) {
               playerTimes: gameState.playerTimes,
               moveHistory: gameState.moveHistory,
               actionsThisTurn: gameState.actionsThisTurn || 0,
-              actionsPerTurn: gameState.gameType?.actions_per_turn || 1
+              actionsPerTurn: gameState.gameType?.actions_per_turn || 1,
+              ...(gameState.reserves ? { reserves: gameState.reserves } : {})
             },
             flipped: flippedPieces.length > 0 ? flippedPieces : undefined,
             skippedTurn: skippedTurn || undefined
@@ -7175,7 +7293,7 @@ function initializeSocket(server) {
             }
 
             // Track position for N-fold repetition detection after premove
-            const premovePositionHash = getPositionHash(gameState.pieces, gameState.currentTurn);
+            const premovePositionHash = getPositionHash(gameState.pieces, gameState.currentTurn, gameState.reserves);
             if (!gameState.positionHistory) {
               gameState.positionHistory = {};
             }
@@ -7704,7 +7822,7 @@ function initializeSocket(server) {
           }
 
           // Track position for N-fold repetition detection
-          const positionHash = getPositionHash(gameState.pieces, gameState.currentTurn);
+          const positionHash = getPositionHash(gameState.pieces, gameState.currentTurn, gameState.reserves);
           if (!gameState.positionHistory) {
             gameState.positionHistory = {};
           }
@@ -9013,6 +9131,7 @@ function initializeSocket(server) {
         const hasPointsCond = gameState.gameType?.points_to_win != null ||
           gameState.gameType?.draw_equal_points_at_turn != null ||
           gameState.gameType?.draw_equal_points_consecutive != null;
+        ensureReserves(gameState); // initialize limited-reserve inventory for the client
         emitToSocket(socket, gameState, "gameState", hasPointsCond
           ? Object.assign({}, gameState, { playerScores: { 1: getPlayerScore(gameState, 1), 2: getPlayerScore(gameState, 2) } })
           : gameState);
@@ -9423,6 +9542,7 @@ function initializeSocket(server) {
             movesWithoutCapture: otherData?.movesWithoutCapture || 0, // Load counter from DB
             positionHistory: otherData?.positionHistory || {}, // Load position history for repetition
             controlSquareTracking: otherData?.controlSquareTracking || {}, // Track control square occupancy
+            reserves: otherData?.reserves || undefined, // Limited-reserve inventory (rebuilt from config if absent)
             captureScores: otherData?.captureScores || { 1: (gameType?.starting_points_p1 || 0), 2: (gameType?.starting_points_p2 || 0) }, // Permanent points
             consecutiveEqualScoreTurns: otherData?.consecutiveEqualScoreTurns || 0,
             totalHalfMoves: otherData?.totalHalfMoves || 0,
@@ -9613,6 +9733,7 @@ function initializeSocket(server) {
           const hasPointsCondDb = gameState.gameType?.points_to_win != null ||
             gameState.gameType?.draw_equal_points_at_turn != null ||
             gameState.gameType?.draw_equal_points_consecutive != null;
+          ensureReserves(gameState); // initialize limited-reserve inventory for the client
           emitToSocket(socket, gameState, "gameState", hasPointsCondDb
             ? Object.assign({}, gameState, { playerScores: { 1: getPlayerScore(gameState, 1), 2: getPlayerScore(gameState, 2) } })
             : gameState);
@@ -12579,7 +12700,7 @@ async function validateAndApplyMove(gameState, move, options = {}) {
  * @param {number} currentTurn - Whose turn it is (important for repetition)
  * @returns {string} - Position hash string
  */
-function getPositionHash(pieces, currentTurn) {
+function getPositionHash(pieces, currentTurn, reserves = null) {
   // Sort pieces by position and create a deterministic string representation.
   // Includes current_hp so that damage-only attacks (where the victim survives but
   // takes HP damage) produce a different hash and don't count toward N-fold repetition.
@@ -12590,7 +12711,19 @@ function getPositionHash(pieces, currentTurn) {
     })
     .sort()
     .join('|');
-  return `${currentTurn}:${sortedPieces}`;
+  // When the game uses a limited reserve (finite piece bank), two positions with
+  // identical boards but different remaining reserves are NOT the same position,
+  // so fold the per-player reserve counts into the hash. When reserves is absent
+  // (unlimited placement or no placement) this is a no-op and behaviour is unchanged.
+  let reserveStr = '';
+  if (reserves && typeof reserves === 'object') {
+    reserveStr = Object.keys(reserves).sort().map(pl => {
+      const inv = reserves[pl] || {};
+      const items = Object.keys(inv).sort().map(k => `${k}=${inv[k]}`).join(',');
+      return `${pl}{${items}}`;
+    }).join(';');
+  }
+  return `${currentTurn}:${sortedPieces}${reserveStr ? `#${reserveStr}` : ''}`;
 }
 
 /**
@@ -16495,31 +16628,76 @@ function getAllLegalMovesForPlayer(gameState, playerPosition) {
 
   // ---- Placement actions (Othello-style "place a piece" moves) ----
   // If the game type allows the current player to place new pieces, enumerate
-  // every legal placement so the bot / no-moves detection sees them too.
+  // every LEGAL placement so the bot / no-moves detection sees them too. This
+  // respects: (1) limited reserves (only piece types the player still has),
+  // (2) per-square placement restrictions (restrictPiecePlacement / ...To), and
+  // (3) check legality (a deploy that leaves your own king in check is illegal,
+  // and a deploy that blocks check is a valid escape) when mate_condition is on.
   try {
     const otherData = gameState.otherGameData || {};
     if (otherData.place_pieces_action) {
       const boardWidth = gameType?.board_width || 8;
       const boardHeight = gameType?.board_height || 8;
       const placeable = Array.isArray(otherData.placeable_pieces) ? otherData.placeable_pieces : [];
-      const piecesToPlace = placeable.length > 0 ? placeable : [{ piece_id: null }];
+      const reserves = ensureReserves(gameState);
 
-      // Determine which squares are valid placement targets.
-      let validSquares = null;
-      if (otherData.flanking_captures && otherData.must_flank) {
-        try {
-          validSquares = getValidFlankingPlacements(gameState, playerPosition) || [];
-        } catch (e) {
-          validSquares = [];
-        }
+      // Restrict the deployable piece list to types this player still has in reserve.
+      let piecesToPlace;
+      if (reserves) {
+        const inv = reserves[playerPosition] || {};
+        piecesToPlace = placeable.filter(p => p.piece_id != null && (inv[p.piece_id] ?? 0) > 0);
+      } else {
+        piecesToPlace = placeable.length > 0 ? placeable : [{ piece_id: null }];
       }
 
-      if (validSquares) {
-        for (const sq of validSquares) {
-          const x = sq.x ?? sq.col;
-          const y = sq.y ?? sq.row;
-          if (x == null || y == null) continue;
+      // Parse custom-square placement restrictions once.
+      let customSquares = null;
+      if (gameType?.special_squares_string) {
+        try {
+          customSquares = typeof gameType.special_squares_string === 'string'
+            ? JSON.parse(gameType.special_squares_string)
+            : gameType.special_squares_string;
+        } catch (_) { customSquares = null; }
+      }
+      const confinementZone = getPlacementConfinementZone(customSquares, playerPosition);
+      const isPlacementAllowedHere = (x, y) =>
+        isPlacementSquareAllowed(customSquares, playerPosition, x, y, confinementZone);
+
+      // A deploy adds a blocker at (x,y); it never captures. Only filter for check
+      // legality when the game uses checkmate (matches normal-move filtering).
+      const wouldPlacementLeaveInCheck = (x, y, template) => {
+        if (!(gameType && gameType.mate_condition)) return false;
+        const simPiece = {
+          ...(template || {}),
+          id: '__sim_place__',
+          x, y,
+          team: playerPosition,
+          player_id: playerPosition,
+          piece_width: (template && template.piece_width) || 1,
+          piece_height: (template && template.piece_height) || 1,
+          current_hp: (template && template.hit_points) ?? 1,
+        };
+        const simState = { ...gameState, pieces: [...pieces, simPiece] };
+        try { return checkForCheck(simState, playerPosition).inCheck; } catch (_) { return false; }
+      };
+
+      if (piecesToPlace.length === 0) {
+        // Reserve exhausted (or no deployable pieces) — no placement moves at all.
+      } else {
+        // Determine which squares are valid placement targets.
+        let validSquares = null;
+        if (otherData.flanking_captures && otherData.must_flank) {
+          try {
+            validSquares = getValidFlankingPlacements(gameState, playerPosition) || [];
+          } catch (e) {
+            validSquares = [];
+          }
+        }
+
+        const pushPlacementsFor = (x, y) => {
+          if (!isPlacementAllowedHere(x, y)) return;
           for (const p of piecesToPlace) {
+            if (wouldPlacementLeaveInCheck(x, y, p)) continue;
             legalMoves.push({
               type: 'place',
               from: { x, y },
@@ -16528,21 +16706,22 @@ function getAllLegalMovesForPlayer(gameState, playerPosition) {
               isPlacement: true,
             });
           }
-        }
-      } else {
-        // Free placement: any unoccupied square is valid.
-        for (let y = 0; y < boardHeight; y++) {
-          for (let x = 0; x < boardWidth; x++) {
-            const occupied = pieces.some(p => p.x === x && p.y === y && !p._occupied);
-            if (occupied) continue;
-            for (const p of piecesToPlace) {
-              legalMoves.push({
-                type: 'place',
-                from: { x, y },
-                to: { x, y },
-                placePieceId: p.piece_id ?? null,
-                isPlacement: true,
-              });
+        };
+
+        if (validSquares) {
+          for (const sq of validSquares) {
+            const x = sq.x ?? sq.col;
+            const y = sq.y ?? sq.row;
+            if (x == null || y == null) continue;
+            pushPlacementsFor(x, y);
+          }
+        } else {
+          // Free placement: any unoccupied square is valid.
+          for (let y = 0; y < boardHeight; y++) {
+            for (let x = 0; x < boardWidth; x++) {
+              const occupied = pieces.some(p => p.x === x && p.y === y && !p._occupied);
+              if (occupied) continue;
+              pushPlacementsFor(x, y);
             }
           }
         }
@@ -17058,6 +17237,7 @@ function isBotPlayer(player) {
  * chosen move object.
  */
 function runBotInWorker(gameState, botPosition, difficulty) {
+  ensureReserves(gameState); // ensure limited-reserve inventory is serialized to the worker
   return new Promise((resolve, reject) => {
     const worker = new Worker(
       path.join(__dirname, 'ai', 'bot-worker.js'),
@@ -17604,9 +17784,11 @@ async function _processBotTurnInner(io, gameId, gameState, precomputedMove = nul
             if (imgRow?.image_location) botPlaceImageLocation = imgRow.image_location;
           } catch (_) {}
         }
+        const botPlacedNeutral = !!pieceTemplate.is_neutral;
         const botPlacedImageUrl = botPlaceImageLocation
-          ? getImageUrlForPlayer(botPlaceImageLocation, gameState.currentTurn)
+          ? getImageUrlForPlayer(botPlaceImageLocation, gameState.currentTurn, botPlacedNeutral ? (pieceTemplate.neutral_image_index ?? null) : null)
           : (pieceTemplate.image_url || null);
+        const botPlacedTeam = botPlacedNeutral ? 0 : gameState.currentTurn;
 
         // Check flanking validity BEFORE pushing the piece (the square must still be empty
         // for getValidFlankingPlacements to recognise it as a valid placement target).
@@ -17626,8 +17808,9 @@ async function _processBotTurnInner(io, gameId, gameState, precomputedMove = nul
           image_location: botPlaceImageLocation,
           x: placeX,
           y: placeY,
-          team: gameState.currentTurn,
-          player_id: gameState.currentTurn,
+          team: botPlacedTeam,
+          player_id: botPlacedTeam,
+          is_neutral: botPlacedNeutral,
           hit_points: pieceTemplate.hit_points ?? 1,
           current_hp: pieceTemplate.hit_points ?? 1,
           attack_damage: pieceTemplate.attack_damage ?? 1,
@@ -17640,6 +17823,17 @@ async function _processBotTurnInner(io, gameId, gameState, precomputedMove = nul
         let botFlippedPieces = [];
         if (otherData.flanking_captures && botIsValidFlanking) {
           botFlippedPieces = applyFlankingCaptures(gameState, placeX, placeY, gameState.currentTurn);
+        }
+
+        // Decrement the bot's limited reserve (finite piece bank) and reset the
+        // 50-move counter — a deploy advances material like a pawn move/promotion.
+        {
+          const botReserves = ensureReserves(gameState);
+          const botReserveKey = pieceTemplate.piece_id;
+          if (botReserves && botReserves[gameState.currentTurn] && botReserves[gameState.currentTurn][botReserveKey] != null) {
+            botReserves[gameState.currentTurn][botReserveKey] = Math.max(0, botReserves[gameState.currentTurn][botReserveKey] - 1);
+          }
+          gameState.movesWithoutCapture = 0;
         }
 
         // Record the placement
@@ -17732,6 +17926,7 @@ async function _processBotTurnInner(io, gameId, gameState, precomputedMove = nul
             moveHistory: gameState.moveHistory,
             actionsThisTurn: gameState.actionsThisTurn || 0,
             actionsPerTurn: gameState.gameType?.actions_per_turn || 1,
+            ...(gameState.reserves ? { reserves: gameState.reserves } : {}),
           },
           ...(botFlippedPieces.length > 0 ? { flipped: botFlippedPieces } : {}),
           ...(botPlaceSkippedTurn ? { skippedTurn: true } : {}),
@@ -18166,7 +18361,7 @@ async function _processBotTurnInner(io, gameId, gameState, precomputedMove = nul
       }
 
       // 12. Draw conditions
-      const positionHash = getPositionHash(gameState.pieces, gameState.currentTurn);
+      const positionHash = getPositionHash(gameState.pieces, gameState.currentTurn, gameState.reserves);
       if (!gameState.positionHistory) gameState.positionHistory = {};
       gameState.positionHistory[positionHash] = (gameState.positionHistory[positionHash] || 0) + 1;
 

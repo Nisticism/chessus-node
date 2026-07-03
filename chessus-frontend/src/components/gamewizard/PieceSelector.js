@@ -47,6 +47,7 @@ const PieceSelector = ({
   hasRestrictionZones = false,  // Whether any custom square has asRestrictionZone enabled
   pointsCondition = false,  // Whether the Points Win Condition is active
   onRemoveRow,  // (row: number) => void — clears all pieces in this row
+  excludePieceIds = null,  // Optional: piece_ids to hide from the list (e.g. already-added placeable pieces)
 }) => {
   // Algebraic notation helpers
   const toFile = (col) => String.fromCharCode(97 + (col ?? 0));
@@ -190,15 +191,21 @@ const PieceSelector = ({
 
   // Memoize filtered pieces (before pagination) to avoid re-filtering on every render
   const allFilteredPieces = useMemo(() => {
-    if (searchTerm.trim() === "") return pieces;
+    const excludeSet = Array.isArray(excludePieceIds) && excludePieceIds.length > 0
+      ? new Set(excludePieceIds.map(id => Number(id)))
+      : null;
+    const base = excludeSet
+      ? pieces.filter(p => !excludeSet.has(Number(p.id ?? p.piece_id)))
+      : pieces;
+    if (searchTerm.trim() === "") return base;
     const term = searchTerm.toLowerCase();
-    return pieces.filter(piece => 
+    return base.filter(piece => 
       (piece.piece_name && piece.piece_name.toLowerCase().includes(term)) ||
       (piece.id && piece.id.toString().includes(term)) ||
       (piece.piece_id && piece.piece_id.toString().includes(term)) ||
       (piece.piece_description && piece.piece_description.toLowerCase().includes(term))
     );
-  }, [searchTerm, pieces]);
+  }, [searchTerm, pieces, excludePieceIds]);
 
   const totalFilteredCount = allFilteredPieces.length;
   const totalPages = Math.ceil(totalFilteredCount / PIECES_PER_PAGE);

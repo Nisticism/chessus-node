@@ -479,10 +479,24 @@ const Step2WinConditions = ({ gameData, updateGameData }) => {
         onChange={(val) => {
           const data = getOtherData();
           data.place_pieces_action = val;
-          if (!val) data.placeable_pieces = [];
+          if (!val) { data.placeable_pieces = []; data.finite_reserve = false; }
           updateGameData({ other_game_data: JSON.stringify(data, null, 2) });
         }}
-      />
+      >
+        <div className={styles["sub-field"]}>
+          <ToggleSwitch
+            checked={otherData.finite_reserve === true}
+            onChange={(val) => setOtherDataField("finite_reserve", val)}
+            size="small"
+            label={
+              <span className={styles["condition-toggle-title"]}>
+                Limited reserves (finite piece bank)
+                <InfoTooltip text="When enabled, each placeable piece has a limited quantity per player. Deploying a piece removes it from that player's reserve; once a piece type is exhausted it can no longer be placed. Configure the per-player quantities in Step 4 (Piece Placement). Note: placing a piece resets the 50-move draw counter (like a pawn move), and when threefold repetition is active the reserve counts are included when comparing positions, so identical boards with different reserves are treated as different positions." />
+              </span>
+            }
+          />
+        </div>
+      </ToggleRow>
 
       <ToggleRow
         title="Pre-game Repositions"

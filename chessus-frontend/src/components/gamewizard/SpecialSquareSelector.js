@@ -55,6 +55,7 @@ const SpecialSquareSelector = ({
     controlPoints: 0,
     restrictPiecePlacement: false,
     restrictPiecePlacementTo: 'all',
+    confinePlacementToHere: false,
   });
 
   // Plain range square: how much the bonus increases piece range by.
@@ -107,6 +108,7 @@ const SpecialSquareSelector = ({
         controlPoints: Math.max(0, Math.min(999, currentConfig.controlPoints || 0)),
         restrictPiecePlacement: !!currentConfig.restrictPiecePlacement,
         restrictPiecePlacementTo: currentConfig.restrictPiecePlacementTo || 'all',
+        confinePlacementToHere: !!currentConfig.confinePlacementToHere,
       });
       if (currentConfig.asControl && currentConfig.controlConfig) {
         setControlConfig({
@@ -171,6 +173,7 @@ const SpecialSquareSelector = ({
         controlPoints: Math.max(0, Math.min(999, customCombo.controlPoints || 0)),
         restrictPiecePlacement: !!customCombo.restrictPiecePlacement,
         restrictPiecePlacementTo: customCombo.restrictPiecePlacement ? (customCombo.restrictPiecePlacementTo || 'all') : 'all',
+        confinePlacementToHere: !!(customCombo.restrictPiecePlacement && customCombo.confinePlacementToHere),
       };
     }
     
@@ -598,7 +601,7 @@ const SpecialSquareSelector = ({
                   />
                   {customCombo.restrictPiecePlacement && (
                     <div className={styles["player-selection"]} style={{ marginTop: '8px', marginBottom: 0 }}>
-                      <label>Who is <strong>blocked</strong> from placing pieces on this square:</label>
+                      <label>Who is <strong>allowed</strong> to place pieces on this square:</label>
                       <div className={styles["player-radio-group"]}>
                         <label className={styles["player-radio-label"]}>
                           <input
@@ -632,6 +635,14 @@ const SpecialSquareSelector = ({
                           />
                           <span>Neutral Only</span>
                         </label>
+                      </div>
+                      <div style={{ marginTop: '10px' }}>
+                        <ToggleSwitch
+                          checked={!!customCombo.confinePlacementToHere}
+                          onChange={(v) => handleCustomComboChange('confinePlacementToHere', v)}
+                          label={<span style={{ color: 'var(--sq-custom, #ffd700)' }}>Confine allowed player to these squares only</span>}
+                          tooltip={<InfoTooltip text="When enabled, the allowed player (selected above) may ONLY place pieces on squares that have this setting turned on — they cannot deploy anywhere else on the board. Turn this on for every square in the allowed zone (use Fill Entire Row to apply to a whole rank). For example, to force each player to deploy only onto their own first rank, mark that rank 'Player X only' with this confine setting enabled." />}
+                        />
                       </div>
                     </div>
                   )}

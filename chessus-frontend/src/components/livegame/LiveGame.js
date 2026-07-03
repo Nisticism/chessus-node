@@ -29,6 +29,7 @@ import {
 } from "../../helpers/pieceMovementUtils";
 import { totalMaterialValue } from "../../utils/pieceValueEstimator";
 import { getFallbackPieceImage } from "../../utils/pieceFallback";
+import { isTouchDevice } from "../../helpers/mobileUtils";
 import { toggleUpvote, getUpvoteStatus } from "../../actions/games";
 import useFairyStockfish from "../../hooks/useFairyStockfish";
 import {
@@ -39,6 +40,73 @@ import {
 
 const API_URL = (process.env.REACT_APP_API_URL || "http://localhost:3001") + "/api/";
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";
+
+// Limited-reserve helpers. When a game type has `finite_reserve`, `gameState.reserves`
+// is { [position]: { [piece_id]: remaining } }. These helpers are no-ops (treat as
+// unlimited) when reserves are absent.
+const getReserveCount = (reserves, position, pieceId) => {
+  if (!reserves || position == null) return Infinity;
+  const inv = reserves[position] || reserves[String(position)] || {};
+  const v = inv[pieceId] ?? inv[String(pieceId)];
+  return v == null ? Infinity : v;
+};
+// Placeable pieces the given player can currently deploy (reserve > 0, or all when unlimited).
+const getDeployablePieces = (otherData, reserves, position) => {
+  const list = (otherData && otherData.placeable_pieces) || [];
+  if (!reserves) return list;
+  return list.filter(pp => getReserveCount(reserves, position, pp.piece_id) > 0);
+};
+
+// If the current player has any "confine placement to here" square, they may only
+// deploy on those squares. Returns a Set of "y,x" keys or null (not confined).
+const computePlacementConfinementZone = (specialSquares, position) => {
+  const special = specialSquares?.special;
+  if (!special) return null;
+  let zone = null;
+  for (const key of Object.keys(special)) {
+    const cfg = special[key];
+    if (!cfg || !cfg.restrictPiecePlacement || !cfg.confinePlacementToHere) continue;
+    const to = cfg.restrictPiecePlacementTo || 'all';
+    if (to === 'all' || to === `p${position}`) {
+      if (!zone) zone = new Set();
+      zone.add(key);
+    }
+  }
+  return zone;
+};
+// Combined "may this player deploy on (x,y)?" check (per-square restriction + confinement).
+const isDeployAllowed = (specialSquares, position, x, y, zone = undefined) => {
+  const cfg = specialSquares?.special?.[`${y},${x}`];
+  if (cfg && cfg.restrictPiecePlacement) {
+    const to = cfg.restrictPiecePlacementTo || 'all';
+    if (to === 'neutral') return false;
+    if (to !== 'all' && to !== `p${position}`) return false;
+  }
+  const z = zone === undefined ? computePlacementConfinementZone(specialSquares, position) : zone;
+  if (z && !z.has(`${y},${x}`)) return false;
+  return true;
+};
+
+// Resolve a reserve piece's image variant to match a player's color (or the neutral image).
+const reserveImageForPlayer = (pp, playerNum) => {
+  if (pp && pp.image_location) {
+    try {
+      const arr = JSON.parse(pp.image_location);
+      if (Array.isArray(arr) && arr.length > 0) {
+        let idx;
+        if (pp.is_neutral) idx = Math.min(Math.max(0, pp.neutral_image_index ?? 0), arr.length - 1);
+        else idx = (playerNum === 2 && arr.length > 1) ? 1 : 0;
+        const p = arr[idx];
+        const path = p.startsWith('http') || p.startsWith('/uploads/') ? p : `/uploads/pieces/${p}`;
+        return path.startsWith('http') ? path : `${ASSET_URL}${path}`;
+      }
+    } catch { /* fall through */ }
+  }
+  if (pp && pp.image_url) {
+    return pp.image_url.startsWith('http') ? pp.image_url : `${ASSET_URL}${pp.image_url}`;
+  }
+  return null;
+};
 
 // Helper to parse image_location and get the first image URL
 const getFirstImageUrl = (imageLocation) => {
@@ -282,12 +350,15 @@ const LiveGame = () => {
   const [pendingDrawOffer, setPendingDrawOffer] = useState(null); // {from, fromUsername} when opponent offers draw
   const [drawOfferSent, setDrawOfferSent] = useState(false); // Track if current user sent a draw offer
   const [showCapturedPieces, setShowCapturedPieces] = useState(true); // Show/hide captured pieces section
+  const [showReserveBank, setShowReserveBank] = useState(true); // Show/hide the limited-reserve bank panel
   const [showPlacementModal, setShowPlacementModal] = useState(false);
   const [placementTarget, setPlacementTarget] = useState(null); // {x, y} where user wants to place
-  // When true, placement uses left-click (fallback for mobile). Default: right-click.
-  const [placementUseLeftClick, setPlacementUseLeftClick] = useState(false);
-  // When false, squares restricted from piece placement are shaded red (default: shown).
-  const [hidePlacementRestrictions, setHidePlacementRestrictions] = useState(false);
+  // When true, placement uses left-click/tap (fallback for mobile). Default: right-click
+  // on desktop, but left-click/tap on touch devices where right-click isn't available.
+  const [placementUseLeftClick, setPlacementUseLeftClick] = useState(() => isTouchDevice());
+  // When false, squares restricted from piece placement are shaded red. Default: hidden
+  // for a cleaner board; users can toggle it on from the board options.
+  const [hidePlacementRestrictions, setHidePlacementRestrictions] = useState(true);
   const [showGuestJoinModal, setShowGuestJoinModal] = useState(false);
   const [guestJoinName, setGuestJoinName] = useState('');
   const [isJoiningAsGuest, setIsJoiningAsGuest] = useState(false);
@@ -4108,19 +4179,18 @@ const LiveGame = () => {
       const canPlace = placementUseLeftClick && isMyTurn && otherData.place_pieces_action && !clickedPiece && 
         (gameState.status === 'active' || gameState.status === 'ready');
       if (canPlace) {
-        // Check if the square is restricted to the other player only
-        const squareCfg = specialSquares?.special?.[`${y},${x}`];
-        const restrictTo = squareCfg?.restrictPiecePlacement ? (squareCfg.restrictPiecePlacementTo || 'all') : 'all';
-        const myPositionKey = `p${currentPlayer?.position}`;
-        const isRestrictedToOther = restrictTo === 'neutral' || (restrictTo !== 'all' && restrictTo !== myPositionKey);
+        // Check if the square is allowed for the current player (restriction + confinement)
+        const isRestrictedToOther = !isDeployAllowed(specialSquares, currentPlayer?.position, x, y);
         if (isRestrictedToOther) {
           showIllegalMoveWarning("You cannot place a piece on this square");
           setSelectedPiece(null);
           setValidMoves([]);
           return;
         }
-        const placeablePieces = otherData.placeable_pieces || [];
-        if (placeablePieces.length === 1) {
+        const placeablePieces = getDeployablePieces(otherData, gameState.reserves, currentPlayer?.position);
+        if (placeablePieces.length === 0) {
+          showIllegalMoveWarning("You have no pieces left in your reserve");
+        } else if (placeablePieces.length === 1) {
           // Single piece type — place directly without modal
           submitMove(parseInt(gameId), {
             type: 'place',
@@ -5148,21 +5218,18 @@ const LiveGame = () => {
         const pieces = parsePieces(gameState.pieces || []);
         const clickedPiece = findPieceAtSquare(pieces, x, y);
         if (!clickedPiece) {
-          // Check if the square is restricted to the current player's placement
-          const squareKey = `${y},${x}`;
-          const squareCfg = specialSquares?.special?.[squareKey];
-          const restrictTo = squareCfg?.restrictPiecePlacement ? (squareCfg.restrictPiecePlacementTo || 'all') : 'all';
-          // 'neutral' blocks all players; 'p1'/'p2' blocks the other player
-          const myPositionKey = `p${currentPlayer?.position}`;
-          const isRestrictedToOther = restrictTo === 'neutral' || (restrictTo !== 'all' && restrictTo !== myPositionKey);
+          // Check if the square is allowed for the current player (restriction + confinement)
+          const isRestrictedToOther = !isDeployAllowed(specialSquares, currentPlayer?.position, x, y);
           if (isRestrictedToOther) {
             showIllegalMoveWarning("You cannot place a piece on this square");
             rightClickDataRef.current = null;
             return;
           }
           if (!isRestrictedToOther) {
-            const placeablePieces = otherData.placeable_pieces || [];
-            if (placeablePieces.length === 1) {
+            const placeablePieces = getDeployablePieces(otherData, gameState.reserves, currentPlayer?.position);
+            if (placeablePieces.length === 0) {
+              showIllegalMoveWarning("You have no pieces left in your reserve");
+            } else if (placeablePieces.length === 1) {
               submitMove(parseInt(gameId), {
                 type: 'place',
                 to: { x, y },
@@ -5722,15 +5789,10 @@ const LiveGame = () => {
         const sqCfg = specialSquares.special[`${gameY},${gameX}`];
         const isRestrictionZone = !!(sqCfg?.asRestrictionZone);
         const isImpassable = !!(sqCfg?.impassable);
-        // Placement restriction: square is restricted so the current player cannot place here
-        const isPlacementRestricted = !!(gameState?.otherGameData?.place_pieces_action && sqCfg?.restrictPiecePlacement && (() => {
-          const r = sqCfg.restrictPiecePlacementTo || 'all';
-          if (r === 'all') return false;
-          if (r === 'neutral') return true; // neutral blocks all players
-          const m = String(r).match(/^p(\d+)$/);
-          // r is the ALLOWED player — restricted if that player is NOT us
-          return m ? parseInt(m[1], 10) !== currentPlayer?.position : false;
-        })());
+        // Placement restriction: square where the current player cannot deploy
+        // (either restricted to another player, or the player is confined elsewhere).
+        const isPlacementRestricted = !!(gameState?.otherGameData?.place_pieces_action
+          && !isDeployAllowed(specialSquares, currentPlayer?.position, gameX, gameY));
 
         // Ranged attack highlights
         const isRangedMove = !!rangedMove;
@@ -7385,6 +7447,69 @@ const LiveGame = () => {
         </div>
       )}
 
+      {/* Reserve Bank — shown when the game uses a limited reserve (finite piece bank) */}
+      {gameState?.otherGameData?.place_pieces_action && gameState?.reserves &&
+        Array.isArray(gameState?.otherGameData?.placeable_pieces) &&
+        gameState.otherGameData.placeable_pieces.length > 0 && (
+        <div className={styles["layout-row-captured"]}>
+          <div className={styles["captured-pieces-section"]}>
+            <div
+              className={styles["captured-header"]}
+              onClick={() => setShowReserveBank(v => !v)}
+            >
+              <span className={styles["captured-title"]}>Reserve Bank</span>
+              <span className={`${styles["captured-toggle"]} ${showReserveBank ? styles.expanded : ''}`}>
+                {`\u25BC`}
+              </span>
+            </div>
+            {showReserveBank && (
+              <div className={styles["captured-content"]}>
+                {[1, 2].map((pos) => {
+                  const label = gameState?.players?.find(p => p.position === pos)?.username
+                    || (pos === 1 ? 'White' : 'Black');
+                  const entries = gameState.otherGameData.placeable_pieces;
+                  return (
+                    <div key={pos} className={styles["captured-row"]} style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                      <span className={styles["captured-label"]} style={{ minWidth: '110px' }}>{label} reserve:</span>
+                      <div style={{ display: 'flex', flexDirection: 'row', flexWrap: 'wrap', gap: '10px', alignItems: 'flex-end' }}>
+                        {entries.map((pp, i) => {
+                          const remaining = getReserveCount(gameState.reserves, pos, pp.piece_id);
+                          const count = remaining === Infinity ? '∞' : remaining;
+                          const imageUrl = reserveImageForPlayer(pp, pos);
+                          return (
+                            <div
+                              key={`${pp.piece_id ?? 'pp'}_${i}`}
+                              title={`${pp.name || pp.piece_name || 'Piece'}${pp.is_neutral ? ' (Neutral)' : ''} — ${count} left`}
+                              style={{
+                                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px',
+                                opacity: remaining === 0 ? 0.35 : 1, minWidth: '44px'
+                              }}
+                            >
+                              {imageUrl && (
+                                <img
+                                  src={imageUrl}
+                                  alt={pp.name || 'Piece'}
+                                  draggable={false}
+                                  style={{ width: '40px', height: '40px', objectFit: 'contain' }}
+                                />
+                              )}
+                              <span style={{ fontWeight: 700, fontSize: '0.9em' }}>×{count}</span>
+                              {pp.is_neutral && (
+                                <span style={{ fontSize: '0.65em', color: 'var(--text-muted, #999)' }}>Neutral</span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Captured Pieces Row — hidden during active Hidden-Enemy-Pieces games */}
       {!(gameState?.hideEnemyPieces && gameState?.status !== 'completed') &&
         (capturedPieces.player1.length > 0 || capturedPieces.player2.length > 0) && (
@@ -7926,22 +8051,40 @@ const LiveGame = () => {
             <p>Select which piece to place at {String.fromCharCode(97 + placementTarget.x)}{placementTarget.y + 1}:</p>
             <div className={styles["promotion-options"]}>
               {(gameState?.otherGameData?.placeable_pieces || []).map((piece, index) => {
-                const imageUrl = piece.image_url
-                  ? (piece.image_url.startsWith('http') ? piece.image_url : `${ASSET_URL}${piece.image_url}`)
-                  : null;
+                const imageUrl = reserveImageForPlayer(piece, currentPlayer?.position);
+                const remaining = getReserveCount(gameState?.reserves, currentPlayer?.position, piece.piece_id);
+                const limited = gameState?.reserves != null && remaining !== Infinity;
+                const depleted = limited && remaining <= 0;
+                if (depleted) return null; // exhausted piece types are hidden
                 return (
                   <button
                     key={`${piece.piece_id ?? 'pp'}_${index}`}
                     className={styles["promotion-option"]}
                     onClick={() => handlePlacementSelect(piece)}
                     title={piece.piece_name || piece.name || 'Piece'}
+                    style={{ position: 'relative' }}
                   >
+                    {limited && (
+                      <span
+                        style={{
+                          position: 'absolute', top: '2px', right: '4px',
+                          fontWeight: 700, fontSize: '0.8em', lineHeight: 1,
+                          background: 'rgba(0,0,0,0.6)', color: '#fff',
+                          borderRadius: '8px', padding: '1px 5px', pointerEvents: 'none'
+                        }}
+                      >
+                        ×{remaining}
+                      </span>
+                    )}
                     {imageUrl ? (
                       <img src={imageUrl} alt={piece.piece_name || piece.name || 'Piece'} draggable={false} />
                     ) : (
                       <span className={styles["piece-name"]}>{piece.piece_name || piece.name || '?'}</span>
                     )}
-                    <span className={styles["piece-label"]}>{piece.piece_name || piece.name || 'Unknown'}</span>
+                    <span className={styles["piece-label"]}>
+                      {piece.piece_name || piece.name || 'Unknown'}
+                      {piece.is_neutral ? ' (Neutral)' : ''}
+                    </span>
                   </button>
                 );
               })}

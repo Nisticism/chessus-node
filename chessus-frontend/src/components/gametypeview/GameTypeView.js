@@ -2478,6 +2478,10 @@ const GameTypeView = () => {
         const pieceNames = otherData.placeable_pieces.map(p => `**${p.piece_name || p.name || 'Unknown'}**`).join(', ');
         placeDesc += `\n\n**Placeable piece types:** ${pieceNames}`;
       }
+      if (otherData.finite_reserve) {
+        placeDesc += `\n\n**Limited reserves:** Each player has a finite bank of pieces (see the Placeable Pieces section below for the exact per-player counts). Deploying a piece removes it from that player's reserve, and once a piece type is exhausted it can no longer be placed. Neutral pieces can be deployed by either player but draw from that player's own reserve.`;
+        placeDesc += `\n\nDeploying a piece resets the 50-move draw counter (like a pawn move). When threefold repetition is active, remaining reserves are part of the position, so identical boards with different reserves are treated as different positions.`;
+      }
       mechanicsContent.push(placeDesc);
     }
 
@@ -3648,24 +3652,75 @@ const GameTypeView = () => {
           let od = {};
           try { od = JSON.parse(game.other_game_data || '{}') || {}; } catch {}
           if (!od.place_pieces_action || !od.placeable_pieces || od.placeable_pieces.length === 0) return null;
+
+          // Resolve the image variant that matches a given player (or the neutral image).
+          const imageForPlayer = (pp, playerNum) => {
+            if (pp.image_location) {
+              try {
+                const arr = JSON.parse(pp.image_location);
+                if (Array.isArray(arr) && arr.length > 0) {
+                  let idx;
+                  if (pp.is_neutral) idx = Math.min(Math.max(0, pp.neutral_image_index ?? 0), arr.length - 1);
+                  else idx = (playerNum === 2 && arr.length > 1) ? 1 : 0;
+                  const p = arr[idx];
+                  return getImageUrl(p.startsWith('http') || p.startsWith('/uploads/') ? p : `/uploads/pieces/${p}`);
+                }
+              } catch { /* fall through */ }
+            }
+            return pp.image_url ? getImageUrl(pp.image_url) : null;
+          };
+
+          const renderCard = (pp, idx, playerNum, qty) => {
+            const imgUrl = imageForPlayer(pp, playerNum);
+            return (
+              <Link key={idx} to={pp.piece_id ? `/pieces/${pp.piece_id}` : '#'} className={styles["placeable-piece-card"]}>
+                {imgUrl ? (
+                  <img src={imgUrl} alt={pp.piece_name || pp.name || 'Piece'} className={styles["placeable-piece-img"]} />
+                ) : (
+                  <span className={styles["placeable-piece-placeholder"]}>?</span>
+                )}
+                <span className={styles["placeable-piece-label"]}>{pp.piece_name || pp.name || 'Unknown'}</span>
+                {pp.is_neutral && (
+                  <span className={styles["placeable-piece-label"]} style={{ color: 'var(--text-muted)', fontSize: '0.75em' }}>Neutral</span>
+                )}
+                {qty != null && (
+                  <span className={styles["placeable-piece-label"]} style={{ color: 'var(--text-muted)', fontSize: '0.85em' }}>×{qty}</span>
+                )}
+              </Link>
+            );
+          };
+
+          if (od.finite_reserve) {
+            const playerCount = game.player_count || 2;
+            return (
+              <div className={styles["section"]}>
+                <h2>♟ Placeable Pieces</h2>
+                <p style={{ color: 'var(--text-muted)', marginBottom: '12px' }}>
+                  Each player has a limited reserve. The counts below show how many of each piece a player starts with. Neutral pieces can be placed by either player but draw from that player's own reserve.
+                </p>
+                {Array.from({ length: playerCount }, (_, i) => i + 1).map(playerNum => (
+                  <div key={playerNum} style={{ marginBottom: '16px' }}>
+                    <h3 style={{ marginBottom: '8px' }}>Player {playerNum} reserve</h3>
+                    <div className={styles["placeable-pieces-grid"]}>
+                      {od.placeable_pieces.map((pp, idx) => {
+                        const qty = (pp.reserve_counts || {})[String(playerNum)] ?? 0;
+                        return renderCard(pp, idx, playerNum, qty);
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            );
+          }
+
           return (
             <div className={styles["section"]}>
               <h2>♟ Placeable Pieces</h2>
-              <p style={{ color: 'var(--text-muted)', marginBottom: '12px' }}>These pieces can be placed onto the board during gameplay.</p>
+              <p style={{ color: 'var(--text-muted)', marginBottom: '12px' }}>
+                These pieces can be placed onto the board during gameplay.
+              </p>
               <div className={styles["placeable-pieces-grid"]}>
-                {od.placeable_pieces.map((pp, idx) => {
-                  const imgUrl = pp.image_url ? getImageUrl(pp.image_url) : null;
-                  return (
-                    <Link key={idx} to={pp.piece_id ? `/pieces/${pp.piece_id}` : '#'} className={styles["placeable-piece-card"]}>
-                      {imgUrl ? (
-                        <img src={imgUrl} alt={pp.piece_name || pp.name || 'Piece'} className={styles["placeable-piece-img"]} />
-                      ) : (
-                        <span className={styles["placeable-piece-placeholder"]}>?</span>
-                      )}
-                      <span className={styles["placeable-piece-label"]}>{pp.piece_name || pp.name || 'Unknown'}</span>
-                    </Link>
-                  );
-                })}
+                {od.placeable_pieces.map((pp, idx) => renderCard(pp, idx, 1, null))}
               </div>
             </div>
           );

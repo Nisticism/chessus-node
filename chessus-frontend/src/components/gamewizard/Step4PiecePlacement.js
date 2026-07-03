@@ -378,12 +378,41 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
         try {
           const data = JSON.parse(gameData.other_game_data || '{}');
           const placeablePieces = data.placeable_pieces || [];
-          placeablePieces.push({
+          // Prevent duplicate piece types — increment the quantity instead.
+          if (placeablePieces.some(pp => Number(pp.piece_id) === Number(pieceData.piece_id))) {
+            setShowPieceSelector(false);
+            setSelectedSquare(null);
+            return;
+          }
+          const playerCount = gameData.player_count || 2;
+          // For neutral placeable pieces, show the neutral image variant.
+          let entryImageUrl = pieceData.image_url;
+          const isNeutralEntry = !!pieceData.is_neutral;
+          if (isNeutralEntry && pieceData.image_location) {
+            try {
+              const arr = JSON.parse(pieceData.image_location);
+              if (Array.isArray(arr) && arr.length > 0) {
+                const idx = Math.min(Math.max(0, pieceData.neutral_image_index ?? 0), arr.length - 1);
+                const p = arr[idx];
+                entryImageUrl = p.startsWith('http') ? p : (p.startsWith('/uploads/') ? p : `/uploads/pieces/${p}`);
+              }
+            } catch { /* keep default image */ }
+          }
+          const newEntry = {
             piece_id: pieceData.piece_id,
             name: pieceData.piece_name,
-            image_url: pieceData.image_url,
-            image_location: pieceData.image_location || null
-          });
+            image_url: entryImageUrl,
+            image_location: pieceData.image_location || null,
+            is_neutral: isNeutralEntry,
+            neutral_image_index: isNeutralEntry ? (pieceData.neutral_image_index ?? 0) : null,
+          };
+          // When limited reserves are enabled, seed a default per-player quantity of 1.
+          if (data.finite_reserve) {
+            const counts = {};
+            for (let p = 1; p <= playerCount; p++) counts[String(p)] = 1;
+            newEntry.reserve_counts = counts;
+          }
+          placeablePieces.push(newEntry);
           data.placeable_pieces = placeablePieces;
           updateGameData({ other_game_data: JSON.stringify(data, null, 2) });
         } catch {
@@ -1744,13 +1773,55 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
         if (!otherData.place_pieces_action) return null;
 
         const placeablePieces = otherData.placeable_pieces || [];
+        const finiteReserve = otherData.finite_reserve === true;
+        const playerCount = gameData.player_count || 2;
+
+        const persistPlaceable = (updated) => {
+          const data = { ...otherData, placeable_pieces: updated };
+          updateGameData({ other_game_data: JSON.stringify(data, null, 2) });
+        };
+
+        const setReserveCount = (idx, playerNum, value) => {
+          const qty = Math.max(0, Math.min(99, Math.floor(Number(value)) || 0));
+          const updated = placeablePieces.map((pp, i) => {
+            if (i !== idx) return pp;
+            const counts = { ...(pp.reserve_counts || {}) };
+            counts[String(playerNum)] = qty;
+            return { ...pp, reserve_counts: counts };
+          });
+          persistPlaceable(updated);
+        };
+
+        const mirrorReserve = () => {
+          // Copy Player 1's per-piece quantities onto every other player.
+          const updated = placeablePieces.map((pp) => {
+            const counts = { ...(pp.reserve_counts || {}) };
+            const p1 = Number(counts["1"] || 0);
+            for (let p = 2; p <= playerCount; p++) counts[String(p)] = p1;
+            return { ...pp, reserve_counts: counts };
+          });
+          persistPlaceable(updated);
+        };
 
         return (
           <div className={styles["global-hp-ad-section"]} style={{ marginTop: '20px' }}>
             <h3>Placeable Pieces <InfoTooltip text="Select which pieces can be placed onto empty squares during gameplay. Players will spend an action to place one of these pieces on their turn." /></h3>
             <p className={styles["field-hint"]} style={{ marginBottom: '12px' }}>
               Choose piece types that players can place during gameplay. These are separate from starting board positions.
+              {finiteReserve && ' Set how many of each piece every player starts with in their reserve. Once a player runs out of a piece, they can no longer deploy it.'}
             </p>
+
+            {finiteReserve && placeablePieces.length > 1 && (
+              <button
+                type="button"
+                className={styles["add-placeable-piece-btn"]}
+                style={{ marginBottom: '12px' }}
+                onClick={mirrorReserve}
+                title="Copy Player 1's quantities to all other players"
+              >
+                ⇄ Mirror Reserve (P1 → all)
+              </button>
+            )}
 
             {placeablePieces.length > 0 && (
               <div className={styles["placeable-pieces-list"]}>
@@ -1763,13 +1834,31 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
                         className={styles["placeable-piece-image"]}
                       />
                     )}
-                    <span className={styles["placeable-piece-name"]}>{pp.name || `Piece #${pp.piece_id}`}</span>
+                    <span className={styles["placeable-piece-name"]}>
+                      {pp.name || `Piece #${pp.piece_id}`}
+                      {pp.is_neutral && (
+                        <span style={{ marginLeft: '6px', fontSize: '0.75em', color: 'var(--text-muted, #999)', fontWeight: 600 }}>(Neutral)</span>
+                      )}
+                    </span>
+                    {finiteReserve && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginRight: '8px' }}>
+                        {Array.from({ length: playerCount }, (_, i) => i + 1).map((playerNum) => (
+                          <label key={playerNum} style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.85rem' }}>
+                            <span>P{playerNum}:</span>
+                            <NumberInput
+                              value={pp.reserve_counts?.[String(playerNum)] ?? 0}
+                              onChange={(val) => setReserveCount(idx, playerNum, val)}
+                              options={{ min: 0, max: 99 }}
+                            />
+                          </label>
+                        ))}
+                      </div>
+                    )}
                     <button
                       className={styles["placeable-piece-remove"]}
                       onClick={() => {
                         const updated = placeablePieces.filter((_, i) => i !== idx);
-                        const data = { ...otherData, placeable_pieces: updated };
-                        updateGameData({ other_game_data: JSON.stringify(data, null, 2) });
+                        persistPlaceable(updated);
                       }}
                       title="Remove"
                     >
@@ -2089,6 +2178,12 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
           hasRestrictionZones={hasRestrictionZones}
           pointsCondition={gameData.points_to_win != null}
           onRemoveRow={handleRemoveRow}
+          excludePieceIds={selectedSquare?.isPlaceable ? (() => {
+            try {
+              const od = JSON.parse(gameData.other_game_data || '{}');
+              return (od.placeable_pieces || []).map(pp => pp.piece_id).filter(id => id != null);
+            } catch { return []; }
+          })() : null}
         />
       )}
     </div>

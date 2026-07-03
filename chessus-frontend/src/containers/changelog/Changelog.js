@@ -4,6 +4,27 @@ import styles from "./changelog.module.scss";
 
 const changelogData = [
   {
+    date: "July 2, 2026",
+    title: "Limited reserves: deploy pieces from a finite per-player bank",
+    items: [
+      "Game wizard: the 'Place Pieces Action' mechanic (Step 2) now has a 'Limited reserves' option. When enabled, each placeable piece has a finite quantity per player instead of being unlimited.",
+      "Game wizard: Step 4 (Piece Placement) now includes a reserve builder — add placeable piece types and set how many each player starts with. A 'Mirror Reserve' button copies Player 1's quantities to the other player.",
+      "In-game: a Reserve Bank panel shows each player's remaining pieces. Deploying a piece decrements your reserve; once a piece type is exhausted it can no longer be placed, and if a rank fills up or your reserve empties you simply can't deploy.",
+      "Deploying a piece now resets the 50-move draw counter (like a pawn move or promotion). This applies to all piece placement.",
+      "Threefold repetition now accounts for remaining reserves when limited reserves are on — two identical board positions with different reserves are no longer treated as a repetition.",
+      "Bots (easy/medium/hard) now play limited-reserve games correctly, deploying only pieces they still have and only onto squares they're allowed to use.",
+      "Clarified the wizard wording for custom-square placement restrictions: the selector now reads 'Who is allowed to place' (it previously said 'blocked', which was the opposite of how the rule actually works). Existing games are unaffected.",
+      "Custom squares can now confine a player's deployments to only the marked squares (a new 'Confine allowed player to these squares only' toggle) — making it easy to force each player to deploy only onto their own first rank. Works with Fill Row and Mirror.",
+      "Game wizard: you can no longer add the same placeable piece type twice — increase its quantity instead.",
+      "Reserve pieces can now be marked Neutral: either player may deploy them (drawing from their own reserve) and they appear with the neutral image, clearly labeled, in the wizard, the game detail page, and in-game.",
+      "In-game Reserve Bank is now collapsible, lays pieces out horizontally with larger images, shows each piece in the owning player's color, and displays just the remaining quantity.",
+      "The Place-a-Piece picker now shows each piece's remaining quantity as a badge in the corner of the card (so a long piece name no longer hides the count).",
+      "Piece placement now works on mobile: touch devices default to tap-to-place instead of right-click (you can still change this in the board options).",
+      "Placement restriction shading is now hidden by default for a cleaner board — you can turn it back on any time from the board options.",
+      "Game detail page: limited-reserve games now show one reserve section per player with player-colored piece images and quantities.",
+    ],
+  },
+  {
     date: "June 28, 2026",
     title: "Donor badge admin tools: anonymous-donation visibility and user search",
     items: [

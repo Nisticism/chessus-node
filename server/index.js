@@ -4496,7 +4496,7 @@ app.post("/api/games/:gameId/uniqueness-check", authenticateToken, async (req, r
     let targetOtherData = {};
     try { targetOtherData = JSON.parse(targetGame.other_game_data || '{}') || {}; } catch {}
     // Only keep gameplay-relevant keys from other_game_data
-    const gameplayOtherDataKeys = ['place_pieces_action', 'placeable_pieces'];
+    const gameplayOtherDataKeys = ['place_pieces_action', 'placeable_pieces', 'finite_reserve'];
     const targetOtherDataFiltered = {};
     for (const key of gameplayOtherDataKeys) {
       if (targetOtherData[key] !== undefined) targetOtherDataFiltered[key] = targetOtherData[key];

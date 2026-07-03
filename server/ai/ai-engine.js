@@ -133,6 +133,11 @@ function cloneState(state) {
     // Required so applyMove can find placeable_pieces templates and orderMoves knows it's a
     // placement game. Shared by reference (read-only in search — never mutated).
     otherGameData: state.otherGameData || {},
+    // Per-player limited-reserve inventory. Cloned (one level deep) so a deploy in one
+    // search branch does not mutate sibling branches. null when not a limited-reserve game.
+    reserves: state.reserves
+      ? Object.fromEntries(Object.entries(state.reserves).map(([k, v]) => [k, { ...v }]))
+      : null,
   };
 }
 
@@ -155,13 +160,16 @@ function applyMove(state, move) {
       ? placeable.find(pp => pp.piece_id === move.placePieceId) || placeable[0]
       : placeable[0];
     const newId = `placed_${state.moveCount || 0}_${move.to.x}_${move.to.y}`;
+    const placedNeutral = !!(template && template.is_neutral);
+    const placedTeam = placedNeutral ? 0 : playerToMove;
     state.pieces.push({
       ...(template || {}),
       id: newId,
       x: move.to.x,
       y: move.to.y,
-      team: playerToMove,
-      player_id: playerToMove,
+      team: placedTeam,
+      player_id: placedTeam,
+      is_neutral: placedNeutral,
       hasMoved: true,
       moveCount: 1,
     });
@@ -178,7 +186,15 @@ function applyMove(state, move) {
     state.currentTurn = state.currentTurn === 1 ? 2 : 1;
     state.moveCount = (state.moveCount || 0) + 1;
     state.gamePly = (state.gamePly ?? 0) + 1;
-    state.movesWithoutCapture = (state.movesWithoutCapture || 0) + 1;
+    // A deploy advances material like a pawn move — reset the 50-move counter.
+    state.movesWithoutCapture = 0;
+    // Decrement the deploying player's limited reserve, if in use.
+    if (state.reserves && template && template.piece_id != null) {
+      const inv = state.reserves[playerToMove] || state.reserves[String(playerToMove)];
+      if (inv && inv[template.piece_id] != null) {
+        inv[template.piece_id] = Math.max(0, inv[template.piece_id] - 1);
+      }
+    }
     return [];
   }
   const piece = state.pieces.find(p => p.id === move.pieceId);
@@ -693,7 +709,55 @@ function getMovesForSearch(state, playerPosition) {
       const boardWidth = state.gameType?.board_width || 8;
       const boardHeight = state.gameType?.board_height || 8;
       const placeable = Array.isArray(otherData.placeable_pieces) ? otherData.placeable_pieces : [];
-      const piecesToPlace = placeable.length > 0 ? placeable : [{ piece_id: null }];
+
+      // Limited reserve: only deploy piece types the current player still has.
+      let piecesToPlace;
+      if (state.reserves) {
+        const inv = state.reserves[playerPosition] || state.reserves[String(playerPosition)] || {};
+        piecesToPlace = placeable.filter(pp => pp.piece_id != null && (inv[pp.piece_id] ?? 0) > 0);
+      } else {
+        piecesToPlace = placeable.length > 0 ? placeable : [{ piece_id: null }];
+      }
+
+      // Parse custom-square placement restrictions once (own-first-rank etc.).
+      let customSquares = null;
+      if (state.gameType?.special_squares_string) {
+        try {
+          customSquares = typeof state.gameType.special_squares_string === 'string'
+            ? JSON.parse(state.gameType.special_squares_string)
+            : state.gameType.special_squares_string;
+        } catch (_) { customSquares = null; }
+      }
+      // Confinement zone: squares the player is restricted to (null = not confined).
+      let placementZone = null;
+      if (customSquares) {
+        for (const key of Object.keys(customSquares)) {
+          const cfg = customSquares[key];
+          if (!cfg || !cfg.restrictPiecePlacement || !cfg.confinePlacementToHere) continue;
+          const to = cfg.restrictPiecePlacementTo || 'all';
+          if (to === 'all' || to === `p${playerPosition}`) {
+            if (!placementZone) placementZone = new Set();
+            placementZone.add(key);
+          }
+        }
+      }
+      const isPlacementAllowedHere = (x, y) => {
+        if (!customSquares) return true;
+        const cfg = customSquares[`${y},${x}`];
+        if (cfg && cfg.restrictPiecePlacement) {
+          const restriction = cfg.restrictPiecePlacementTo || 'all';
+          if (restriction === 'neutral') return false;
+          if (restriction !== 'all') {
+            const m = String(restriction).match(/^p(\d+)$/);
+            const allowedPosition = m ? parseInt(m[1], 10) : null;
+            if (allowedPosition !== null && playerPosition !== allowedPosition) return false;
+          }
+        }
+        // Confinement: if the player has any "confine to here" square, they may
+        // only deploy on those squares.
+        if (placementZone && !placementZone.has(`${y},${x}`)) return false;
+        return true;
+      };
 
       // Collect all occupied squares once for O(1) lookup
       const occupiedSet = new Set();
@@ -713,18 +777,21 @@ function getMovesForSearch(state, playerPosition) {
         } catch (_) { /* fall back to all empty squares */ }
       }
 
-      for (let y = 0; y < boardHeight; y++) {
-        for (let x = 0; x < boardWidth; x++) {
-          if (occupiedSet.has(`${x},${y}`)) continue;
-          if (validFlankSet !== null && !validFlankSet.has(`${x},${y}`)) continue;
-          for (const pt of piecesToPlace) {
-            moves.push({
-              type: 'place',
-              from: { x, y },
-              to: { x, y },
-              placePieceId: pt.piece_id ?? null,
-              isPlacement: true,
-            });
+      if (piecesToPlace.length > 0) {
+        for (let y = 0; y < boardHeight; y++) {
+          for (let x = 0; x < boardWidth; x++) {
+            if (occupiedSet.has(`${x},${y}`)) continue;
+            if (validFlankSet !== null && !validFlankSet.has(`${x},${y}`)) continue;
+            if (!isPlacementAllowedHere(x, y)) continue;
+            for (const pt of piecesToPlace) {
+              moves.push({
+                type: 'place',
+                from: { x, y },
+                to: { x, y },
+                placePieceId: pt.piece_id ?? null,
+                isPlacement: true,
+              });
+            }
           }
         }
       }
