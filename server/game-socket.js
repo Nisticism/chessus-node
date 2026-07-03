@@ -642,13 +642,28 @@ function computeCustomSquareControlPoints(gameState) {
 }
 
 /**
+ * Normalize a persisted/seeded {1,2} capture-score pair into plain numbers.
+ * DECIMAL columns (starting_points_p1/p2) come back from MySQL as strings, and
+ * persisted JSON can carry those strings forward. Left un-coerced they make the
+ * score arithmetic concatenate ("6.5" + 41 => "6.541"), which corrupts the final
+ * score and winner. Always run seeded/loaded capture scores through this.
+ */
+function normalizeCaptureScores(src, fallback1 = 0, fallback2 = 0) {
+  const s = src || {};
+  return {
+    1: Number(s[1] ?? s['1'] ?? fallback1) || 0,
+    2: Number(s[2] ?? s['2'] ?? fallback2) || 0,
+  };
+}
+
+/**
  * Get the total score for a player position (1 or 2), combining permanent
  * capture-based points and current control-square points.
  */
 function getPlayerScore(gameState, position) {
-  const capScore = (gameState.captureScores && gameState.captureScores[position]) || 0;
+  const capScore = Number((gameState.captureScores && gameState.captureScores[position])) || 0;
   const ctrlPts = computeCustomSquareControlPoints(gameState);
-  return capScore + (ctrlPts[position] || 0);
+  return capScore + (Number(ctrlPts[position]) || 0);
 }
 
 
@@ -3015,10 +3030,7 @@ async function recoverActiveGames() {
           pieces,
           currentTurn: game.player_turn || 1,
           moveHistory: otherData.moves || [],
-          captureScores: otherData.captureScores || {
-            1: (game.starting_points_p1 || 0),
-            2: (game.starting_points_p2 || 0),
-          },
+          captureScores: normalizeCaptureScores(otherData.captureScores, game.starting_points_p1, game.starting_points_p2),
           consecutiveEqualScoreTurns: otherData.consecutiveEqualScoreTurns || 0,
           totalHalfMoves: otherData.totalHalfMoves || 0,
           playerTimes,
@@ -3821,7 +3833,7 @@ function initializeSocket(server) {
           movesWithoutCapture: 0, // Track for draw by move limit
           positionHistory: {}, // Track position occurrences for N-fold repetition
           controlSquareTracking: {}, // Track control square occupancy: { "row,col": { playerId, turnCount } }
-          captureScores: { 1: (gameType.starting_points_p1 || 0), 2: (gameType.starting_points_p2 || 0) }, // Permanent points from captures (and owner losses)
+          captureScores: normalizeCaptureScores(null, gameType.starting_points_p1, gameType.starting_points_p2), // Permanent points from captures (and owner losses)
           consecutiveEqualScoreTurns: 0, // Counter for equal-score draw condition
           totalHalfMoves: 0, // Total half-move count for equal-points-at-turn draw
           startTime: null,
@@ -4427,7 +4439,7 @@ function initializeSocket(server) {
           movesWithoutCapture: 0,
           positionHistory: {},
           controlSquareTracking: {},
-          captureScores: { 1: (gameType.starting_points_p1 || 0), 2: (gameType.starting_points_p2 || 0) },
+          captureScores: normalizeCaptureScores(null, gameType.starting_points_p1, gameType.starting_points_p2),
           consecutiveEqualScoreTurns: 0,
           totalHalfMoves: 0,
           actionsThisTurn: 0,
@@ -5183,7 +5195,7 @@ function initializeSocket(server) {
             currentTurn: 1,
             moveHistory: [],
             controlSquareTracking: {},
-            captureScores: joinGameOtherData.captureScores || { 1: (gameType?.starting_points_p1 || 0), 2: (gameType?.starting_points_p2 || 0) },
+            captureScores: normalizeCaptureScores(joinGameOtherData.captureScores, gameType?.starting_points_p1, gameType?.starting_points_p2),
             movesWithoutCapture: 0,
             positionHistory: {},
             consecutiveEqualScoreTurns: 0,
@@ -9713,7 +9725,7 @@ function initializeSocket(server) {
             recentPositionHashes: otherData?.recentPositionHashes || [],
             seenPositions: new Set(otherData?.seenPositions || []),
             consecutivePasses: otherData?.consecutivePasses || 0,
-            captureScores: otherData?.captureScores || { 1: (gameType?.starting_points_p1 || 0), 2: (gameType?.starting_points_p2 || 0) }, // Permanent points
+            captureScores: normalizeCaptureScores(otherData?.captureScores, gameType?.starting_points_p1, gameType?.starting_points_p2), // Permanent points
             consecutiveEqualScoreTurns: otherData?.consecutiveEqualScoreTurns || 0,
             totalHalfMoves: otherData?.totalHalfMoves || 0,
             startTime: game.start_time,

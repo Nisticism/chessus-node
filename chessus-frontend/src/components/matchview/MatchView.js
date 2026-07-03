@@ -151,6 +151,9 @@ const MatchView = () => {
       case 'simultaneous_capture_draw': return 'Simultaneous capture (draw)';
       case 'simultaneous_checkmate_draw': return 'Simultaneous checkmate (draw)';
       case 'points_win': return 'Points';
+      case 'score': return 'Highest score';
+      case 'score_draw': return 'Equal score (draw)';
+      case 'passes_draw': return 'Both players passed (draw)';
       case 'draw_points_tie': return 'Points tie (draw)';
       case 'draw_equal_points_at_turn': return 'Equal points at turn limit (draw)';
       case 'draw_equal_points_consecutive': return 'Equal points — consecutive turns (draw)';
@@ -500,6 +503,11 @@ const MatchView = () => {
             <h1>Game Complete</h1>
             <p>{winner ? `${winner.username} won by ${getReasonText(match.reason).toLowerCase()}` : 'The game ended in a draw'}</p>
           </>
+        )}
+        {match.finalScores && (match.finalScores[1] != null || match.finalScores[2] != null) && (
+          <p className={styles["result-score"]}>
+            Final score — {player1?.username || 'Player 1'}: {match.finalScores[1] ?? 0} · {player2?.username || 'Player 2'}: {match.finalScores[2] ?? 0}
+          </p>
         )}
         {match.gameTypeId && (
           <Link

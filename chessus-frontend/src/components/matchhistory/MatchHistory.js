@@ -104,6 +104,9 @@ const MatchHistory = ({ userId, username }) => {
       case 'simultaneous_capture_draw': return 'draw by simultaneous capture';
       case 'simultaneous_checkmate_draw': return 'draw by simultaneous checkmate';
       case 'points_win': return 'by points';
+      case 'score': return 'by highest score';
+      case 'score_draw': return 'draw by equal score';
+      case 'passes_draw': return 'draw';
       case 'draw_points_tie': return 'draw by points tie';
       case 'draw_equal_points_at_turn': return 'draw by equal points';
       case 'draw_equal_points_consecutive': return 'draw by equal points';
@@ -269,6 +272,11 @@ const MatchHistory = ({ userId, username }) => {
                 <div className={styles["game-details"]}>
                   <span className={styles["game-type"]}>{game.gameTypeName || "Custom Game"}</span>
                   <span className={styles["time-control"]}>{formatTimeControl(game.timeControl, game.increment)}</span>
+                  {game.finalScores && (game.finalScores[1] != null || game.finalScores[2] != null) && (
+                    <span className={styles["match-score"]} title="Final score (Player 1 – Player 2)">
+                      Score {game.finalScores[1] ?? 0}–{game.finalScores[2] ?? 0}
+                    </span>
+                  )}
                 </div>
               </div>
 

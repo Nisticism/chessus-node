@@ -268,6 +268,9 @@ const formatGameOverReasonShort = (reason) => {
     case 'simultaneous_capture_draw': return 'draw by simultaneous capture';
     case 'simultaneous_checkmate_draw': return 'draw by simultaneous checkmate';
     case 'points_win': return 'by points';
+    case 'score': return 'by highest score';
+    case 'score_draw': return 'draw — equal score';
+    case 'passes_draw': return 'draw';
     case 'draw_points_tie': return 'draw — both reached threshold';
     case 'draw_equal_points_at_turn': return 'draw — equal points at turn limit';
     case 'draw_equal_points_consecutive': return 'draw — equal points stalemate';
@@ -1482,10 +1485,14 @@ const LiveGame = () => {
       }
     });
 
-    const unsubscribeGameOver = onGameEvent("gameOver", ({ gameId: overGameId, winner, winnerUsername, reason, finalState, eloChanges, player1Count, player2Count, player1Score, player2Score, move }) => {
+    const unsubscribeGameOver = onGameEvent("gameOver", ({ gameId: overGameId, winner, winnerUsername, reason, finalState, eloChanges, player1Count, player2Count, player1Score, player2Score, finalScores, move }) => {
       if (parseInt(overGameId) === parseInt(gameId)) {
         clearOptimisticMoveSnapshot();
-        setGameOverData({ winner, winnerUsername, reason, eloChanges, player1Count, player2Count, player1Score, player2Score });
+        // Score-based games (Highest Score Wins) send finalScores as { 1, 2 };
+        // fold those into the per-player score fields the modal already renders.
+        const p1Score = player1Score != null ? player1Score : (finalScores ? finalScores[1] : null);
+        const p2Score = player2Score != null ? player2Score : (finalScores ? finalScores[2] : null);
+        setGameOverData({ winner, winnerUsername, reason, eloChanges, player1Count, player2Count, player1Score: p1Score, player2Score: p2Score });
         setShowGameOver(true);
         setPendingDrawOffer(null); // Clear any pending draw offer
         setDrawOfferSent(false); // Clear any sent draw offer
@@ -8055,6 +8062,9 @@ const LiveGame = () => {
                gameOverData.reason === 'simultaneous_capture_draw' ? 'Draw — Simultaneous Capture' :
                gameOverData.reason === 'simultaneous_checkmate_draw' ? 'Draw — Simultaneous Checkmate' :
                gameOverData.reason === 'points_win' ? 'By Points' :
+               gameOverData.reason === 'score' ? 'By Highest Score' :
+               gameOverData.reason === 'score_draw' ? 'Draw — Equal Score' :
+               gameOverData.reason === 'passes_draw' ? 'Draw' :
                gameOverData.reason === 'draw_points_tie' ? 'Draw — Both Reached Point Threshold' :
                gameOverData.reason === 'draw_equal_points_at_turn' ? 'Draw — Equal Points at Turn Limit' :
                gameOverData.reason === 'draw_equal_points_consecutive' ? 'Draw — Equal Points Stalemate' :
