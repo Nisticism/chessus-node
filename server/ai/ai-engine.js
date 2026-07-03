@@ -151,6 +151,14 @@ function cloneState(state) {
  * Returns array of captured pieces for win-condition checking.
  */
 function applyMove(state, move) {
+  // Pass action: no board change, just hand the turn to the opponent.
+  if (move.type === 'pass' || move.isPass) {
+    state.currentTurn = state.currentTurn === 1 ? 2 : 1;
+    state.moveCount = (state.moveCount || 0) + 1;
+    state.gamePly = (state.gamePly ?? 0) + 1;
+    state.consecutivePasses = (state.consecutivePasses || 0) + 1;
+    return [];
+  }
   // Placement action: add a new piece to the board, switch turns, no captures.
   if (move.type === 'place' || move.isPlacement) {
     const playerToMove = state.currentTurn;
@@ -173,6 +181,7 @@ function applyMove(state, move) {
       hasMoved: true,
       moveCount: 1,
     });
+    state.consecutivePasses = 0; // a real move breaks a pass run
     // Apply flanking captures for Othello-style games so the search tree
     // evaluates the correct board state (flipped pieces change piece counts).
     if (otherData.flanking_captures) {
@@ -182,6 +191,14 @@ function applyMove(state, move) {
           silent(() => afc(state, move.to.x, move.to.y, playerToMove));
         }
       } catch (_) { /* ignore — search tree flanking is best-effort */ }
+    }
+    // Surround (enclosure) capture: remove enemy groups with no liberties so the
+    // search tree sees the correct board (Go-style capture).
+    if (otherData.surround_capture) {
+      try {
+        const { resolveSurroundCaptures: rsc } = getGameSocket();
+        if (typeof rsc === 'function') silent(() => rsc(state, playerToMove));
+      } catch (_) { /* best-effort */ }
     }
     state.currentTurn = state.currentTurn === 1 ? 2 : 1;
     state.moveCount = (state.moveCount || 0) + 1;
@@ -396,6 +413,27 @@ function applyMove(state, move) {
 function checkTerminal(state, captured = []) {
   const { gameType, players } = state;
   if (!gameType || !players || players.length < 2) return { over: false };
+  const otherData = state.otherGameData || {};
+  const isPlacementGame = !!otherData.place_pieces_action;
+
+  // Game ends after N consecutive passes (Go-style). Decide by final score when
+  // "highest score wins" is on, otherwise a draw.
+  if (otherData.allow_pass && otherData.end_on_consecutive_passes !== 0) {
+    const endN = Number(otherData.end_on_consecutive_passes) > 0 ? Number(otherData.end_on_consecutive_passes) : 2;
+    if ((state.consecutivePasses || 0) >= endN) {
+      if (otherData.high_score_win) {
+        try {
+          const { computeFinalScores: cfs } = getGameSocket();
+          if (typeof cfs === 'function') {
+            const s = silent(() => cfs(state)) || { 1: 0, 2: 0 };
+            if (s[1] > s[2]) return { over: true, winner: 1, reason: 'score' };
+            if (s[2] > s[1]) return { over: true, winner: 2, reason: 'score' };
+          }
+        } catch (_) { /* fall through to draw */ }
+      }
+      return { over: true, winner: null, reason: 'draw' };
+    }
+  }
 
   // Check captured piece flags — collect eliminations first to detect simultaneous draws
   const eliminatedPositions = new Set();
@@ -424,14 +462,17 @@ function checkTerminal(state, captured = []) {
     return { over: true, winner: winnerPos, reason: 'capture' };
   }
 
-  // Check if either player has no pieces (elimination)
-  for (const player of players) {
-    const count = state.pieces.filter(p =>
-      (p.team || p.player_id) === player.position
-    ).length;
-    if (count === 0) {
-      const winnerPos = player.position === 1 ? 2 : 1;
-      return { over: true, winner: winnerPos, reason: 'elimination' };
+  // Check if either player has no pieces (elimination). Skipped for placement
+  // games, where an empty (or nearly empty) board is normal, not a loss.
+  if (!isPlacementGame) {
+    for (const player of players) {
+      const count = state.pieces.filter(p =>
+        (p.team || p.player_id) === player.position
+      ).length;
+      if (count === 0) {
+        const winnerPos = player.position === 1 ? 2 : 1;
+        return { over: true, winner: winnerPos, reason: 'elimination' };
+      }
     }
   }
 
@@ -710,13 +751,15 @@ function getMovesForSearch(state, playerPosition) {
       const boardHeight = state.gameType?.board_height || 8;
       const placeable = Array.isArray(otherData.placeable_pieces) ? otherData.placeable_pieces : [];
 
+      // Per-entry ownership: only entries this player may deploy.
+      const eligibleFor = (pp) => pp.is_neutral || pp.player === 'neutral' || pp.player === 'all' || pp.player == null || Number(pp.player) === Number(playerPosition);
       // Limited reserve: only deploy piece types the current player still has.
       let piecesToPlace;
       if (state.reserves) {
         const inv = state.reserves[playerPosition] || state.reserves[String(playerPosition)] || {};
-        piecesToPlace = placeable.filter(pp => pp.piece_id != null && (inv[pp.piece_id] ?? 0) > 0);
+        piecesToPlace = placeable.filter(pp => pp.piece_id != null && (inv[pp.piece_id] ?? 0) > 0 && eligibleFor(pp));
       } else {
-        piecesToPlace = placeable.length > 0 ? placeable : [{ piece_id: null }];
+        piecesToPlace = (placeable.length > 0 ? placeable : [{ piece_id: null }]).filter(eligibleFor);
       }
 
       // Parse custom-square placement restrictions once (own-first-rank etc.).
@@ -777,6 +820,12 @@ function getMovesForSearch(state, playerPosition) {
         } catch (_) { /* fall back to all empty squares */ }
       }
 
+      // Shared legality predicates (self-capture / repeating-position bans).
+      let gsHelpers = null;
+      if (otherData.forbid_self_capture || otherData.forbid_position_repetition) {
+        try { gsHelpers = getGameSocket(); } catch (_) { gsHelpers = null; }
+      }
+
       if (piecesToPlace.length > 0) {
         for (let y = 0; y < boardHeight; y++) {
           for (let x = 0; x < boardWidth; x++) {
@@ -784,6 +833,14 @@ function getMovesForSearch(state, playerPosition) {
             if (validFlankSet !== null && !validFlankSet.has(`${x},${y}`)) continue;
             if (!isPlacementAllowedHere(x, y)) continue;
             for (const pt of piecesToPlace) {
+              if (gsHelpers) {
+                try {
+                  if (otherData.forbid_self_capture && typeof gsHelpers.placementViolatesSelfCapture === 'function'
+                    && gsHelpers.placementViolatesSelfCapture(state, x, y, playerPosition, pt)) continue;
+                  if (otherData.forbid_position_repetition && typeof gsHelpers.placementRepeatsBannedPosition === 'function'
+                    && gsHelpers.placementRepeatsBannedPosition(state, x, y, playerPosition, pt)) continue;
+                } catch (_) { /* best-effort — include the move if the check throws */ }
+              }
               moves.push({
                 type: 'place',
                 from: { x, y },
@@ -794,6 +851,12 @@ function getMovesForSearch(state, playerPosition) {
             }
           }
         }
+      }
+
+      // A pass is always available when the game allows it (lets the bot end a
+      // scoring game and avoids false stalemate when no placement is worthwhile).
+      if (otherData.allow_pass) {
+        moves.push({ type: 'pass', isPass: true });
       }
     }
   } catch (_) { /* ignore */ }
@@ -1680,6 +1743,19 @@ function evaluatePosition(state, perspective) {
 
   // --- Piece count ---
   score += (myPieces.length - opPieces.length) * 5;
+
+  // --- Enclosed-region (territory) scoring ---
+  // When the game scores enclosed regions (Go-style area/region), value the
+  // difference in surrounded territory so the bot plays for the board, not just captures.
+  if ((state.otherGameData || {}).enclosed_region_scoring) {
+    try {
+      const { computeEnclosedRegionScores: cers } = getGameSocket();
+      if (typeof cers === 'function') {
+        const terr = silent(() => cers(state)) || {};
+        score += ((terr[perspective] || 0) - (terr[opponentPos] || 0)) * 12;
+      }
+    } catch (_) { /* ignore */ }
+  }
 
   // --- Center control (reduced weight) ---
   // Pieces near the center score slightly better, but this is a weak signal

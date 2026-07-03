@@ -1012,6 +1012,31 @@ const runMigrations = async () => {
     console.error('Error checking/modifying pieces.image_location:', err.message);
   }
 
+  // Allow fractional points: convert integer point columns to DECIMAL so games can
+  // use non-integer scores (e.g. a 6.5 starting-point handicap / komi, half-point
+  // capture rewards). Runs once — only fires while the columns are still integers.
+  try {
+    const fractionalPointCols = [
+      { table: 'game_types', column: 'points_to_win', type: 'DECIMAL(8,1) NULL' },
+      { table: 'game_types', column: 'starting_points_p1', type: 'DECIMAL(8,1) NOT NULL DEFAULT 0' },
+      { table: 'game_types', column: 'starting_points_p2', type: 'DECIMAL(8,1) NOT NULL DEFAULT 0' },
+      { table: 'game_type_pieces', column: 'capture_points_gain', type: 'DECIMAL(8,1) NOT NULL DEFAULT 0' },
+      { table: 'game_type_pieces', column: 'capture_points_loss', type: 'DECIMAL(8,1) NOT NULL DEFAULT 0' },
+    ];
+    for (const col of fractionalPointCols) {
+      const info = await getColumnType(col.table, col.column);
+      if (info && String(info.DATA_TYPE).toLowerCase() === 'int') {
+        await runMigration(
+          `ALTER TABLE ${col.table} MODIFY COLUMN ${col.column} ${col.type}`,
+          `Convert ${col.table}.${col.column} to DECIMAL for fractional points`
+        );
+        migrationsRun++;
+      }
+    }
+  } catch (err) {
+    console.error('Error converting point columns to DECIMAL:', err.message);
+  }
+
   // ============================================
   // LEGACY MIGRATIONS FOR OLD TABLE STRUCTURE (HISTORICAL ONLY)
   // The following migrations modify piece_movement and piece_capture tables.

@@ -2952,9 +2952,9 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
       illegal_move_label:                    (Number(gameData.illegal_move_limit) > 0 && gameData.illegal_move_label) ? String(gameData.illegal_move_label).trim().slice(0, 50) || null : null,
       start_repositions:                     (gameData.start_repositions != null && gameData.start_repositions >= 1 && gameData.start_repositions <= 8) ? Math.floor(Number(gameData.start_repositions)) : 0,
       reposition_key_pieces_only:            gameData.reposition_key_pieces_only || false,
-      points_to_win:                         (gameData.points_to_win != null && gameData.points_to_win > 0) ? Math.min(9999, Math.max(1, Number(gameData.points_to_win))) : null,
-      starting_points_p1:                    Math.max(0, Math.min(9999, Number(gameData.starting_points_p1) || 0)),
-      starting_points_p2:                    Math.max(0, Math.min(9999, Number(gameData.starting_points_p2) || 0)),
+      points_to_win:                         (gameData.points_to_win != null && gameData.points_to_win > 0) ? Math.round(Math.min(9999, Math.max(1, Number(gameData.points_to_win))) * 10) / 10 : null,
+      starting_points_p1:                    Math.round(Math.max(0, Math.min(9999, Number(gameData.starting_points_p1) || 0)) * 10) / 10,
+      starting_points_p2:                    Math.round(Math.max(0, Math.min(9999, Number(gameData.starting_points_p2) || 0)) * 10) / 10,
       draw_equal_points_at_turn:             (gameData.draw_equal_points_at_turn != null && gameData.draw_equal_points_at_turn > 0) ? Math.min(9999, Math.max(1, Number(gameData.draw_equal_points_at_turn))) : null,
       draw_equal_points_consecutive:         (gameData.draw_equal_points_consecutive != null && gameData.draw_equal_points_consecutive > 0) ? Math.min(999, Math.max(1, Number(gameData.draw_equal_points_consecutive))) : null,
       is_draft:                              isDraft,
@@ -4496,7 +4496,7 @@ app.post("/api/games/:gameId/uniqueness-check", authenticateToken, async (req, r
     let targetOtherData = {};
     try { targetOtherData = JSON.parse(targetGame.other_game_data || '{}') || {}; } catch {}
     // Only keep gameplay-relevant keys from other_game_data
-    const gameplayOtherDataKeys = ['place_pieces_action', 'placeable_pieces', 'finite_reserve'];
+    const gameplayOtherDataKeys = ['place_pieces_action', 'placeable_pieces', 'finite_reserve', 'surround_capture', 'surround_capture_diagonal', 'forbid_self_capture', 'forbid_position_repetition', 'repetition_ban_scope', 'allow_pass', 'end_on_consecutive_passes', 'enclosed_region_scoring', 'scoring_model', 'high_score_win'];
     const targetOtherDataFiltered = {};
     for (const key of gameplayOtherDataKeys) {
       if (targetOtherData[key] !== undefined) targetOtherDataFiltered[key] = targetOtherData[key];
@@ -7588,9 +7588,9 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
       illegal_move_label:                    (Number(gameData.illegal_move_limit) > 0 && gameData.illegal_move_label) ? String(gameData.illegal_move_label).trim().slice(0, 50) || null : null,
       start_repositions:                     (gameData.start_repositions != null && gameData.start_repositions >= 1 && gameData.start_repositions <= 8) ? Math.floor(Number(gameData.start_repositions)) : 0,
       reposition_key_pieces_only:            gameData.reposition_key_pieces_only || false,
-      points_to_win:                         (gameData.points_to_win != null && gameData.points_to_win > 0) ? Math.min(9999, Math.max(1, Number(gameData.points_to_win))) : null,
-      starting_points_p1:                    Math.max(0, Math.min(9999, Number(gameData.starting_points_p1) || 0)),
-      starting_points_p2:                    Math.max(0, Math.min(9999, Number(gameData.starting_points_p2) || 0)),
+      points_to_win:                         (gameData.points_to_win != null && gameData.points_to_win > 0) ? Math.round(Math.min(9999, Math.max(1, Number(gameData.points_to_win))) * 10) / 10 : null,
+      starting_points_p1:                    Math.round(Math.max(0, Math.min(9999, Number(gameData.starting_points_p1) || 0)) * 10) / 10,
+      starting_points_p2:                    Math.round(Math.max(0, Math.min(9999, Number(gameData.starting_points_p2) || 0)) * 10) / 10,
       draw_equal_points_at_turn:             (gameData.draw_equal_points_at_turn != null && gameData.draw_equal_points_at_turn > 0) ? Math.min(9999, Math.max(1, Number(gameData.draw_equal_points_at_turn))) : null,
       draw_equal_points_consecutive:         (gameData.draw_equal_points_consecutive != null && gameData.draw_equal_points_consecutive > 0) ? Math.min(999, Math.max(1, Number(gameData.draw_equal_points_consecutive))) : null,
       pieces_string:                         gameData.pieces_string || '{}',

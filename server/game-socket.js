@@ -454,6 +454,10 @@ function buildOtherData(gameState, extraFields = {}) {
     // counts survive a server restart / reconnect. Without this, a restart would
     // refill every reserve and let players deploy pieces they had already spent.
     ...(gameState.reserves ? { reserves: gameState.reserves } : {}),
+    // Repeating-position ban history (ko / superko) + consecutive-pass counter.
+    ...(gameState.recentPositionHashes && gameState.recentPositionHashes.length ? { recentPositionHashes: gameState.recentPositionHashes } : {}),
+    ...(gameState.seenPositions && gameState.seenPositions.size ? { seenPositions: Array.from(gameState.seenPositions) } : {}),
+    ...(gameState.consecutivePasses ? { consecutivePasses: gameState.consecutivePasses } : {}),
     ...extraFields
   });
 }
@@ -490,6 +494,17 @@ function ensureReserves(gameState) {
   const built = buildInitialReserves(gameState.otherGameData || {}, gameState.gameType?.player_count || 2);
   if (built) gameState.reserves = built;
   return gameState.reserves || null;
+}
+
+/**
+ * Whether player `position` may deploy a placeable entry, based on the entry's
+ * ownership: neutral / 'all' / legacy(null) = any player; a specific number = only
+ * that player.
+ */
+function isPlaceableEligibleFor(entry, position) {
+  if (!entry) return false;
+  if (entry.is_neutral || entry.player === 'neutral' || entry.player === 'all' || entry.player == null) return true;
+  return Number(entry.player) === Number(position);
 }
 
 /**
@@ -1790,6 +1805,21 @@ function validateSimulMoveProposal(gameState, playerId, move) {
         return { ok: false, reason: 'You have no more of this piece type in your reserve' };
       }
     }
+    // Self-capture placement ban.
+    {
+      const placeTemplate = (otherData.placeable_pieces || []).find(p => Number(p.piece_id) === Number(move.placePieceId))
+        || (otherData.placeable_pieces || [])[0];
+      const selfCapPos = (gameState.players.find(p => p.id === playerId) || {}).position;
+      if (placeTemplate && !isPlaceableEligibleFor(placeTemplate, selfCapPos)) {
+        return { ok: false, reason: 'You cannot deploy this piece' };
+      }
+      if (placementViolatesSelfCapture(gameState, x, y, selfCapPos, placeTemplate)) {
+        return { ok: false, reason: 'You cannot place a piece where it would immediately be captured' };
+      }
+      if (placementRepeatsBannedPosition(gameState, x, y, selfCapPos, placeTemplate)) {
+        return { ok: false, reason: 'That placement would repeat a previous board position' };
+      }
+    }
     return { ok: true, kind: 'place', destX: x, destY: y, isPlace: true, placePieceId: move.placePieceId };
   }
   const piece = (gameState.pieces || []).find(p => String(p.id) === String(move.pieceId));
@@ -2048,9 +2078,14 @@ function applySimulMovement(gameState, proposal, playerId, safelyMovingPieceIds)
       simulReserves[playerPosition][simulReserveKey] = Math.max(0, simulReserves[playerPosition][simulReserveKey] - 1);
     }
     gameState.movesWithoutCapture = 0;
+    // Surround (enclosure) capture: remove enemy groups with no liberties.
+    const simulSurroundRemoved = resolveSurroundCaptures(gameState, playerPosition);
+    if (simulSurroundRemoved.length > 0) {
+      applySurroundCaptureScoring(gameState, simulSurroundRemoved, playerPosition);
+    }
     return {
       applied: true,
-      capturedPieceIds: [],
+      capturedPieceIds: simulSurroundRemoved.map(p => p.id),
       moveRecord: {
         type: 'place',
         playerId,
@@ -5513,6 +5548,9 @@ function initializeSocket(server) {
           return socket.emit("error", { message: "Not your turn" });
         }
 
+        // Any real move (normal or placement) breaks a run of consecutive passes.
+        gameState.consecutivePasses = 0;
+
         // Enforce chain capture: if a chain capture is in progress, only the same piece can move
         if (gameState.chainCapturePieceId != null && move.pieceId !== gameState.chainCapturePieceId) {
           return socket.emit("error", { message: "You must complete the chain capture with the same piece" });
@@ -5627,6 +5665,12 @@ function initializeSocket(server) {
             return socket.emit("error", { message: "No valid piece to place" });
           }
 
+          // Per-entry ownership: a piece assigned to a specific player can only be
+          // deployed by that player.
+          if (!isPlaceableEligibleFor(pieceTemplate, gameState.currentTurn)) {
+            return socket.emit("error", { message: "You cannot deploy this piece" });
+          }
+
           // Limited-reserve gating: when the game uses a finite piece bank, block the
           // deploy if the current player has none of this piece type left in reserve.
           const reserves = ensureReserves(gameState);
@@ -5636,6 +5680,18 @@ function initializeSocket(server) {
             if (remaining <= 0) {
               return socket.emit("error", { message: "You have no more of this piece type in your reserve" });
             }
+          }
+
+          // Self-capture placement ban: reject a deploy that would leave its own group
+          // with no liberties and captures nothing.
+          if (placementViolatesSelfCapture(gameState, placeX, placeY, gameState.currentTurn, pieceTemplate)) {
+            return socket.emit("error", { message: "You cannot place a piece where it would immediately be captured" });
+          }
+
+          // Repeating-position ban (ko / superko): reject a deploy that recreates a
+          // previously-seen board position.
+          if (placementRepeatsBannedPosition(gameState, placeX, placeY, gameState.currentTurn, pieceTemplate)) {
+            return socket.emit("error", { message: "That placement would repeat a previous board position" });
           }
 
           // If image_location is missing from template, look it up from the pieces table
@@ -5728,6 +5784,13 @@ function initializeSocket(server) {
           // promotion), so it resets the 50-move draw counter. Applies to ALL
           // piece placement, whether or not reserves are limited.
           gameState.movesWithoutCapture = 0;
+
+          // Surround (enclosure) capture: remove enemy groups left with no liberties
+          // by this placement, and award any capture points.
+          const surroundRemoved = resolveSurroundCaptures(gameState, gameState.currentTurn);
+          if (surroundRemoved.length > 0) {
+            applySurroundCaptureScoring(gameState, surroundRemoved, gameState.currentTurn);
+          }
 
           // Record the placement move
           const placeMoveRecord = {
@@ -5880,6 +5943,7 @@ function initializeSocket(server) {
           }
 
           // Update DB and broadcast
+          recordBanPosition(gameState);
           await db_pool.query(
             "UPDATE games SET player_turn = ?, pieces = ?, other_data = ? WHERE id = ?",
             [gameState.currentTurn, JSON.stringify(gameState.pieces),
@@ -6110,6 +6174,16 @@ function initializeSocket(server) {
             if (loss > 0 && (ownerPos === 1 || ownerPos === 2)) {
               gameState.captureScores[ownerPos] = Math.max(0, (gameState.captureScores[ownerPos] || 0) - loss);
             }
+          }
+        }
+
+        // Surround (enclosure) capture after a normal move: remove enemy groups
+        // left with no liberties (generalized so a moving piece can also enclose).
+        let moveSurroundRemoved = [];
+        {
+          moveSurroundRemoved = resolveSurroundCaptures(gameState, gameState.currentTurn);
+          if (moveSurroundRemoved.length > 0) {
+            applySurroundCaptureScoring(gameState, moveSurroundRemoved, gameState.currentTurn);
           }
         }
 
@@ -7513,6 +7587,7 @@ function initializeSocket(server) {
         const _winCheckCaptured = [
           ...(moveResult.allCaptured || (moveResult.captured ? [moveResult.captured] : [])),
           ...(moveResult.hoppedCaptures || []),
+          ...moveSurroundRemoved,
         ];
         const winResult = checkWinCondition(gameState, _winCheckCaptured);
         if (winResult.gameOver) {
@@ -8242,6 +8317,68 @@ function initializeSocket(server) {
       } catch (error) {
         console.error("Error processing resignation:", error);
         socket.emit("error", { message: "Failed to resign" });
+      }
+    });
+
+    // Handle passing the turn (generalized "Allow Pass" mechanic; two consecutive
+    // passes can end the game — used by Go-style scoring games).
+    socket.on("passTurn", async (data) => {
+      try {
+        const { gameId, userId } = data;
+        const gameState = activeGames.get(gameId.toString());
+        if (!gameState) return socket.emit("error", { message: "Game not found" });
+        const od = gameState.otherGameData || {};
+        if (!od.allow_pass) return socket.emit("error", { message: "Passing is not allowed in this game" });
+        if (gameState.status !== 'active' && gameState.status !== 'ready') {
+          return socket.emit("error", { message: "Game is not active" });
+        }
+        const player = gameState.players.find(p => p.id === userId);
+        if (!player || player.position !== gameState.currentTurn) {
+          return socket.emit("error", { message: "It is not your turn" });
+        }
+
+        gameState.consecutivePasses = (gameState.consecutivePasses || 0) + 1;
+        gameState.actionsThisTurn = 0;
+        const passMoveRecord = { type: 'pass', position: gameState.currentTurn, player: userId, timestamp: Date.now() };
+        gameState.moveHistory.push(passMoveRecord);
+
+        const endN = Number(od.end_on_consecutive_passes);
+        const shouldEnd = od.end_on_consecutive_passes !== 0 && (gameState.consecutivePasses >= (endN > 0 ? endN : 2));
+
+        gameState.currentTurn = gameState.currentTurn === 1 ? 2 : 1;
+        gameState.totalHalfMoves = (gameState.totalHalfMoves || 0) + 1;
+        recordBanPosition(gameState);
+
+        if (shouldEnd) {
+          await endGameByScore(io, gameId, gameState);
+          return;
+        }
+
+        await db_pool.query(
+          "UPDATE games SET player_turn = ?, pieces = ?, other_data = ? WHERE id = ?",
+          [gameState.currentTurn, JSON.stringify(gameState.pieces), buildOtherData(gameState), gameId]
+        );
+        emitToGameRoom(io, gameState, "moveMade", {
+          gameId,
+          move: passMoveRecord,
+          gameState: {
+            status: gameState.status,
+            pieces: gameState.pieces,
+            currentTurn: gameState.currentTurn,
+            playerTimes: gameState.playerTimes,
+            moveHistory: gameState.moveHistory,
+            actionsThisTurn: 0,
+            actionsPerTurn: gameState.gameType?.actions_per_turn || 1,
+            consecutivePasses: gameState.consecutivePasses,
+          },
+        });
+
+        if (gameState.botPlayer && gameState.currentTurn === gameState.botPlayer.position) {
+          processBotTurn(io, gameId, gameState);
+        }
+      } catch (error) {
+        console.error("Error processing pass:", error);
+        socket.emit("error", { message: "Failed to pass" });
       }
     });
 
@@ -9573,6 +9710,9 @@ function initializeSocket(server) {
             positionHistory: otherData?.positionHistory || {}, // Load position history for repetition
             controlSquareTracking: otherData?.controlSquareTracking || {}, // Track control square occupancy
             reserves: otherData?.reserves || undefined, // Limited-reserve inventory (rebuilt from config if absent)
+            recentPositionHashes: otherData?.recentPositionHashes || [],
+            seenPositions: new Set(otherData?.seenPositions || []),
+            consecutivePasses: otherData?.consecutivePasses || 0,
             captureScores: otherData?.captureScores || { 1: (gameType?.starting_points_p1 || 0), 2: (gameType?.starting_points_p2 || 0) }, // Permanent points
             consecutiveEqualScoreTurns: otherData?.consecutiveEqualScoreTurns || 0,
             totalHalfMoves: otherData?.totalHalfMoves || 0,
@@ -12754,6 +12894,66 @@ function getPositionHash(pieces, currentTurn, reserves = null) {
     }).join(';');
   }
   return `${currentTurn}:${sortedPieces}${reserveStr ? `#${reserveStr}` : ''}`;
+}
+
+/**
+ * Record the current board position for the "forbid repeating positions" rule
+ * (a move-legality ban, distinct from the repetition DRAW). Stores the hash of the
+ * position with the player-to-move, so a later move that recreates it can be rejected.
+ * No-op unless forbid_position_repetition is enabled.
+ */
+function recordBanPosition(gameState) {
+  const od = gameState.otherGameData || {};
+  if (!od.forbid_position_repetition) return;
+  const h = getPositionHash(gameState.pieces, gameState.currentTurn, gameState.reserves);
+  if (!gameState.recentPositionHashes) gameState.recentPositionHashes = [];
+  gameState.recentPositionHashes.push(h);
+  if (gameState.recentPositionHashes.length > 512) gameState.recentPositionHashes.shift();
+  if (!gameState.seenPositions) gameState.seenPositions = new Set();
+  gameState.seenPositions.add(h);
+}
+
+/**
+ * Hash of the position that would result from placing `template` at (x,y) for
+ * `playerPosition` (after surround captures resolve and the turn passes to the
+ * opponent). Non-mutating.
+ */
+function computePlacementResultHash(gameState, x, y, playerPosition, template) {
+  const simStone = {
+    ...(template || {}), id: '__korepeat_sim__', x, y,
+    team: playerPosition, player_id: playerPosition,
+    is_neutral: !!(template && template.is_neutral),
+    piece_width: (template && template.piece_width) || 1,
+    piece_height: (template && template.piece_height) || 1,
+  };
+  const simState = { ...gameState, pieces: [...gameState.pieces.map(p => ({ ...p })), simStone] };
+  resolveSurroundCaptures(simState, playerPosition);
+  const nextTurn = playerPosition === 1 ? 2 : 1;
+  return getPositionHash(simState.pieces, nextTurn, gameState.reserves);
+}
+
+/**
+ * Would placing `template` at (x,y) recreate a banned position?
+ * scope 'any' = positional superko (any earlier position); 'previous' = simple ko
+ * (the position from the mover's previous turn). No-op unless the rule is enabled.
+ */
+function placementRepeatsBannedPosition(gameState, x, y, playerPosition, template) {
+  const od = gameState.otherGameData || {};
+  if (!od.forbid_position_repetition) return false;
+  const resultHash = computePlacementResultHash(gameState, x, y, playerPosition, template);
+  const scope = od.repetition_ban_scope === 'previous' ? 'previous' : 'any';
+  if (scope === 'any') {
+    // seenPositions may arrive as a Set (in-memory), an Array (DB other_data), or a
+    // plain object {} (a Set that lost its type through JSON serialization to the bot
+    // worker). Coerce so `.has` never throws — a throw here would otherwise be caught
+    // by the enumeration and silently drop every placement, freezing the bot.
+    const sp = gameState.seenPositions;
+    if (sp instanceof Set) return sp.has(resultHash);
+    if (Array.isArray(sp)) return sp.includes(resultHash);
+    return false;
+  }
+  const list = gameState.recentPositionHashes || [];
+  return list.length >= 2 && list[list.length - 2] === resultHash;
 }
 
 /**
@@ -16442,6 +16642,429 @@ function applyFlankingCaptures(gameState, placedX, placedY, playerPosition) {
 }
 
 /**
+ * Whether a piece participates in "surround capture" (enclosure capture) as a
+ * capturable stone. v1: single-tile, non-royal, non-neutral pieces only. Royal
+ * pieces (ends_game_on_capture / ends_game_on_checkmate) and multi-tile pieces
+ * act as walls but are never surround-captured; neutral pieces are walls for both.
+ */
+function isSurroundStone(p) {
+  if (!p) return false;
+  if (p.is_neutral || p.player_id === 0 || p.team === 0) return false;
+  if ((p.piece_width || 1) > 1 || (p.piece_height || 1) > 1) return false;
+  if (p.ends_game_on_capture || p.ends_game_on_checkmate) return false;
+  return true;
+}
+
+/**
+ * Shared internals for surround (enclosure) capture. Builds an occupancy map and
+ * adjacency/liberty helpers for the current board. Off-board and impassable
+ * squares are walls (not liberties); any occupied square is not a liberty.
+ */
+function _surroundContext(gameState) {
+  const otherData = gameState.otherGameData || {};
+  const boardWidth = gameState.gameType?.board_width || 8;
+  const boardHeight = gameState.gameType?.board_height || 8;
+  const diagonal = !!otherData.surround_capture_diagonal;
+  const impassable = collectImpassableSquares(gameState.gameType);
+  const occ = new Map();
+  for (const p of gameState.pieces) occ.set(`${p.x},${p.y}`, p);
+  const neighbors = (x, y) => {
+    const list = [[x, y - 1], [x, y + 1], [x - 1, y], [x + 1, y]];
+    if (diagonal) list.push([x - 1, y - 1], [x + 1, y - 1], [x - 1, y + 1], [x + 1, y + 1]);
+    return list;
+  };
+  const isLiberty = (x, y) => {
+    if (x < 0 || x >= boardWidth || y < 0 || y >= boardHeight) return false;
+    if (occ.has(`${x},${y}`)) return false;
+    if (impassable && impassable.has(`${y},${x}`)) return false;
+    return true;
+  };
+  const ownerOf = (p) => p.team || p.player_id;
+  return { occ, neighbors, isLiberty, ownerOf };
+}
+
+/**
+ * Build the connected same-owner group of surround-stones containing `start`
+ * (orthogonal, plus diagonal when enabled) and report whether it has any liberty
+ * and whether any member is immune (cannot_be_captured).
+ * Returns { group: [pieces], hasLiberty: bool, immune: bool }.
+ */
+function _surroundGroup(ctx, start, visited) {
+  const { occ, neighbors, isLiberty, ownerOf } = ctx;
+  const owner = ownerOf(start);
+  const group = [];
+  const stack = [start];
+  if (visited) visited.add(start.id);
+  let hasLiberty = false;
+  let immune = false;
+  while (stack.length) {
+    const cur = stack.pop();
+    group.push(cur);
+    if (cur.cannot_be_captured) immune = true;
+    for (const [nx, ny] of neighbors(cur.x, cur.y)) {
+      if (isLiberty(nx, ny)) { hasLiberty = true; continue; }
+      const np = occ.get(`${nx},${ny}`);
+      if (np && isSurroundStone(np) && ownerOf(np) === owner && !(visited && visited.has(np.id))) {
+        if (visited) visited.add(np.id);
+        stack.push(np);
+      }
+    }
+  }
+  return { group, hasLiberty, immune };
+}
+
+/**
+ * Resolve surround (enclosure) captures after a move/placement by `capturingPlayer`.
+ * Removes every connected group of ENEMY stones that has no liberties. A group
+ * containing a cannot_be_captured stone is never removed. Mutates gameState.pieces
+ * in place and returns the array of removed piece objects.
+ */
+function resolveSurroundCaptures(gameState, capturingPlayer) {
+  const otherData = gameState.otherGameData || {};
+  if (!otherData.surround_capture) return [];
+  const ctx = _surroundContext(gameState);
+  const visited = new Set();
+  const removed = [];
+  for (const p of gameState.pieces) {
+    if (!isSurroundStone(p)) continue;
+    if (ctx.ownerOf(p) === capturingPlayer) continue; // only enemy groups
+    if (visited.has(p.id)) continue;
+    const { group, hasLiberty, immune } = _surroundGroup(ctx, p, visited);
+    if (!hasLiberty && !immune) removed.push(...group);
+  }
+  if (removed.length > 0) {
+    const removedIds = new Set(removed.map(r => r.id));
+    for (let i = gameState.pieces.length - 1; i >= 0; i--) {
+      if (removedIds.has(gameState.pieces[i].id)) gameState.pieces.splice(i, 1);
+    }
+  }
+  return removed;
+}
+
+/**
+ * After enemy groups are removed, does the group containing `piece` (the stone
+ * the current player just placed/moved) still have at least one liberty?
+ * Used by the self-capture placement ban. Returns true if the group is alive.
+ */
+function placedGroupHasLiberty(gameState, piece) {
+  if (!piece) return true;
+  const ctx = _surroundContext(gameState);
+  const live = ctx.occ.get(`${piece.x},${piece.y}`);
+  if (!live || !isSurroundStone(live)) return true; // non-stones aren't subject to self-capture
+  const { hasLiberty, immune } = _surroundGroup(ctx, live, new Set());
+  return hasLiberty || immune;
+}
+
+/**
+ * Count the number of distinct liberties (adjacent empty points) of the connected
+ * group containing `piece`. Used by the territory-placement bot heuristic to avoid
+ * self-atari and to value strong shapes.
+ */
+function placedGroupLibertyCount(gameState, piece) {
+  const ctx = _surroundContext(gameState);
+  const live = ctx.occ.get(`${piece.x},${piece.y}`);
+  if (!live) return 99;
+  const owner = ctx.ownerOf(live);
+  const visited = new Set([live.id]);
+  const libs = new Set();
+  const stack = [live];
+  while (stack.length) {
+    const cur = stack.pop();
+    for (const [nx, ny] of ctx.neighbors(cur.x, cur.y)) {
+      if (ctx.isLiberty(nx, ny)) { libs.add(`${nx},${ny}`); continue; }
+      const np = ctx.occ.get(`${nx},${ny}`);
+      if (np && isSurroundStone(np) && ctx.ownerOf(np) === owner && !visited.has(np.id)) {
+        visited.add(np.id);
+        stack.push(np);
+      }
+    }
+  }
+  return libs.size;
+}
+
+/**
+ * Heuristic bot strategy for territory / enclosure placement games (Go-style).
+ * The generic minimax is a poor fit for these games (huge branching factor, subtle
+ * scoring), so we score each legal placement directly and pick by difficulty. Always
+ * returns a legal move (or a pass), so the bot never gets stuck. Returns a move object
+ * ({ type:'place', ... } or { type:'pass' }) or null when there is genuinely nothing to do.
+ */
+function chooseTerritoryPlacement(gameState, botPosition, difficulty) {
+  const otherData = gameState.otherGameData || {};
+  const boardWidth = gameState.gameType?.board_width || 8;
+  const boardHeight = gameState.gameType?.board_height || 8;
+  const canPass = !!otherData.allow_pass;
+
+  // Legal placements (already respects eligibility, reserves, self-capture, ko, zones).
+  let legal;
+  try {
+    legal = getAllLegalMovesForPlayer(gameState, botPosition).filter(m => m.type === 'place' || m.isPlacement);
+  } catch (e) {
+    legal = [];
+  }
+  if (legal.length === 0) {
+    return canPass ? { type: 'pass', isPass: true } : null;
+  }
+
+  const placeable = Array.isArray(otherData.placeable_pieces) ? otherData.placeable_pieces : [];
+  const templateFor = (pid) => placeable.find(p => p.piece_id === pid) || placeable[0] || {};
+  const opp = botPosition === 1 ? 2 : 1;
+  const diagonal = !!otherData.surround_capture_diagonal;
+  const impassable = collectImpassableSquares(gameState.gameType);
+  const inb = (x, y) => x >= 0 && x < boardWidth && y >= 0 && y < boardHeight;
+  const neighborsOf = (x, y) => {
+    const l = [[x, y - 1], [x, y + 1], [x - 1, y], [x + 1, y]];
+    if (diagonal) l.push([x - 1, y - 1], [x + 1, y - 1], [x - 1, y + 1], [x + 1, y + 1]);
+    return l;
+  };
+  const occ = new Map();
+  for (const p of gameState.pieces) occ.set(`${p.x},${p.y}`, p);
+  const stoneCount = gameState.pieces.length;
+
+  const scoreMove = (m) => {
+    const x = m.to.x, y = m.to.y;
+    const tmpl = templateFor(m.placePieceId);
+    const simStone = {
+      ...tmpl, id: '__terr_sim__', x, y,
+      team: botPosition, player_id: botPosition, piece_width: 1, piece_height: 1, is_neutral: false,
+    };
+    const sim = { ...gameState, pieces: [...gameState.pieces.map(p => ({ ...p })), simStone] };
+    const removed = resolveSurroundCaptures(sim, botPosition);
+    let score = 0;
+    let capturesEnemy = removed.length;
+    score += capturesEnemy * 30; // capturing enemy groups is the strongest move
+
+    // Own liberties after placement (avoid self-atari / weak shapes).
+    const libs = placedGroupLibertyCount(sim, simStone);
+    if (libs <= 1) score -= 12;
+    else if (libs === 2) score -= 2;
+    else score += Math.min(libs, 6);
+
+    // Neighbourhood on the original board.
+    let adjOwn = 0, adjEnemy = 0, adjEmpty = 0;
+    let enemyAtari = 0;
+    for (const [nx, ny] of neighborsOf(x, y)) {
+      if (!inb(nx, ny)) continue;
+      if (impassable && impassable.has(`${ny},${nx}`)) continue;
+      const np = occ.get(`${nx},${ny}`);
+      if (!np) { adjEmpty++; continue; }
+      const o = np.team || np.player_id;
+      if (o === botPosition) adjOwn++;
+      else if (o === opp) {
+        adjEnemy++;
+        // Did this placement drop an adjacent enemy group to 1 liberty (atari)?
+        if (isSurroundStone(np)) {
+          const enemyLibs = placedGroupLibertyCount(sim, np);
+          if (enemyLibs === 1) enemyAtari++;
+        }
+      }
+    }
+    score += capturesEnemy > 0 ? 0 : enemyAtari * 8; // atari pressure (if not already capturing)
+    score += adjEnemy * 4;   // contact / fighting
+    score += adjOwn * 1.5;   // connect groups
+    score += adjEmpty * 1.2; // expand influence
+
+    // Opening: prefer the 3rd/4th line, avoid the very edge.
+    if (stoneCount < boardWidth) {
+      const edgeDist = Math.min(x, y, boardWidth - 1 - x, boardHeight - 1 - y);
+      if (edgeDist === 0) score -= 4;
+      else if (edgeDist >= 2) score += 2;
+    }
+
+    // Discourage filling one's own territory (no capture, no enemy contact, no expansion).
+    const pureSelfFill = capturesEnemy === 0 && adjEnemy === 0 && adjEmpty === 0;
+    if (pureSelfFill) score -= 8;
+
+    return { score, capturesEnemy, enemyAtari, adjEnemy, adjEmpty, pureSelfFill };
+  };
+
+  const scored = legal.map(m => ({ m, ...scoreMove(m) }));
+  scored.sort((a, b) => b.score - a.score);
+
+  // Pass only when the position is settled: every remaining legal move is a pure
+  // self-fill (would just fill our own area with no capture/contact/expansion).
+  const anyUseful = scored.some(s => !s.pureSelfFill || s.capturesEnemy > 0);
+  if (canPass && !anyUseful) return { type: 'pass', isPass: true };
+
+  const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+  if (difficulty === 'easy') {
+    // Mostly random so it plays loosely; occasionally take a decent move / obvious capture.
+    const captureMoves = scored.filter(s => s.capturesEnemy > 0);
+    if (captureMoves.length > 0 && Math.random() < 0.4) return pick(captureMoves).m;
+    if (Math.random() < 0.7) return pick(legal);
+    const topHalf = scored.slice(0, Math.max(1, Math.ceil(scored.length / 2)));
+    return pick(topHalf).m;
+  }
+  if (difficulty === 'hard') {
+    const best = scored[0].score;
+    const near = scored.filter(s => s.score >= best - 1);
+    return pick(near).m;
+  }
+  // medium: pick among the top quartile with some randomness.
+  const k = Math.max(1, Math.min(6, Math.ceil(scored.length * 0.25)));
+  return pick(scored.slice(0, k)).m;
+}
+
+/**
+ * Apply capture-point scoring for stones removed by surround capture, mirroring the
+ * normal-capture scoring path (capture_points_gain to the capturer, capture_points_loss
+ * from the owner). No-op when no points-based condition is configured.
+ */
+function applySurroundCaptureScoring(gameState, removed, capturingPlayer) {
+  if (!Array.isArray(removed) || removed.length === 0) return;
+  const gt = gameState.gameType || {};
+  const pointsActive = gt.points_to_win != null || gt.draw_equal_points_at_turn != null ||
+    gt.draw_equal_points_consecutive != null || (gameState.otherGameData || {}).high_score_win;
+  if (!pointsActive || !gameState.captureScores) return;
+  for (const cap of removed) {
+    const gain = Number(cap.capture_points_gain) || 0;
+    const loss = Number(cap.capture_points_loss) || 0;
+    const ownerPos = cap.team || cap.player_id;
+    if (gain) gameState.captureScores[capturingPlayer] = (gameState.captureScores[capturingPlayer] || 0) + gain;
+    if (loss) gameState.captureScores[ownerPos] = Math.max(0, (gameState.captureScores[ownerPos] || 0) - loss);
+  }
+}
+
+/**
+ * Compute enclosed-region ("territory") scores for both players. Every empty region
+ * (connected block of empty, non-impassable, in-bounds cells) bordered by pieces of
+ * exactly ONE player — and no neutral pieces — counts its size for that player.
+ * Regions bordered by two owners, or by any neutral piece, are dame (0). The board
+ * edge is neutral ground and never disqualifies a region. Returns { 1: n, 2: m }.
+ */
+function computeEnclosedRegionScores(gameState) {
+  const boardWidth = gameState.gameType?.board_width || 8;
+  const boardHeight = gameState.gameType?.board_height || 8;
+  const impassable = collectImpassableSquares(gameState.gameType);
+  const occ = new Map();
+  for (const p of gameState.pieces) occ.set(`${p.x},${p.y}`, p);
+  const isWall = (x, y) => (impassable && impassable.has(`${y},${x}`));
+  const territory = { 1: 0, 2: 0 };
+  const visited = new Set();
+  for (let y = 0; y < boardHeight; y++) {
+    for (let x = 0; x < boardWidth; x++) {
+      const key = `${x},${y}`;
+      if (visited.has(key) || occ.has(key) || isWall(x, y)) continue;
+      let size = 0;
+      const borderOwners = new Set();
+      let touchesNeutral = false;
+      const stack = [[x, y]];
+      visited.add(key);
+      while (stack.length) {
+        const [cx, cy] = stack.pop();
+        size++;
+        for (const [nx, ny] of [[cx, cy - 1], [cx, cy + 1], [cx - 1, cy], [cx + 1, cy]]) {
+          if (nx < 0 || nx >= boardWidth || ny < 0 || ny >= boardHeight) continue; // edge = neutral ground
+          if (isWall(nx, ny)) continue;
+          const nk = `${nx},${ny}`;
+          const np = occ.get(nk);
+          if (np) {
+            const owner = np.team || np.player_id;
+            if (np.is_neutral || owner === 0) touchesNeutral = true;
+            else borderOwners.add(owner);
+          } else if (!visited.has(nk)) {
+            visited.add(nk);
+            stack.push([nx, ny]);
+          }
+        }
+      }
+      if (borderOwners.size === 1 && !touchesNeutral) {
+        const owner = [...borderOwners][0];
+        if (owner === 1 || owner === 2) territory[owner] += size;
+      }
+    }
+  }
+  return territory;
+}
+
+/**
+ * Final score for each player at game end. Starts from getPlayerScore (starting
+ * points/komi + capture points + control points), then adds enclosed-region
+ * territory when enabled. Under the 'area' model (Chinese) each player also scores
+ * for their own stones on the board; under 'region' (Japanese) only territory is added.
+ */
+function computeFinalScores(gameState) {
+  const od = gameState.otherGameData || {};
+  const scores = { 1: getPlayerScore(gameState, 1), 2: getPlayerScore(gameState, 2) };
+  if (od.enclosed_region_scoring) {
+    const territory = computeEnclosedRegionScores(gameState);
+    const model = od.scoring_model === 'region' ? 'region' : 'area';
+    for (const pos of [1, 2]) {
+      scores[pos] += territory[pos] || 0;
+      if (model === 'area') {
+        scores[pos] += gameState.pieces.filter(p => (p.team || p.player_id) === pos && !p.is_neutral).length;
+      }
+    }
+  }
+  return { 1: Math.round(scores[1] * 10) / 10, 2: Math.round(scores[2] * 10) / 10 };
+}
+
+/**
+ * End the game by comparing final scores (used when the game ends via consecutive
+ * passes). When "Highest Score Wins" is on, the higher total wins (equal = draw);
+ * otherwise a two-pass end with no score-win is a draw.
+ */
+async function endGameByScore(io, gameId, gameState) {
+  stopGameTimer(gameId);
+  gameState.status = 'completed';
+  const scores = computeFinalScores(gameState);
+  const od = gameState.otherGameData || {};
+  let winnerId = null;
+  let reason = 'passes_draw';
+  if (od.high_score_win) {
+    if (scores[1] > scores[2]) { winnerId = gameState.players.find(p => p.position === 1)?.id; reason = 'score'; }
+    else if (scores[2] > scores[1]) { winnerId = gameState.players.find(p => p.position === 2)?.id; reason = 'score'; }
+    else { reason = 'score_draw'; }
+  }
+  gameState.winner = winnerId;
+  gameState.winReason = reason;
+  const isBotGame = !!gameState.botPlayer;
+  let eloChanges = null;
+  if (winnerId && !isBotGame && gameState.rated !== false) {
+    const loserId = gameState.players.find(p => p.id !== winnerId)?.id;
+    if (loserId) eloChanges = await updateEloRatings(winnerId, loserId);
+  }
+  const endTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
+  const winnerPlayer = gameState.players.find(p => p.id === winnerId);
+  const dbWinnerId = (winnerPlayer && isBotPlayer(winnerPlayer)) ? null : sanitizeWinnerId(winnerId);
+  try {
+    await db_pool.query(
+      `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?, pieces = ?, other_data = ? WHERE id = ?`,
+      [endTime, dbWinnerId, JSON.stringify(gameState.pieces),
+       buildOtherData(gameState, { winner: winnerId, reason, finalScores: scores, eloChanges }), gameId]
+    );
+  } catch (e) { console.error('endGameByScore DB update failed:', e.message); }
+  broadcastGameOver(io, gameId, gameState, {
+    gameId, winner: winnerId, reason, finalScores: scores, finalState: gameState, eloChanges,
+  });
+  console.log(`Game ${gameId} ended by passes: ${reason} (P1: ${scores[1]}, P2: ${scores[2]})`);
+}
+
+/**
+ * Whether placing `template` at (x,y) for `playerPosition` would be an illegal
+ * self-capture (the placed stone's group would have no liberties AND the placement
+ * captures no enemy). Non-mutating — evaluates on a shallow clone. Returns false
+ * unless BOTH surround_capture and forbid_self_capture are enabled.
+ */
+function placementViolatesSelfCapture(gameState, x, y, playerPosition, template) {
+  const otherData = gameState.otherGameData || {};
+  if (!otherData.surround_capture || !otherData.forbid_self_capture) return false;
+  const simStone = {
+    ...(template || {}),
+    id: '__selfcap_sim__', x, y,
+    team: playerPosition, player_id: playerPosition,
+    is_neutral: !!(template && template.is_neutral),
+    piece_width: (template && template.piece_width) || 1,
+    piece_height: (template && template.piece_height) || 1,
+  };
+  if (!isSurroundStone(simStone)) return false; // only stones self-capture
+  const simState = { ...gameState, pieces: [...gameState.pieces.map(p => ({ ...p })), simStone] };
+  const removed = resolveSurroundCaptures(simState, playerPosition); // removes enemies on the clone
+  if (removed.length > 0) return false; // captured at least one enemy -> legal
+  return !placedGroupHasLiberty(simState, simStone);
+}
+
+/**
  * Determine whether a player currently has any capture move available
  * (used by the forced_capture_condition rule). Considers movement-based
  * captures across all of the player's pieces. Skips ranged attacks because
@@ -16675,9 +17298,9 @@ function getAllLegalMovesForPlayer(gameState, playerPosition) {
       let piecesToPlace;
       if (reserves) {
         const inv = reserves[playerPosition] || {};
-        piecesToPlace = placeable.filter(p => p.piece_id != null && (inv[p.piece_id] ?? 0) > 0);
+        piecesToPlace = placeable.filter(p => p.piece_id != null && (inv[p.piece_id] ?? 0) > 0 && isPlaceableEligibleFor(p, playerPosition));
       } else {
-        piecesToPlace = placeable.length > 0 ? placeable : [{ piece_id: null }];
+        piecesToPlace = (placeable.length > 0 ? placeable : [{ piece_id: null }]).filter(p => isPlaceableEligibleFor(p, playerPosition));
       }
 
       // Parse custom-square placement restrictions once.
@@ -16728,6 +17351,8 @@ function getAllLegalMovesForPlayer(gameState, playerPosition) {
           if (!isPlacementAllowedHere(x, y)) return;
           for (const p of piecesToPlace) {
             if (wouldPlacementLeaveInCheck(x, y, p)) continue;
+            if (placementViolatesSelfCapture(gameState, x, y, playerPosition, p)) continue;
+            if (placementRepeatsBannedPosition(gameState, x, y, playerPosition, p)) continue;
             legalMoves.push({
               type: 'place',
               from: { x, y },
@@ -17268,6 +17893,15 @@ function isBotPlayer(player) {
  */
 function runBotInWorker(gameState, botPosition, difficulty) {
   ensureReserves(gameState); // ensure limited-reserve inventory is serialized to the worker
+  // Sets don't survive JSON serialization to the worker (they become {}), which would
+  // make the repeating-position check throw and drop every placement. Convert to an
+  // array so the worker can still enforce the ban.
+  const serializable = {
+    ...gameState,
+    seenPositions: gameState.seenPositions instanceof Set
+      ? Array.from(gameState.seenPositions)
+      : (Array.isArray(gameState.seenPositions) ? gameState.seenPositions : []),
+  };
   return new Promise((resolve, reject) => {
     const worker = new Worker(
       path.join(__dirname, 'ai', 'bot-worker.js'),
@@ -17275,7 +17909,7 @@ function runBotInWorker(gameState, botPosition, difficulty) {
         workerData: {
           // JSON round-trip strips any non-serializable values before the
           // structured-clone that Worker applies to workerData.
-          gameState: JSON.parse(JSON.stringify(gameState)),
+          gameState: JSON.parse(JSON.stringify(serializable)),
           botPosition,
           difficulty,
         },
@@ -17661,6 +18295,21 @@ async function _processBotTurnInner(io, gameId, gameState, precomputedMove = nul
           bestMove = precomputedMove;
           console.log(`[Bot] Using precomputed move in game ${gameId}: ${JSON.stringify(bestMove).slice(0, 120)}`);
         }
+        // Territory / enclosure placement games (Go-style) use a dedicated heuristic
+        // strategy — the generic minimax plays them poorly and can stall on the huge
+        // placement branching factor. This runs fast on the main thread.
+        if (!bestMove) {
+          const od = gameState.otherGameData || {};
+          const isTerritoryGame = od.place_pieces_action && (od.surround_capture || od.enclosed_region_scoring);
+          if (isTerritoryGame) {
+            try {
+              bestMove = chooseTerritoryPlacement(gameState, botPlayer.position, effectiveDifficulty);
+              if (bestMove) console.log(`[Bot] Territory strategy chose ${bestMove.type === 'pass' ? 'PASS' : `place (${bestMove.to?.x},${bestMove.to?.y})`} in game ${gameId}`);
+            } catch (terrErr) {
+              console.warn(`[Bot] Territory strategy failed in game ${gameId}:`, terrErr.message);
+            }
+          }
+        }
         if (!bestMove) {
           bestMove = await runBotInWorker(gameState, botPlayer.position, effectiveDifficulty);
           const aiElapsedMs = Date.now() - aiStartTime;
@@ -17774,6 +18423,45 @@ async function _processBotTurnInner(io, gameId, gameState, precomputedMove = nul
         return;
       }
 
+      // ── PASS MOVE HANDLING ──────────────────────────────────────────────────
+      if (bestMove.type === 'pass' || bestMove.isPass) {
+        const otherData = gameState.otherGameData || {};
+        gameState.consecutivePasses = (gameState.consecutivePasses || 0) + 1;
+        gameState.actionsThisTurn = 0;
+        const botPassRecord = { type: 'pass', position: gameState.currentTurn, player: botPlayer.id, isBot: true, timestamp: Date.now() };
+        gameState.moveHistory.push(botPassRecord);
+        const endN = Number(otherData.end_on_consecutive_passes);
+        const passShouldEnd = otherData.end_on_consecutive_passes !== 0 && (gameState.consecutivePasses >= (endN > 0 ? endN : 2));
+        gameState.currentTurn = gameState.currentTurn === 1 ? 2 : 1;
+        gameState.totalHalfMoves = (gameState.totalHalfMoves || 0) + 1;
+        recordBanPosition(gameState);
+        clearTimeout(safetyTimer);
+        if (passShouldEnd) {
+          await endGameByScore(io, gameId, gameState);
+          return;
+        }
+        await db_pool.query(
+          'UPDATE games SET player_turn = ?, pieces = ?, other_data = ? WHERE id = ?',
+          [gameState.currentTurn, JSON.stringify(gameState.pieces), buildOtherData(gameState), gameId]
+        );
+        io.to(`game-${gameId}`).emit('moveMade', {
+          gameId,
+          move: botPassRecord,
+          gameState: {
+            status: gameState.status,
+            pieces: gameState.pieces,
+            currentTurn: gameState.currentTurn,
+            playerTimes: gameState.playerTimes,
+            moveHistory: gameState.moveHistory,
+            actionsThisTurn: 0,
+            actionsPerTurn: gameState.gameType?.actions_per_turn || 1,
+            consecutivePasses: gameState.consecutivePasses,
+          },
+        });
+        console.log(`[Bot] Passed in game ${gameId} (consecutive passes: ${gameState.consecutivePasses})`);
+        return;
+      }
+
       // ── PLACEMENT MOVE HANDLING ─────────────────────────────────────────────
       // validateAndApplyMove requires a pieceId which placement moves lack,
       // so we handle them here, mirroring the socket makeMove placement block.
@@ -17866,6 +18554,13 @@ async function _processBotTurnInner(io, gameId, gameState, precomputedMove = nul
           gameState.movesWithoutCapture = 0;
         }
 
+        // Surround (enclosure) capture: remove enemy groups with no liberties.
+        const botSurroundRemoved = resolveSurroundCaptures(gameState, gameState.currentTurn);
+        if (botSurroundRemoved.length > 0) {
+          applySurroundCaptureScoring(gameState, botSurroundRemoved, gameState.currentTurn);
+        }
+        gameState.consecutivePasses = 0; // a real placement breaks a run of passes
+
         // Record the placement
         const placeMoveRecord = {
           type: 'place',
@@ -17928,7 +18623,7 @@ async function _processBotTurnInner(io, gameId, gameState, precomputedMove = nul
         }
 
         // Standard win check (capture / elimination / etc.)
-        const botPlaceWinResult = checkWinCondition(gameState, []);
+        const botPlaceWinResult = checkWinCondition(gameState, botSurroundRemoved);
         if (botPlaceWinResult.gameOver) {
           await finishBotGame(io, gameId, gameState, botPlaceWinResult, placeMoveRecord, {});
           clearTimeout(safetyTimer);
@@ -17936,6 +18631,7 @@ async function _processBotTurnInner(io, gameId, gameState, precomputedMove = nul
         }
 
         // Update DB and broadcast
+        recordBanPosition(gameState);
         try {
           await db_pool.query(
             'UPDATE games SET player_turn = ?, pieces = ?, other_data = ? WHERE id = ?',
@@ -19722,6 +20418,12 @@ module.exports = {
   isRangedPathClear,
   getValidFlankingPlacements,
   applyFlankingCaptures,
+  // Surround (enclosure) capture + scoring
+  resolveSurroundCaptures,
+  placementViolatesSelfCapture,
+  placementRepeatsBannedPosition,
+  computeEnclosedRegionScores,
+  computeFinalScores,
   // Initial-state validation
   evaluateInitialPosition,
   buildSyntheticInitialState,
