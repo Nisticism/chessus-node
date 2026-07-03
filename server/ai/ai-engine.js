@@ -2453,6 +2453,10 @@ async function tryOpeningBook(gameTypeId, gameState, botPosition) {
  * failure (binary missing, timeout, illegal move, etc.).
  */
 async function tryRustEngine(gameTypeId, gameState, botPosition) {
+  // The Rust MCTS engine is temporarily disabled — Fairy Stockfish and the JS
+  // engine cover bot play. Re-enable by setting RUST_ENGINE=1 in the environment
+  // (and restoring `npm run build:rust` in the dev/start:all scripts).
+  if (process.env.RUST_ENGINE !== '1') return null;
   if (!gameTypeId) return null;
   const fs = require('fs');
   const path = require('path');

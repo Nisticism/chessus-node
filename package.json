@@ -12,8 +12,8 @@
     "frontend": "cd chessus-frontend && npm start",
     "backend": "nodemon server/index.js",
     "build:rust": "node scripts/build-rust.js",
-    "dev": "npm run build:rust && concurrently \"npm run backend\" \"npm run frontend\"",
-    "start:all": "npm run build:rust && concurrently \"npm run backend\" \"npm run frontend\""
+    "dev": "concurrently \"npm run backend\" \"npm run frontend\"",
+    "start:all": "concurrently \"npm run backend\" \"npm run frontend\""
   },
   "engines": {
     "node": "17.9.0"

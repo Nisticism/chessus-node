@@ -13,15 +13,22 @@ echo "[deploy] Pulling latest code..."
 git pull
 git lfs pull
 
-echo "[deploy] Building Rust AI engine and copying binary..."
-# Using build-rust.js (not cargo directly) so the binary is automatically
-# copied to trainer-binaries/linux/ where the download endpoint expects it.
-# NOTE: The win32 binary must be built locally on Windows and rsync'd manually:
-#   rsync -avz trainer-binaries/win32/ai-engine.exe ec2-user@<host>:/home/ec2-user/chessus-node/trainer-binaries/win32/
-node scripts/build-rust.js
-
-echo "[deploy] Restarting trainer service..."
-pm2 restart trainer-service --update-env
+# --- Rust AI engine TEMPORARILY DISABLED ---------------------------------
+# Fairy Stockfish + the JS engine currently cover bot play, so the Rust build
+# and trainer-service restart are skipped to keep deploys fast and unblocked.
+# To re-enable: uncomment the two blocks below (and restore `npm run build:rust`
+# in package.json's dev/start:all scripts, plus set RUST_ENGINE=1).
+#
+# echo "[deploy] Building Rust AI engine and copying binary..."
+# # Using build-rust.js (not cargo directly) so the binary is automatically
+# # copied to trainer-binaries/linux/ where the download endpoint expects it.
+# # NOTE: The win32 binary must be built locally on Windows and rsync'd manually:
+# #   rsync -avz trainer-binaries/win32/ai-engine.exe ec2-user@<host>:/home/ec2-user/chessus-node/trainer-binaries/win32/
+# node scripts/build-rust.js
+#
+# echo "[deploy] Restarting trainer service..."
+# pm2 restart trainer-service --update-env
+# -------------------------------------------------------------------------
 
 echo "[deploy] Building frontend..."
 cd chessus-frontend
