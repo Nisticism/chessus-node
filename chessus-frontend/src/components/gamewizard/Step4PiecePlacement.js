@@ -378,16 +378,44 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
         try {
           const data = JSON.parse(gameData.other_game_data || '{}');
           const placeablePieces = data.placeable_pieces || [];
-          // Prevent duplicate piece types — increment the quantity instead.
-          if (placeablePieces.some(pp => Number(pp.piece_id) === Number(pieceData.piece_id))) {
-            setShowPieceSelector(false);
-            setSelectedSquare(null);
-            return;
-          }
           const playerCount = gameData.player_count || 2;
+          // Determine which player(s) may deploy this entry:
+          //  - neutral: any player deploys it as a neutral piece
+          //  - 'all':   any player deploys it as their own colour
+          //  - number:  only that player may deploy it
+          const isNeutralEntry = !!pieceData.is_neutral;
+          const entryPlayer = isNeutralEntry
+            ? 'neutral'
+            : (pieceData.placement_all ? 'all' : (pieceData.player_id || 1));
+
+          // Duplicate handling. With limited reserves, each piece type may only be
+          // added once (adjust per-player quantities instead). Without reserves,
+          // the same piece type may be added once per player — but a piece already
+          // available to ALL players (all / neutral) covers everyone, so block re-adding it.
+          const dupExisting = placeablePieces.filter(pp => Number(pp.piece_id) === Number(pieceData.piece_id));
+          if (dupExisting.length > 0) {
+            const coversEveryone = dupExisting.some(pp => pp.player === 'all' || pp.player === 'neutral' || pp.is_neutral || pp.player == null);
+            const blocked = data.finite_reserve
+              ? true
+              : coversEveryone
+                || entryPlayer === 'all'
+                || dupExisting.some(pp => pp.player === entryPlayer);
+            if (blocked) {
+              const reason = data.finite_reserve
+                ? 'This piece is already in the placeable list. Adjust its per-player quantities instead of adding it again.'
+                : entryPlayer === 'all'
+                  ? 'This piece type is already added for a specific player or as neutral. Remove those entries first, or use “Allow all players” on the existing entry.'
+                  : coversEveryone
+                    ? 'This piece type is already available to all players, so it cannot be added again for a single player.'
+                    : 'This piece type is already added for this player.';
+              window.alert(reason);
+              setShowPieceSelector(false);
+              setSelectedSquare(null);
+              return;
+            }
+          }
           // For neutral placeable pieces, show the neutral image variant.
           let entryImageUrl = pieceData.image_url;
-          const isNeutralEntry = !!pieceData.is_neutral;
           if (isNeutralEntry && pieceData.image_location) {
             try {
               const arr = JSON.parse(pieceData.image_location);
@@ -405,11 +433,16 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
             image_location: pieceData.image_location || null,
             is_neutral: isNeutralEntry,
             neutral_image_index: isNeutralEntry ? (pieceData.neutral_image_index ?? 0) : null,
+            player: entryPlayer,
           };
-          // When limited reserves are enabled, seed a default per-player quantity of 1.
+          // When limited reserves are enabled, seed a default per-player quantity of 1
+          // (only for players who may actually deploy this entry).
           if (data.finite_reserve) {
             const counts = {};
-            for (let p = 1; p <= playerCount; p++) counts[String(p)] = 1;
+            for (let p = 1; p <= playerCount; p++) {
+              const eligible = entryPlayer === 'all' || entryPlayer === 'neutral' || entryPlayer === p;
+              counts[String(p)] = eligible ? 1 : 0;
+            }
             newEntry.reserve_counts = counts;
           }
           placeablePieces.push(newEntry);
@@ -1775,14 +1808,68 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
         const placeablePieces = otherData.placeable_pieces || [];
         const finiteReserve = otherData.finite_reserve === true;
         const playerCount = gameData.player_count || 2;
+        // Reserve is capped at the number of squares on the board (you can't place
+        // more pieces than there are squares). Computed from the Step 3 board size.
+        const boardSquares = Math.max(1, (gameData.board_width || 8) * (gameData.board_height || 8));
 
         const persistPlaceable = (updated) => {
           const data = { ...otherData, placeable_pieces: updated };
           updateGameData({ other_game_data: JSON.stringify(data, null, 2) });
         };
 
+        // Which players may deploy an entry, and a friendly label for it.
+        const eligiblePlayersFor = (pp) => {
+          if (pp.is_neutral || pp.player === 'neutral' || pp.player === 'all' || pp.player == null) {
+            return Array.from({ length: playerCount }, (_, i) => i + 1);
+          }
+          return [Number(pp.player)];
+        };
+        const eligibilityLabel = (pp) => {
+          if (pp.is_neutral || pp.player === 'neutral') return 'Neutral';
+          if (pp.player === 'all' || pp.player == null) return 'All players';
+          return `Player ${pp.player}`;
+        };
+        // Resolve the image variant that matches a given player (or the neutral image).
+        const imageForPlayer = (pp, playerNum) => {
+          if (pp.image_location) {
+            try {
+              const arr = JSON.parse(pp.image_location);
+              if (Array.isArray(arr) && arr.length > 0) {
+                let idx;
+                if (pp.is_neutral) idx = Math.min(Math.max(0, pp.neutral_image_index ?? 0), arr.length - 1);
+                else idx = (playerNum === 2 && arr.length > 1) ? 1 : 0;
+                const p = arr[idx];
+                return getImageUrl(p.startsWith('http') || p.startsWith('/uploads/') ? p : `/uploads/pieces/${p}`);
+              }
+            } catch { /* fall through */ }
+          }
+          return pp.image_url ? getImageUrl(pp.image_url) : null;
+        };
+        const setEntryPlayer = (idx, player) => {
+          const target = placeablePieces[idx];
+          let updated = placeablePieces.map((pp, i) => {
+            if (i !== idx) return pp;
+            const next = { ...pp, player, is_neutral: player === 'neutral' };
+            if (finiteReserve) {
+              const counts = { ...(pp.reserve_counts || {}) };
+              for (let p = 1; p <= playerCount; p++) {
+                const eligible = player === 'all' || player === 'neutral' || Number(player) === p;
+                const cur = Number(counts[String(p)]) || 0;
+                counts[String(p)] = eligible ? (cur > 0 ? cur : 1) : 0;
+              }
+              next.reserve_counts = counts;
+            }
+            return next;
+          });
+          // Converting to all/neutral makes any other entries for this piece redundant.
+          if ((player === 'all' || player === 'neutral') && target) {
+            updated = updated.filter((pp, i) => i === idx || Number(pp.piece_id) !== Number(target.piece_id));
+          }
+          persistPlaceable(updated);
+        };
+
         const setReserveCount = (idx, playerNum, value) => {
-          const qty = Math.max(0, Math.min(99, Math.floor(Number(value)) || 0));
+          const qty = Math.max(0, Math.min(boardSquares, Math.floor(Number(value)) || 0));
           const updated = placeablePieces.map((pp, i) => {
             if (i !== idx) return pp;
             const counts = { ...(pp.reserve_counts || {}) };
@@ -1805,10 +1892,10 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
 
         return (
           <div className={styles["global-hp-ad-section"]} style={{ marginTop: '20px' }}>
-            <h3>Placeable Pieces <InfoTooltip text="Select which pieces can be placed onto empty squares during gameplay. Players will spend an action to place one of these pieces on their turn." /></h3>
+            <h3>Placeable Pieces <InfoTooltip text="Select which pieces can be placed onto empty squares during gameplay. Players will spend an action to place one of these pieces on their turn. When you add a piece you choose who may deploy it: a specific player, All Players (each deploys it in their own colour), or Neutral. With limited reserves on, each player's reserve is capped at the number of squares on the board." /></h3>
             <p className={styles["field-hint"]} style={{ marginBottom: '12px' }}>
               Choose piece types that players can place during gameplay. These are separate from starting board positions.
-              {finiteReserve && ' Set how many of each piece every player starts with in their reserve. Once a player runs out of a piece, they can no longer deploy it.'}
+              {finiteReserve && ` Set how many of each piece every player starts with in their reserve (max ${boardSquares} — the number of squares on this board). Once a player runs out of a piece, they can no longer deploy it.`}
             </p>
 
             {finiteReserve && placeablePieces.length > 1 && (
@@ -1827,28 +1914,48 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
               <div className={styles["placeable-pieces-list"]}>
                 {placeablePieces.map((pp, idx) => (
                   <div key={idx} className={styles["placeable-piece-item"]}>
-                    {pp.image_url && (
-                      <img
-                        src={getImageUrl(pp.image_url)}
-                        alt={pp.name}
-                        className={styles["placeable-piece-image"]}
-                      />
+                    {(pp.player === 'all' && !pp.is_neutral) ? (
+                      <span style={{ display: 'inline-flex', gap: '2px' }}>
+                        {Array.from({ length: playerCount }, (_, i) => i + 1).map((pn) => {
+                          const u = imageForPlayer(pp, pn);
+                          return u ? (
+                            <img key={pn} src={u} alt={`${pp.name} (P${pn})`} title={`Player ${pn}`} className={styles["placeable-piece-image"]} />
+                          ) : null;
+                        })}
+                      </span>
+                    ) : (
+                      (() => {
+                        const pn = pp.is_neutral ? 1 : (typeof pp.player === 'number' ? pp.player : 1);
+                        const u = imageForPlayer(pp, pn);
+                        return u ? (
+                          <img src={u} alt={pp.name} className={styles["placeable-piece-image"]} />
+                        ) : null;
+                      })()
                     )}
                     <span className={styles["placeable-piece-name"]}>
                       {pp.name || `Piece #${pp.piece_id}`}
-                      {pp.is_neutral && (
-                        <span style={{ marginLeft: '6px', fontSize: '0.75em', color: 'var(--text-muted, #999)', fontWeight: 600 }}>(Neutral)</span>
-                      )}
+                      <span style={{ marginLeft: '6px', fontSize: '0.75em', color: 'var(--text-muted, #999)', fontWeight: 600 }}>({eligibilityLabel(pp)})</span>
                     </span>
+                    {playerCount > 1 && !pp.is_neutral && pp.player !== 'all' && pp.player != null && (
+                      <button
+                        type="button"
+                        className={styles["add-placeable-piece-btn"]}
+                        style={{ marginRight: '8px', padding: '2px 8px', fontSize: '0.75rem' }}
+                        onClick={() => setEntryPlayer(idx, 'all')}
+                        title="Let every player deploy this piece type"
+                      >
+                        Allow all players
+                      </button>
+                    )}
                     {finiteReserve && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginRight: '8px' }}>
-                        {Array.from({ length: playerCount }, (_, i) => i + 1).map((playerNum) => (
+                        {eligiblePlayersFor(pp).map((playerNum) => (
                           <label key={playerNum} style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.85rem' }}>
                             <span>P{playerNum}:</span>
                             <NumberInput
                               value={pp.reserve_counts?.[String(playerNum)] ?? 0}
                               onChange={(val) => setReserveCount(idx, playerNum, val)}
-                              options={{ min: 0, max: 99 }}
+                              options={{ min: 0, max: boardSquares }}
                             />
                           </label>
                         ))}
@@ -2178,10 +2285,19 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
           hasRestrictionZones={hasRestrictionZones}
           pointsCondition={gameData.points_to_win != null}
           onRemoveRow={handleRemoveRow}
+          allowAllPlayers={selectedSquare?.isPlaceable === true}
           excludePieceIds={selectedSquare?.isPlaceable ? (() => {
             try {
               const od = JSON.parse(gameData.other_game_data || '{}');
-              return (od.placeable_pieces || []).map(pp => pp.piece_id).filter(id => id != null);
+              const entries = od.placeable_pieces || [];
+              // With limited reserves, each piece type may be added only once (adjust
+              // per-player quantities instead) — so hide every already-added type.
+              // Without reserves, the same type may be added once per player, so only
+              // hide types already available to everyone (All Players / Neutral / legacy).
+              const relevant = od.finite_reserve
+                ? entries
+                : entries.filter(pp => pp.player === 'all' || pp.player === 'neutral' || pp.is_neutral || pp.player == null);
+              return relevant.map(pp => pp.piece_id).filter(id => id != null);
             } catch { return []; }
           })() : null}
         />

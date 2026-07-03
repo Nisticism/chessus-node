@@ -167,7 +167,7 @@ const Step2WinConditions = ({ gameData, updateGameData }) => {
           <NumberInput
             value={gameData.points_to_win || 10}
             onChange={(val) => handleChange("points_to_win", Math.max(1, Math.min(9999, val)))}
-            options={{ min: 1, max: 9999, placeholder: "10", className: styles["form-input-small"] }}
+            options={{ min: 1, max: 9999, step: 0.5, allowDecimals: true, placeholder: "10", className: styles["form-input-small"] }}
           />
           <p className={styles["field-hint"]}>
             Win check happens at end of each player's half-move, after captures and control-square points are computed.
@@ -178,7 +178,7 @@ const Step2WinConditions = ({ gameData, updateGameData }) => {
           <NumberInput
             value={gameData.starting_points_p1 || 0}
             onChange={(val) => handleChange("starting_points_p1", Math.max(0, Math.min(9999, val)))}
-            options={{ min: 0, max: 9999, placeholder: "0", className: styles["form-input-small"] }}
+            options={{ min: 0, max: 9999, step: 0.5, allowDecimals: true, placeholder: "0", className: styles["form-input-small"] }}
           />
         </div>
         <div className={styles["sub-field"]}>
@@ -186,8 +186,77 @@ const Step2WinConditions = ({ gameData, updateGameData }) => {
           <NumberInput
             value={gameData.starting_points_p2 || 0}
             onChange={(val) => handleChange("starting_points_p2", Math.max(0, Math.min(9999, val)))}
-            options={{ min: 0, max: 9999, placeholder: "0", className: styles["form-input-small"] }}
+            options={{ min: 0, max: 9999, step: 0.5, allowDecimals: true, placeholder: "0", className: styles["form-input-small"] }}
           />
+        </div>
+      </ToggleRow>
+
+      <ToggleRow
+        title="Highest Score Wins (at game end)"
+        tooltip="When the game reaches an end trigger — such as consecutive passes (see 'Allow Pass') — the player with the highest score wins, and equal scores are a draw. Score combines starting points (a handicap, e.g. a Go 'komi'), capture points, control-square points, and enclosed-region scoring if enabled. This needs an end trigger to be enabled or the game never ends. This is how the winner is decided in the game Go."
+        checked={otherData.high_score_win === true}
+        onChange={(val) => setOtherDataField("high_score_win", val)}
+      >
+        {gameData.points_to_win == null && (
+          <>
+            <div className={styles["sub-field"]}>
+              <label className={styles["form-label"]}>Player 1 starting points (handicap)</label>
+              <NumberInput
+                value={gameData.starting_points_p1 || 0}
+                onChange={(val) => handleChange("starting_points_p1", Math.max(0, Math.min(9999, val)))}
+                options={{ min: 0, max: 9999, step: 0.5, allowDecimals: true, placeholder: "0", className: styles["form-input-small"] }}
+              />
+            </div>
+            <div className={styles["sub-field"]}>
+              <label className={styles["form-label"]}>Player 2 starting points (handicap / komi)</label>
+              <NumberInput
+                value={gameData.starting_points_p2 || 0}
+                onChange={(val) => handleChange("starting_points_p2", Math.max(0, Math.min(9999, val)))}
+                options={{ min: 0, max: 9999, step: 0.5, allowDecimals: true, placeholder: "0", className: styles["form-input-small"] }}
+              />
+              <p className={styles["field-hint"]}>In Go, the second player receives a "komi" (e.g. 6.5) to offset the first-move advantage. A fractional value also guarantees no ties.</p>
+            </div>
+          </>
+        )}
+        <div className={styles["sub-field"]}>
+          <ToggleSwitch
+            checked={otherData.enclosed_region_scoring === true}
+            onChange={(val) => {
+              const data = getOtherData();
+              data.enclosed_region_scoring = val;
+              if (val && !data.scoring_model) data.scoring_model = 'area';
+              updateGameData({ other_game_data: JSON.stringify(data, null, 2) });
+            }}
+            size="small"
+            label={
+              <span className={styles["condition-toggle-title"]}>
+                Score enclosed regions (territory)
+                <InfoTooltip text="When enabled, empty regions of the board that are fully enclosed by a single player's pieces count toward that player's score at game end (a region touching two players, or any neutral piece, counts for no one). This is how territory is scored in the game Go." />
+              </span>
+            }
+          />
+          {otherData.enclosed_region_scoring && (
+            <div style={{ marginTop: '8px', marginLeft: '4px' }}>
+              <label className={styles["form-label"]}>Scoring model</label>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '4px' }}>
+                {[
+                  ['area', 'Area (Chinese) — your pieces on the board + enclosed regions. Recommended: no disputes over “dead” stones.'],
+                  ['region', 'Region (Japanese) — enclosed empty regions only (use per-piece Capture Points to count captured “prisoners”).'],
+                ].map(([val, txt]) => (
+                  <label key={val} style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', cursor: 'pointer', fontSize: '0.88rem' }}>
+                    <input
+                      type="radio"
+                      name="scoring_model"
+                      style={{ marginTop: '3px' }}
+                      checked={(otherData.scoring_model || 'area') === val}
+                      onChange={() => setOtherDataField("scoring_model", val)}
+                    />
+                    <span>{txt}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </ToggleRow>
 
@@ -494,6 +563,91 @@ const Step2WinConditions = ({ gameData, updateGameData }) => {
                 <InfoTooltip text="When enabled, each placeable piece has a limited quantity per player. Deploying a piece removes it from that player's reserve; once a piece type is exhausted it can no longer be placed. Configure the per-player quantities in Step 4 (Piece Placement). Note: placing a piece resets the 50-move draw counter (like a pawn move), and when threefold repetition is active the reserve counts are included when comparing positions, so identical boards with different reserves are treated as different positions." />
               </span>
             }
+          />
+        </div>
+      </ToggleRow>
+
+      <ToggleRow
+        title="Surround Capture"
+        tooltip="When enabled, a single-tile piece (or a connected group of them) is captured and removed the moment it has no adjacent empty space left — i.e. it is fully enclosed by the board edge, blocked squares, and other pieces. This is the capture mechanic used by the game Go, where a stone is captured once its last adjacent empty point (its 'liberty') is taken. In this version only single-tile, non-royal pieces can be surround-captured; royal and multi-tile pieces act as walls, and neutral pieces block for both sides."
+        checked={otherData.surround_capture === true}
+        onChange={(val) => {
+          const data = getOtherData();
+          data.surround_capture = val;
+          if (!val) data.forbid_self_capture = false;
+          updateGameData({ other_game_data: JSON.stringify(data, null, 2) });
+        }}
+      >
+        <div className={styles["sub-field"]}>
+          <ToggleSwitch
+            checked={otherData.surround_capture_diagonal === true}
+            onChange={(val) => setOtherDataField("surround_capture_diagonal", val)}
+            size="small"
+            label={
+              <span className={styles["condition-toggle-title"]}>
+                Count diagonals as adjacent
+                <InfoTooltip text="By default only the four orthogonal neighbours (up/down/left/right) count when deciding whether a piece is surrounded and where its empty 'liberties' are. Enable this to also count the four diagonals. Standard Go uses orthogonal adjacency only." />
+              </span>
+            }
+          />
+        </div>
+        <div className={styles["sub-field"]}>
+          <ToggleSwitch
+            checked={otherData.forbid_self_capture === true}
+            onChange={(val) => setOtherDataField("forbid_self_capture", val)}
+            size="small"
+            label={
+              <span className={styles["condition-toggle-title"]}>
+                Forbid self-capture placement
+                <InfoTooltip text="When enabled, a player may not place a piece where it would immediately be surrounded (its own group would have no adjacent empty space) unless the placement captures at least one enemy piece. This is Go's 'no suicide' rule. Only meaningful while Surround Capture is on." />
+              </span>
+            }
+          />
+        </div>
+      </ToggleRow>
+
+      <ToggleRow
+        title="Forbid Repeating Positions"
+        tooltip="When enabled, a move that would recreate an earlier board position is illegal — the move is simply rejected (this is different from the Position Repetition Draw rule, which ends the game in a draw). It prevents endless recapture loops. This implements the 'ko' rule from the game Go; with the broader scope it becomes positional superko (no earlier position may ever recur)."
+        checked={otherData.forbid_position_repetition === true}
+        onChange={(val) => setOtherDataField("forbid_position_repetition", val)}
+      >
+        <div className={styles["sub-field"]}>
+          <label className={styles["form-label"]}>Repetition scope</label>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '4px' }}>
+            {[['any', 'Any previous position (superko)'], ['previous', 'Immediately-prior position only (simple ko)']].map(([val, txt]) => (
+              <label key={val} style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.9rem' }}>
+                <input
+                  type="radio"
+                  name="repetition_ban_scope"
+                  checked={(otherData.repetition_ban_scope || 'any') === val}
+                  onChange={() => setOtherDataField("repetition_ban_scope", val)}
+                />
+                <span>{txt}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      </ToggleRow>
+
+      <ToggleRow
+        title="Allow Pass"
+        tooltip="When enabled, a player may pass their whole turn instead of moving. Optionally, a set number of consecutive passes ends the game — which is then decided by 'Highest Score Wins' if enabled, otherwise scored as a draw. This is how a game of Go ends: both players pass in a row."
+        checked={otherData.allow_pass === true}
+        onChange={(val) => {
+          const data = getOtherData();
+          data.allow_pass = val;
+          if (!val) data.end_on_consecutive_passes = 0;
+          else if (data.end_on_consecutive_passes == null) data.end_on_consecutive_passes = 2;
+          updateGameData({ other_game_data: JSON.stringify(data, null, 2) });
+        }}
+      >
+        <div className={styles["sub-field"]}>
+          <label className={styles["form-label"]}>End game after this many consecutive passes (0 = never end on passes)</label>
+          <NumberInput
+            value={otherData.end_on_consecutive_passes ?? 2}
+            onChange={(val) => setOtherDataField("end_on_consecutive_passes", Math.max(0, Math.min(9, Math.floor(Number(val) || 0))))}
+            options={{ min: 0, max: 9, className: styles["form-input-small"] }}
           />
         </div>
       </ToggleRow>

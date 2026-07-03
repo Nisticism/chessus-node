@@ -2243,6 +2243,10 @@ const GameTypeView = () => {
     // ---- Win Conditions Section ----
     const winConditions = [];
 
+    // Parse other_game_data once up front — used across win/draw/mechanics sections.
+    let otherData = {};
+    try { otherData = JSON.parse(game.other_game_data || '{}') || {}; } catch {}
+
     if (game.mate_condition) {
       // Determine checkmate target piece name: prefer game-level mate_piece, then fall back to pieces marked ends_game_on_checkmate
       let matePieceName = 'the designated piece';
@@ -2379,6 +2383,11 @@ const GameTypeView = () => {
       winConditions.push(ptLine);
     }
 
+    // Highest Score Wins (score-based end, e.g. Go)
+    if (otherData.high_score_win) {
+      winConditions.push(`• **Highest Score Wins**: When the game reaches an end trigger (such as consecutive passes), the player with the highest score wins; an equal score is a draw. Score combines starting points (a handicap, like a Go "komi"), capture points, control-square points${otherData.enclosed_region_scoring ? ', and enclosed-region scoring' : ''}. This is how the winner is decided in Go.`);
+    }
+
     // Illegal Move Limit — a loss condition triggered by repeated illegal attempts.
     if (game.illegal_move_limit && Number(game.illegal_move_limit) > 0) {
       winConditions.push(`• **Illegal Move Limit**: A player who attempts ${game.illegal_move_limit} illegal moves loses the game. The server silently rejects each illegal attempt without revealing why — the player only sees a private counter increment. The turn does not pass on a rejected attempt; the player must try a different move. Especially relevant alongside Hidden Enemy Pieces, where players cannot see what blocks them.\n   ◦ *Adapted from the illegal-move rule used in Tsuitate Shogi.*`);
@@ -2429,9 +2438,7 @@ const GameTypeView = () => {
       drawConditions.push(`• **Repetition Draw**: If the same board position occurs ${game.repetition_draw_count} times, the game is declared a draw.`);
     }
 
-    // Parse other_game_data for extra draw conditions
-    let otherData = {};
-    try { otherData = JSON.parse(game.other_game_data || '{}') || {}; } catch {}
+    // otherData was parsed above (before the Win Conditions section).
 
     if (otherData.equal_piece_count_draw) {
       drawConditions.push(`• **Equal Piece Count Draw**: If both players have the same number of pieces when the game ends by piece count, it is a draw.`);
@@ -2483,6 +2490,42 @@ const GameTypeView = () => {
         placeDesc += `\n\nDeploying a piece resets the 50-move draw counter (like a pawn move). When threefold repetition is active, remaining reserves are part of the position, so identical boards with different reserves are treated as different positions.`;
       }
       mechanicsContent.push(placeDesc);
+    }
+
+    // Surround (enclosure) capture — Go-style capture
+    if (otherData.surround_capture) {
+      let sc = `**Surround Capture**\nA single-tile piece — or a connected group of them — is captured and removed the moment it has no adjacent empty space left (it is fully enclosed by the board edge, blocked squares, and other pieces). This is the capture method used by the game Go, where a stone is captured once its last adjacent empty point (its "liberty") is taken. Adjacency counts the four orthogonal neighbours${otherData.surround_capture_diagonal ? ' **plus diagonals**' : ' (orthogonal only)'}. In this version only single-tile, non-royal pieces can be surround-captured; royal and multi-tile pieces act as walls, and neutral pieces block for both sides.`;
+      if (otherData.forbid_self_capture) {
+        sc += `\n\n**No self-capture:** A player may not place a piece where it would immediately be surrounded (its own group would have no adjacent empty space) unless the placement captures at least one enemy piece — this is Go's "no suicide" rule.`;
+      }
+      mechanicsContent.push(sc);
+    }
+
+    // Forbid repeating positions — ko / superko
+    if (otherData.forbid_position_repetition) {
+      const scope = otherData.repetition_ban_scope === 'previous'
+        ? 'the immediately-preceding board position (simple ko)'
+        : 'any board position that has occurred earlier in the game (positional superko)';
+      mechanicsContent.push(`**Forbid Repeating Positions**\nA move that would recreate ${scope} is illegal and is rejected (this is different from the Position Repetition Draw rule, which ends the game in a draw). It prevents endless recapture loops — the "ko" rule from the game Go.`);
+    }
+
+    // Allow pass + consecutive-pass ending
+    if (otherData.allow_pass) {
+      const n = Number(otherData.end_on_consecutive_passes);
+      let passDesc = `**Passing**\nA player may pass their whole turn instead of moving.`;
+      if (n && n > 0) {
+        passDesc += ` After **${n} consecutive pass${n > 1 ? 'es' : ''}**, the game ends${otherData.high_score_win ? ' and is decided by the highest score' : ' (scored as a draw unless a score-based win condition is set)'}. This is how a game of Go ends — both players pass in a row.`;
+      }
+      mechanicsContent.push(passDesc);
+    }
+
+    // Enclosed region (territory/area) scoring
+    if (otherData.enclosed_region_scoring) {
+      const model = otherData.scoring_model === 'region' ? 'region' : 'area';
+      const modelText = model === 'area'
+        ? '**Area (Chinese) scoring**: a player scores for their own pieces on the board **plus** the empty regions they fully enclose.'
+        : '**Region (Japanese) scoring**: a player scores only for the empty regions they fully enclose (use per-piece Capture Points to count captured "prisoners").';
+      mechanicsContent.push(`**Enclosed Region Scoring**\nAt game end, empty regions that are fully enclosed by a single player's pieces score for that player; a region touching two players, or any neutral piece, counts for no one. ${modelText} This is how a game of Go is scored. Area scoring is recommended because players can simply play the position out and remove doomed groups by surrounding them, so there is never a dispute over which pieces are "dead".`);
     }
 
     if (game.start_repositions > 0) {
@@ -3670,6 +3713,14 @@ const GameTypeView = () => {
             return pp.image_url ? getImageUrl(pp.image_url) : null;
           };
 
+          const eligibleFor = (pp, playerNum) =>
+            pp.is_neutral || pp.player === 'neutral' || pp.player === 'all' || pp.player == null || Number(pp.player) === Number(playerNum);
+          const ownershipLabel = (pp) => {
+            if (pp.is_neutral || pp.player === 'neutral') return 'Neutral';
+            if (pp.player === 'all' || pp.player == null) return 'All players';
+            return `Player ${pp.player} only`;
+          };
+
           const renderCard = (pp, idx, playerNum, qty) => {
             const imgUrl = imageForPlayer(pp, playerNum);
             return (
@@ -3680,9 +3731,7 @@ const GameTypeView = () => {
                   <span className={styles["placeable-piece-placeholder"]}>?</span>
                 )}
                 <span className={styles["placeable-piece-label"]}>{pp.piece_name || pp.name || 'Unknown'}</span>
-                {pp.is_neutral && (
-                  <span className={styles["placeable-piece-label"]} style={{ color: 'var(--text-muted)', fontSize: '0.75em' }}>Neutral</span>
-                )}
+                <span className={styles["placeable-piece-label"]} style={{ color: 'var(--text-muted)', fontSize: '0.75em' }}>{ownershipLabel(pp)}</span>
                 {qty != null && (
                   <span className={styles["placeable-piece-label"]} style={{ color: 'var(--text-muted)', fontSize: '0.85em' }}>×{qty}</span>
                 )}
@@ -3696,13 +3745,13 @@ const GameTypeView = () => {
               <div className={styles["section"]}>
                 <h2>♟ Placeable Pieces</h2>
                 <p style={{ color: 'var(--text-muted)', marginBottom: '12px' }}>
-                  Each player has a limited reserve. The counts below show how many of each piece a player starts with. Neutral pieces can be placed by either player but draw from that player's own reserve.
+                  Each player has a limited reserve. The counts below show how many of each piece a player starts with. Neutral and "All players" pieces can be placed by either player but draw from that player's own reserve. Each reserve is capped at the number of squares on the board.
                 </p>
                 {Array.from({ length: playerCount }, (_, i) => i + 1).map(playerNum => (
                   <div key={playerNum} style={{ marginBottom: '16px' }}>
                     <h3 style={{ marginBottom: '8px' }}>Player {playerNum} reserve</h3>
                     <div className={styles["placeable-pieces-grid"]}>
-                      {od.placeable_pieces.map((pp, idx) => {
+                      {od.placeable_pieces.filter(pp => eligibleFor(pp, playerNum)).map((pp, idx) => {
                         const qty = (pp.reserve_counts || {})[String(playerNum)] ?? 0;
                         return renderCard(pp, idx, playerNum, qty);
                       })}

@@ -628,6 +628,18 @@ export const SocketProvider = ({ children }) => {
     });
   }, [socket, connected, getAnonPlayerId]);
 
+  // Pass the turn (Allow Pass mechanic)
+  const passTurn = useCallback((gameId) => {
+    if (!socket || !connected) {
+      console.error('Not connected');
+      return;
+    }
+    socket.emit('passTurn', {
+      gameId,
+      userId: getAnonPlayerId(gameId)
+    });
+  }, [socket, connected, getAnonPlayerId]);
+
   // Offer a draw
   const offerDraw = useCallback((gameId) => {
     if (!socket || !connected) {
@@ -827,6 +839,7 @@ export const SocketProvider = ({ children }) => {
     simulReadyToStart,
     simulPromotionChoice,
     resign,
+    passTurn,
     offerDraw,
     acceptDraw,
     declineDraw,

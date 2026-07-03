@@ -50,9 +50,15 @@ const getReserveCount = (reserves, position, pieceId) => {
   const v = inv[pieceId] ?? inv[String(pieceId)];
   return v == null ? Infinity : v;
 };
-// Placeable pieces the given player can currently deploy (reserve > 0, or all when unlimited).
+// Whether the given player may deploy a placeable entry (per-entry ownership).
+// neutral / 'all' / legacy(null) → any player; a specific number → only that player.
+const isPlaceableEligible = (pp, position) =>
+  pp.is_neutral || pp.player === 'neutral' || pp.player === 'all' || pp.player == null || Number(pp.player) === Number(position);
+
+// Placeable pieces the given player can currently deploy (eligible for them, and
+// reserve > 0 when limited reserves are on).
 const getDeployablePieces = (otherData, reserves, position) => {
-  const list = (otherData && otherData.placeable_pieces) || [];
+  const list = ((otherData && otherData.placeable_pieces) || []).filter(pp => isPlaceableEligible(pp, position));
   if (!reserves) return list;
   return list.filter(pp => getReserveCount(reserves, position, pp.piece_id) > 0);
 };
@@ -106,6 +112,59 @@ const reserveImageForPlayer = (pp, playerNum) => {
     return pp.image_url.startsWith('http') ? pp.image_url : `${ASSET_URL}${pp.image_url}`;
   }
   return null;
+};
+
+// Compute a live score estimate for score-based (Go-style) games: enclosed-region
+// territory (orthogonal flood-fill) + board stones under the 'area' model + each
+// player's starting points (komi). Mirrors the server's computeFinalScores for the
+// common cases (captures/control points are added server-side at the game-end tally).
+const computeGoScores = (pieces, gameType, otherData) => {
+  const bw = gameType?.board_width || 8;
+  const bh = gameType?.board_height || 8;
+  let impassable = null;
+  try {
+    const ss = typeof gameType?.special_squares_string === 'string'
+      ? JSON.parse(gameType.special_squares_string) : gameType?.special_squares_string;
+    if (ss && typeof ss === 'object') {
+      impassable = new Set();
+      for (const [k, cfg] of Object.entries(ss)) if (cfg && cfg.impassable) impassable.add(k);
+    }
+  } catch { /* ignore */ }
+  const occ = new Map();
+  for (const p of pieces) occ.set(`${p.x},${p.y}`, p);
+  const isWall = (x, y) => impassable && impassable.has(`${y},${x}`);
+  const territory = { 1: 0, 2: 0 };
+  if (otherData?.enclosed_region_scoring) {
+    const visited = new Set();
+    for (let y = 0; y < bh; y++) for (let x = 0; x < bw; x++) {
+      const k = `${x},${y}`;
+      if (visited.has(k) || occ.has(k) || isWall(x, y)) continue;
+      let size = 0; const owners = new Set(); let neutral = false; const stack = [[x, y]]; visited.add(k);
+      while (stack.length) {
+        const [cx, cy] = stack.pop(); size++;
+        for (const [nx, ny] of [[cx, cy - 1], [cx, cy + 1], [cx - 1, cy], [cx + 1, cy]]) {
+          if (nx < 0 || nx >= bw || ny < 0 || ny >= bh) continue;
+          if (isWall(nx, ny)) continue;
+          const nk = `${nx},${ny}`; const np = occ.get(nk);
+          if (np) { const o = np.team || np.player_id; if (np.is_neutral || o === 0) neutral = true; else owners.add(o); }
+          else if (!visited.has(nk)) { visited.add(nk); stack.push([nx, ny]); }
+        }
+      }
+      if (owners.size === 1 && !neutral) { const o = [...owners][0]; if (o === 1 || o === 2) territory[o] += size; }
+    }
+  }
+  const stones = {
+    1: pieces.filter(p => (p.team || p.player_id) === 1 && !p.is_neutral).length,
+    2: pieces.filter(p => (p.team || p.player_id) === 2 && !p.is_neutral).length,
+  };
+  const start = { 1: Number(gameType?.starting_points_p1) || 0, 2: Number(gameType?.starting_points_p2) || 0 };
+  const model = otherData?.scoring_model === 'region' ? 'region' : 'area';
+  const scores = { 1: 0, 2: 0 };
+  for (const pos of [1, 2]) {
+    scores[pos] = start[pos] + (territory[pos] || 0) + (otherData?.enclosed_region_scoring && model === 'area' ? stones[pos] : 0);
+    scores[pos] = Math.round(scores[pos] * 10) / 10;
+  }
+  return { scores, territory, stones, start, model };
 };
 
 // Helper to parse image_location and get the first image URL
@@ -236,6 +295,7 @@ const LiveGame = () => {
     simulReadyToStart,
     simulPromotionChoice,
     resign,
+    passTurn,
     offerDraw,
     acceptDraw,
     declineDraw,
@@ -5282,6 +5342,11 @@ const LiveGame = () => {
     }
   };
 
+  // Handle pass (Allow Pass mechanic)
+  const handlePass = () => {
+    passTurn(parseInt(gameId));
+  };
+
   // Handle draw offer
   const handleOfferDraw = () => {
     offerDraw(parseInt(gameId));
@@ -5574,6 +5639,10 @@ const LiveGame = () => {
     }
 
     const squares = [];
+
+    // Go-style board display: render as a wood-coloured grid of lines with pieces
+    // on the intersections (display-only preference from Step 3 of the wizard).
+    const intersectionBoard = gameState?.otherGameData?.intersection_board === true;
 
     // Whether this game has any points-based win or draw condition (controls points-square overlay visibility)
     const hasPointsCondition = gameState.gameType?.points_to_win != null ||
@@ -5892,14 +5961,37 @@ const LiveGame = () => {
             onMouseDown={(e) => handleSquareMouseDown(e, gameX, gameY)}
             onContextMenu={(e) => handleSquareContextMenu(e, gameX, gameY)}
             style={{
-              backgroundColor: isLight 
-                ? (currentUser?.light_square_color || '#cad5e8')
-                : (currentUser?.dark_square_color || '#08234d'),
+              backgroundColor: intersectionBoard
+                ? '#e3b869'
+                : (isLight
+                  ? (currentUser?.light_square_color || '#cad5e8')
+                  : (currentUser?.dark_square_color || '#08234d')),
               position: 'relative',
               ...(dotType ? { '--move-dot-bg': dotBg[dotType] } : {}),
               ...(isAnchor && piece && ((piece.piece_width || 1) > 1 || (piece.piece_height || 1) > 1) ? { zIndex: 10 } : {})
             }}
           >
+            {/* Go-style intersection grid: draw line segments through the cell centre
+                so pieces appear to sit on the crossings. Segments stop at edge cells. */}
+            {intersectionBoard && (() => {
+              const bw = gameState?.gameType?.board_width || 8;
+              const bh = gameState?.gameType?.board_height || 8;
+              const lineColor = 'rgba(60,40,20,0.85)';
+              return (
+                <>
+                  <div style={{
+                    position: 'absolute', top: '50%', height: '1.5px', background: lineColor,
+                    left: gameX === 0 ? '50%' : 0, right: gameX === bw - 1 ? '50%' : 0,
+                    transform: 'translateY(-50%)', pointerEvents: 'none', zIndex: 0,
+                  }} />
+                  <div style={{
+                    position: 'absolute', left: '50%', width: '1.5px', background: lineColor,
+                    top: gameY === 0 ? '50%' : 0, bottom: gameY === bh - 1 ? '50%' : 0,
+                    transform: 'translateX(-50%)', pointerEvents: 'none', zIndex: 0,
+                  }} />
+                </>
+              );
+            })()}
             {/* Ranged move indicator — single span, no container, avoids DOM churn */}
             {activeIsRanged && <span className={styles["ranged-icon"]}>{`\uD83D\uDCA5`}</span>}
             {/* Castle-alternative indicator: extra dot showing this square also
@@ -7273,6 +7365,18 @@ const LiveGame = () => {
                     Resign
                   </button>
                 </div>
+                {gameState?.otherGameData?.allow_pass && (
+                  <div className={styles["control-buttons-pass"]}>
+                    <button
+                      className={`${styles.btn} ${styles["btn-secondary"]}`}
+                      onClick={handlePass}
+                      disabled={!isMyTurn}
+                      title="Pass your turn"
+                    >
+                      Pass
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -7446,6 +7550,42 @@ const LiveGame = () => {
           </div>
         </div>
       )}
+
+      {/* Score widget — shown for score-based (Highest Score Wins) games */}
+      {gameState?.otherGameData?.high_score_win && gameState?.pieces && (() => {
+        const parsed = parsePieces(gameState.pieces || []);
+        const { scores, territory, stones, start, model } = computeGoScores(parsed, gameState.gameType, gameState.otherGameData);
+        const nameFor = (pos) => gameState?.players?.find(p => p.position === pos)?.username || (pos === 1 ? 'Player 1' : 'Player 2');
+        const regionOn = !!gameState.otherGameData.enclosed_region_scoring;
+        const modelLabel = !regionOn ? 'points only' : (model === 'area' ? 'Area (stones + territory)' : 'Region (territory only)');
+        const leader = scores[1] > scores[2] ? 1 : (scores[2] > scores[1] ? 2 : 0);
+        return (
+          <div className={styles["layout-row-captured"]}>
+            <div className={styles["captured-pieces-section"]}>
+              <div className={styles["captured-header"]} style={{ cursor: 'default' }}>
+                <span className={styles["captured-title"]}>Score — {modelLabel}</span>
+              </div>
+              <div className={styles["captured-content"]} style={{ display: 'flex', gap: '18px', flexWrap: 'wrap', padding: '8px 10px' }}>
+                {[1, 2].map((pos) => (
+                  <div key={pos} style={{ display: 'flex', flexDirection: 'column', minWidth: '150px' }}>
+                    <span style={{ fontWeight: 700 }}>
+                      {nameFor(pos)}: <span style={{ color: leader === pos ? 'var(--accent, #4ade80)' : 'inherit' }}>{scores[pos]}</span>
+                    </span>
+                    <span style={{ fontSize: '0.78em', color: 'var(--text-muted, #999)' }}>
+                      {regionOn && model === 'area' && `${stones[pos]} stones + ${territory[pos]} territory`}
+                      {regionOn && model === 'region' && `${territory[pos]} territory`}
+                      {start[pos] ? `${regionOn ? ' + ' : ''}${start[pos]} start${pos === 2 ? ' (komi)' : ''}` : ''}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <p className={styles["field-hint"]} style={{ padding: '0 10px 8px', margin: 0, fontSize: '0.72em', color: 'var(--text-muted, #888)' }}>
+                Live estimate. Captured-piece and control-square points are added to the final tally at game end.
+              </p>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Reserve Bank — shown when the game uses a limited reserve (finite piece bank) */}
       {gameState?.otherGameData?.place_pieces_action && gameState?.reserves &&
@@ -8051,6 +8191,7 @@ const LiveGame = () => {
             <p>Select which piece to place at {String.fromCharCode(97 + placementTarget.x)}{placementTarget.y + 1}:</p>
             <div className={styles["promotion-options"]}>
               {(gameState?.otherGameData?.placeable_pieces || []).map((piece, index) => {
+                if (!isPlaceableEligible(piece, currentPlayer?.position)) return null; // not deployable by this player
                 const imageUrl = reserveImageForPlayer(piece, currentPlayer?.position);
                 const remaining = getReserveCount(gameState?.reserves, currentPlayer?.position, piece.piece_id);
                 const limited = gameState?.reserves != null && remaining !== Infinity;

@@ -175,6 +175,15 @@ const GameList = () => {
     if (game.stalemate_win_condition) conditions.push("Stalemate Win");
     if (game.points_to_win != null) conditions.push("Points");
     if (game.illegal_move_limit > 0) conditions.push(`Illegal Move Limit (${game.illegal_move_limit})`);
+    // New score-based win condition (Go-style) stored in other_game_data.
+    try {
+      const od = JSON.parse(game.other_game_data || '{}') || {};
+      if (od.high_score_win) {
+        conditions.push(od.enclosed_region_scoring
+          ? `Highest Score (${(od.scoring_model || 'area') === 'region' ? 'territory' : 'area'} scoring)`
+          : "Highest Score");
+      }
+    } catch { /* ignore */ }
     // forced_capture_condition is a movement mechanic, not a win condition —
     // it is shown in the game detail page under Special Rules, not here.
     return conditions.length > 0 ? conditions.join(", ") : "Capture (default)";

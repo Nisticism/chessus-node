@@ -660,7 +660,7 @@ const SpecialSquareSelector = ({
                   <NumberInput
                     value={customCombo.controlPoints || 0}
                     onChange={(val) => handleCustomComboChange('controlPoints', Math.max(0, Math.min(999, val || 0)))}
-                    options={{ min: 0, max: 999, placeholder: "0", className: styles["control-number-input"] }}
+                    options={{ min: 0, max: 999, step: 0.5, allowDecimals: true, placeholder: "0", className: styles["control-number-input"] }}
                   />
                 </span>
               </div>

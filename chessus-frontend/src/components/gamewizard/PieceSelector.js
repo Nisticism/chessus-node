@@ -48,6 +48,7 @@ const PieceSelector = ({
   pointsCondition = false,  // Whether the Points Win Condition is active
   onRemoveRow,  // (row: number) => void — clears all pieces in this row
   excludePieceIds = null,  // Optional: piece_ids to hide from the list (e.g. already-added placeable pieces)
+  allowAllPlayers = false,  // Optional: show an "All Players" ownership choice (used for placeable pieces)
 }) => {
   // Algebraic notation helpers
   const toFile = (col) => String.fromCharCode(97 + (col ?? 0));
@@ -99,6 +100,8 @@ const PieceSelector = ({
   const [cannotMoveOutsideZone, setCannotMoveOutsideZone] = useState(currentPlacement?.cannot_move_outside_zone || false);
   const [isNeutral, setIsNeutral] = useState(currentPlacement?.is_neutral || false);
   const [neutralImageIndex, setNeutralImageIndex] = useState(currentPlacement?.neutral_image_index ?? 0);
+  // "All players" ownership choice for placeable pieces (either player may deploy it as their own).
+  const [isAllPlayers, setIsAllPlayers] = useState(currentPlacement?.player === 'all');
   
   // Burn/DOT system state
   const [burnDamage, setBurnDamage] = useState(currentPlacement?.burn_damage ?? 0);
@@ -151,8 +154,8 @@ const PieceSelector = ({
   const [limitCheckmateOriginal, setLimitCheckmateOriginal] = useState(!!currentPlacement?.limit_promote_checkmate_to_original);
   const [canPromoteToCapture, setCanPromoteToCapture] = useState(!!currentPlacement?.can_promote_to_capture);
   const [limitCaptureOriginal, setLimitCaptureOriginal] = useState(!!currentPlacement?.limit_promote_capture_to_original);
-  const [capturePointsGain, setCapturePointsGain] = useState(Math.max(0, parseInt(currentPlacement?.capture_points_gain) || 0));
-  const [capturePointsLoss, setCapturePointsLoss] = useState(Math.max(0, parseInt(currentPlacement?.capture_points_loss) || 0));
+  const [capturePointsGain, setCapturePointsGain] = useState(Math.max(0, parseFloat(currentPlacement?.capture_points_gain) || 0));
+  const [capturePointsLoss, setCapturePointsLoss] = useState(Math.max(0, parseFloat(currentPlacement?.capture_points_loss) || 0));
   const [pointsSectionOpen, setPointsSectionOpen] = useState(
     (currentPlacement?.capture_points_gain || 0) > 0 || (currentPlacement?.capture_points_loss || 0) > 0
   );
@@ -366,6 +369,8 @@ const PieceSelector = ({
       // Neutral piece
       is_neutral: isNeutral,
       neutral_image_index: isNeutral ? neutralImageIndex : null,
+      // Placeable-piece ownership: 'all' when either player may deploy it.
+      placement_all: isAllPlayers,
       // Promotion options (per-placement override)
       promotion_pieces_override: customizePromotion && promotionPieceEntries.length > 0 ? serializePromotionOverride(promotionPieceEntries) : null,
       can_promote_to_checkmate: !!canPromoteToCheckmate,
@@ -373,8 +378,8 @@ const PieceSelector = ({
       can_promote_to_capture: !!canPromoteToCapture,
       limit_promote_capture_to_original: !!(canPromoteToCapture && limitCaptureOriginal),
       disable_promotion: !!disablePromotion,
-      capture_points_gain: Math.max(0, parseInt(capturePointsGain) || 0),
-      capture_points_loss: Math.max(0, parseInt(capturePointsLoss) || 0),
+      capture_points_gain: Math.max(0, parseFloat(capturePointsGain) || 0),
+      capture_points_loss: Math.max(0, parseFloat(capturePointsLoss) || 0),
     });
   };
 
@@ -582,19 +587,31 @@ const PieceSelector = ({
                   type="radio"
                   name="player"
                   value={playerId}
-                  checked={!isNeutral && selectedPlayerId === playerId}
-                  onChange={(e) => { setSelectedPlayerId(parseInt(e.target.value)); setIsNeutral(false); }}
+                  checked={!isNeutral && !isAllPlayers && selectedPlayerId === playerId}
+                  onChange={(e) => { setSelectedPlayerId(parseInt(e.target.value)); setIsNeutral(false); setIsAllPlayers(false); }}
                 />
                 <span>Player {playerId}</span>
               </label>
             ))}
+            {allowAllPlayers && (
+              <label className={styles["player-radio-label"]}>
+                <input
+                  type="radio"
+                  name="player"
+                  value="all"
+                  checked={isAllPlayers}
+                  onChange={() => { setIsAllPlayers(true); setIsNeutral(false); }}
+                />
+                <span>All Players <InfoTooltip text="Either player may deploy this piece, and it is placed as that player's own piece (in their colour). Choose this instead of adding the same piece type once per player." /></span>
+              </label>
+            )}
             <label className={styles["player-radio-label"]}>
               <input
                 type="radio"
                 name="player"
                 value="neutral"
                 checked={isNeutral}
-                onChange={() => setIsNeutral(true)}
+                onChange={() => { setIsNeutral(true); setIsAllPlayers(false); }}
               />
               <span>Neutral <InfoTooltip text="A neutral piece belongs to no player. Either player can move it on their turn and use it to capture any other piece. It can also be captured by any player unless 'Uncapturable' is enabled. Use neutral pieces to create Duck Chess variants (where a duck block must be moved each turn) and other games where board objects can be manipulated by both sides." /></span>
             </label>
@@ -1296,7 +1313,7 @@ const PieceSelector = ({
                   <NumberInput
                     value={capturePointsGain}
                     onChange={(val) => setCapturePointsGain(Math.max(0, Math.min(9999, val || 0)))}
-                    options={{ min: 0, max: 9999, placeholder: "0" }}
+                    options={{ min: 0, max: 9999, step: 0.5, allowDecimals: true, placeholder: "0" }}
                   />
                 </div>
                 <div className={styles["hp-ad-field"]}>
@@ -1307,7 +1324,7 @@ const PieceSelector = ({
                   <NumberInput
                     value={capturePointsLoss}
                     onChange={(val) => setCapturePointsLoss(Math.max(0, Math.min(9999, val || 0)))}
-                    options={{ min: 0, max: 9999, placeholder: "0" }}
+                    options={{ min: 0, max: 9999, step: 0.5, allowDecimals: true, placeholder: "0" }}
                   />
                 </div>
               </div>

@@ -2,6 +2,7 @@ import React from "react";
 import styles from "./gamewizard.module.scss";
 import GameBoard from "../gameboard/GameBoard";
 import NumberInput from "../common/NumberInput";
+import ToggleSwitch from "../common/ToggleSwitch";
 import InfoTooltip from "../piecewizard/InfoTooltip";
 
 const Step3BoardPlayers = ({ gameData, updateGameData }) => {
@@ -12,6 +13,16 @@ const Step3BoardPlayers = ({ gameData, updateGameData }) => {
   const handleSliderChange = (field, value) => {
     updateGameData({ [field]: parseInt(value) });
   };
+
+  const getOtherData = () => {
+    try { return JSON.parse(gameData.other_game_data || '{}'); } catch { return {}; }
+  };
+  const setOtherDataField = (key, value) => {
+    const data = getOtherData();
+    data[key] = value;
+    updateGameData({ other_game_data: JSON.stringify(data, null, 2) });
+  };
+  const otherData = getOtherData();
 
   // Get user's preferred board colors from localStorage
   const lightSquareColor = localStorage.getItem('boardLightColor') || '#cad5e8';
@@ -92,6 +103,20 @@ const Step3BoardPlayers = ({ gameData, updateGameData }) => {
           value={gameData.actions_per_turn}
           onChange={(val) => handleChange("actions_per_turn", Math.max(1, val))}
           options={{ min: 1, placeholder: "1", className: styles["form-input-small"] }}
+        />
+      </div>
+
+      {/* Board display style */}
+      <div className={styles["form-group"]}>
+        <ToggleSwitch
+          checked={otherData.intersection_board === true}
+          onChange={(val) => setOtherDataField("intersection_board", val)}
+          label={
+            <span className={styles["form-label"]} style={{ margin: 0 }}>
+              Play on line intersections (Go-style board)
+              <InfoTooltip text="Display only — does not change the rules. Instead of a checkerboard of coloured squares, the board is drawn as a wood-coloured grid of lines and pieces appear to sit on the line intersections, like a Go board. Each square in your board becomes one intersection. Useful for Go-style games built with the Surround Capture mechanic." />
+            </span>
+          }
         />
       </div>
     </div>

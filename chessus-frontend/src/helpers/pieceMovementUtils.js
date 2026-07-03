@@ -1124,6 +1124,11 @@ export const formatMoveNotation = (move, includeFrom = true, boardHeight = 8) =>
     return '\u2026';
   }
 
+  // Pass moves (Allow Pass mechanic — no from/to square)
+  if (move.type === 'pass') {
+    return 'pass';
+  }
+
   // Place-type moves (piece placement action — no 'from' square)
   if (move.type === 'place') {
     if (!move.to) return '';
