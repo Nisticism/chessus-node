@@ -4,6 +4,13 @@ import styles from "./changelog.module.scss";
 
 const changelogData = [
   {
+    date: "July 3, 2026",
+    title: "Fix: deployed reserve pieces can hop again",
+    items: [
+      "Fixed a bug where pieces deployed from a reserve/deploy bank could not perform knight-style or hopping moves (their ratio-based moves were silently rejected). Deployed pieces now move exactly like their normal counterparts.",
+    ],
+  },
+  {
     date: "July 2, 2026",
     title: "Limited reserves: deploy pieces from a finite per-player bank",
     items: [

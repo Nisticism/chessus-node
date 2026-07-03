@@ -493,6 +493,50 @@ function ensureReserves(gameState) {
 }
 
 /**
+ * Enrich otherGameData.placeable_pieces (in place) with full movement/capture data
+ * from the pieces table. Placed pieces spread this template into the live game
+ * state, so it must carry the same movement rules a normal piece has.
+ *
+ * Raw DB column names are remapped to the in-memory JS field names that the
+ * move/capture generators expect (getPossibleMovesForPiece reads ratio_movement_1,
+ * step_movement_*, etc.). Without this remap, ratio-based (knight / hop) moves are
+ * never generated for placed pieces. Must run on BOTH the create-game and
+ * resume-game paths, otherwise placement after a server restart yields dead pieces.
+ */
+async function enrichPlaceablePieces(otherGameData) {
+  if (!otherGameData || !otherGameData.place_pieces_action || !Array.isArray(otherGameData.placeable_pieces)) return;
+  const pieceIds = otherGameData.placeable_pieces.map(pp => pp.piece_id).filter(id => id != null);
+  if (pieceIds.length === 0) return;
+  try {
+    const [pieceRows] = await db_pool.query('SELECT * FROM pieces WHERE id IN (?)', [pieceIds]);
+    for (const pp of otherGameData.placeable_pieces) {
+      const fullData = pieceRows.find(r => r.id === pp.piece_id);
+      if (!fullData) continue;
+      Object.assign(pp, fullData, {
+        piece_id: pp.piece_id,            // keep original key
+        name: pp.name || fullData.piece_name,
+        image_location: pp.image_location || fullData.image_location,
+        // Remap DB column names to the in-memory JS field names the move/capture
+        // generators expect (raw pieces table uses ratio_one_movement / step_by_step_*,
+        // but getPossibleMovesForPiece reads ratio_movement_1 / step_movement_*).
+        ratio_movement_1: fullData.ratio_one_movement,
+        ratio_movement_2: fullData.ratio_two_movement,
+        ratio_capture_1: fullData.ratio_one_capture,
+        ratio_capture_2: fullData.ratio_two_capture,
+        step_movement_style: fullData.step_by_step_movement_style,
+        step_movement_value: fullData.step_by_step_movement_value,
+        step_capture_value: fullData.step_by_step_capture,
+        step_by_step_attack_range: (fullData.step_by_step_attack_value != null && fullData.step_by_step_attack_value !== 0)
+          ? (fullData.step_by_step_attack_style ? -Math.abs(fullData.step_by_step_attack_value) : fullData.step_by_step_attack_value)
+          : null,
+      });
+    }
+  } catch (enrichErr) {
+    console.warn('[placeable_pieces] enrichment failed:', enrichErr.message);
+  }
+}
+
+/**
  * Parse a game type's custom-square config (special_squares_string) once.
  * Returns the object of { "y,x": cfg } or null.
  */
@@ -3665,30 +3709,9 @@ function initializeSocket(server) {
           }
         } catch (e) { /* ignore parse errors */ }
         
-        // Enrich placeable_pieces with full piece data from DB so the AI engine can
-        // evaluate placed pieces' movement/capture capabilities during search.
-        if (otherGameData.place_pieces_action && Array.isArray(otherGameData.placeable_pieces)) {
-          const pieceIds = otherGameData.placeable_pieces
-            .map(pp => pp.piece_id)
-            .filter(id => id != null);
-          if (pieceIds.length > 0) {
-            try {
-              const [pieceRows] = await db_pool.query('SELECT * FROM pieces WHERE id IN (?)', [pieceIds]);
-              for (const pp of otherGameData.placeable_pieces) {
-                const fullData = pieceRows.find(r => r.id === pp.piece_id);
-                if (fullData) {
-                  Object.assign(pp, fullData, {
-                    piece_id: pp.piece_id,            // keep original key
-                    name: pp.name || fullData.piece_name,
-                    image_location: pp.image_location || fullData.image_location,
-                  });
-                }
-              }
-            } catch (enrichErr) {
-              console.warn('[placeable_pieces] enrichment failed:', enrichErr.message);
-            }
-          }
-        }
+        // Enrich placeable_pieces with full piece data from DB so placed pieces
+        // (and the AI engine) get correct movement/capture/hop rules.
+        await enrichPlaceablePieces(otherGameData);
 
         const globalHpRegen = otherGameData.global_hp_regen || 0;
         const showAllHpAd = !!otherGameData.show_all_hp_ad;
@@ -5108,8 +5131,11 @@ function initializeSocket(server) {
             id: gameId,
             gameTypeId: game.game_type_id,
             gameType: gameType,
-            otherGameData: (() => {
-              try { return gameType?.other_game_data ? (typeof gameType.other_game_data === 'string' ? JSON.parse(gameType.other_game_data) : gameType.other_game_data) : {}; } catch { return {}; }
+            otherGameData: await (async () => {
+              let ogd = {};
+              try { ogd = gameType?.other_game_data ? (typeof gameType.other_game_data === 'string' ? JSON.parse(gameType.other_game_data) : gameType.other_game_data) : {}; } catch { ogd = {}; }
+              await enrichPlaceablePieces(ogd);
+              return ogd;
             })(),
             timeControl: game.turn_length,
             increment: game.increment || 0,
@@ -9523,6 +9549,10 @@ function initializeSocket(server) {
                 : gameType.other_game_data;
             }
           } catch (e) { /* ignore parse errors */ }
+
+          // Enrich placeable_pieces so pieces deployed after a server restart get
+          // correct movement/capture/hop rules (mirrors the create-game path).
+          await enrichPlaceablePieces(otherGameData);
 
           gameState = {
             id: game.id,
