@@ -10618,7 +10618,18 @@ async function getOpenLiveGames() {
 async function getPrivateGames(userId) {
   try {
     const [games] = await db_pool.query(
-      `SELECT g.*, gt.game_name, gt.board_width, gt.board_height,
+      // Explicit columns (not SELECT g.*) to skip the heavy `pieces` +
+      // `randomized_starting_positions` blobs — challenge lobby cards don't
+      // render the board, so those were pure over-fetch (same trim as
+      // getOpenLiveGames).
+      `SELECT g.id, g.game_type_id, g.created_at, g.start_time, g.end_time,
+              g.increment, g.turn_length, g.player_turn, g.player_count,
+              g.game_length, g.game_turn_length, g.other_data, g.is_challenge,
+              g.challenged_user_id, g.status, g.host_id, g.winner_id,
+              g.allow_spectators, g.show_piece_helpers, g.is_correspondence,
+              g.correspondence_days, g.is_anonymous, g.invite_code,
+              g.chat_is_public, g.illegal_move_counts, g.spectator_visibility,
+              gt.game_name, gt.board_width, gt.board_height,
               u.username as host_username,
               cu.username as challenged_username,
               CAST(JSON_EXTRACT(g.other_data, '$.rated') AS SIGNED) as rated

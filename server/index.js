@@ -1327,7 +1327,6 @@ app.get("/api/users/:userId/match-history", async (req, res) => {
         g.end_time,
         g.status,
         g.winner_id,
-        g.pieces,
         g.other_data,
         g.turn_length,
         g.increment,
