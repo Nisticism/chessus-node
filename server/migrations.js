@@ -3898,6 +3898,39 @@ const runMigrations = async () => {
     console.error('Error creating idx_games_correspondence_status:', err.message);
   }
 
+  // Add composite indexes for the anonymous-game cleanup jobs:
+  //   DELETE FROM games WHERE is_anonymous = 1 AND created_at < NOW() - INTERVAL 30 DAY
+  //   UPDATE games SET status='completed' WHERE is_anonymous=1 AND status IN (...)
+  // Without an index MySQL full-scans the games table (~681MB of fat blob rows
+  // that don't fit the 128MB buffer pool), which showed up as 1-7s
+  // [slow-query] DELETE/UPDATE entries in the pm2 logs.
+  try {
+    const [idxRows] = await db_pool.query(
+      `SELECT 1 FROM information_schema.STATISTICS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'games' AND INDEX_NAME = 'idx_games_anon_created'
+       LIMIT 1`
+    );
+    if (idxRows.length === 0) {
+      await db_pool.query('CREATE INDEX idx_games_anon_created ON games (is_anonymous, created_at)');
+      console.log('✓ Created index idx_games_anon_created on games');
+    }
+  } catch (err) {
+    console.error('Error creating idx_games_anon_created:', err.message);
+  }
+  try {
+    const [idxRows] = await db_pool.query(
+      `SELECT 1 FROM information_schema.STATISTICS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'games' AND INDEX_NAME = 'idx_games_anon_status'
+       LIMIT 1`
+    );
+    if (idxRows.length === 0) {
+      await db_pool.query('CREATE INDEX idx_games_anon_status ON games (is_anonymous, status)');
+      console.log('✓ Created index idx_games_anon_status on games');
+    }
+  } catch (err) {
+    console.error('Error creating idx_games_anon_status:', err.message);
+  }
+
   // Add has_game_log column to ai_training_jobs so REMOTE_MODE servers can
   // determine whether a job's games.txt exists (without checking the remote
   // filesystem) and enable the Board Replay button accordingly.

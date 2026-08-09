@@ -113,6 +113,8 @@ const INDEXES = [
   { table: 'games', index: 'idx_games_status_end_time', columns: '`status`, `end_time` DESC',description: 'match history WHERE status=completed ORDER BY end_time' },
   { table: 'games', index: 'idx_games_winner_id',       columns: '`winner_id`',             description: 'stats / win-count queries' },
   { table: 'games', index: 'idx_games_created_at',      columns: '`created_at` DESC',       description: 'game activity sort' },
+  { table: 'games', index: 'idx_games_anon_created',    columns: '`is_anonymous`, `created_at`', description: 'anonymous-game cleanup DELETE (is_anonymous=1 AND created_at<NOW()-30d)' },
+  { table: 'games', index: 'idx_games_anon_status',     columns: '`is_anonymous`, `status`',     description: 'anonymous-game cleanup UPDATE (is_anonymous=1 AND status IN(...))' },
 
   // ── players ────────────────────────────────────────────────────────────────
   { table: 'players', index: 'idx_players_game_id',     columns: '`game_id`',             description: 'join players to game rows' },

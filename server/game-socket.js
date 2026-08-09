@@ -10577,8 +10577,20 @@ async function getOpenLiveGames() {
   if (cache.pending) return cache.pending;
   cache.pending = (async () => {
     try {
+      // Explicit column list (NOT `SELECT g.*`) so we skip the two heavy blob
+      // columns `pieces` (avg ~210KB per waiting row) and
+      // `randomized_starting_positions`. Neither is needed to render a lobby
+      // card, and reading them forced MySQL to pull ~10MB of uncached blob off
+      // EBS on every poll (the games table is ~5x the 128MB buffer pool).
       const [games] = await db_pool.query(
-        `SELECT g.*, gt.game_name, gt.board_width, gt.board_height,
+        `SELECT g.id, g.game_type_id, g.created_at, g.start_time, g.end_time,
+                g.increment, g.turn_length, g.player_turn, g.player_count,
+                g.game_length, g.game_turn_length, g.other_data, g.is_challenge,
+                g.challenged_user_id, g.status, g.host_id, g.winner_id,
+                g.allow_spectators, g.show_piece_helpers, g.is_correspondence,
+                g.correspondence_days, g.is_anonymous, g.invite_code,
+                g.chat_is_public, g.illegal_move_counts, g.spectator_visibility,
+                gt.game_name, gt.board_width, gt.board_height,
                 COALESCE(u.username, JSON_UNQUOTE(JSON_EXTRACT(g.other_data, '$.guestName')), 'Guest') as host_username,
                 CAST(JSON_EXTRACT(g.other_data, '$.rated') AS SIGNED) as rated
          FROM games g
