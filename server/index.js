@@ -14747,17 +14747,45 @@ process.once('SIGUSR2', () => {
   });
 });
 
-process.on('SIGINT', () => {
-  server.close(() => {
+// ── Graceful shutdown ───────────────────────────────────────────────
+// The previous handlers only called server.close(), which never completes
+// while socket.io keeps long-lived connections open — so PM2's kill_timeout
+// elapsed and the process was SIGKILLed on every restart (pm2 logs showed
+// "still alive after 1600ms, sending it SIGKILL now" repeatedly). socket.io
+// v4's io.close() disconnects all clients AND closes the underlying HTTP
+// server, letting the process exit cleanly. A hard fallback guarantees exit
+// even if something else keeps the event loop alive.
+let _shuttingDown = false;
+function gracefulShutdown(signal) {
+  if (_shuttingDown) return;
+  _shuttingDown = true;
+  console.log(`[shutdown] received ${signal} — closing gracefully`);
+  const forceExit = setTimeout(() => {
+    console.warn('[shutdown] graceful close timed out — forcing exit');
     process.exit(0);
-  });
-});
+  }, 7000);
+  forceExit.unref();
+  try {
+    io.close(async () => {
+      console.log('[shutdown] socket.io + HTTP server closed');
+      try {
+        await db_pool.end();
+        console.log('[shutdown] DB pool drained');
+      } catch (e) {
+        console.error('[shutdown] db_pool.end error:', e.message);
+      }
+      clearTimeout(forceExit);
+      process.exit(0);
+    });
+  } catch (e) {
+    console.error('[shutdown] io.close error:', e.message);
+    clearTimeout(forceExit);
+    process.exit(0);
+  }
+}
 
-process.on('SIGTERM', () => {
-  server.close(() => {
-    process.exit(0);
-  });
-});
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 
 // Log unhandled promise rejections instead of crashing the process.
 // In Node.js 15+ an unhandled rejection terminates the process by default;

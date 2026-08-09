@@ -65,6 +65,10 @@ module.exports = {
       max_restarts: 10,
       min_uptime: "30s",
       restart_delay: 4000,
+      // Give the app up to 8s to drain socket.io + the DB pool on stop/restart
+      // before PM2 force-SIGKILLs it. Pairs with the gracefulShutdown() handler
+      // in server/index.js (which self-exits after a 7s hard fallback).
+      kill_timeout: 8000,
       // Keep logs sane
       merge_logs: true,
       out_file: "./logs/pm2-out.log",
