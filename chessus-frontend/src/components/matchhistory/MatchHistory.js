@@ -213,10 +213,6 @@ const MatchHistory = ({ userId, username }) => {
           const player1 = p1 || (opponent.position === 1 ? { ...opponent, position: 1 } : null);
           const player2 = p2 || (opponent.position === 2 ? { ...opponent, position: 2 } : opponent);
 
-          // Determine which player corresponds to the profile owner so we can
-          // show result labels relative to them.
-          const meIsP1 = player1 && player1.id === parseInt(userId);
-
           return (
             <div
               key={game.id}

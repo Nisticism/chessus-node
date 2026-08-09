@@ -135,7 +135,7 @@ export const getForum = (id) => async (dispatch) => {
 
 export const deleteForum = (id) => async (dispatch) => {
   try {
-    const response = await ForumsService.deleteForum(id);
+    await ForumsService.deleteForum(id);
     dispatch({
       type: DELETE_FORUM,
       payload: id

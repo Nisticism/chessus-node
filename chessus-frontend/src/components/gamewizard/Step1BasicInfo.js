@@ -1,6 +1,5 @@
 import React, { useState, useRef } from "react";
 import styles from "./gamewizard.module.scss";
-import NumberInput from "../common/NumberInput";
 import ToggleSwitch from "../common/ToggleSwitch";
 import InfoTooltip from "../piecewizard/InfoTooltip";
 import { checkForLinks, checkOffensiveContent, checkProfessionalName } from "../../utils/contentModeration";

@@ -52,7 +52,6 @@ const Streams = () => {
   // Live-first sort: live streams at top, offline below, each group alphabetical
   const liveStreams = userStreams.filter(s => s.is_live);
   const offlineStreams = userStreams.filter(s => !s.is_live);
-  const liveCount = liveStreams.length;
 
   if (userStreamsLoading) {
     return (

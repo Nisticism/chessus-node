@@ -11,7 +11,6 @@ const InfoTooltip = ({ text }) => {
     if (!iconRef.current || !tooltipRef.current) return;
     const iconRect = iconRef.current.getBoundingClientRect();
     const tooltipRect = tooltipRef.current.getBoundingClientRect();
-    const viewportH = window.innerHeight;
 
     // Center horizontally over the icon; keep within viewport
     let left = iconRect.left + iconRect.width / 2 - tooltipRect.width / 2;

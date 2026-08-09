@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from "react"
 import styles from "./gamewizard.module.scss";
 import PieceSelector, { defaultCastlingDistanceForBoard } from "./PieceSelector";
 import PiecesService from "../../services/pieces.service";
-import { isMobileDevice, isTouchDevice } from "../../helpers/mobileUtils";
+import { isTouchDevice } from "../../helpers/mobileUtils";
 import { 
   canPieceMoveTo as canPieceMoveToUtil,
   canCaptureOnMoveTo as canCaptureOnMoveToUtil,

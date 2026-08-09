@@ -352,6 +352,28 @@ app.use('/api/stripe-webhook', express.raw({ type: 'application/json' }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
+// ── Lightweight per-endpoint timing ────────────────────────────────────────
+// Logs total handler time (routing + DB + serialization) for API requests that
+// exceed SLOW_REQUEST_MS. Complements the per-query [slow-query] logger in
+// configs/db.js: that measures individual queries, this measures the whole
+// endpoint, so you can tell "which page/route is slow" without visiting it.
+// Overhead is a single Date.now() diff on response finish. Set SLOW_REQUEST_MS=0
+// to disable.
+const SLOW_REQUEST_MS = parseInt(process.env.SLOW_REQUEST_MS ?? '1000', 10);
+if (SLOW_REQUEST_MS > 0) {
+  app.use((req, res, next) => {
+    if (!req.path.startsWith('/api/')) return next();
+    const start = Date.now();
+    res.on('finish', () => {
+      const ms = Date.now() - start;
+      if (ms >= SLOW_REQUEST_MS) {
+        console.warn(`[slow-request ${ms}ms] ${req.method} ${req.originalUrl.split('?')[0]} -> ${res.statusCode}`);
+      }
+    });
+    next();
+  });
+}
+
 // Serve static files from uploads directory with CORS headers
 // UPLOADS_BASE: honour UPLOADS_DIR env var (e.g. a mounted EBS data volume) and
 // fall back to the repo-relative path so existing deployments require no change.

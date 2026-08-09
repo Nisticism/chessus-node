@@ -34,7 +34,6 @@ import { toggleUpvote, getUpvoteStatus } from "../../actions/games";
 import useFairyStockfish from "../../hooks/useFairyStockfish";
 import {
   buildFEN as buildFairyFEN,
-  buildMoveHistoryUci as buildFairyMoveHistory,
   uciMoveToGameMove as fairyUciToMove,
 } from "../../ai/fairyStockfishTranslator";
 

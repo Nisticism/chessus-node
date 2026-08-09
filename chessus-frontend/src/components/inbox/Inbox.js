@@ -460,7 +460,7 @@ const Inbox = () => {
                           </button>
                           <img
                             src={`${ASSET_URL}/uploads/dm-images/${item.filename}`}
-                            alt="Shared image"
+                            alt="Direct message attachment"
                             className={styles["dm-image-thumb"]}
                             onClick={() => setLightboxImage(item)}
                             draggable={false}

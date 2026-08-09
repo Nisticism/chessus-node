@@ -1304,6 +1304,7 @@ const GameTypeView = () => {
           : renderGroups.length > 1;
 
         // Helper: produce suffix like "(Player 1)", "(Player 1, 2 of 4)", "(2 of 4)", or "(1 piece per player)"
+        // eslint-disable-next-line no-unused-vars
         const countSuffix = (group) => {
           const parts = [];
           if (showPlayerLabel) {

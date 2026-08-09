@@ -32,7 +32,14 @@ git lfs pull
 
 echo "[deploy] Building frontend..."
 cd chessus-frontend
-npm run build || { echo "[deploy] Frontend build failed, aborting"; exit 1; }
+# Build quietly: the CRA build prints a long per-chunk gzip size table and any
+# lint warnings on success, which clutters the deploy output. Capture it to a
+# log and only surface it if the build actually fails.
+if ! npm run build > /tmp/chessus-frontend-build.log 2>&1; then
+  echo "[deploy] Frontend build failed:"
+  cat /tmp/chessus-frontend-build.log
+  exit 1
+fi
 cd ..
 
 echo "[deploy] Publishing frontend to nginx..."
@@ -52,4 +59,3 @@ echo "[deploy] Restarting nginx..."
 sudo systemctl restart nginx
 
 echo "[deploy] Done."
-pm2 logs trainer-service --lines 20

@@ -76,10 +76,6 @@ const Login = (props) => {
 
   const navigate = useNavigate();
 
-  const handleSignup = () => {
-    navigate('/register')
-  }
-
   const handleGoogleSuccess = (credentialResponse) => {
     setLoading(true);
     dispatch(googleLogin(credentialResponse.credential))

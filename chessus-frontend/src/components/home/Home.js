@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { useSelector, useDispatch } from "react-redux";
 import styles from "./home.module.scss";
 import { getGames } from "../../actions/games";
@@ -23,7 +23,6 @@ import {
 
 const Home = () => {
   const dispatch = useDispatch();
-  const navigate = useNavigate();
   const { user: currentUser } = useSelector((state) => state.authReducer);
   const allGames = useSelector((state) => state.games);
   const allPieces = useSelector((state) => state.pieces);
