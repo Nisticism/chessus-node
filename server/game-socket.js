@@ -3086,6 +3086,7 @@ async function recoverActiveGames() {
           }
         }
         // Build lightweight game state
+        const gm = await loadGameMoves(game.id, otherData);
         const gameState = {
           id: game.id,
           gameTypeId: game.game_type_id,
@@ -3103,7 +3104,7 @@ async function recoverActiveGames() {
           players,
           pieces,
           currentTurn: game.player_turn || 1,
-          moveHistory: otherData.moves || [],
+          moveHistory: gm.moveHistory,
           captureScores: normalizeCaptureScores(otherData.captureScores, game.starting_points_p1, game.starting_points_p2),
           consecutiveEqualScoreTurns: otherData.consecutiveEqualScoreTurns || 0,
           totalHalfMoves: otherData.totalHalfMoves || 0,
@@ -9721,15 +9722,18 @@ function initializeSocket(server) {
 
           // Parse move history and settings
           let moveHistory = [];
+          let gmInitialPieces = null;
           let rated = true;
           let allowPremoves = true;
           let otherData = {};
           try {
             otherData = JSON.parse(game.other_data || '{}');
-            moveHistory = otherData.moves || [];
+            const gm = await loadGameMoves(game.id, otherData);
+            moveHistory = gm.moveHistory;
+            gmInitialPieces = gm.initialPieces;
             rated = otherData.rated !== false; // Default to true
             allowPremoves = otherData.allowPremoves !== false; // Default to true
-            console.log('Loaded game settings from DB:', { rated, allowPremoves, otherData });
+            console.log('Loaded game settings from DB:', { rated, allowPremoves });
           } catch {
             moveHistory = [];
           }
@@ -9789,7 +9793,7 @@ function initializeSocket(server) {
             hostUsername: players.find(p => p.id === game.host_id)?.username || 'Unknown',
             players: players,
             pieces: pieces,
-            initialPieces: otherData.initialPieces || null,
+            initialPieces: gmInitialPieces,
             currentTurn: game.player_turn || 1,
             moveHistory: moveHistory,
             movesWithoutCapture: otherData?.movesWithoutCapture || 0, // Load counter from DB
@@ -10747,7 +10751,7 @@ async function getOngoingGames() {
                 gt.game_name, gt.board_width, gt.board_height, gt.simultaneous_turns,
                 GROUP_CONCAT(COALESCE(u.username, 'Guest') ORDER BY p.player_position SEPARATOR ' vs ') as player_names,
                 GROUP_CONCAT(p.user_id ORDER BY p.player_position) as player_ids,
-                COALESCE(JSON_LENGTH(JSON_EXTRACT(g.other_data, '$.moves')), 0) as move_count,
+                g.move_count,
                 MAX(CASE WHEN JSON_EXTRACT(g.other_data, '$.isBotGame') = true THEN COALESCE(u.show_computer_games_publicly, 0) ELSE 0 END) as host_show_bot_public
          FROM games g
          JOIN game_types gt ON g.game_type_id = gt.id
@@ -10841,7 +10845,7 @@ async function getMyBotGames(userId) {
               gt.game_name, gt.board_width, gt.board_height,
               GROUP_CONCAT(u.username ORDER BY p.player_position SEPARATOR ' vs ') as player_names,
               GROUP_CONCAT(p.user_id ORDER BY p.player_position) as player_ids,
-              COALESCE(JSON_LENGTH(JSON_EXTRACT(g.other_data, '$.moves')), 0) as move_count
+              g.move_count
        FROM games g
        JOIN game_types gt ON g.game_type_id = gt.id
        JOIN players p ON g.id = p.game_id
@@ -19902,7 +19906,7 @@ async function cancelExpiredCorrespondenceGames() {
     const LOW_TIME_MS = 6 * 60 * 60 * 1000;
     try {
       const [lowTimeGames] = await db_pool.query(`
-        SELECT g.id, g.player_turn, g.other_data, g.correspondence_days
+        SELECT g.id, g.player_turn, g.other_data, g.correspondence_days, g.move_count
         FROM games g
         WHERE g.is_correspondence = 1
           AND g.status = 'active'
@@ -19922,8 +19926,7 @@ async function cancelExpiredCorrespondenceGames() {
                  < (g.correspondence_days * 86400 * 1000))
           )
           AND (JSON_EXTRACT(g.other_data, '$.lowTimeNotifiedForTurn') IS NULL
-               OR JSON_EXTRACT(g.other_data, '$.lowTimeNotifiedForTurn') !=
-                  JSON_LENGTH(JSON_EXTRACT(g.other_data, '$.moves')))
+               OR JSON_EXTRACT(g.other_data, '$.lowTimeNotifiedForTurn') != g.move_count)
       `, [LOW_TIME_MS, LOW_TIME_MS]);
 
       const dbHelpers = require('./db-helpers');
@@ -19932,7 +19935,7 @@ async function cancelExpiredCorrespondenceGames() {
           const otherData = row.other_data
             ? (typeof row.other_data === 'string' ? JSON.parse(row.other_data) : row.other_data)
             : {};
-          const moveCount = (otherData.moves || []).length;
+          const moveCount = row.move_count || 0;
           if (otherData.lowTimeNotifiedForTurn === moveCount) continue;
 
           // Compute remainingMs — prefer moveDeadline, fall back to lastMoveTime arithmetic
@@ -20513,6 +20516,9 @@ module.exports = {
   reconcileOnlineUsers,
   getIO,
   invalidateLobbyCache,
+  // Option A move-history storage
+  loadGameMoves,
+  saveGameMoves,
   // Pure game logic functions (used by AI engine)
   getPossibleMovesForPiece,
   getAllLegalMovesForPlayer,

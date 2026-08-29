@@ -2003,6 +2003,10 @@ app.get("/api/match/:gameId", async (req, res) => {
     // Use winner_id column, fall back to other_data.winner for older games
     const winnerId = game.winner_id || otherData.winner || null;
 
+    // Option A: read move history from game_moves (falls back to other_data).
+    const { loadGameMoves } = require('./game-socket');
+    const gm = await loadGameMoves(game.id, otherData);
+
     res.json({
       id: game.id,
       createdAt: game.created_at,
@@ -2011,8 +2015,8 @@ app.get("/api/match/:gameId", async (req, res) => {
       status: game.status,
       winnerId: winnerId,
       pieces,
-      moveHistory: otherData.moves || [],
-      initialPieces: otherData.initialPieces || null,
+      moveHistory: gm.moveHistory,
+      initialPieces: gm.initialPieces,
       reason: otherData.reason || 'unknown',
       finalScores: otherData.finalScores || null,
       eloChanges: otherData.eloChanges || null,
@@ -12093,7 +12097,7 @@ app.get("/api/admin/anonymous-games", authenticateAdmin, async (req, res) => {
     const [games] = await db_pool.query(
       `SELECT g.id, g.created_at, g.start_time, g.end_time, g.status, g.invite_code,
        g.turn_length, g.increment, gt.game_name, gt.board_width, gt.board_height,
-       COALESCE(JSON_LENGTH(JSON_EXTRACT(g.other_data, '$.moves')), 0) AS move_count,
+       g.move_count AS move_count,
        COUNT(p.id) AS player_count
        FROM games g
        LEFT JOIN game_types gt ON g.game_type_id = gt.id
@@ -12138,7 +12142,7 @@ app.get("/api/admin/private-games", authenticateAdmin, async (req, res) => {
               g.host_id, hu.username AS host_username,
               gt.id AS game_type_id, gt.game_name,
               GROUP_CONCAT(pu.username ORDER BY p.player_position SEPARATOR ', ') AS player_names,
-              COALESCE(JSON_LENGTH(JSON_EXTRACT(g.other_data, '$.moves')), 0) AS move_count
+              g.move_count AS move_count
        FROM games g
        LEFT JOIN game_types gt ON g.game_type_id = gt.id
        LEFT JOIN users hu ON g.host_id = hu.id
