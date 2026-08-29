@@ -1895,7 +1895,14 @@ const Play = () => {
                           <div className={styles["match-game-name"]}>
                             <Link to={`/games/${game.game_type_id}`} className={styles["game-name-link"]}>{game.game_name}</Link>
                           </div>
-                          <span className={styles["match-time-control"]}>{formatTimeControl(game)}</span>
+                          <div className={styles["meta-column"]}>
+                            <span className={styles["match-time-control"]}>{formatTimeControl(game)}</span>
+                            {typeof game.move_count === 'number' && (
+                              <span className={styles["move-count-badge"]} title="Moves played so far">
+                                {game.move_count} {game.move_count === 1 ? 'move' : 'moves'}
+                              </span>
+                            )}
+                          </div>
                         </div>
                         <div className={styles["match-players"]}>{renderPlayerStack(game)}</div>
                         <div className={styles["match-actions"]}>
@@ -1982,6 +1989,11 @@ const Play = () => {
                             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
                               <span className={styles["match-time-control"]}>{formatTimeControl(game)}</span>
                               <span className={styles["unrated-badge"]}>Unrated</span>
+                              {typeof game.move_count === 'number' && (
+                                <span className={styles["move-count-badge"]} title="Moves played so far">
+                                  {game.move_count} {game.move_count === 1 ? 'move' : 'moves'}
+                                </span>
+                              )}
                             </div>
                           </div>
                           <div className={styles["match-players"]}>{game.player_names}</div>

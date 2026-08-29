@@ -4,6 +4,13 @@ import styles from "./changelog.module.scss";
 
 const changelogData = [
   {
+    date: "August 29, 2026",
+    title: "Move-count badge on computer games",
+    items: [
+      "The Play page now shows a move-count badge on Computer Games (both your own and public ones), matching the badge already shown on live and correspondence games.",
+    ],
+  },
+  {
     date: "July 3, 2026",
     title: "New game-building blocks: surround capture, passing, region scoring (build Go-style games)",
     items: [
