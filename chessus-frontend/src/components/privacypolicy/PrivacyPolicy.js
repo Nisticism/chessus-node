@@ -91,9 +91,16 @@ const PrivacyPolicy = () => {
         <section className={styles.section}>
           <h2>7. Children's Privacy</h2>
           <p>
-            GridGrove is not intended for users under the age of 13. We do not knowingly collect personal 
-            information from children under 13. If you believe we have collected information from a child under 13, 
-            please contact us immediately.
+            GridGrove is intended for a general audience and is not directed to children. In line with the
+            U.S. Children's Online Privacy Protection Act (COPPA), we do not knowingly collect personal
+            information from children under 13. If you are under 13, please do not create an account or
+            submit any personal information.
+          </p>
+          <p>
+            If we learn that we have collected personal information from a child under 13 without verifiable
+            parental consent, we will delete that information as quickly as possible. Parents or guardians who
+            believe their child has provided us with personal information may contact us through our{" "}
+            <a href="/contact">contact page</a> to request its removal.
           </p>
         </section>
 

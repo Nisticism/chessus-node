@@ -42,7 +42,7 @@ function TrafficPanel() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
         <h2 style={{ margin: 0 }}>Traffic &amp; Usage</h2>
         <div style={{ display: 'flex', gap: 6 }}>
-          {[7, 30, 90].map(d => (
+          {[1, 7, 30, 90].map(d => (
             <button key={d} onClick={() => setDays(d)}
               className={styles["tab"]}
               style={{ padding: '4px 12px', opacity: days === d ? 1 : 0.6, fontWeight: days === d ? 700 : 400 }}>
@@ -68,13 +68,26 @@ function TrafficPanel() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 24 }}>
             <div>
               <h3>Daily page views</h3>
-              <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: 120, borderBottom: '1px solid rgba(255,255,255,0.12)' }}>
-                {(data.daily || []).map(d => (
-                  <div key={d.day} title={`${d.day}: ${d.views} views, ${d.visitors} visitors`}
-                    style={{ flex: 1, minWidth: 3, height: `${Math.round((d.views / maxDaily) * 100)}%`, background: 'var(--accent-muted, #4caf50)', borderRadius: '2px 2px 0 0' }} />
-                ))}
-              </div>
-              {(!data.daily || data.daily.length === 0) && <p style={{ opacity: 0.6 }}>No data yet.</p>}
+              {(!data.daily || data.daily.length === 0) ? (
+                <p style={{ opacity: 0.6 }}>No data yet.</p>
+              ) : (
+                <div style={{ overflowX: 'auto', paddingBottom: 4 }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 120, borderBottom: '1px solid rgba(255,255,255,0.12)', paddingTop: 8, minWidth: 'min-content' }}>
+                    {data.daily.map(d => (
+                      <div key={d.day} title={`${d.day}: ${d.views} views, ${d.visitors} visitors`}
+                        style={{ width: 30, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', alignItems: 'center', gap: 3 }}>
+                        <span style={{ fontSize: 10, opacity: 0.75 }}>{d.views}</span>
+                        <div style={{ width: '100%', height: `${Math.max(6, Math.round((d.views / maxDaily) * 100))}%`, minHeight: 6, background: 'var(--accent-muted, #4caf50)', borderRadius: '3px 3px 0 0' }} />
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, marginTop: 4, minWidth: 'min-content' }}>
+                    {data.daily.map(d => (
+                      <div key={d.day} style={{ width: 30, fontSize: 9, opacity: 0.6, textAlign: 'center' }}>{d.day.slice(5)}</div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             <div>
