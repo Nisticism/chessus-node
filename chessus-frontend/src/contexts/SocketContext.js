@@ -495,7 +495,13 @@ export const SocketProvider = ({ children }) => {
       const cleanup = () => {
         clearTimeout(timeoutId);
         socket.off('playerJoined', handlePlayerJoined);
+        socket.off('anonCorresCredentials', handleAnonCreds);
         socket.off('error', handleError);
+      };
+
+      // Store stable credentials so the guest can rejoin after a refresh.
+      const handleAnonCreds = ({ gameId: gid, playerId, token }) => {
+        if (playerId && token) saveAnonCorresId(gid, playerId, token);
       };
 
       const handlePlayerJoined = ({ gameId: joinedGameId, gameState, newPlayer }) => {
@@ -517,6 +523,7 @@ export const SocketProvider = ({ children }) => {
       };
 
       socket.on('playerJoined', handlePlayerJoined);
+      socket.on('anonCorresCredentials', handleAnonCreds);
       socket.on('error', handleError);
 
       socket.emit('joinOpenGameAsGuest', {
@@ -529,7 +536,7 @@ export const SocketProvider = ({ children }) => {
         reject(new Error('Join game timed out'));
       }, 10000);
     });
-  }, [socket, connected]);
+  }, [socket, connected, saveAnonCorresId]);
 
   // Get game state (for reconnection or spectating)
   const getGameState = useCallback((gameId) => {
