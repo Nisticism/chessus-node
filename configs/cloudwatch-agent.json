@@ -1,0 +1,27 @@
+{
+  "agent": {
+    "run_as_user": "root"
+  },
+  "logs": {
+    "logs_collected": {
+      "files": {
+        "collect_list": [
+          {
+            "file_path": "/home/ec2-user/chessus-node/logs/pm2-out.log",
+            "log_group_name": "/chessus/pm2",
+            "log_stream_name": "{instance_id}-pm2-out",
+            "retention_in_days": 14,
+            "timezone": "UTC"
+          },
+          {
+            "file_path": "/home/ec2-user/chessus-node/logs/pm2-error.log",
+            "log_group_name": "/chessus/pm2",
+            "log_stream_name": "{instance_id}-pm2-error",
+            "retention_in_days": 14,
+            "timezone": "UTC"
+          }
+        ]
+      }
+    }
+  }
+}
