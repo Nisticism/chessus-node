@@ -406,6 +406,18 @@ function buildOtherData(gameState, extraFields = {}) {
       ? Object.fromEntries(live.map(p => [p.position, { playerId: p.id, username: p.username || null }]))
       : null;
   })();
+  // ── Option A dual-write ───────────────────────────────────────────────────
+  // buildOtherData is called at (essentially) every game persist, always with
+  // the current gameState.moveHistory + initialPieces. Mirror that exact same
+  // data into the game_moves table right here, so game_moves stays consistent
+  // with other_data.moves via ONE hook instead of ~40 scattered persist sites.
+  // Fire-and-forget: saveGameMoves swallows its own errors and never blocks the
+  // authoritative other_data write. Skipped at creation-time (gameState.id not
+  // assigned until after the INSERT) — the first move creates the game_moves
+  // row, and loadGameMoves() falls back to other_data until then.
+  if (gameState.id != null) {
+    saveGameMoves(gameState.id, gameState);
+  }
   return JSON.stringify({
     moves: gameState.moveHistory,
     rated: gameState.rated,
@@ -460,6 +472,68 @@ function buildOtherData(gameState, extraFields = {}) {
     ...(gameState.consecutivePasses ? { consecutivePasses: gameState.consecutivePasses } : {}),
     ...extraFields
   });
+}
+
+/**
+ * Option A — persist a game's move history + initial board into the game_moves
+ * table (keyed by game_id) and update the denormalized games.move_count.
+ *
+ * Called alongside the existing `other_data` persist during the DUAL-WRITE
+ * phase: moves still live in other_data too, so this is purely additive and
+ * cannot lose data if a call is missed. Reads switch to game_moves only after
+ * every write site is wired and the backfill has run.
+ *
+ * Upsert + COALESCE on initial_pieces_json so repeated calls are safe and a
+ * transient null initialPieces (e.g. mid-load) never clobbers a stored board.
+ * Errors are logged, never thrown — a game_moves hiccup must not break the
+ * authoritative games-table write.
+ */
+async function saveGameMoves(gameId, gameState) {
+  if (gameId == null || !gameState) return;
+  try {
+    const movesJson = JSON.stringify(gameState.moveHistory || []);
+    const initialPiecesJson = gameState.initialPieces ? JSON.stringify(gameState.initialPieces) : null;
+    const moveCount = Array.isArray(gameState.moveHistory) ? gameState.moveHistory.length : 0;
+    await db_pool.query(
+      `INSERT INTO game_moves (game_id, moves_json, initial_pieces_json)
+       VALUES (?, ?, ?)
+       ON DUPLICATE KEY UPDATE
+         moves_json = VALUES(moves_json),
+         initial_pieces_json = COALESCE(VALUES(initial_pieces_json), initial_pieces_json)`,
+      [gameId, movesJson, initialPiecesJson]
+    );
+    await db_pool.query('UPDATE games SET move_count = ? WHERE id = ?', [moveCount, gameId]);
+  } catch (err) {
+    console.error(`[game_moves] saveGameMoves failed for game ${gameId}:`, err.message);
+  }
+}
+
+/**
+ * Option A — load a game's move history + initial board. Prefers the game_moves
+ * table; falls back to the legacy other_data blob for games not yet backfilled
+ * (or on any error), so this is safe to switch reads to before the backfill has
+ * fully run. Pass the already-parsed other_data object as the fallback source.
+ * Returns { moveHistory, initialPieces }.
+ */
+async function loadGameMoves(gameId, otherData) {
+  try {
+    const [rows] = await db_pool.query(
+      'SELECT moves_json, initial_pieces_json FROM game_moves WHERE game_id = ? LIMIT 1',
+      [gameId]
+    );
+    if (rows.length > 0) {
+      let moveHistory = [];
+      let initialPieces = null;
+      try { moveHistory = rows[0].moves_json ? JSON.parse(rows[0].moves_json) : []; } catch (_) {}
+      try { initialPieces = rows[0].initial_pieces_json ? JSON.parse(rows[0].initial_pieces_json) : null; } catch (_) {}
+      return { moveHistory, initialPieces };
+    }
+  } catch (err) {
+    console.error(`[game_moves] loadGameMoves failed for game ${gameId}:`, err.message);
+  }
+  // Fallback: legacy other_data blob (not-yet-backfilled games or on error).
+  const od = otherData || {};
+  return { moveHistory: od.moves || [], initialPieces: od.initialPieces || null };
 }
 
 /**

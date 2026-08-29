@@ -3931,6 +3931,47 @@ const runMigrations = async () => {
     console.error('Error creating idx_games_anon_status:', err.message);
   }
 
+  // ── Option A: split move history out of the fat games.other_data blob ──────
+  // games.other_data stores the full move history (`moves`) + initialPieces per
+  // game, bloating every row to 100s of KB and making the table far larger than
+  // the DB buffer pool (root cause of the slow lobby / match-history queries).
+  // game_moves holds that heavy data keyed by game_id so the hot `games` rows
+  // stay thin; move_count is denormalized onto games so the lobby can show a
+  // move count without reading the blob.
+  //
+  // NOTE: this migration only creates the schema. The write-path (persist to
+  // game_moves + move_count) and read-path (load moves from game_moves) wiring,
+  // plus the one-time backfill from existing other_data, are separate staged
+  // steps — until those land, these stay empty/0 and nothing reads them.
+  try {
+    if (!(await tableExists('game_moves'))) {
+      // No FK to games(id): avoids integer type-compat coupling; orphan rows are harmless (never read for a nonexistent game).
+      await runMigration(
+        `CREATE TABLE game_moves (
+           game_id INT UNSIGNED NOT NULL PRIMARY KEY,
+           moves_json LONGTEXT,
+           initial_pieces_json LONGTEXT,
+           updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+         )`,
+        'Create game_moves table (Option A: move-history storage)'
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error creating game_moves table:', err.message);
+  }
+  try {
+    if (!(await columnExists('games', 'move_count'))) {
+      await runMigration(
+        `ALTER TABLE games ADD COLUMN move_count INT NOT NULL DEFAULT 0 COMMENT 'Denormalized move count (Option A: lobby avoids reading other_data.moves)'`,
+        'Add move_count column to games'
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding move_count column to games:', err.message);
+  }
+
   // Add has_game_log column to ai_training_jobs so REMOTE_MODE servers can
   // determine whether a job's games.txt exists (without checking the remote
   // filesystem) and enable the Board Replay button accordingly.

@@ -31,3 +31,10 @@ trainer-binaries/**
 !trainer-binaries/win32/ai-engine.exe
 !trainer-binaries/linux/
 !trainer-binaries/linux/ai-engine
+
+# Local database dumps (production data copies — never commit)
+chessusnode_prod.sql
+*_prod.sql
+
+# Local MCP config
+.vscode/mcp.json
