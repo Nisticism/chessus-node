@@ -2896,6 +2896,20 @@ const runMigrations = async () => {
       console.error('Error adding show_computer_games_publicly column:', err.message);
     }
 
+    // Add disallow_guest_opponents column to users (default 0 = guests allowed)
+    try {
+      const disallowGuestCol = await columnExists('users', 'disallow_guest_opponents');
+      if (!disallowGuestCol) {
+        await runMigration(
+          "ALTER TABLE users ADD COLUMN disallow_guest_opponents TINYINT(1) DEFAULT 0 COMMENT 'If true, guest (non-logged-in) players cannot join this user\\'s unrated open games'",
+          "Add disallow_guest_opponents column to users table"
+        );
+        migrationsRun++;
+      }
+    } catch (err) {
+      console.error('Error adding disallow_guest_opponents column:', err.message);
+    }
+
     // Add custom_movement_squares column to pieces (JSON for click-to-select custom movement)
     try {
       const customMoveCol = await columnExists('pieces', 'custom_movement_squares');

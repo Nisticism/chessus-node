@@ -10,6 +10,7 @@ const changelogData = [
       "The Play page now shows a move-count badge on Computer Games (both your own and public ones), matching the badge already shown on live and correspondence games.",
       "Live games: move and capture sound effects now play for a consistent length every time, instead of occasionally running longer or bleeding into a second sound.",
       "Live games: muting or unmuting sound no longer causes the screen to briefly flash.",
+      "Preferences: new 'Don't allow guests to join my games' option lets you restrict your unrated games to players with an account. (Guests already can't join rated games.)",
     ],
   },
   {

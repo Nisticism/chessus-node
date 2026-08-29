@@ -14059,7 +14059,7 @@ app.put("/api/users/:userId/messaging-preferences", authenticateToken, async (re
     if (req.user.id !== userId) {
       return res.status(403).json({ error: "Unauthorized" });
     }
-    const { allow_non_friend_dms, disable_game_chat, sound_enabled, chat_public_for_spectators, show_computer_games_publicly } = req.body;
+    const { allow_non_friend_dms, disable_game_chat, sound_enabled, chat_public_for_spectators, show_computer_games_publicly, disallow_guest_opponents } = req.body;
     const updates = [];
     const values = [];
     if (allow_non_friend_dms !== undefined) {
@@ -14081,6 +14081,10 @@ app.put("/api/users/:userId/messaging-preferences", authenticateToken, async (re
     if (show_computer_games_publicly !== undefined) {
       updates.push("show_computer_games_publicly = ?");
       values.push(show_computer_games_publicly ? 1 : 0);
+    }
+    if (disallow_guest_opponents !== undefined) {
+      updates.push("disallow_guest_opponents = ?");
+      values.push(disallow_guest_opponents ? 1 : 0);
     }
     if (updates.length === 0) {
       return res.status(400).json({ error: "No preferences to update" });

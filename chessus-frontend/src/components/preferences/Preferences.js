@@ -182,6 +182,10 @@ const Preferences = () => {
     return currentUser?.show_computer_games_publicly !== 0 && currentUser?.show_computer_games_publicly !== false;
   });
 
+  const [disallowGuestOpponents, setDisallowGuestOpponents] = useState(() => {
+    return currentUser?.disallow_guest_opponents === 1 || currentUser?.disallow_guest_opponents === true;
+  });
+
   // Email notification preferences (loaded async from /email-preferences)
   const [emailEnabled, setEmailEnabled] = useState(true);
   const NOTIFICATION_EMAIL_TYPES = [
@@ -296,6 +300,7 @@ const Preferences = () => {
           sound_enabled: soundEnabled,
           chat_public_for_spectators: chatPublicForSpectators,
           show_computer_games_publicly: showComputerGamesPublicly,
+          disallow_guest_opponents: disallowGuestOpponents,
         },
         { headers: authHeader() }
       );
@@ -321,6 +326,7 @@ const Preferences = () => {
         sound_enabled: soundEnabled ? 1 : 0,
         chat_public_for_spectators: chatPublicForSpectators ? 1 : 0,
         show_computer_games_publicly: showComputerGamesPublicly ? 1 : 0,
+        disallow_guest_opponents: disallowGuestOpponents ? 1 : 0,
       };
       localStorage.setItem("user", JSON.stringify(updatedUser));
       
@@ -680,6 +686,12 @@ const Preferences = () => {
               onChange={(v) => setShowComputerGamesPublicly(v)}
               label="Show my computer games publicly"
               tooltip={<InfoTooltip text="When enabled, your ongoing games against the computer will appear in the public Live Games list so others can spectate." />}
+            />
+            <ToggleSwitch
+              checked={disallowGuestOpponents}
+              onChange={(v) => setDisallowGuestOpponents(v)}
+              label="Don't allow guests to join my games"
+              tooltip={<InfoTooltip text="When enabled, non-logged-in (guest) players cannot join your unrated open games — only players with an account can join." />}
             />
           </div>
         </section>

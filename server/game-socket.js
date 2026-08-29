@@ -4814,6 +4814,15 @@ function initializeSocket(server) {
           return socket.emit("error", { message: "Rated games require an account. Please sign in to join." });
         }
 
+        // Respect a logged-in host's preference to bar guest opponents.
+        const [[guestOppPref]] = await db_pool.query(
+          'SELECT u.disallow_guest_opponents AS flag FROM games g JOIN users u ON u.id = g.host_id WHERE g.id = ?',
+          [gameId]
+        );
+        if (guestOppPref && guestOppPref.flag) {
+          return socket.emit("error", { message: "The host of this game only allows opponents with an account. Please sign in to join." });
+        }
+
         if (gameState.isChallenge) {
           return socket.emit("error", { message: "This is a private challenge. Only the challenged player can join." });
         }
