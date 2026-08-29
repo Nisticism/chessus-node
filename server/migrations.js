@@ -3986,6 +3986,33 @@ const runMigrations = async () => {
     console.error('Error adding move_count column to games:', err.message);
   }
 
+  // First-party analytics: anonymous page-view records (replaces Google Analytics).
+  try {
+    if (!(await tableExists('analytics_pageviews'))) {
+      await runMigration(
+        `CREATE TABLE analytics_pageviews (
+           id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+           visitor_id VARCHAR(64) NULL,
+           path VARCHAR(300) NOT NULL,
+           referrer VARCHAR(300) NULL,
+           utm_source VARCHAR(100) NULL,
+           utm_medium VARCHAR(100) NULL,
+           utm_campaign VARCHAR(100) NULL,
+           country CHAR(2) NULL,
+           is_authenticated TINYINT(1) NOT NULL DEFAULT 0,
+           created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+           INDEX idx_ap_created (created_at),
+           INDEX idx_ap_country (country),
+           INDEX idx_ap_visitor (visitor_id)
+         )`,
+        'Create analytics_pageviews table (first-party analytics)'
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error creating analytics_pageviews table:', err.message);
+  }
+
   // Add has_game_log column to ai_training_jobs so REMOTE_MODE servers can
   // determine whether a job's games.txt exists (without checking the remote
   // filesystem) and enable the Board Replay button accordingly.

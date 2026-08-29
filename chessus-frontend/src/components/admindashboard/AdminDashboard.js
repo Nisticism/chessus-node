@@ -9,6 +9,7 @@ import StandardButton from "../standardbutton/StandardButton";
 import { formatDateTime, parseServerDate } from "../../helpers/date-formatter";
 import AiTrainingPanel from "./AiTrainingPanel";
 import FairyStockfishPanel from "./FairyStockfishPanel";
+import TrafficPanel from "./TrafficPanel";
 import ConfirmDeleteModal from "../common/ConfirmDeleteModal";
 import ToggleSwitch from "../common/ToggleSwitch";
 import NumberInput from "../common/NumberInput";
@@ -276,6 +277,9 @@ const AdminDashboard = () => {
       fetchFeatureTodoItems();
     } else if (activeTab === 'fairy-stockfish') {
       // FairyStockfishPanel manages its own data fetching; nothing to do here.
+      setLoading(false);
+    } else if (activeTab === 'traffic') {
+      // TrafficPanel manages its own data fetching.
       setLoading(false);
     } else {
       fetchData(activeTab, 1);
@@ -3942,10 +3946,16 @@ const AdminDashboard = () => {
         >
           Feature TODO
         </button>
+        <button
+          className={`${styles["tab"]} ${activeTab === "traffic" ? styles["active"] : ""}`}
+          onClick={() => handleTabChange("traffic")}
+        >
+          Traffic
+        </button>
       </div>
 
       <div className={styles["content"]}>
-        {(activeTab !== 'server-stats' && activeTab !== 'ai-training' && activeTab !== 'initial-state' && activeTab !== 'ai-analysis-requests' && activeTab !== 'poll' && activeTab !== 'user-growth' && activeTab !== 'physical-board-requests' && activeTab !== 'feature-todo' && activeTab !== 'fairy-stockfish' && loading) || (activeTab === 'featured' && featuredLoading) || (activeTab === 'settings' && settingsLoading) ? (
+        {(activeTab !== 'server-stats' && activeTab !== 'ai-training' && activeTab !== 'initial-state' && activeTab !== 'ai-analysis-requests' && activeTab !== 'poll' && activeTab !== 'user-growth' && activeTab !== 'physical-board-requests' && activeTab !== 'feature-todo' && activeTab !== 'fairy-stockfish' && activeTab !== 'traffic' && loading) || (activeTab === 'featured' && featuredLoading) || (activeTab === 'settings' && settingsLoading) ? (
           <div className={styles["loading"]}>Loading...</div>
         ) : (
           <>
@@ -3972,6 +3982,7 @@ const AdminDashboard = () => {
             {activeTab === "user-growth" && renderUserGrowthTab()}
             {activeTab === "physical-board-requests" && renderPhysicalBoardRequestsTab()}
             {activeTab === "feature-todo" && renderFeatureTodoTab()}
+            {activeTab === "traffic" && <TrafficPanel />}
             {activeTab === "settings" && (
               <div className={styles["settings-section"]}>
                 <h3>Site Settings</h3>
@@ -4452,7 +4463,7 @@ const AdminDashboard = () => {
                 </div>
               </div>
             )}
-            {activeTab !== "featured" && activeTab !== "streams" && activeTab !== "settings" && activeTab !== "online" && activeTab !== "server-stats" && activeTab !== "moderation" && activeTab !== "user-growth" && renderPagination()}
+            {activeTab !== "featured" && activeTab !== "streams" && activeTab !== "settings" && activeTab !== "online" && activeTab !== "server-stats" && activeTab !== "moderation" && activeTab !== "user-growth" && activeTab !== "traffic" && renderPagination()}
           </>
         )}
       </div>

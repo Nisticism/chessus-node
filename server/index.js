@@ -12087,6 +12087,95 @@ app.get("/api/admin/user-growth", authenticateAdmin, async (req, res) => {
   }
 });
 
+// ── First-party analytics (replaces Google Analytics) ──────────────────────
+// Offline IP->country lookup; require lazily so a missing module never crashes.
+const _geoip = (() => { try { return require('geoip-lite'); } catch (_) { return null; } })();
+
+// Public page-view beacon. No auth, fire-and-forget. We store only a random
+// visitor id, path, referrer/UTM, a coarse country (derived from IP, which is
+// NOT stored), and whether the visitor was logged in.
+app.post("/api/analytics/pageview", async (req, res) => {
+  try {
+    const b = req.body || {};
+    const clip = (v, n) => (v == null || v === '' ? null : String(v).slice(0, n));
+    const path = clip(b.path, 300) || '/';
+    let country = null;
+    try {
+      const ip = String(req.ip || '').replace('::ffff:', '');
+      if (_geoip && ip) country = (_geoip.lookup(ip) || {}).country || null;
+    } catch (_) { /* geo lookup is best-effort */ }
+    await db_pool.query(
+      `INSERT INTO analytics_pageviews (visitor_id, path, referrer, utm_source, utm_medium, utm_campaign, country, is_authenticated)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [clip(b.visitorId, 64), path, clip(b.referrer, 300), clip(b.utmSource, 100), clip(b.utmMedium, 100), clip(b.utmCampaign, 100), country, b.isAuthenticated ? 1 : 0]
+    );
+    res.status(204).end();
+  } catch (err) {
+    res.status(204).end(); // analytics must never surface an error to the client
+  }
+});
+
+// Admin traffic dashboard: aggregate usage stats over the last N days.
+app.get("/api/admin/analytics", authenticateAdmin, async (req, res) => {
+  try {
+    const days = Math.min(365, Math.max(1, parseInt(req.query.days) || 30));
+    const [[totals]] = await db_pool.query(
+      `SELECT COUNT(*) AS views,
+              COUNT(DISTINCT visitor_id) AS visitors,
+              SUM(CASE WHEN is_authenticated = 1 THEN 1 ELSE 0 END) AS authed_views,
+              SUM(CASE WHEN is_authenticated = 0 THEN 1 ELSE 0 END) AS guest_views
+         FROM analytics_pageviews
+        WHERE created_at >= DATE_SUB(NOW(), INTERVAL ? DAY)`,
+      [days]
+    );
+    const [byCountry] = await db_pool.query(
+      `SELECT COALESCE(country, 'Unknown') AS country, COUNT(*) AS views, COUNT(DISTINCT visitor_id) AS visitors
+         FROM analytics_pageviews
+        WHERE created_at >= DATE_SUB(NOW(), INTERVAL ? DAY)
+        GROUP BY country ORDER BY views DESC LIMIT 60`,
+      [days]
+    );
+    const [topPages] = await db_pool.query(
+      `SELECT path, COUNT(*) AS views FROM analytics_pageviews
+        WHERE created_at >= DATE_SUB(NOW(), INTERVAL ? DAY)
+        GROUP BY path ORDER BY views DESC LIMIT 25`,
+      [days]
+    );
+    const [topReferrers] = await db_pool.query(
+      `SELECT COALESCE(NULLIF(utm_source, ''), NULLIF(referrer, ''), 'Direct') AS source,
+              COUNT(*) AS views, COUNT(DISTINCT visitor_id) AS visitors
+         FROM analytics_pageviews
+        WHERE created_at >= DATE_SUB(NOW(), INTERVAL ? DAY)
+        GROUP BY source ORDER BY views DESC LIMIT 25`,
+      [days]
+    );
+    const [daily] = await db_pool.query(
+      `SELECT DATE_FORMAT(created_at, '%Y-%m-%d') AS day, COUNT(*) AS views, COUNT(DISTINCT visitor_id) AS visitors
+         FROM analytics_pageviews
+        WHERE created_at >= DATE_SUB(NOW(), INTERVAL ? DAY)
+        GROUP BY day ORDER BY day ASC`,
+      [days]
+    );
+    res.json({
+      days,
+      geoEnabled: !!_geoip,
+      totals: {
+        views: Number(totals.views || 0),
+        visitors: Number(totals.visitors || 0),
+        authedViews: Number(totals.authed_views || 0),
+        guestViews: Number(totals.guest_views || 0),
+      },
+      byCountry: byCountry.map(r => ({ country: r.country, views: Number(r.views), visitors: Number(r.visitors) })),
+      topPages: topPages.map(r => ({ path: r.path, views: Number(r.views) })),
+      topReferrers: topReferrers.map(r => ({ source: r.source, views: Number(r.views), visitors: Number(r.visitors) })),
+      daily: daily.map(r => ({ day: r.day, views: Number(r.views), visitors: Number(r.visitors) })),
+    });
+  } catch (err) {
+    console.error("Error in /api/admin/analytics:", err);
+    res.status(500).send({ message: "Failed to fetch analytics", err: err.message });
+  }
+});
+
 // Get anonymous live games for admin tracking
 app.get("/api/admin/anonymous-games", authenticateAdmin, async (req, res) => {
   try {

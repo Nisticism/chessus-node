@@ -6,7 +6,7 @@ const PrivacyPolicy = () => {
     <div className={styles.container}>
       <div className={styles.content}>
         <h1 className={styles.title}>Privacy Policy</h1>
-        <p className={styles.lastUpdated}>Last Updated: March 28, 2026</p>
+        <p className={styles.lastUpdated}>Last Updated: August 29, 2026</p>
 
         <section className={styles.section}>
           <h2>1. Information We Collect</h2>
@@ -61,10 +61,19 @@ const PrivacyPolicy = () => {
         </section>
 
         <section className={styles.section}>
-          <h2>5. Cookies and Tracking</h2>
+          <h2>5. Cookies and Analytics</h2>
           <p>
-            We use cookies and similar technologies to maintain your login session and improve your experience. 
-            We may use analytics tools to understand how users interact with our platform.
+            We use browser storage to keep you logged in and to remember your preferences. We do
+            <strong> not</strong> use Google Analytics or any third-party advertising or tracking scripts.
+          </p>
+          <p>
+            To understand overall usage of the site, we collect basic, anonymous analytics using our own
+            servers (no third parties). For each page view we record: the page path, the referring site or
+            campaign source (for example, a link you followed from Reddit), an approximate country derived
+            from your IP address (the IP address itself is not stored), whether the visitor was signed in,
+            and a random visitor identifier stored in your browser so we can count unique visitors. This
+            data is not tied to your account or any personal information, is never sold or shared, and is
+            used only in aggregate to see how many people use the site and where they come from.
           </p>
         </section>
 

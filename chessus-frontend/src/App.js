@@ -86,7 +86,7 @@ function App() {
     dispatch(fetchSiteSettings());
   }, [dispatch]);
 
-  // Initialize Google Analytics once on mount
+  // Initialize first-party analytics (creates a random visitor id) once on mount
   useEffect(() => {
     initGA();
   }, []);
