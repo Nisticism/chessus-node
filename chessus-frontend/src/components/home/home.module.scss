@@ -714,7 +714,7 @@
 // CTA Section
 .cta-section {
   text-align: center;
-  padding: 50px 30px;
+  padding: 50px 40px;
   background: linear-gradient(135deg, var(--panel-bg-start) 0%, var(--panel-bg-end) 100%);
   border: 2px solid var(--panel-card-border);
   border-radius: 8px;
@@ -987,7 +987,7 @@
 
 // Forum invite banner — sits between hero and "Explore the Grove"
 .forum-invite-banner {
-  max-width: 900px;
+  max-width: 984px; // aligned to the popular-games grid rails for consistent gutters
   margin: 0 auto 35px auto;
   padding: 20px 28px;
   border-radius: 10px;
