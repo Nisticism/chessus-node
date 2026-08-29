@@ -406,20 +406,15 @@ function buildOtherData(gameState, extraFields = {}) {
       ? Object.fromEntries(live.map(p => [p.position, { playerId: p.id, username: p.username || null }]))
       : null;
   })();
-  // ── Option A dual-write ───────────────────────────────────────────────────
-  // buildOtherData is called at (essentially) every game persist, always with
-  // the current gameState.moveHistory + initialPieces. Mirror that exact same
-  // data into the game_moves table right here, so game_moves stays consistent
-  // with other_data.moves via ONE hook instead of ~40 scattered persist sites.
-  // Fire-and-forget: saveGameMoves swallows its own errors and never blocks the
-  // authoritative other_data write. Skipped at creation-time (gameState.id not
-  // assigned until after the INSERT) — the first move creates the game_moves
-  // row, and loadGameMoves() falls back to other_data until then.
+  // ── Option A: move history lives in the game_moves table, not other_data ───
+  // saveGameMoves persists gameState.moveHistory + initialPieces to game_moves
+  // (keyed by game_id) on every persist. Skipped at creation-time (gameState.id
+  // not assigned until after the INSERT); the first move creates the row, and
+  // loadGameMoves() returns empty history until then (a 0-move game needs none).
   if (gameState.id != null) {
     saveGameMoves(gameState.id, gameState);
   }
   return JSON.stringify({
-    moves: gameState.moveHistory,
     rated: gameState.rated,
     allowPremoves: gameState.allowPremoves,
     ...(anonLivePlayers ? { anonLivePlayers } : {}),
@@ -427,7 +422,6 @@ function buildOtherData(gameState, extraFields = {}) {
     ...(gameState.guestName ? { guestName: gameState.guestName } : {}),
     ...(gameState.startingMode ? { startingMode: gameState.startingMode } : {}),
     ...(gameState.premoveTimeCost ? { premoveTimeCost: gameState.premoveTimeCost } : {}),
-    ...(gameState.initialPieces ? { initialPieces: gameState.initialPieces } : {}),
     ...(gameState.botPlayer ? { isBotGame: true, botDifficulty: gameState.botPlayer.difficulty || 'medium', botPosition: gameState.botPlayer.position, ...(gameState.botPlayer.stockfishLevel != null ? { botStockfishLevel: gameState.botPlayer.stockfishLevel } : {}), ...(gameState.botPlayer.forceStockfish ? { forceStockfishBot: true } : {}) } : {}),
     ...(gameState.materialClockPenalty ? { materialClockPenalty: true } : {}),
     ...(gameState.materialClockHandicap ? { materialClockHandicap: true } : {}),
@@ -478,10 +472,8 @@ function buildOtherData(gameState, extraFields = {}) {
  * Option A — persist a game's move history + initial board into the game_moves
  * table (keyed by game_id) and update the denormalized games.move_count.
  *
- * Called alongside the existing `other_data` persist during the DUAL-WRITE
- * phase: moves still live in other_data too, so this is purely additive and
- * cannot lose data if a call is missed. Reads switch to game_moves only after
- * every write site is wired and the backfill has run.
+ * This is now the authoritative store for move history: other_data no longer
+ * carries `moves`/`initialPieces`. Reads go through loadGameMoves.
  *
  * Upsert + COALESCE on initial_pieces_json so repeated calls are safe and a
  * transient null initialPieces (e.g. mid-load) never clobbers a stored board.
