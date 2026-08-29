@@ -2,6 +2,7 @@ $nav-height: calc(7vh + 2px);
 $nav-hover-color: var(--nav-hover);
 $nav-background: var(--bg-card);
 $lighter-hover: var(--nav-light-hover);
+$nav-gold: #d4af37;
 
 .navbar {
   display: flex;
@@ -14,10 +15,18 @@ $lighter-hover: var(--nav-light-hover);
 }
 
 .navbar-border {
-  background: #3a3d42;
+  // Subtle gold hairline, shown consistently on every page (incl. over the home hero).
+  background: linear-gradient(90deg, rgba(212, 175, 55, 0) 0%, rgba(212, 175, 55, 0.55) 50%, rgba(212, 175, 55, 0) 100%);
   height: 2px;
   display: flex;
   width: 100%;
+  position: relative;
+  z-index: 998;
+}
+
+@keyframes navDropdownGrow {
+  from { opacity: 0; transform: translateY(-6px) scaleY(0.96); }
+  to   { opacity: 1; transform: translateY(0) scaleY(1); }
 }
 
 p {
@@ -85,9 +94,10 @@ p {
 .navbar-links-container p, 
 .navbar-menu-container p {
   font-family: var(--font-family);
-  font-weight: 500;
+  font-weight: 600;
   font-size: clamp(1rem, 0.2vw + 0.95rem, 1.125rem);
-  text-transform: capitalize;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
   cursor: pointer;
   height: $nav-height;
 }
@@ -112,7 +122,7 @@ p {
 
 .nav-item-inner:hover {
   background: $nav-hover-color;
-  box-shadow:inset 2px 0px $lighter-hover;
+  box-shadow: inset 0 -2px 0 0 $nav-gold, 0 4px 12px -6px rgba(212, 175, 55, 0.6);
 }
 
 .navbar-menu {
@@ -192,7 +202,7 @@ p {
 // Desktop-only hover styles — scoped so they don't affect the mobile hamburger menu
 .navbar-links-container .nav-item:hover {
   background: $nav-hover-color;
-  box-shadow: inset 2px 0px $lighter-hover;
+  box-shadow: inset 0 -2px 0 0 $nav-gold, 0 4px 12px -6px rgba(212, 175, 55, 0.6);
   .inner-menu {
     display: block;
     position: absolute;
@@ -200,6 +210,9 @@ p {
     min-width: 175px;
     top: $nav-height;
     border-radius: 4px 4px 4px 4px;
+    // On-brand "grow": the menu unfurls with a gentle scale + fade.
+    transform-origin: top center;
+    animation: navDropdownGrow 0.16s ease-out;
   }
   .inner-menu-item {
     display: flex;
@@ -208,12 +221,14 @@ p {
     padding: 0px 15px 0px;
     background: $nav-hover-color;
     height: 40px;
-    box-shadow: inset 2px 0px $lighter-hover;
     text-decoration: none;
     font-size: clamp(0.95rem, 0.2vw + 0.9rem, 1rem);
+    transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
   }
   .inner-menu-item:hover {
-    background: $lighter-hover;
+    background: rgba(212, 175, 55, 0.14);
+    box-shadow: inset 0 -2px 0 0 $nav-gold, 0 4px 12px -4px rgba(212, 175, 55, 0.55);
+    transform: translateX(4px);
   }
   
   // Auto-apply rounded corners to first and last submenu items

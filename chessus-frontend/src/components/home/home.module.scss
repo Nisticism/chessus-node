@@ -309,9 +309,9 @@
   }
 
   &.selected {
-    border-color: var(--accent-primary);
-    background: linear-gradient(135deg, rgba(var(--accent-rgb), 0.1) 0%, var(--panel-bg-end) 100%);
-    box-shadow: 0 0 0 1px var(--accent-primary), 0 6px 20px rgba(var(--accent-rgb), 0.2);
+    border-color: #d4af37;
+    background: linear-gradient(135deg, rgba(212, 175, 55, 0.12) 0%, var(--panel-bg-end) 100%);
+    box-shadow: 0 0 0 1px #d4af37, 0 6px 20px rgba(212, 175, 55, 0.25);
   }
 }
 
