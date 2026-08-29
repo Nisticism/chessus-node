@@ -151,6 +151,7 @@ const Play = () => {
   const [anonWarning, setAnonWarning] = useState(null);
   const [anonIsCorrespondence, setAnonIsCorrespondence] = useState(false);
   const [anonCorrDays, setAnonCorrDays] = useState("3");
+  const [anonVsComputer, setAnonVsComputer] = useState(false);
 
   // Join anonymous open match state
   const [showJoinAnonModal, setShowJoinAnonModal] = useState(false);
@@ -277,9 +278,10 @@ const Play = () => {
     }
   }, [botDifficulty, adaptiveAvailability]);
 
-  // Look up Fairy-Stockfish compatibility for the selected game type.
+  // Look up Fairy-Stockfish compatibility for the selected game type (for the
+  // logged-in vs-Computer form and the guest "vs Computer" option alike).
   useEffect(() => {
-    if (!vsComputer || !selectedGameType?.id) {
+    if ((!vsComputer && !showAnonCreateModal) || !selectedGameType?.id) {
       setFairyStockfishCompat(null);
       return;
     }
@@ -971,6 +973,7 @@ const Play = () => {
     setError(null);
 
     try {
+      const useBot = anonVsComputer && !anonIsCorrespondence && fairyAvailable;
       const result = await createAnonymousGame({
         gameTypeId: selectedGameType.id,
         timeControl: anonIsCorrespondence ? null : (anonTimeControl === "0" ? null : parseInt(anonTimeControl)),
@@ -980,6 +983,8 @@ const Play = () => {
         startingMode: startingMode || 'none',
         isCorrespondence: anonIsCorrespondence,
         correspondenceDays: anonIsCorrespondence ? parseInt(anonCorrDays) : null,
+        vsComputer: useBot,
+        botStockfishLevel: useBot ? stockfishLevel : null,
       });
 
       setShowAnonCreateModal(false);
@@ -2577,7 +2582,9 @@ const Play = () => {
           <div className={styles["modal-content"]} onClick={(e) => e.stopPropagation()}>
             <h2>Create Anonymous Game: {selectedGameType?.game_name}</h2>
             <p style={{ color: 'var(--text-muted)', fontSize: '14px', marginBottom: '16px' }}>
-              This game is unrated and will appear in the Open Matches section. You'll also get an invite code to share directly.
+              {anonVsComputer && !anonIsCorrespondence
+                ? "Unrated game against the computer (Fairy Stockfish), running entirely in your browser."
+                : "This game is unrated and will appear in the Open Matches section. You'll also get an invite code to share directly."}
             </p>
             <div className={styles["form-group"]}>
               <label>Your display name:</label>
@@ -2597,6 +2604,26 @@ const Play = () => {
                 labelPlacement="left"
               />
             </div>
+            {!anonIsCorrespondence && (
+              <div className={styles["form-group"]}>
+                <ToggleSwitch
+                  checked={anonVsComputer && fairyAvailable}
+                  onChange={(v) => setAnonVsComputer(v)}
+                  disabled={!fairyAvailable}
+                  label="Play vs Computer (Fairy Stockfish)"
+                  labelPlacement="left"
+                />
+                {fairyStockfishCompat == null ? null : !fairyAvailable ? (
+                  <p style={{ color: 'var(--text-muted)', fontSize: '12px', marginTop: '4px' }}>
+                    The computer opponent isn't available for this game — it uses rules the browser engine (Fairy Stockfish) can't play. Sign in to play the built-in Easy/Medium/Hard bots, or pick a compatible game to play the computer as a guest.
+                  </p>
+                ) : anonVsComputer ? (
+                  <p style={{ color: 'var(--text-muted)', fontSize: '12px', marginTop: '4px' }}>
+                    The computer runs entirely in your browser — no account needed. This creates a private game just for you (not an open match).
+                  </p>
+                ) : null}
+              </div>
+            )}
             {anonIsCorrespondence ? (
               <div className={styles["form-group"]}>
                 <label>Days per turn:</label>
@@ -2649,7 +2676,7 @@ const Play = () => {
                 onClick={handleCreateAnonymousGame}
                 disabled={isCreatingAnonymous}
               >
-                {isCreatingAnonymous ? "Creating..." : "Create Open Match"}
+                {isCreatingAnonymous ? "Creating..." : (anonVsComputer && !anonIsCorrespondence && fairyAvailable) ? "Play vs Computer" : "Create Open Match"}
               </button>
             </div>
           </div>

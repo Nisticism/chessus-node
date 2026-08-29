@@ -4156,7 +4156,7 @@ function initializeSocket(server) {
     // Create an anonymous game (no account required)
     socket.on("createAnonymousGame", async (data) => {
       try {
-        const { gameTypeId, timeControl, increment, guestName, allowSpectators = false, showPieceHelpers = false, allowPremoves = true, startingMode: rawStartingMode = 'none', isCorrespondence = false, correspondenceDays = null } = data;
+        const { gameTypeId, timeControl, increment, guestName, allowSpectators = false, showPieceHelpers = false, allowPremoves = true, startingMode: rawStartingMode = 'none', isCorrespondence = false, correspondenceDays = null, vsComputer = false, botStockfishLevel = null } = data;
 
         // Generate a unique 6-character invite code
         const generateInviteCode = () => {
@@ -4542,6 +4542,84 @@ function initializeSocket(server) {
 
         // Map this socket to the temp ID for game communications
         userSockets.set(tempHostId, socket.id);
+
+        // --- Guest vs Computer (Fairy-Stockfish only) ---
+        // Guests may only play the browser-side Fairy-Stockfish engine, so a bot
+        // move never costs the server any computation. Non-FS variants are gated
+        // out on the client (the toggle is disabled with an explanation).
+        if (vsComputer && !isCorrespondence) {
+          const botInfo = { ...BOT_PLAYERS.stockfish };
+          const hostPosition = Math.random() < 0.5 ? 1 : 2;
+          const botPosition = hostPosition === 1 ? 2 : 1;
+          gameState.players = [
+            { id: tempHostId, username: displayName, position: hostPosition, anonToken: hostToken },
+            { id: botInfo.id, username: botInfo.username, position: botPosition, isBot: true }
+          ];
+          gameState.botPlayer = {
+            ...botInfo,
+            position: botPosition,
+            stockfishLevel: Math.max(1, Math.min(5, parseInt(botStockfishLevel, 10) || 3)),
+            forceStockfish: true
+          };
+          gameState.status = 'ready';
+          gameState.rated = false;
+          gameState.hostId = tempHostId;
+
+          // The single players row (host) was inserted with a null position.
+          await db_pool.query(
+            "UPDATE players SET player_position = ? WHERE game_id = ? AND user_id IS NULL",
+            [hostPosition, gameId]
+          );
+
+          const botStartingMode = gameState.startingMode || startingMode || 'none';
+          if (botStartingMode && botStartingMode !== 'none') {
+            try {
+              applyRandomizationWithRerollGuard(gameState, botStartingMode);
+              gameState.initialPieces = JSON.parse(JSON.stringify(gameState.pieces));
+            } catch (e) { console.error(`[guest-bot] randomization failed for game ${gameId}:`, e.message); }
+          }
+
+          if (timeControl) {
+            gameState.playerTimes = {};
+            gameState.playerTimes[tempHostId] = timeControl * 60;
+            gameState.playerTimes[botInfo.id] = timeControl * 60;
+          }
+
+          await db_pool.query(
+            "UPDATE games SET status = 'ready', pieces = ?, other_data = ? WHERE id = ?",
+            [JSON.stringify(gameState.pieces), buildOtherData(gameState, { isBotGame: true, botDifficulty: 'stockfish' }), gameId]
+          );
+
+          socket.emit("gameCreated", {
+            gameId, gameState,
+            ...(hostPlayerId ? { playerId: hostPlayerId, token: hostToken } : {})
+          });
+          invalidateLobbyCache();
+          socket.emit("botGameReady", {
+            gameId, gameState,
+            botPlayer: { username: botInfo.username, difficulty: 'stockfish' }
+          });
+          console.log(`[guest-bot] Game ${gameId} created vs Fairy Stockfish by "${displayName}"`);
+
+          const endedAtStart = await endIfInitialPositionDecided(io, gameId, gameState);
+          if (endedAtStart) return;
+
+          // If the bot is Player 1 it moves first (computed in the guest's browser).
+          if (botPosition === 1) {
+            gameState.status = 'active';
+            gameState.startTime = Date.now();
+            if (!gameState.initialPieces) gameState.initialPieces = JSON.parse(JSON.stringify(gameState.pieces));
+            initializeCastlingPartners(gameState);
+            const startTimeStr = new Date().toISOString().slice(0, 19).replace('T', ' ');
+            await db_pool.query(
+              "UPDATE games SET status = 'active', start_time = ?, other_data = ? WHERE id = ?",
+              [startTimeStr, buildOtherData(gameState, { isBotGame: true, botDifficulty: 'stockfish' }), gameId]
+            );
+            startGameTimer(io, gameId);
+            processBotTurn(io, gameId, gameState);
+          }
+          return;
+        }
 
         // Return stable credentials to the client for correspondence games so they
         // can re-authenticate after closing the tab and returning later.

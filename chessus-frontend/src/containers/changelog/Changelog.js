@@ -11,6 +11,8 @@ const changelogData = [
       "Live games: move and capture sound effects now play for a consistent length every time, instead of occasionally running longer or bleeding into a second sound.",
       "Live games: muting or unmuting sound no longer causes the screen to briefly flash.",
       "Preferences: new 'Don't allow guests to join my games' option lets you restrict your unrated games to players with an account. (Guests already can't join rated games.)",
+      "Guests can now play against the computer (Fairy Stockfish) from the 'Create Anonymous Game' screen on supported game types — the engine runs entirely in your browser, no account required. On unsupported games the option is disabled with an explanation.",
+      "Guest live games are more reliable to rejoin: after a refresh or brief disconnect you return to your exact seat and clock, instead of sometimes being bumped to spectator (especially in guest-vs-guest games).",
     ],
   },
   {
