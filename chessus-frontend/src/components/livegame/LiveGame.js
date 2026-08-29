@@ -391,12 +391,21 @@ const LiveGame = () => {
   }));
   const [showBoardNotation, setShowBoardNotation] = useState(true);
   const [showBadges, setShowBadges] = useState(true);
-  const [soundEnabled, setSoundEnabled] = useState(() => {
+  // Read the freshest persisted value: toggling mute updates localStorage even
+  // when we skip the Redux user swap (see persistSoundPreference), so a remount
+  // still reflects the latest choice.
+  const computeInitialSoundEnabled = () => {
+    try {
+      const stored = JSON.parse(localStorage.getItem('user') || 'null');
+      if (stored && stored.sound_enabled !== undefined) {
+        return stored.sound_enabled !== 0 && stored.sound_enabled !== false;
+      }
+    } catch (_) { /* ignore */ }
     if (!currentUser) return true;
-    // Default to true unless explicitly disabled (0 or false)
     return currentUser.sound_enabled !== 0 && currentUser.sound_enabled !== false;
-  });
-  const soundEnabledRef = useRef(!currentUser || (currentUser.sound_enabled !== 0 && currentUser.sound_enabled !== false));
+  };
+  const [soundEnabled, setSoundEnabled] = useState(computeInitialSoundEnabled);
+  const soundEnabledRef = useRef(computeInitialSoundEnabled());
   const [premove, setPremove] = useState(null); // Store premove {from, to, pieceId}
   const [showPromotionModal, setShowPromotionModal] = useState(false);
   const [promotionData, setPromotionData] = useState(null); // {pieceId, options, promotingPiece}
@@ -556,6 +565,27 @@ const LiveGame = () => {
       console.error(`Error saving ${key} preference:`, err);
     }
   }, [currentUser, dispatch]);
+
+  // Persist the sound on/off preference WITHOUT dispatching a global user swap.
+  // Sound state is driven locally (soundEnabled + soundEnabledRef), so replacing
+  // currentUser here would force a full re-render of the game view — the visible
+  // "flash" when toggling mute. We still persist to the server + localStorage so
+  // the choice survives a reload / remount.
+  const persistSoundPreference = useCallback((enabled) => {
+    try {
+      const stored = JSON.parse(localStorage.getItem("user") || "null");
+      if (stored) {
+        stored.sound_enabled = enabled ? 1 : 0;
+        localStorage.setItem("user", JSON.stringify(stored));
+      }
+    } catch (_) { /* ignore */ }
+    if (!currentUser) return;
+    axios.put(
+      `${API_URL}users/${currentUser.id}/messaging-preferences`,
+      { sound_enabled: enabled },
+      { headers: authHeader() }
+    ).catch(err => console.error("Error saving sound_enabled preference:", err));
+  }, [currentUser]);
 
   // Wrapper for makeMove that supports turn confirmation in correspondence games
   const submitMove = useCallback((gId, moveData) => {
@@ -7204,7 +7234,7 @@ const LiveGame = () => {
                       const enabled = !soundEnabled;
                       setSoundEnabled(enabled);
                       soundEnabledRef.current = enabled;
-                      updateUserPreference('sound_enabled', enabled);
+                      persistSoundPreference(enabled);
                     }}
                     title={soundEnabled ? 'Mute sound effects' : 'Unmute sound effects'}
                   >
@@ -7859,7 +7889,7 @@ const LiveGame = () => {
                 const enabled = !soundEnabled;
                 setSoundEnabled(enabled);
                 soundEnabledRef.current = enabled;
-                updateUserPreference('sound_enabled', enabled);
+                persistSoundPreference(enabled);
               }}
               title={soundEnabled ? 'Mute sound effects' : 'Unmute sound effects'}
             >
