@@ -308,13 +308,21 @@
   }
 }
 
+.profile-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: stretch;
+  min-width: 170px;
+  flex-shrink: 0;
+}
+
 .elo-display {
   text-align: center;
   background: rgba(var(--accent-rgb), 0.1);
-  border: 2px solid var(--accent-primary);
-  border-radius: 6px;
-  padding: 20px 30px;
-  min-width: 160px;
+  border: 1px solid var(--accent-primary);
+  border-radius: 8px;
+  padding: 14px 24px;
 
   .elo-label {
     font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
@@ -336,7 +344,7 @@
   flex-direction: column;
   align-items: center;
   gap: 4px;
-  padding: 12px 20px;
+  padding: 14px 24px;
   background: rgba(136, 136, 136, 0.1);
   border: 1px solid var(--panel-border);
   border-radius: 8px;
@@ -353,6 +361,13 @@
     color: #ccc;
     font-weight: 500;
   }
+}
+
+// Collapsible section headings drop their divider + spacing when collapsed.
+.card-title.title-collapsed {
+  border-bottom-color: transparent;
+  padding-bottom: 0;
+  margin-bottom: 0;
 }
 
 .profile-content {
@@ -373,7 +388,7 @@
     color: var(--accent-primary-text);
     margin: 0 0 25px 0;
     font-weight: 600;
-    border-bottom: 2px solid var(--gold);
+    border-bottom: 2px solid var(--gold-muted);
     padding-bottom: 15px;
     display: flex;
     align-items: center;
@@ -729,7 +744,7 @@
   justify-content: space-between;
   align-items: center;
   padding: 25px 30px;
-  border-bottom: 2px solid var(--gold);
+  border-bottom: 2px solid var(--gold-muted);
 
   h2 {
     font-size: 1.8rem;

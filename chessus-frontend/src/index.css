@@ -99,6 +99,7 @@ code {
   --gold-rgb: 212, 175, 55;
   --gold-muted: #9c884a;
   --gold-muted-rgb: 156, 136, 74;
+  --gold-header: #b99f4f;
 
   /* Shared button gradient: gold sheen (upper-left) over the theme's primary. */
   --btn-gradient: linear-gradient(135deg, rgba(var(--gold-rgb), 0.32) 0%, rgba(var(--gold-rgb), 0) 45%), linear-gradient(135deg, var(--button-primary-bg) 0%, var(--button-primary-hover) 100%);
@@ -177,19 +178,18 @@ code {
   
 }
 
-/* Gold headings. h1 (muted) and h2 (bright) are forced gold site-wide; h3 is a
-   soft default that component-scoped colors may still override. The home hero
-   keeps its highlight span colored via its own rule. */
+/* Gold headings. All header levels use a single gold shade site-wide; the home
+   hero keeps its highlight span colored via its own rule. */
 h1 {
-  color: var(--gold-muted) !important;
+  color: var(--gold-header) !important;
 }
 
 h2 {
-  color: var(--gold) !important;
+  color: var(--gold-header) !important;
 }
 
 h3 {
-  color: var(--gold);
+  color: var(--gold-header) !important;
 }
 
 /* ======= GROVE THEME (Default) ======= */

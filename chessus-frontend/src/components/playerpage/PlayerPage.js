@@ -9,7 +9,6 @@ import StandardButton from "../standardbutton/StandardButton";
 import axios from "axios";
 import API_URL from "../../global/global";
 import BioSection from "../biosection/BioSection";
-import Divider from "../Divider/Divider";
 import DonorBadge from "../DonorBadge/DonorBadge";
 import MatchHistory from "../matchhistory/MatchHistory";
 import OngoingGames from "../ongoinggames/OngoingGames";
@@ -52,6 +51,8 @@ const PlayerPage = (props) => {
   const [createdPieces, setCreatedPieces] = useState([]);
   const [gamesCollapsed, setGamesCollapsed] = useState(true);
   const [piecesCollapsed, setPiecesCollapsed] = useState(true);
+  const [ongoingCollapsed, setOngoingCollapsed] = useState(true);
+  const [friendsCollapsed, setFriendsCollapsed] = useState(true);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   // const [postDeleteUsername, setPostDeleteUsername] = useState("");
   const playerPageUser = useSelector((state) => state.authReducer.playerPage);
@@ -651,24 +652,26 @@ const PlayerPage = (props) => {
                   </div>
                 )}
               </div>
-              <div className={styles["elo-display"]}>
-                <div className={styles["elo-label"]}>ELO Rating</div>
-                <div className={styles["elo-value"]}>
-                  {playerPageUser?.elo ?? currentUser?.elo ?? 1000}
+              <div className={styles["profile-stats"]}>
+                <div className={styles["elo-display"]}>
+                  <div className={styles["elo-label"]}>ELO Rating</div>
+                  <div className={styles["elo-value"]}>
+                    {playerPageUser?.elo ?? currentUser?.elo ?? 1000}
+                  </div>
                 </div>
+                {playerPageUser?.last_active_at && (
+                  <div className={styles["last-active-display"]}>
+                    <span className={styles["last-active-label"]}>Last Active:</span>
+                    <span className={styles["last-active-value"]}>
+                      {parseServerDate(playerPageUser.last_active_at).toLocaleDateString(undefined, {
+                        year: 'numeric',
+                        month: 'short',
+                        day: 'numeric'
+                      })}
+                    </span>
+                  </div>
+                )}
               </div>
-              {playerPageUser?.last_active_at && (
-                <div className={styles["last-active-display"]}>
-                  <span className={styles["last-active-label"]}>Last Active:</span>
-                  <span className={styles["last-active-value"]}>
-                    {parseServerDate(playerPageUser.last_active_at).toLocaleDateString(undefined, {
-                      year: 'numeric',
-                      month: 'short',
-                      day: 'numeric'
-                    })}
-                  </span>
-                </div>
-              )}
             </div>
 
             <div className={styles["profile-content"]}>
@@ -793,16 +796,21 @@ const PlayerPage = (props) => {
               )}
 
               <div className={styles["info-card"]}>
-                <h2 className={styles["card-title"]}>Ongoing Games</h2>
-                <OngoingGames
-                  userId={playerPageUser?.id || (currentUser && username === currentUser.username ? currentUser.id : null)}
-                />
+                <h2 className={`${styles["card-title"]} ${ongoingCollapsed ? styles["title-collapsed"] : ''}`} onClick={() => setOngoingCollapsed(!ongoingCollapsed)} style={{ cursor: 'pointer' }}>
+                  Ongoing Games
+                  <span className={`${styles["collapse-arrow"]} ${ongoingCollapsed ? styles["collapsed"] : ''}`}>{`\u25BC`}</span>
+                </h2>
+                {!ongoingCollapsed && (
+                  <OngoingGames
+                    userId={playerPageUser?.id || (currentUser && username === currentUser.username ? currentUser.id : null)}
+                  />
+                )}
               </div>
 
               {/* My Games - show if user has created any game types */}
               {createdGames.length > 0 && (
                 <div className={styles["info-card"]}>
-                  <h2 className={styles["card-title"]} onClick={() => setGamesCollapsed(!gamesCollapsed)} style={{ cursor: 'pointer' }}>
+                  <h2 className={`${styles["card-title"]} ${gamesCollapsed ? styles["title-collapsed"] : ''}`} onClick={() => setGamesCollapsed(!gamesCollapsed)} style={{ cursor: 'pointer' }}>
                     My Games
                     <span className={`${styles["collapse-arrow"]} ${gamesCollapsed ? styles["collapsed"] : ''}`}>{`\u25BC`}</span>
                   </h2>
@@ -835,7 +843,7 @@ const PlayerPage = (props) => {
               {/* My Pieces - show if user has created any pieces */}
               {createdPieces.length > 0 && (
                 <div className={styles["info-card"]}>
-                  <h2 className={styles["card-title"]} onClick={() => setPiecesCollapsed(!piecesCollapsed)} style={{ cursor: 'pointer' }}>
+                  <h2 className={`${styles["card-title"]} ${piecesCollapsed ? styles["title-collapsed"] : ''}`} onClick={() => setPiecesCollapsed(!piecesCollapsed)} style={{ cursor: 'pointer' }}>
                     My Pieces
                     <span className={`${styles["collapse-arrow"]} ${piecesCollapsed ? styles["collapsed"] : ''}`}>{`\u25BC`}</span>
                   </h2>
@@ -907,11 +915,16 @@ const PlayerPage = (props) => {
               )}
 
               <div className={styles["info-card"]}>
-                <h2 className={styles["card-title"]}>Friends</h2>
-                <FriendsList 
-                  userId={playerPageUser?.id || (currentUser && username === currentUser.username ? currentUser.id : null)}
-                  showOnlineOnly={false}
-                />
+                <h2 className={`${styles["card-title"]} ${friendsCollapsed ? styles["title-collapsed"] : ''}`} onClick={() => setFriendsCollapsed(!friendsCollapsed)} style={{ cursor: 'pointer' }}>
+                  Friends
+                  <span className={`${styles["collapse-arrow"]} ${friendsCollapsed ? styles["collapsed"] : ''}`}>{`\u25BC`}</span>
+                </h2>
+                {!friendsCollapsed && (
+                  <FriendsList 
+                    userId={playerPageUser?.id || (currentUser && username === currentUser.username ? currentUser.id : null)}
+                    showOnlineOnly={false}
+                  />
+                )}
               </div>
 
               <MatchHistory 
@@ -929,7 +942,6 @@ const PlayerPage = (props) => {
                 <StandardButton buttonText={"Return Home"} onClick={handleHome}/>
               </strong>
            </div>}
-           <Divider />
       {(() => {
         if (!currentUser || !realUser) return "";
         const isOwn = currentUser.username === username;

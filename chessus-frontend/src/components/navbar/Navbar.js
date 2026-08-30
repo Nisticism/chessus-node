@@ -267,7 +267,7 @@ const Navbar = () => {
                 </Link>
               </div>
               <div className="nav-item notification-bell-item">
-                <Link to="/notifications" className="notification-bell" title="Notifications">
+                <Link to="/notifications" className="notification-bell" title="Notifications" style={{ marginLeft: '-3px' }}>
                   <IoNotificationsOutline size={22} />
                   {unreadCount > 0 && (
                     <span className="notification-badge">
@@ -322,7 +322,7 @@ const Navbar = () => {
                   </span>
                 )}
               </Link>
-              <Link to="/notifications" className="notification-bell navbar-menu-bell" title="Notifications">
+              <Link to="/notifications" className="notification-bell navbar-menu-bell" title="Notifications" style={{ marginLeft: '-3px' }}>
                 <IoNotificationsOutline size={22} />
                 {unreadCount > 0 && (
                   <span className="notification-badge">

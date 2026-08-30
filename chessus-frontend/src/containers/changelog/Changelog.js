@@ -35,6 +35,9 @@ const changelogData = [
       "More gold polish: page titles (h1) are now muted gold and section headings (h2) brighter gold, dividers follow a consistent gold scheme (2px bright / 1px & dashed muted gold), the footer divider matches the nav hairline, and more primary buttons share the gold + theme gradient.",
       "Removed the heavy colored left-border stripes on match-history and lobby cards for a cleaner look, and Grove dropdown menus use a slightly lighter green.",
       "Log Out now matches the all-caps nav style, long usernames wrap more evenly instead of one letter at a time, and tightened spacing around the messages icon on smaller screens.",
+      "Headings now use a single consistent gold shade, and all dividers use a muted gold (the nav and footer hairlines are unchanged).",
+      "Profile page tidy-up: Ongoing Games and Friends are now collapsible (collapsed by default), section dividers only show when a section is expanded, the divider above Delete Account was removed, and the ELO / Last Active boxes are aligned into a neat column.",
+      "The 'Create Anonymous Game' title now wraps to multiple lines instead of being cut off, and usernames on the Play game cards are a bit lighter and easier to read.",
     ],
   },
   {

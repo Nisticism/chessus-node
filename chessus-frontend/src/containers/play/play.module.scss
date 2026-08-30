@@ -337,7 +337,7 @@
     font-size: 0.9rem;
 
     span {
-      color: var(--accent-secondary);
+      color: var(--accent-primary-text);
       font-weight: 500;
     }
 
@@ -428,7 +428,7 @@
 }
 
 .username-link {
-  color: var(--accent-secondary);
+  color: var(--accent-primary-text);
   text-decoration: none;
 
   &:hover {
@@ -900,9 +900,7 @@
   h2 {
     color: var(--text-heading);
     margin: 0 0 20px 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    overflow-wrap: break-word;
   }
 }
 
