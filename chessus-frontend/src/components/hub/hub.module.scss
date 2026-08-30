@@ -1,0 +1,127 @@
+.hub {
+  max-width: 1400px;
+  margin: 40px auto;
+  padding: 40px var(--page-gutter);
+}
+
+.hubHeader {
+  text-align: center;
+  margin-bottom: 40px;
+
+  h1 {
+    font-size: 3rem;
+    color: var(--accent-vivid, var(--accent-primary-text));
+    margin-bottom: 12px;
+  }
+
+  .subtitle {
+    font-size: 1.2rem;
+    color: var(--text-dim);
+    max-width: 760px;
+    margin: 0 auto;
+    line-height: 1.5;
+  }
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 22px;
+}
+
+.card {
+  position: relative;
+  background: linear-gradient(135deg, var(--panel-bg-start) 0%, var(--panel-bg-end) 100%);
+  border: 1px solid var(--panel-card-border);
+  border-radius: 8px;
+  padding: 26px 26px 22px;
+  text-decoration: none;
+  display: flex;
+  flex-direction: column;
+  min-height: 210px;
+  overflow: hidden;
+  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+
+  // Thin gold accent line that fades in along the card's top edge on hover.
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent 0%, rgba(var(--gold-rgb), 0.6) 50%, transparent 100%);
+    opacity: 0;
+    transition: opacity 0.25s ease;
+  }
+
+  &:hover {
+    transform: translateY(-4px);
+    border-color: var(--gold);
+    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(var(--gold-rgb), 0.25);
+
+    &::before {
+      opacity: 1;
+    }
+
+    .link {
+      color: var(--gold);
+      transform: translateX(4px);
+    }
+
+    .icon {
+      transform: scale(1.06);
+    }
+  }
+}
+
+.icon {
+  font-size: 2.75rem;
+  margin-bottom: 16px;
+  transition: transform 0.25s ease;
+  line-height: 1;
+}
+
+.title {
+  font-size: 1.3rem;
+  color: var(--text-heading);
+  margin: 0 0 10px;
+  font-weight: 600;
+}
+
+.description {
+  color: var(--text-muted);
+  line-height: 1.55;
+  flex-grow: 1;
+  margin-bottom: 18px;
+  font-size: 0.98rem;
+}
+
+.link {
+  color: var(--accent-primary-text);
+  font-weight: 600;
+  font-size: 1.02rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: transform 0.25s ease, color 0.25s ease;
+}
+
+@media (max-width: 768px) {
+  .hub {
+    margin: 20px auto;
+  }
+
+  .hubHeader h1 {
+    font-size: 2.1rem;
+  }
+
+  .hubHeader .subtitle {
+    font-size: 1rem;
+  }
+
+  .grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+}

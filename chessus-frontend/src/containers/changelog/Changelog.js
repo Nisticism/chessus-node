@@ -14,6 +14,10 @@ const changelogData = [
       "Guests can now play against the computer (Fairy Stockfish) from the 'Create Anonymous Game' screen on supported game types — the engine runs entirely in your browser, no account required. On unsupported games the option is disabled with an explanation.",
       "Guest live games are more reliable to rejoin: after a refresh or brief disconnect you return to your exact seat and clock, instead of sometimes being bumped to spectator (especially in guest-vs-guest games).",
       "Privacy: removed Google Analytics and all third-party tracking scripts. Site usage is now measured with lightweight first-party analytics (page views, referring site/campaign, and approximate country) that privacy tools don't block and that is never shared with third parties. See the updated Privacy Policy.",
+      "New Play hub: the Play menu now opens a hub with Open Games, Tournaments, Sandbox, and the Game Library, matching the Create, Community, and Info hubs. All hub pages now share one consistent, more compact card style.",
+      "New settings gear in the navbar lets anyone — including guests — switch between the Grove (green) and Classic (blue) themes instantly, with a link to full preferences.",
+      "Added subtle gold accents across the navigation, hubs, and home page for a more polished, cohesive look.",
+      "Navigation dropdown menus are now easier to read over the home banner, with a cleaner gold underline highlight, and the unread-count badge no longer gets covered when hovering your username.",
     ],
   },
   {

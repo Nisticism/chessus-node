@@ -2013,7 +2013,7 @@ const LiveGame = () => {
       if (parseInt(deletedGameId) === parseInt(gameId)) {
         // Store message to show after redirect
         sessionStorage.setItem('gameDeletedMessage', message || 'This game has been deleted by an administrator.');
-        navigate('/play');
+        navigate('/play/games');
       }
     });
 
@@ -5494,7 +5494,7 @@ const LiveGame = () => {
     if (gameState?.gameTypeId) {
       localStorage.setItem('lastPlayedGameType', gameState.gameTypeId.toString());
     }
-    navigate("/play");
+    navigate("/play/games");
   };
 
   // Upvote the game type from the game-over modal
@@ -6424,7 +6424,7 @@ const LiveGame = () => {
         <div className={styles["error-container"]}>
           <h2>Error</h2>
           <p>{error}</p>
-          <Link to="/play" className={`${styles.btn} ${styles["btn-primary"]}`}>
+          <Link to="/play/games" className={`${styles.btn} ${styles["btn-primary"]}`}>
             Back to Lobby
           </Link>
         </div>
@@ -6439,7 +6439,7 @@ const LiveGame = () => {
         <div className={styles["error-container"]}>
           <h2>Game Not Found</h2>
           <p>This game doesn't exist or has been cancelled.</p>
-          <Link to="/play" className={`${styles.btn} ${styles["btn-primary"]}`}>
+          <Link to="/play/games" className={`${styles.btn} ${styles["btn-primary"]}`}>
             Back to Lobby
           </Link>
         </div>
@@ -6483,7 +6483,7 @@ const LiveGame = () => {
                 Login
               </button>
             )}
-            <Link to="/play" className={`${styles.btn} ${styles["btn-secondary"]}`}>
+            <Link to="/play/games" className={`${styles.btn} ${styles["btn-secondary"]}`}>
               Back to Lobby
             </Link>
           </div>
@@ -6799,7 +6799,7 @@ const LiveGame = () => {
         )}
         
         <div className={styles["header-actions"]}>
-          <Link to="/play" className={`${styles.btn} ${styles["btn-secondary"]} ${styles["btn-small"]}`}>
+          <Link to="/play/games" className={`${styles.btn} ${styles["btn-secondary"]} ${styles["btn-small"]}`}>
             Back to Lobby
           </Link>
         </div>
@@ -7077,7 +7077,7 @@ const LiveGame = () => {
                         className={`${styles.btn} ${styles["btn-danger"]} ${styles["btn-small"]}`}
                         onClick={() => {
                           cancelGame(parseInt(gameId));
-                          navigate('/play');
+                          navigate('/play/games');
                         }}
                       >
                         Cancel Game

@@ -399,7 +399,7 @@ const MatchView = () => {
         <div className={styles["error-container"]}>
           <h2>Error</h2>
           <p>{error}</p>
-          <Link to="/play" className={styles["back-link"]}>Back to Lobby</Link>
+          <Link to="/play/games" className={styles["back-link"]}>Back to Lobby</Link>
         </div>
       </div>
     );
@@ -411,7 +411,7 @@ const MatchView = () => {
         <div className={styles["error-container"]}>
           <h2>Match Not Found</h2>
           <p>This match doesn't exist.</p>
-          <Link to="/play" className={styles["back-link"]}>Back to Lobby</Link>
+          <Link to="/play/games" className={styles["back-link"]}>Back to Lobby</Link>
         </div>
       </div>
     );
@@ -823,7 +823,7 @@ const MatchView = () => {
           >
             ← Back
           </button>
-          <Link to="/play" className={styles["action-btn-primary"]}>
+          <Link to="/play/games" className={styles["action-btn-primary"]}>
             Play Again
           </Link>
         </div>

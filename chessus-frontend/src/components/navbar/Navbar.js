@@ -7,6 +7,7 @@ import { logout, removeUsers } from "../../actions/auth";
 import { getUnreadCount } from "../../actions/notifications";
 import { getUnreadDMCount } from "../../actions/messages";
 import logo from '../../assets/logo-light.png';
+import ThemeMenu from './ThemeMenu';
 import './navbar.scss';
 
 // Simplified user menu for tablet range (751-1000px)
@@ -53,7 +54,7 @@ const Menu = ({ currentUser, logOut, unreadCount, showChangelog }) => {
         </button>
       </div>
       <div className={`inner-menu ${openSubmenu === 'play' ? 'mobile-open' : ''}`}>
-        <Link as="div" className="inner-menu-item" to="/play">
+        <Link as="div" className="inner-menu-item" to="/play/games">
           <span className="inner-menu-icon">🎯</span>Browse Open Games
         </Link>
         <Link as="div" className="inner-menu-item" to="/play/tournaments">
@@ -256,6 +257,7 @@ const Navbar = () => {
           </div>
           {currentUser ? (
             <div className="user-info desktop-only">
+              <ThemeMenu />
               <div className="nav-item notification-bell-item">
                 <Link to="/inbox" className="notification-bell" title="Messages">
                   <IoChatbubbleOutline size={20} />
@@ -296,6 +298,7 @@ const Navbar = () => {
             </div>
           ) : (
             <div className="navbar-nav ml-auto desktop-only">
+              <ThemeMenu />
               <div className="nav-item">
                 <Link to={"/login"} className="nav-item-inner">
                   Sign In
@@ -330,6 +333,7 @@ const Navbar = () => {
               </Link>
             </>
           )}
+          <ThemeMenu />
           { toggleMenu 
             ? <RiCloseLine color="fff" size={27} onClick={() => setToggleMenu(false)} />
             : <RiMenu3Line color="fff" size={27} onClick={() => setToggleMenu(true)} />

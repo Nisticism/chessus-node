@@ -92,6 +92,11 @@ code {
   /* Accent colors */
   --accent-orange: rgb(237, 93, 45);
 
+  /* Gold accent — brand-wide, intentionally the same across all themes */
+  --gold: #d4af37;
+  --gold-bright: #e6c65a;
+  --gold-rgb: 212, 175, 55;
+
   /* Theme-aware accent colors */
   --accent-primary: #439157;
   --accent-primary-text: #6fad7d;

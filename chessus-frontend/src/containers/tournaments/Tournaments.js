@@ -553,7 +553,7 @@ const Tournaments = () => {
           Backend integration placeholder: currently stores tournament objects locally. Next step can switch to API endpoints
           without changing this wizard UX.
         </span>
-        <Link to="/play">Back to Play Lobby</Link>
+        <Link to="/play/games">Back to Play Lobby</Link>
       </div>
     </div>
   );

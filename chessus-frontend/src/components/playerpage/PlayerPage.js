@@ -65,7 +65,7 @@ const PlayerPage = (props) => {
   // Navigate to play page with challenge modal open
   const handleChallenge = () => {
     if (playerPageUser) {
-      navigate('/play', { 
+      navigate('/play/games', { 
         state: { 
           openChallengeFor: { 
             id: playerPageUser.id, 

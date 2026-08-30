@@ -1,63 +1,40 @@
 import React from "react";
-import { Link } from "react-router-dom";
-import styles from "./createhub.module.scss";
+import HubGrid from "../../components/hub/HubGrid";
 
 const CreateHub = () => {
   const creationOptions = [
     {
       title: "New Game",
-      description: "Create your own custom strategy game with unique rules, board layouts, and winning conditions. Define how pieces move, capture, and interact to craft entirely new game experiences.",
+      description: "Create your own custom strategy game with unique rules, board layouts, and winning conditions. Define how pieces move, capture, and interact.",
       link: "/create/game",
-      icon: "🎲"
+      icon: "🎲",
     },
     {
       title: "New Piece",
-      description: "Build custom chess pieces with your own movement patterns, capture rules, and special abilities. Upload custom graphics and define unique behaviors to use in your games.",
+      description: "Build custom pieces with your own movement patterns, capture rules, and special abilities. Upload graphics and define unique behaviors.",
       link: "/create/piece",
-      icon: "♟️"
+      icon: "♟️",
     },
     {
       title: "Game Library",
-      description: "Browse all custom games created by the GridGrove community. Discover new game types, see what others have built, and find inspiration for your own creations.",
+      description: "Browse all custom games created by the GridGrove community. Discover new game types and find inspiration for your own creations.",
       link: "/create/games",
-      icon: "📋"
+      icon: "📚",
     },
     {
       title: "Piece Library",
-      description: "Explore the collection of custom pieces designed by the community. See piece images, movement patterns, and find pieces to use in your own game designs.",
+      description: "Explore the collection of custom pieces designed by the community. See piece images, movement patterns, and find pieces for your games.",
       link: "/create/pieces",
-      icon: "👁️"
-    }
+      icon: "👁️",
+    },
   ];
 
   return (
-    <div className="container">
-      <div className={styles["createhub-container"]}>
-        <div className={styles["createhub-header"]}>
-          <h1>Create Hub</h1>
-          <p className={styles["createhub-subtitle"]}>
-            Design custom games and pieces, or explore what the community has created
-          </p>
-        </div>
-
-        <div className={styles["options-grid"]}>
-          {creationOptions.map((option, index) => (
-            <Link 
-              to={option.link} 
-              key={index} 
-              className={styles["option-card"]}
-            >
-              <div className={styles["option-icon"]}>{option.icon}</div>
-              <h2 className={styles["option-title"]}>{option.title}</h2>
-              <p className={styles["option-description"]}>{option.description}</p>
-              <div className={styles["option-link"]}>
-                Get Started →
-              </div>
-            </Link>
-          ))}
-        </div>
-      </div>
-    </div>
+    <HubGrid
+      title="Create"
+      subtitle="Design custom games and pieces, or explore what the community has created"
+      options={creationOptions}
+    />
   );
 };
 

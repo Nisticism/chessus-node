@@ -258,6 +258,7 @@ p {
     animation: navDropdownGrow 0.16s ease-out;
   }
   .inner-menu-item {
+    position: relative;
     display: flex;
     align-items: center;
     justify-content: flex-start;
@@ -267,26 +268,31 @@ p {
     height: 42px;
     text-decoration: none;
     font-size: clamp(0.95rem, 0.2vw + 0.9rem, 1rem);
-    transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+    transition: transform 0.15s ease, background 0.15s ease;
+  }
+  // Thin glowing gold underline, inset from the edges so it matches the
+  // top-level nav items and never touches the dropdown's rounded corners.
+  .inner-menu-item::after {
+    content: '';
+    position: absolute;
+    left: 16px;
+    right: 16px;
+    bottom: 8px;
+    height: 2px;
+    border-radius: 2px;
+    background: $nav-gold;
+    box-shadow: 0 0 8px 0 rgba(212, 175, 55, 0.75);
+    transform: scaleX(0);
+    transform-origin: center;
+    transition: transform 0.16s ease;
+    pointer-events: none;
   }
   .inner-menu-item:hover {
     background: rgba(212, 175, 55, 0.14);
-    box-shadow: inset 0 -2px 0 0 $nav-gold, 0 4px 12px -4px rgba(212, 175, 55, 0.55);
     transform: translateX(4px);
   }
-  
-  // Auto-apply rounded corners to first and last submenu items
-  .inner-menu-item:first-child {
-    border-radius: 0px 4px 0px 0px;
-  }
-  
-  .inner-menu-item:last-child {
-    border-radius: 0px 0px 4px 4px;
-  }
-  
-  // Single item gets both top-right and bottom corners
-  .inner-menu-item:only-child {
-    border-radius: 0px 4px 4px 4px;
+  .inner-menu-item:hover::after {
+    transform: scaleX(1);
   }
 }
 
@@ -628,6 +634,10 @@ p {
 .notification-bell-item {
   display: flex;
   align-items: center;
+  // Keep the bell (and its count badge) painting above the adjacent username
+  // item's hover styles so the badge is never covered on hover.
+  position: relative;
+  z-index: 2;
 }
 
 .notification-bell {
@@ -666,9 +676,117 @@ p {
   line-height: 1;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
   animation: badge-pulse 2s ease-in-out infinite;
+  z-index: 3;
 }
 
 @keyframes badge-pulse {
   0%, 100% { transform: scale(1); }
   50% { transform: scale(1.1); }
+}
+
+// Settings / theme gear menu (available to guests and logged-in users)
+.theme-menu {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.theme-menu-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: #e0e0e0;
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 50%;
+  transition: color 0.2s ease, background 0.2s ease, transform 0.35s ease;
+
+  &:hover {
+    color: var(--gold);
+    background: rgba(212, 175, 55, 0.12);
+    transform: rotate(35deg);
+  }
+}
+
+.theme-menu-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 214px;
+  background: var(--bg-card);
+  border: 1px solid rgba(212, 175, 55, 0.28);
+  border-radius: 10px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+  padding: 8px;
+  z-index: 1100;
+  transform-origin: top right;
+  animation: navDropdownGrow 0.16s ease-out;
+}
+
+.theme-menu-heading {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+  padding: 6px 10px 8px;
+  font-weight: 700;
+}
+
+.theme-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  background: transparent;
+  border: none;
+  color: var(--text-heading);
+  padding: 9px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.95rem;
+  text-align: left;
+  transition: background 0.15s ease;
+
+  &:hover { background: rgba(212, 175, 55, 0.14); }
+  &.active { background: rgba(212, 175, 55, 0.1); }
+}
+
+.theme-menu-name { font-weight: 600; }
+
+.theme-menu-desc {
+  color: var(--text-dim);
+  font-size: 0.82rem;
+  margin-left: auto;
+}
+
+.theme-menu-check {
+  color: var(--gold);
+  margin-left: 6px;
+  font-weight: 700;
+}
+
+.theme-swatch {
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  flex-shrink: 0;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.theme-swatch-grove { background: linear-gradient(135deg, #1a3a2a 0%, #4caf50 100%); }
+.theme-swatch-classic { background: linear-gradient(135deg, #082c51 0%, #4a90e2 100%); }
+
+.theme-menu-more {
+  display: block;
+  margin-top: 6px;
+  padding: 8px 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--accent-primary-text);
+  text-decoration: none;
+  font-size: 0.88rem;
+  font-weight: 600;
+
+  &:hover { color: var(--gold); }
 }

@@ -375,7 +375,7 @@ const Home = () => {
           <Link to="/create/game" className={styles["primary-button"]}>
             ♟️ Create a Game
           </Link>
-          <Link to="/play" className={styles["secondary-button"]}>
+          <Link to="/play/games" className={styles["secondary-button"]}>
             ⚔️ Play Now
           </Link>
           {!currentUser && (
