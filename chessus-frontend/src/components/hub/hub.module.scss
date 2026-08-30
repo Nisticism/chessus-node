@@ -82,6 +82,10 @@
   line-height: 1;
 }
 
+.icon svg {
+  display: block;
+}
+
 .title {
   font-size: 1.3rem;
   color: var(--text-heading);

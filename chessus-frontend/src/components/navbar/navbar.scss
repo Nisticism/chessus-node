@@ -152,7 +152,7 @@ p {
 }
 
 .nav-item-inner:hover {
-  background: $nav-hover-color;
+  background: var(--nav-dropdown-bg);
 }
 
 .navbar-menu {
@@ -234,63 +234,78 @@ p {
   line-height: 1;
 }
 
+.inner-menu-icon svg {
+  display: block;
+  margin: 0 auto;
+}
+
 // Removed hardcoded .upper-right-corner and .lower-corner classes
 // Border radius is now automatically applied via :first-child and :last-child selectors
 
 // Desktop-only hover styles — scoped so they don't affect the mobile hamburger menu
 .navbar-links-container .nav-item:hover {
-  background: $nav-hover-color;
+  // Hovered tab + its dropdown read as one slightly-lighter panel that overlaps
+  // the gold hairline (raised above it) so there's no line or gap between them.
+  background: var(--nav-dropdown-bg);
+  position: relative;
+  z-index: 1001;
+
   .inner-menu {
     display: block;
     position: absolute;
     width: fit-content;
-    min-width: 190px;
-    top: $nav-height;
-    border-radius: 0 0 6px 6px;
-    // Solid, readable panel even over the hero image.
-    background: var(--bg-card);
-    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
-    border: 1px solid rgba(212, 175, 55, 0.28);
-    border-top: none;
+    min-width: 200px;
+    left: 0;
+    top: calc(#{$nav-height} - 2px);
+    background: var(--nav-dropdown-bg);
+    border-radius: 0 0 8px 8px;
+    box-shadow: 0 16px 30px rgba(0, 0, 0, 0.4);
     overflow: hidden;
-    // On-brand "grow": the menu unfurls with a gentle scale + fade.
+    z-index: 1001;
     transform-origin: top center;
     animation: navDropdownGrow 0.16s ease-out;
   }
+
   .inner-menu-item {
     position: relative;
     display: flex;
     align-items: center;
     justify-content: flex-start;
-    gap: 10px;
-    padding: 0px 16px;
+    gap: 11px;
+    padding: 0 18px;
     background: transparent;
-    height: 42px;
+    height: 46px;
+    white-space: nowrap;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
     text-decoration: none;
-    font-size: clamp(0.95rem, 0.2vw + 0.9rem, 1rem);
+    font-size: clamp(0.85rem, 0.15vw + 0.8rem, 0.92rem);
     transition: transform 0.15s ease, background 0.15s ease;
   }
-  // Thin glowing gold underline, inset from the edges so it matches the
-  // top-level nav items and never touches the dropdown's rounded corners.
+
+  // Thin glowing gold underline that grows in under the label on hover, kept
+  // well clear of the text and the panel's rounded corners.
   .inner-menu-item::after {
     content: '';
     position: absolute;
-    left: 16px;
-    right: 16px;
-    bottom: 8px;
+    left: 18px;
+    right: 18px;
+    bottom: 7px;
     height: 2px;
     border-radius: 2px;
     background: $nav-gold;
-    box-shadow: 0 0 8px 0 rgba(212, 175, 55, 0.75);
+    box-shadow: 0 0 8px 0 rgba(212, 175, 55, 0.7);
     transform: scaleX(0);
-    transform-origin: center;
+    transform-origin: left center;
     transition: transform 0.16s ease;
     pointer-events: none;
   }
+
   .inner-menu-item:hover {
-    background: rgba(212, 175, 55, 0.14);
+    background: rgba(212, 175, 55, 0.12);
     transform: translateX(4px);
   }
+
   .inner-menu-item:hover::after {
     transform: scaleX(1);
   }

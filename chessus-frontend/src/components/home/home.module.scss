@@ -97,7 +97,7 @@
 
   &:hover {
     transform: translateY(-1px);
-    box-shadow: 0 0 0 1px rgba(var(--interaction-hover-rgb), 0.28), 0 10px 22px rgba(var(--interaction-hover-rgb), 0.2);
+    box-shadow: 0 0 0 1px rgba(var(--gold-rgb), 0.4), 0 10px 22px rgba(var(--interaction-hover-rgb), 0.2);
   }
 }
 
@@ -304,8 +304,8 @@
 
   &:hover {
     transform: translateY(-3px);
-    border-color: var(--border-bright);
-    box-shadow: 0 8px 24px rgba(var(--accent-rgb), 0.18);
+    border-color: var(--gold);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22), 0 0 0 1px rgba(var(--gold-rgb), 0.25);
   }
 
   &.selected {

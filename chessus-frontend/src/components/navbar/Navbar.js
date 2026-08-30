@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { Link, useNavigate } from 'react-router-dom';
 import { RiMenu3Line, RiCloseLine } from 'react-icons/ri';
 import { IoNotificationsOutline, IoChatbubbleOutline } from 'react-icons/io5';
+import { FaChessPawn, FaChessKnight, FaChessBishop } from 'react-icons/fa';
 import { useDispatch, useSelector } from "react-redux";
 import { logout, removeUsers } from "../../actions/auth";
 import { getUnreadCount } from "../../actions/notifications";
@@ -55,16 +56,13 @@ const Menu = ({ currentUser, logOut, unreadCount, showChangelog }) => {
       </div>
       <div className={`inner-menu ${openSubmenu === 'play' ? 'mobile-open' : ''}`}>
         <Link as="div" className="inner-menu-item" to="/play/games">
-          <span className="inner-menu-icon">🎯</span>Browse Open Games
+          <span className="inner-menu-icon"><FaChessPawn color="#cbd5e1" /></span>Open Games
         </Link>
         <Link as="div" className="inner-menu-item" to="/play/tournaments">
           <span className="inner-menu-icon">🏆</span>Tournaments
         </Link>
         <Link as="div" className="inner-menu-item" to="/sandbox">
-          <span className="inner-menu-icon">🧪</span>Sandbox
-        </Link>
-        <Link as="div" className="inner-menu-item" to="/create/games">
-          <span className="inner-menu-icon">📋</span>Game Library
+          <span className="inner-menu-icon">🪣</span>Sandbox
         </Link>
       </div>
     </div>
@@ -86,13 +84,13 @@ const Menu = ({ currentUser, logOut, unreadCount, showChangelog }) => {
           <span className="inner-menu-icon">🎲</span>New Game
         </Link>
         <Link as="div" className="inner-menu-item" to="/create/piece">
-          <span className="inner-menu-icon">♟️</span>New Piece
+          <span className="inner-menu-icon"><FaChessKnight color="#cbd5e1" /></span>New Piece
         </Link>
         <Link as="div" className="inner-menu-item" to="/create/games">
-          <span className="inner-menu-icon">📋</span>Game Library
+          <span className="inner-menu-icon">📚</span>Game Library
         </Link>
         <Link as="div" className="inner-menu-item" to="/create/pieces">
-          <span className="inner-menu-icon">👁️</span>Piece Library
+          <span className="inner-menu-icon"><FaChessBishop color="#cbd5e1" /></span>Piece Library
         </Link>
       </div>
     </div>

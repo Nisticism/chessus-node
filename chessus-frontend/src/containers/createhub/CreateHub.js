@@ -1,4 +1,5 @@
 import React from "react";
+import { FaChessKnight, FaChessBishop } from "react-icons/fa";
 import HubGrid from "../../components/hub/HubGrid";
 
 const CreateHub = () => {
@@ -13,7 +14,7 @@ const CreateHub = () => {
       title: "New Piece",
       description: "Build custom pieces with your own movement patterns, capture rules, and special abilities. Upload graphics and define unique behaviors.",
       link: "/create/piece",
-      icon: "♟️",
+      icon: <FaChessKnight color="#cbd5e1" />,
     },
     {
       title: "Game Library",
@@ -25,7 +26,7 @@ const CreateHub = () => {
       title: "Piece Library",
       description: "Explore the collection of custom pieces designed by the community. See piece images, movement patterns, and find pieces for your games.",
       link: "/create/pieces",
-      icon: "👁️",
+      icon: <FaChessBishop color="#cbd5e1" />,
     },
   ];
 

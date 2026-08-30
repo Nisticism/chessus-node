@@ -1,4 +1,5 @@
 import React from "react";
+import { FaChessPawn } from "react-icons/fa";
 import HubGrid from "../../components/hub/HubGrid";
 
 const PlayHub = () => {
@@ -6,7 +7,7 @@ const PlayHub = () => {
     {
       title: "Open Games",
       description: "Browse open lobbies, join a live match, or start a new game against another player or a bot.",
-      icon: "♟️",
+      icon: <FaChessPawn color="#cbd5e1" />,
       link: "/play/games",
     },
     {
@@ -20,12 +21,6 @@ const PlayHub = () => {
       description: "Experiment freely with any game type, test positions, and try out ideas with no stakes.",
       icon: "🪣",
       link: "/sandbox",
-    },
-    {
-      title: "Game Library",
-      description: "Explore every custom game the community has created and find your next match to play.",
-      icon: "📚",
-      link: "/create/games",
     },
   ];
 

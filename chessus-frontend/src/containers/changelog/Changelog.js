@@ -18,6 +18,11 @@ const changelogData = [
       "New settings gear in the navbar lets anyone — including guests — switch between the Grove (green) and Classic (blue) themes instantly, with a link to full preferences.",
       "Added subtle gold accents across the navigation, hubs, and home page for a more polished, cohesive look.",
       "Navigation dropdown menus are now easier to read over the home banner, with a cleaner gold underline highlight, and the unread-count badge no longer gets covered when hovering your username.",
+      "Navigation dropdowns now connect seamlessly to the menu tab as a single panel (no gap or dividing line), with a slightly lighter background and tidier uppercase items.",
+      "Menu and hub icons refreshed: replaced the dark/purple chess icons with lighter piece icons, gave New Piece and Piece Library clearer chess-piece icons, and made the Play and Create menu icons match their hub pages.",
+      "Streamlined the Play menu — 'Browse Open Games' is now simply 'Open Games', and the Game Library now lives under Create.",
+      "The Grove (green) theme got a refresh with brighter, more vivid greens and extra gold accents throughout.",
+      "Removed old-fashioned paragraph indentation (e.g. on the About page) for a cleaner, more modern look.",
     ],
   },
   {

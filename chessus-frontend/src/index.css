@@ -88,6 +88,7 @@ code {
   --nav-hover: rgb(51, 55, 147);
   --nav-light-hover: rgb(117, 124, 252);
   --nav-menu-bg: rgb(202, 213, 232);
+  --nav-dropdown-bg: #2a2f3a;
 
   /* Accent colors */
   --accent-orange: rgb(237, 93, 45);
@@ -188,8 +189,8 @@ code {
   --forum-link-hover: #86ab93;
   --forum-row-hover: rgba(89, 118, 98, 0.16);
 
-  --interaction-hover: #5f9d6a;
-  --interaction-hover-rgb: 95, 157, 106;
+  --interaction-hover: #64ab71;
+  --interaction-hover-rgb: 100, 171, 113;
 
   --button-primary-bg: rgb(87, 135, 95);
   --button-primary-hover: var(--interaction-hover);
@@ -208,13 +209,14 @@ code {
   --nav-hover: rgb(58, 90, 66);
   --nav-light-hover: var(--interaction-hover);
   --nav-menu-bg: rgb(193, 214, 198);
+  --nav-dropdown-bg: #333f37;
 
   --accent-primary: #567a5f;
-  --accent-primary-text: #84b690;
+  --accent-primary-text: #8fc79c;
   --accent-primary-hover: #486850;
-  --accent-highlight: #6e9179;
-  --accent-bright: #6e9179;
-  --accent-vivid: #83bf8d;
+  --accent-highlight: #7fae8a;
+  --accent-bright: #7fae8a;
+  --accent-vivid: #8fd29b;
   --accent-muted: #4f6b59;
 
   /* Panel/Card themed colors */
@@ -231,8 +233,8 @@ code {
   --border-bright: #6d8a76;
 
   /* Themed text colors */
-  --text-muted: #a6c1af;
-  --text-dim: #7d9b87;
+  --text-muted: #adc8b6;
+  --text-dim: #88a894;
   --text-info: #78a08c;
   --text-info-hover: #a0d8af;
   --text-accent-light: #a5cfb7;
@@ -241,7 +243,7 @@ code {
   /* RGB components */
   --accent-rgb: 87, 135, 95;
   --accent-highlight-rgb: 110, 145, 121;
-  --accent-vivid-rgb: 131, 191, 141;
+  --accent-vivid-rgb: 143, 210, 155;
   --accent-muted-rgb: 79, 107, 89;
   --panel-bg-start-rgb: 22, 34, 27;
   --panel-bg-end-rgb: 32, 50, 40;
@@ -308,6 +310,7 @@ code {
   --nav-hover: rgb(42, 68, 97);
   --nav-light-hover: var(--interaction-hover);
   --nav-menu-bg: rgb(202, 213, 232);
+  --nav-dropdown-bg: #333c4a;
 
   --accent-primary: #4a90e2;
   --accent-primary-text: #7fb3e8;
