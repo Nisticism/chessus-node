@@ -1,6 +1,6 @@
 .careersPage {
   min-height: calc(100vh - 200px);
-  padding: 40px 20px;
+  padding: 40px var(--page-gutter);
   background: rgba(var(--panel-bg-start-rgb), 0.05);
 
   .container {

@@ -19,12 +19,18 @@ code {
     monospace;
 }
 
+/* Sitewide responsive page gutter: 40px on desktop, 20px on smaller screens. */
+@media (max-width: 1000px) {
+  :root { --page-gutter: 20px; }
+}
+
 :root {
   /* Base colors */
   color: var(--text-heading);
   background-color: #2a2e38;
   
   --font-family: 'Manrope', sans-serif;
+  --page-gutter: 40px; /* sitewide page side padding; 20px below 1000px (see media query above) */
   --background-color: #e2ffda;
   --nav-background: #082c51;
   --dark-blue-text: #09325a;

@@ -14,14 +14,22 @@ $nav-gold: #d4af37;
   z-index: 999;
 }
 
-.navbar-border {
-  // Subtle gold hairline, shown consistently on every page (incl. over the home hero).
-  background: linear-gradient(90deg, rgba(212, 175, 55, 0) 0%, rgba(212, 175, 55, 0.55) 50%, rgba(212, 175, 55, 0) 100%);
+// Gold hairline flush at the navbar's bottom edge (renders over the home hero,
+// with no gap). Replaces the old separate .navbar-border element.
+.navbar::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
   height: 2px;
-  display: flex;
-  width: 100%;
-  position: relative;
-  z-index: 998;
+  background: linear-gradient(90deg, rgba(212, 175, 55, 0) 0%, rgba(212, 175, 55, 0.6) 50%, rgba(212, 175, 55, 0) 100%);
+  z-index: 1000;
+  pointer-events: none;
+}
+
+.navbar-border {
+  display: none;
 }
 
 @keyframes navDropdownGrow {
@@ -103,6 +111,7 @@ p {
 }
 
 .nav-item-inner {
+  position: relative;
   padding: 0px 15px;
   text-decoration: none;
   height: $nav-height;
@@ -110,6 +119,28 @@ p {
   align-items: center;
   font-weight: 500;
   font-size: inherit;
+}
+
+// Thin glowing gold underline that grows in under the label on hover (under the
+// word, not a full-width border).
+.nav-item-inner::after {
+  content: '';
+  position: absolute;
+  left: 15px;
+  right: 15px;
+  bottom: 11px;
+  height: 2px;
+  border-radius: 2px;
+  background: $nav-gold;
+  box-shadow: 0 0 8px 0 rgba(212, 175, 55, 0.75);
+  transform: scaleX(0);
+  transform-origin: center;
+  transition: transform 0.18s ease;
+  pointer-events: none;
+}
+
+.nav-item-inner:hover::after {
+  transform: scaleX(1);
 }
 
 .sign-up {
@@ -122,7 +153,6 @@ p {
 
 .nav-item-inner:hover {
   background: $nav-hover-color;
-  box-shadow: inset 0 -2px 0 0 $nav-gold, 0 4px 12px -6px rgba(212, 175, 55, 0.6);
 }
 
 .navbar-menu {
@@ -196,20 +226,33 @@ p {
   display: none;
 }
 
+.inner-menu-icon {
+  font-size: 1.05rem;
+  width: 1.35em;
+  text-align: center;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
 // Removed hardcoded .upper-right-corner and .lower-corner classes
 // Border radius is now automatically applied via :first-child and :last-child selectors
 
 // Desktop-only hover styles — scoped so they don't affect the mobile hamburger menu
 .navbar-links-container .nav-item:hover {
   background: $nav-hover-color;
-  box-shadow: inset 0 -2px 0 0 $nav-gold, 0 4px 12px -6px rgba(212, 175, 55, 0.6);
   .inner-menu {
     display: block;
     position: absolute;
     width: fit-content;
-    min-width: 175px;
+    min-width: 190px;
     top: $nav-height;
-    border-radius: 4px 4px 4px 4px;
+    border-radius: 0 0 6px 6px;
+    // Solid, readable panel even over the hero image.
+    background: var(--bg-card);
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+    border: 1px solid rgba(212, 175, 55, 0.28);
+    border-top: none;
+    overflow: hidden;
     // On-brand "grow": the menu unfurls with a gentle scale + fade.
     transform-origin: top center;
     animation: navDropdownGrow 0.16s ease-out;
@@ -218,9 +261,10 @@ p {
     display: flex;
     align-items: center;
     justify-content: flex-start;
-    padding: 0px 15px 0px;
-    background: $nav-hover-color;
-    height: 40px;
+    gap: 10px;
+    padding: 0px 16px;
+    background: transparent;
+    height: 42px;
     text-decoration: none;
     font-size: clamp(0.95rem, 0.2vw + 0.9rem, 1rem);
     transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;

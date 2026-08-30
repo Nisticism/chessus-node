@@ -1,7 +1,7 @@
 .tutorial-container {
   max-width: 1000px;
   margin: 40px auto;
-  padding: 0 20px;
+  padding: 0 var(--page-gutter);
 }
 
 .tutorial-header {

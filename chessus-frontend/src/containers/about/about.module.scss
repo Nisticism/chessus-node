@@ -1,7 +1,7 @@
 .about-container {
   max-width: 1100px;
   margin: 40px auto;
-  padding: 0 20px;
+  padding: 0 var(--page-gutter);
   display: flex;
   flex-direction: column;
   gap: 24px;

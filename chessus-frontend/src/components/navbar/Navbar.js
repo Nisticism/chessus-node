@@ -54,16 +54,16 @@ const Menu = ({ currentUser, logOut, unreadCount, showChangelog }) => {
       </div>
       <div className={`inner-menu ${openSubmenu === 'play' ? 'mobile-open' : ''}`}>
         <Link as="div" className="inner-menu-item" to="/play">
-          Browse Open Games
+          <span className="inner-menu-icon">🎯</span>Browse Open Games
         </Link>
         <Link as="div" className="inner-menu-item" to="/play/tournaments">
-          Tournaments
+          <span className="inner-menu-icon">🏆</span>Tournaments
         </Link>
         <Link as="div" className="inner-menu-item" to="/sandbox">
-          Sandbox
+          <span className="inner-menu-icon">🧪</span>Sandbox
         </Link>
         <Link as="div" className="inner-menu-item" to="/create/games">
-          Game Library
+          <span className="inner-menu-icon">📋</span>Game Library
         </Link>
       </div>
     </div>
@@ -82,16 +82,16 @@ const Menu = ({ currentUser, logOut, unreadCount, showChangelog }) => {
       </div>
       <div className={`inner-menu ${openSubmenu === 'create' ? 'mobile-open' : ''}`}>
         <Link as="div" className="inner-menu-item" to="/create/game">
-          New Game
+          <span className="inner-menu-icon">🎲</span>New Game
         </Link>
         <Link as="div" className="inner-menu-item" to="/create/piece">
-          New Piece
+          <span className="inner-menu-icon">♟️</span>New Piece
         </Link>
         <Link as="div" className="inner-menu-item" to="/create/games">
-          Game Library
+          <span className="inner-menu-icon">📋</span>Game Library
         </Link>
         <Link as="div" className="inner-menu-item" to="/create/pieces">
-          Piece Library
+          <span className="inner-menu-icon">👁️</span>Piece Library
         </Link>
       </div>
     </div>
@@ -108,16 +108,16 @@ const Menu = ({ currentUser, logOut, unreadCount, showChangelog }) => {
       </div>
       <div className={`inner-menu ${openSubmenu === 'community' ? 'mobile-open' : ''}`}>
         <Link as="div" className="inner-menu-item" to="/community/players">
-          Players
+          <span className="inner-menu-icon">🧑‍🤝‍🧑</span>Players
         </Link>
         <Link as="div" className="inner-menu-item" to="/forums">
-          Forums
+          <span className="inner-menu-icon">💬</span>Forums
         </Link>
         <Link as="div" className="inner-menu-item" to="/community/social">
-          Social Media
+          <span className="inner-menu-icon">🌐</span>Social Media
         </Link>
         <Link as="div" className="inner-menu-item" to="/community/streams">
-          Streams
+          <span className="inner-menu-icon">📺</span>Streams
         </Link>
       </div>
     </div>
@@ -131,19 +131,19 @@ const Menu = ({ currentUser, logOut, unreadCount, showChangelog }) => {
       </div>
       <div className={`inner-menu ${openSubmenu === 'info' ? 'mobile-open' : ''}`}>
         <Link as="div" className="inner-menu-item" to="/news">
-          News
+          <span className="inner-menu-icon">📰</span>News
         </Link>
         <Link as="div" className="inner-menu-item" to="/faq">
-          FAQ
+          <span className="inner-menu-icon">❓</span>FAQ
         </Link>
         <Link as="div" className="inner-menu-item" to="/community/about">
-          About Us
+          <span className="inner-menu-icon">ℹ️</span>About Us
         </Link>
         <Link as="div" className="inner-menu-item" to="/contact">
-          Contact
+          <span className="inner-menu-icon">✉️</span>Contact
         </Link>
         <Link as="div" className="inner-menu-item" to="/donate">
-          Support GridGrove
+          <span className="inner-menu-icon">💝</span>Support GridGrove
         </Link>
       </div>
     </div>
