@@ -2,6 +2,7 @@ import React from "react";
 import { Link } from "react-router-dom";
 import { useSelector } from "react-redux";
 import styles from "./footer.module.scss";
+import { NAV_MENUS } from "../../config/navMenu";
 
 const Footer = () => {
   const currentYear = new Date().getFullYear();
@@ -10,49 +11,18 @@ const Footer = () => {
   return (
     <footer className={styles.footer}>
       <div className={styles.footerContent}>
-        <div className={styles.footerSection}>
-          <h3 className={styles.footerHeading}><Link to="/create">Create</Link></h3>
-          <ul className={styles.footerLinks}>
-            <li><Link to="/create/game">New Game</Link></li>
-            <li><Link to="/create/piece">New Piece</Link></li>
-            <li><Link to="/create/games">Game Library</Link></li>
-            <li><Link to="/create/pieces">Piece Library</Link></li>
-          </ul>
-        </div>
+        {NAV_MENUS.map((menu) => (
+          <div className={styles.footerSection} key={menu.id}>
+            <h3 className={styles.footerHeading}><Link to={menu.path}>{menu.label}</Link></h3>
+            <ul className={styles.footerLinks}>
+              {menu.items.map((item) => (
+                <li key={item.path}><Link to={item.path}>{item.label}</Link></li>
+              ))}
+            </ul>
+          </div>
+        ))}
 
-        <div className={styles.footerSection}>
-          <h3 className={styles.footerHeading}><Link to="/play">Play</Link></h3>
-          <ul className={styles.footerLinks}>
-            <li><Link to="/play/games">Browse Open Games</Link></li>
-            <li><Link to="/sandbox">Sandbox</Link></li>
-            <li><Link to="/play/tournaments">Tournaments</Link></li>
-            <li><Link to="/create/games">Game Library</Link></li>
-          </ul>
-        </div>
-
-        <div className={styles.footerSection}>
-          <h3 className={styles.footerHeading}><Link to="/community">Community</Link></h3>
-          <ul className={styles.footerLinks}>
-            <li><Link to="/community/players">Players</Link></li>
-            <li><Link to="/forums">Forums</Link></li>
-            <li><Link to="/community/social">Social Media</Link></li>
-            <li><Link to="/community/streams">Streams</Link></li>
-          </ul>
-        </div>
-
-        <div className={styles.footerSection}>
-          <h3 className={styles.footerHeading}><Link to="/info">Info</Link></h3>
-          <ul className={styles.footerLinks}>
-            <li><Link to="/news">News</Link></li>
-            <li><Link to="/faq">FAQ</Link></li>
-            <li><Link to="/community/about">About Us</Link></li>
-            <li><Link to="/contact">Contact</Link></li>
-            <li><Link to="/donate">Support GridGrove</Link></li>
-          </ul>
-        </div>
-
-
-      </div>
+</div>
 
       <div className={styles.footerLegal}>
         <Link to="/careers">Careers</Link>

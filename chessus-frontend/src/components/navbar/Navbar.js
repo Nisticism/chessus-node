@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { Link, useNavigate } from 'react-router-dom';
 import { RiMenu3Line, RiCloseLine } from 'react-icons/ri';
 import { IoNotificationsOutline, IoChatbubbleOutline } from 'react-icons/io5';
-import { FaChessPawn, FaChessKnight, FaChessBishop } from 'react-icons/fa';
+import { NAV_MENUS } from '../../config/navMenu';
 import { useDispatch, useSelector } from "react-redux";
 import { logout, removeUsers } from "../../actions/auth";
 import { getUnreadCount } from "../../actions/notifications";
@@ -47,105 +47,23 @@ const Menu = ({ currentUser, logOut, unreadCount, showChangelog }) => {
 
   return (
   <div className="navbar-inner navbar">
-    <div className="nav-item">
-      <div className="nav-item-wrapper">
-        <Link as="div" className="nav-item-inner" to="/play">Play</Link>
-        <button className="submenu-toggle mobile-only" onClick={(e) => toggleSubmenu(e, 'play')} aria-label="Toggle Play submenu">
-          <span className={`chevron ${openSubmenu === 'play' ? 'open' : ''}`}>{`\u25BC`}</span>
-        </button>
+    {NAV_MENUS.map((menu) => (
+      <div className="nav-item" key={menu.id}>
+        <div className="nav-item-wrapper">
+          <Link as="div" className="nav-item-inner" to={menu.path}>{menu.label}</Link>
+          <button className="submenu-toggle mobile-only" onClick={(e) => toggleSubmenu(e, menu.id)} aria-label={`Toggle ${menu.label} submenu`}>
+            <span className={`chevron ${openSubmenu === menu.id ? 'open' : ''}`}>{`\u25BC`}</span>
+          </button>
+        </div>
+        <div className={`inner-menu ${openSubmenu === menu.id ? 'mobile-open' : ''}`}>
+          {menu.items.map((item) => (
+            <Link as="div" className="inner-menu-item" to={item.path} key={item.path}>
+              <span className="inner-menu-icon">{item.icon}</span>{item.label}
+            </Link>
+          ))}
+        </div>
       </div>
-      <div className={`inner-menu ${openSubmenu === 'play' ? 'mobile-open' : ''}`}>
-        <Link as="div" className="inner-menu-item" to="/play/games">
-          <span className="inner-menu-icon"><FaChessPawn color="#cbd5e1" /></span>Open Games
-        </Link>
-        <Link as="div" className="inner-menu-item" to="/play/tournaments">
-          <span className="inner-menu-icon">🏆</span>Tournaments
-        </Link>
-        <Link as="div" className="inner-menu-item" to="/sandbox">
-          <span className="inner-menu-icon">🪣</span>Sandbox
-        </Link>
-      </div>
-    </div>
-    {/*
-    Join a game
-    Create a game
-    Join a random open game
-    Browse open games
-    Play with friends */}
-    <div className="nav-item">
-      <div className="nav-item-wrapper">
-        <Link as="div" className="nav-item-inner" to="/create">Create</Link>
-        <button className="submenu-toggle mobile-only" onClick={(e) => toggleSubmenu(e, 'create')} aria-label="Toggle Create submenu">
-          <span className={`chevron ${openSubmenu === 'create' ? 'open' : ''}`}>{`\u25BC`}</span>
-        </button>
-      </div>
-      <div className={`inner-menu ${openSubmenu === 'create' ? 'mobile-open' : ''}`}>
-        <Link as="div" className="inner-menu-item" to="/create/game">
-          <span className="inner-menu-icon">🎲</span>New Game
-        </Link>
-        <Link as="div" className="inner-menu-item" to="/create/piece">
-          <span className="inner-menu-icon"><FaChessKnight color="#cbd5e1" /></span>New Piece
-        </Link>
-        <Link as="div" className="inner-menu-item" to="/create/games">
-          <span className="inner-menu-icon">📚</span>Game Library
-        </Link>
-        <Link as="div" className="inner-menu-item" to="/create/pieces">
-          <span className="inner-menu-icon"><FaChessBishop color="#cbd5e1" /></span>Piece Library
-        </Link>
-      </div>
-    </div>
-
-    
-    {/* design a game, design a piece, browse games */}
-
-    <div className="nav-item">
-      <div className="nav-item-wrapper">
-        <Link as="div" className="nav-item-inner" to="/community">Community</Link>
-        <button className="submenu-toggle mobile-only" onClick={(e) => toggleSubmenu(e, 'community')} aria-label="Toggle Community submenu">
-          <span className={`chevron ${openSubmenu === 'community' ? 'open' : ''}`}>{`\u25BC`}</span>
-        </button>
-      </div>
-      <div className={`inner-menu ${openSubmenu === 'community' ? 'mobile-open' : ''}`}>
-        <Link as="div" className="inner-menu-item" to="/community/players">
-          <span className="inner-menu-icon">🧑‍🤝‍🧑</span>Players
-        </Link>
-        <Link as="div" className="inner-menu-item" to="/forums">
-          <span className="inner-menu-icon">💬</span>Forums
-        </Link>
-        <Link as="div" className="inner-menu-item" to="/community/social">
-          <span className="inner-menu-icon">🌐</span>Social Media
-        </Link>
-        <Link as="div" className="inner-menu-item" to="/community/streams">
-          <span className="inner-menu-icon">📺</span>Streams
-        </Link>
-      </div>
-    </div>
-
-    <div className="nav-item">
-      <div className="nav-item-wrapper">
-        <Link as="div" className="nav-item-inner" to="/info">Info</Link>
-        <button className="submenu-toggle mobile-only" onClick={(e) => toggleSubmenu(e, 'info')} aria-label="Toggle Info submenu">
-          <span className={`chevron ${openSubmenu === 'info' ? 'open' : ''}`}>{`\u25BC`}</span>
-        </button>
-      </div>
-      <div className={`inner-menu ${openSubmenu === 'info' ? 'mobile-open' : ''}`}>
-        <Link as="div" className="inner-menu-item" to="/news">
-          <span className="inner-menu-icon">📰</span>News
-        </Link>
-        <Link as="div" className="inner-menu-item" to="/faq">
-          <span className="inner-menu-icon">❓</span>FAQ
-        </Link>
-        <Link as="div" className="inner-menu-item" to="/community/about">
-          <span className="inner-menu-icon">ℹ️</span>About Us
-        </Link>
-        <Link as="div" className="inner-menu-item" to="/contact">
-          <span className="inner-menu-icon">✉️</span>Contact
-        </Link>
-        <Link as="div" className="inner-menu-item" to="/donate">
-          <span className="inner-menu-icon">💝</span>Support GridGrove
-        </Link>
-      </div>
-    </div>
+    ))}
 
     {/* <div className="nav-item">
       <Link as="div" className="nav-item-inner" to="/chess">Plain Old Chess

@@ -76,7 +76,7 @@
   background: linear-gradient(135deg, var(--panel-bg-start) 0%, var(--panel-bg-end) 100%);
   border: 2px solid var(--panel-card-border);
   border-radius: 8px;
-  padding: 40px;
+  padding: 56px 40px 40px;
   display: flex;
   align-items: center;
   gap: 30px;
@@ -365,7 +365,7 @@
 
 // Collapsible section headings drop their divider + spacing when collapsed.
 .card-title.title-collapsed {
-  border-bottom-color: transparent;
+  border-bottom: none;
   padding-bottom: 0;
   margin-bottom: 0;
 }

@@ -97,7 +97,6 @@ const BulletInsertButton = ({ textareaRef, value, onChange }) => {
         className={styles["emoji-toggle-btn"]}
         onClick={handleInsert}
         title="Insert bullet list item"
-        style={{ fontSize: '1em' }}
       >
         <FaListUl />
       </button>

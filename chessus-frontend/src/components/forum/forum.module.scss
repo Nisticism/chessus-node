@@ -20,7 +20,7 @@
   justify-content: space-between;
   margin-bottom: 20px;
   padding-bottom: 20px;
-  border-bottom: 2px solid var(--panel-card-border);
+  border-bottom: 2px solid var(--gold-muted);
 }
 
 .forum-title {
@@ -74,7 +74,7 @@
     color: var(--accent-primary-text);
     margin: 40px 0 25px 0;
     padding-bottom: 15px;
-    border-bottom: 2px solid var(--panel-card-border);
+    border-bottom: 2px solid var(--gold-muted);
   }
 }
 
@@ -137,7 +137,7 @@
   align-items: flex-start;
   margin-bottom: 15px;
   padding-bottom: 15px;
-  border-bottom: 1px solid var(--panel-bg-end);
+  border-bottom: 1px solid var(--gold-muted);
 }
 
 .comment-data {
@@ -322,7 +322,7 @@
 .reply-form {
   margin-top: 15px;
   padding-top: 15px;
-  border-top: 1px solid var(--panel-border);
+  border-top: 1px solid var(--gold-muted);
 }
 
 .reply-field {
