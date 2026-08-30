@@ -578,7 +578,7 @@
   color: var(--gold);
   margin: 0 0 15px 0;
   padding-bottom: 10px;
-  border-bottom: 2px solid rgba(var(--gold-rgb), 0.5);
+  border-bottom: 2px solid var(--gold);
 }
 
 .info-list {
@@ -592,7 +592,7 @@
   align-items: flex-start;
   gap: 12px;
   padding: 12px 0;
-  border-bottom: 1px solid rgba(var(--gold-rgb), 0.18);
+  border-bottom: 1px solid var(--gold-muted);
   color: var(--text-muted);
   font-size: 1rem;
   line-height: 1.5;

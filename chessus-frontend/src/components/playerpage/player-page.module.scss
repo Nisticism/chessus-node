@@ -147,7 +147,7 @@
     right: 0;
     width: 40px;
     height: 40px;
-    background: linear-gradient(135deg, var(--button-primary-bg) 0%, var(--button-primary-hover) 100%);
+    background: var(--btn-gradient);
     border-radius: 50%;
     display: flex;
     align-items: center;
@@ -174,6 +174,8 @@
     font-size: 2.5rem;
     color: var(--text-heading);
     margin: 0 0 10px 0;
+    overflow-wrap: break-word;
+    text-wrap: balance;
     font-weight: 700;
   }
 
@@ -192,7 +194,7 @@
   }
 
   .friend-button {
-    background: linear-gradient(135deg, var(--button-primary-bg) 0%, var(--button-primary-hover) 100%);
+    background: var(--btn-gradient);
     color: var(--text-heading);
     border: none;
     padding: 10px 24px;
@@ -371,7 +373,7 @@
     color: var(--accent-primary-text);
     margin: 0 0 25px 0;
     font-weight: 600;
-    border-bottom: 2px solid var(--panel-card-border);
+    border-bottom: 2px solid var(--gold);
     padding-bottom: 15px;
     display: flex;
     align-items: center;
@@ -727,7 +729,7 @@
   justify-content: space-between;
   align-items: center;
   padding: 25px 30px;
-  border-bottom: 2px solid var(--panel-card-border);
+  border-bottom: 2px solid var(--gold);
 
   h2 {
     font-size: 1.8rem;

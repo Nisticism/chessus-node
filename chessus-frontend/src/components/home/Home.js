@@ -497,7 +497,7 @@ const Home = () => {
                       {game.featured_order != null ? '★ Featured' : '▲ Popular'}
                     </span>
                     <Link
-                      to={`/play?gameTypeId=${game.id}`}
+                      to={`/play/games?gameTypeId=${game.id}`}
                       className={styles["popular-game-play-btn"]}
                       onClick={(e) => e.stopPropagation()}
                       title={`Play ${game.game_name || 'this game'}`}

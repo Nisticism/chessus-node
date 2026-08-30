@@ -156,7 +156,7 @@
 }
 
 .submit-button {
-  background: linear-gradient(135deg, var(--button-primary-bg) 0%, var(--button-primary-hover) 100%);
+  background: var(--btn-gradient);
   color: var(--text-heading);
   box-shadow: 0 4px 16px rgba(var(--interaction-hover-rgb), 0.24);
 

@@ -148,7 +148,7 @@
 }
 
 .edit-btn {
-  background: linear-gradient(135deg, var(--button-primary-bg) 0%, var(--button-primary-hover) 100%);
+  background: var(--btn-gradient);
   color: var(--text-heading);
   padding: 8px 20px;
   border: none;
@@ -543,7 +543,7 @@
 
 .save-btn {
   padding: 12px 30px;
-  background: linear-gradient(135deg, var(--button-primary-bg) 0%, var(--button-primary-hover) 100%);
+  background: var(--btn-gradient);
   border: none;
   border-radius: 8px;
   color: var(--text-heading);

@@ -224,7 +224,7 @@ const GameList = () => {
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                navigate(`/play?gameTypeId=${game.id}`);
+                navigate(`/play/games?gameTypeId=${game.id}`);
               }}
               title="Play this game"
             >▶</div>}

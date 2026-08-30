@@ -44,7 +44,7 @@
   text-align: center;
   padding: 30px;
   background: rgba(var(--panel-border-rgb), 0.2);
-  border: 2px dashed var(--panel-border);
+  border: 2px dashed var(--gold-muted);
   border-radius: 8px;
   font-size: 1rem;
 }
@@ -95,7 +95,7 @@
 }
 
 .save-button {
-  background: linear-gradient(135deg, var(--button-primary-bg) 0%, var(--button-primary-hover) 100%);
+  background: var(--btn-gradient);
   color: var(--text-heading);
 
   &:hover {

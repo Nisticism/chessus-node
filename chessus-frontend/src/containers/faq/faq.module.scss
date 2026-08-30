@@ -45,7 +45,7 @@
   }
 
   &.active {
-    background: linear-gradient(135deg, var(--button-primary-bg) 0%, var(--button-primary-hover) 100%);
+    background: var(--btn-gradient);
     border-color: var(--border-bright);
     color: var(--text-heading);
     font-weight: 600;
@@ -64,7 +64,7 @@
     color: var(--accent-vivid, var(--accent-primary-text));
     margin-bottom: 20px;
     padding-bottom: 10px;
-    border-bottom: 2px solid var(--panel-border);
+    border-bottom: 2px solid var(--gold);
   }
 }
 

@@ -31,6 +31,10 @@ const changelogData = [
       "Play page: the admin-only delete button now sits in each card's lower-right (away from Join), the Join Game button follows the site theme (blue on the blue theme) and is less bright, and there's more space between the game list and its scrollbar.",
       "More gold accents: gold section dividers (footer line and heading underlines), gold h2 headings, and buttons now share a subtle gold + theme-color gradient.",
       "Slightly wider page margins on large screens, and replaced the remaining purple pawn icons on the home page with lighter ones.",
+      "Fixed 'Play this game' links that broke when the lobby moved — they now open the game lobby correctly again.",
+      "More gold polish: page titles (h1) are now muted gold and section headings (h2) brighter gold, dividers follow a consistent gold scheme (2px bright / 1px & dashed muted gold), the footer divider matches the nav hairline, and more primary buttons share the gold + theme gradient.",
+      "Removed the heavy colored left-border stripes on match-history and lobby cards for a cleaner look, and Grove dropdown menus use a slightly lighter green.",
+      "Log Out now matches the all-caps nav style, long usernames wrap more evenly instead of one letter at a time, and tightened spacing around the messages icon on smaller screens.",
     ],
   },
   {

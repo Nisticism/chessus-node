@@ -222,6 +222,8 @@ p {
 .user-menu-item,
 .logout-link {
   white-space: nowrap;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .admin-link {

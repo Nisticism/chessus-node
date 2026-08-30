@@ -86,7 +86,7 @@
   }
 
   &.active {
-    background: linear-gradient(135deg, var(--button-primary-bg) 0%, var(--button-primary-hover) 100%);
+    background: var(--btn-gradient);
     border-color: var(--text-info);
     color: var(--text-heading);
   }
@@ -225,7 +225,7 @@
 
   .retry-btn {
     margin-top: 25px;
-    background: linear-gradient(135deg, var(--button-primary-bg) 0%, var(--button-primary-hover) 100%);
+    background: var(--btn-gradient);
     border: none;
     border-radius: 10px;
     padding: 12px 30px;
@@ -414,7 +414,7 @@
   width: 40px;
   height: 40px;
   border-radius: 50%;
-  background: linear-gradient(135deg, var(--button-primary-bg), var(--button-primary-hover));
+  background: var(--btn-gradient);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -725,7 +725,7 @@
   text-align: center;
   padding: 50px 20px;
   background: rgba(var(--panel-card-border-rgb), 0.16);
-  border: 2px dashed var(--panel-card-border);
+  border: 2px dashed var(--gold-muted);
   border-radius: 6px;
 
   p {

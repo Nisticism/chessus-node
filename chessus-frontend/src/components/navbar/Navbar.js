@@ -314,7 +314,7 @@ const Navbar = () => {
           <ThemeMenu />
           {currentUser && (
             <>
-              <Link to="/inbox" className="notification-bell navbar-menu-bell" title="Messages" style={{ marginRight: '4px' }}>
+              <Link to="/inbox" className="notification-bell navbar-menu-bell" title="Messages">
                 <IoChatbubbleOutline size={20} />
                 {unreadDMCount > 0 && (
                   <span className="notification-badge">

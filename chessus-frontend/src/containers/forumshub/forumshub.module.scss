@@ -402,6 +402,8 @@
   font-weight: 500;
   color: var(--accent-primary-text);
   text-align: left;
+  overflow-wrap: break-word;
+  text-wrap: balance;
 
   &:hover {
     color: var(--text-info);

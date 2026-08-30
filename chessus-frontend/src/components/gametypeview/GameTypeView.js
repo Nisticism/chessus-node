@@ -3038,7 +3038,7 @@ const GameTypeView = () => {
             {hasUpvoted ? '▲' : '△'} {upvoteCount}
           </button>
           <button 
-            onClick={() => navigate(`/play?gameTypeId=${gameId}`)} 
+            onClick={() => navigate(`/play/games?gameTypeId=${gameId}`)} 
             className={styles["play-button"]}
           >
             ♟ Play this Game

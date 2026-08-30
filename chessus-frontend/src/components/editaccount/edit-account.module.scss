@@ -496,7 +496,7 @@
 }
 
 .update-password-button {
-  background: linear-gradient(135deg, var(--button-primary-bg) 0%, var(--button-primary-hover) 100%);
+  background: var(--btn-gradient);
   color: #fff;
   font-weight: 600;
   font-size: 0.9rem;

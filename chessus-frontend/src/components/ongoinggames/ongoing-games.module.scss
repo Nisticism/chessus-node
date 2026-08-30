@@ -50,7 +50,6 @@
   }
 
   &.correspondence {
-    border-left: 3px solid var(--text-dim);
   }
 }
 
@@ -109,7 +108,7 @@
 
 .join-btn {
   padding: 6px 16px;
-  background: linear-gradient(135deg, var(--button-primary-bg) 0%, var(--button-primary-hover) 100%);
+  background: var(--btn-gradient);
   color: var(--text-heading);
   border: none;
   border-radius: 6px;
