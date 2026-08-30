@@ -364,7 +364,7 @@
 }
 
 // Collapsible section headings drop their divider + spacing when collapsed.
-.card-title.title-collapsed {
+.info-card .card-title.title-collapsed {
   border-bottom: none;
   padding-bottom: 0;
   margin-bottom: 0;

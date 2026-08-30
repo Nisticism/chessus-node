@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { useSelector } from 'react-redux';
+import { Link } from 'react-router-dom';
+import { FaDiscord, FaInstagram, FaYoutube, FaReddit } from 'react-icons/fa';
 import styles from './Contact.module.scss';
 import Divider from '../Divider/Divider';
 import StandardButton from '../standardbutton/StandardButton';
@@ -73,8 +75,6 @@ const Contact = () => {
             Fill out the form below or reach out through one of our other channels.
           </p>
         </div>
-
-        <Divider />
 
         {submitted && (
           <div className={styles.successMessage}>
@@ -192,11 +192,16 @@ const Contact = () => {
             <div className={styles.contactMethod}>
               <span className={styles.methodIcon}>🔗</span>
               <div className={styles.methodInfo}>
-                <h3>Social Media</h3>
+                <h3><Link to="/community/social" className={styles.socialTitleLink}>Social Media</Link></h3>
                 <p>
-                  {/* Add your social media links here */}
-                  Follow us on social media (links coming soon)
+                  Follow us on your favorite platforms:
                 </p>
+                <div className={styles.socialIcons}>
+                  <a href="https://discord.gg/jfUh5xtGMA" target="_blank" rel="noopener noreferrer" aria-label="Discord"><FaDiscord /></a>
+                  <a href="https://www.instagram.com/gridgrove.gg" target="_blank" rel="noopener noreferrer" aria-label="Instagram"><FaInstagram /></a>
+                  <a href="https://www.youtube.com/@GridGrove" target="_blank" rel="noopener noreferrer" aria-label="YouTube"><FaYoutube /></a>
+                  <a href="https://reddit.com/r/gridgrove" target="_blank" rel="noopener noreferrer" aria-label="Reddit"><FaReddit /></a>
+                </div>
               </div>
             </div>
 

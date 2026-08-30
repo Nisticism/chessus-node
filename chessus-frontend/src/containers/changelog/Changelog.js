@@ -41,6 +41,10 @@ const changelogData = [
       "Redesigned the Play page: the left game-types sidebar is gone — game selection now lives in a search box at the top that opens a dropdown of results, filterable by Newest / Oldest / A–Z and by creator. The open-matches and other sections now use the full page width, with cards that grow to fill the space.",
       "The footer navigation now mirrors the main menu exactly (both are driven from a single shared list), and the divider styling on the Game Library and forum pages now uses the site's gold accent.",
       "Profile page polish: collapsible section dividers are fully hidden while collapsed, the Bio section gets a matching divider, and the gear/edit icons no longer overlap the ELO box. Editor toolbar buttons (emoji / link / bullet) are now the same height.",
+      "Fixed the home hero text jumping on load by reserving the banner image's space before it finishes loading.",
+      "The Play page game-type search dropdown now uses the same polished card styling as the old sidebar, and each match section (Open Matches, Live, Correspondence, Computer, Private) has a sort control to order by game name, host, newest, or oldest.",
+      "Contact page: removed the extra divider under the intro, form fields and text areas now span the full width, labels are left-aligned, the response-time box is now transparent, and the Social Media card links to the community social page with clickable Discord / Instagram / YouTube / Reddit icons.",
+      "More gold dividers (Game Library, forum pages, contact, match history) and a shared divider style; Social page cards now stretch to the full page width; and sandbox game-type links no longer have dashed underlines.",
     ],
   },
   {

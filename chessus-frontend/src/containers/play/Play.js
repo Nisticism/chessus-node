@@ -12,6 +12,70 @@ import FriendsList from "../../components/friendslist/FriendsList";
 import InfoTooltip from "../../components/piecewizard/InfoTooltip";
 import ToggleSwitch from "../../components/common/ToggleSwitch";
 import FairyStockfishIncompatModal from "../../components/common/FairyStockfishIncompatModal";
+import { FaFilter } from "react-icons/fa";
+
+// --- Per-section sort helpers ---
+const cmpGameName = (g) => (g.game_name || g.gameTypeName || g.game_type_name || '').toLowerCase();
+const cmpHost = (g) => (g.host_username || g.hostUsername || g.host_display || '').toLowerCase();
+const cmpDate = (g) => new Date(g.created_at || g.createdAt || g.created || 0).getTime();
+const sortGames = (list, key) => {
+  if (!key || key === 'default') return list;
+  const arr = [...list];
+  switch (key) {
+    case 'name': arr.sort((a, b) => cmpGameName(a).localeCompare(cmpGameName(b))); break;
+    case 'host': arr.sort((a, b) => cmpHost(a).localeCompare(cmpHost(b))); break;
+    case 'newest': arr.sort((a, b) => cmpDate(b) - cmpDate(a)); break;
+    case 'oldest': arr.sort((a, b) => cmpDate(a) - cmpDate(b)); break;
+    default: break;
+  }
+  return arr;
+};
+
+const SECTION_SORT_OPTIONS = [
+  { v: 'default', label: 'Default' },
+  { v: 'name', label: 'Game name' },
+  { v: 'host', label: 'Host username' },
+  { v: 'newest', label: 'Newest' },
+  { v: 'oldest', label: 'Oldest' },
+];
+
+const SectionSortMenu = ({ value, onChange }) => {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!open) return undefined;
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+  return (
+    <div className={styles["section-sort"]} ref={ref} onClick={(e) => e.stopPropagation()}>
+      <button
+        type="button"
+        className={`${styles["section-sort-btn"]} ${value && value !== 'default' ? styles["active"] : ''}`}
+        onClick={() => setOpen((o) => !o)}
+        title="Sort this section"
+        aria-label="Sort this section"
+      >
+        <FaFilter />
+      </button>
+      {open && (
+        <div className={styles["section-sort-menu"]}>
+          {SECTION_SORT_OPTIONS.map((o) => (
+            <button
+              key={o.v}
+              type="button"
+              className={`${styles["section-sort-item"]} ${value === o.v ? styles["active"] : ''}`}
+              onClick={() => { onChange(o.v); setOpen(false); }}
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
 
 const Play = () => {
   const navigate = useNavigate();
@@ -90,6 +154,13 @@ const Play = () => {
   const [gameTypeSort, setGameTypeSort] = useState('newest');
   const [gameTypeCreatorFilter, setGameTypeCreatorFilter] = useState('');
   const gameTypePickerRef = useRef(null);
+
+  // Per-section sort (game name / host / hosted date), keyed by section.
+  const [sectionSort, setSectionSort] = useState({
+    openGames: 'default', liveGames: 'default', correspondenceGames: 'default',
+    publicBotGames: 'default', privateGames: 'default',
+  });
+  const setSort = (key, val) => setSectionSort((prev) => ({ ...prev, [key]: val }));
 
   // Pagination state
   const PAGE_SIZE = 16;
@@ -804,9 +875,10 @@ const Play = () => {
   }, [onlineFriends, friendsPage]);
 
   const paginatedOpenGames = useMemo(() => {
+    const sorted = sortGames(openGames, sectionSort.openGames);
     const start = (openGamesPage - 1) * PAGE_SIZE;
-    return openGames.slice(start, start + PAGE_SIZE);
-  }, [openGames, openGamesPage]);
+    return sorted.slice(start, start + PAGE_SIZE);
+  }, [openGames, openGamesPage, sectionSort.openGames]);
 
   // Split ongoing games into live and correspondence (excluding public bot games)
   const publicBotGames = useMemo(() => {
@@ -822,19 +894,22 @@ const Play = () => {
   }, [ongoingGames]);
 
   const paginatedOngoingLiveGames = useMemo(() => {
+    const sorted = sortGames(ongoingLiveGames, sectionSort.liveGames);
     const start = (ongoingLiveGamesPage - 1) * PAGE_SIZE;
-    return ongoingLiveGames.slice(start, start + PAGE_SIZE);
-  }, [ongoingLiveGames, ongoingLiveGamesPage]);
+    return sorted.slice(start, start + PAGE_SIZE);
+  }, [ongoingLiveGames, ongoingLiveGamesPage, sectionSort.liveGames]);
 
   const paginatedOngoingCorrespondenceGames = useMemo(() => {
+    const sorted = sortGames(ongoingCorrespondenceGames, sectionSort.correspondenceGames);
     const start = (ongoingCorrespondenceGamesPage - 1) * PAGE_SIZE;
-    return ongoingCorrespondenceGames.slice(start, start + PAGE_SIZE);
-  }, [ongoingCorrespondenceGames, ongoingCorrespondenceGamesPage]);
+    return sorted.slice(start, start + PAGE_SIZE);
+  }, [ongoingCorrespondenceGames, ongoingCorrespondenceGamesPage, sectionSort.correspondenceGames]);
 
   const paginatedPrivateGames = useMemo(() => {
+    const sorted = sortGames(privateGames, sectionSort.privateGames);
     const start = (privateGamesPage - 1) * PAGE_SIZE;
-    return privateGames.slice(start, start + PAGE_SIZE);
-  }, [privateGames, privateGamesPage]);
+    return sorted.slice(start, start + PAGE_SIZE);
+  }, [privateGames, privateGamesPage, sectionSort.privateGames]);
 
   const paginatedComputerGames = useMemo(() => {
     const list = myBotGames || [];
@@ -843,9 +918,10 @@ const Play = () => {
   }, [myBotGames, computerGamesPage]);
 
   const paginatedPublicBotGames = useMemo(() => {
+    const sorted = sortGames(publicBotGames, sectionSort.publicBotGames);
     const start = (publicBotGamesPage - 1) * PAGE_SIZE;
-    return publicBotGames.slice(start, start + PAGE_SIZE);
-  }, [publicBotGames, publicBotGamesPage]);
+    return sorted.slice(start, start + PAGE_SIZE);
+  }, [publicBotGames, publicBotGamesPage, sectionSort.publicBotGames]);
 
   // Render two players stacked vertically with a stylized "vs" between them.
   // Each player links to their profile unless the entry is a Computer player.
@@ -1436,6 +1512,7 @@ const Play = () => {
                 <span style={{ display: 'inline-block', width: '1em' }}>{privateGamesCollapsed ? '\u25B6' : '\u25BC'}</span>
                 Private Games
                 <span className={styles["match-count"]}>{privateGames.length}</span>
+                <SectionSortMenu value={sectionSort.privateGames} onChange={(v) => setSort('privateGames', v)} />
               </h2>
               {!privateGamesCollapsed && (<>
               <div className={styles["private-games-list"]}>
@@ -1579,6 +1656,7 @@ const Play = () => {
               {openGames.length > 0 && (
                 <span className={styles["match-count"]}>{openGames.length}</span>
               )}
+              <SectionSortMenu value={sectionSort.openGames} onChange={(v) => setSort('openGames', v)} />
             </h2>
             <p style={{ fontSize: '0.85rem', color: 'var(--text-dim)', marginTop: '-8px', marginBottom: '12px' }}>
               Open matches stay listed until someone joins or the host leaves. Anonymous (guest) matches are automatically closed after 24 hours and fully removed after 30 days.
@@ -1706,6 +1784,7 @@ const Play = () => {
               {ongoingLiveGames.length > 0 && (
                 <span className={styles["match-count"]}>{ongoingLiveGames.length}</span>
               )}
+              <SectionSortMenu value={sectionSort.liveGames} onChange={(v) => setSort('liveGames', v)} />
             </h2>
             <p className={styles["section-note"]}>
               While we grow our player base, consider hosting a <strong>Correspondence game</strong> instead of Live {'\u2014'} unless you know both you and your opponent can start and finish the game in one sitting. Live games where both players have joined but haven't made a move will be automatically cancelled after 24 hours.
@@ -1815,6 +1894,7 @@ const Play = () => {
               {ongoingCorrespondenceGames.length > 0 && (
                 <span className={styles["match-count"]}>{ongoingCorrespondenceGames.length}</span>
               )}
+              <SectionSortMenu value={sectionSort.correspondenceGames} onChange={(v) => setSort('correspondenceGames', v)} />
             </h2>
 
             {!correspondenceGamesCollapsed && (
@@ -1921,6 +2001,7 @@ const Play = () => {
               {publicBotGames.length > 0 && (
                 <span className={styles["match-count"]}>{publicBotGames.length}</span>
               )}
+              <SectionSortMenu value={sectionSort.publicBotGames} onChange={(v) => setSort('publicBotGames', v)} />
             </h2>
 
             {!publicBotGamesCollapsed && (
