@@ -58,7 +58,7 @@
   &:hover {
     transform: translateY(-4px);
     border-color: var(--gold);
-    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(var(--gold-rgb), 0.25);
+    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.28);
 
     &::before {
       opacity: 1;
@@ -88,7 +88,7 @@
 
 .title {
   font-size: 1.3rem;
-  color: var(--text-heading);
+  color: var(--gold);
   margin: 0 0 10px;
   font-weight: 600;
 }

@@ -32,6 +32,17 @@ $nav-gold: #d4af37;
   display: none;
 }
 
+// The inner nav row also carries the .navbar class; hide its duplicate gold
+// hairline and lift it above the outer hairline so an open dropdown overlaps
+// (rather than sits below) the gold line.
+.navbar-inner.navbar::after {
+  display: none;
+}
+
+.navbar.navbar-inner {
+  z-index: 1001;
+}
+
 @keyframes navDropdownGrow {
   from { opacity: 0; transform: translateY(-6px) scaleY(0.96); }
   to   { opacity: 1; transform: translateY(0) scaleY(1); }
@@ -119,6 +130,12 @@ p {
   align-items: center;
   font-weight: 500;
   font-size: inherit;
+}
+
+// Top-level menu tabs render uppercase (user info / logout keep normal case).
+.navbar-links-container .nav-item-inner {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 // Thin glowing gold underline that grows in under the label on hover (under the
@@ -256,7 +273,7 @@ p {
     width: fit-content;
     min-width: 200px;
     left: 0;
-    top: calc(#{$nav-height} - 2px);
+    top: calc(#{$nav-height} - 3px);
     background: var(--nav-dropdown-bg);
     border-radius: 0 0 8px 8px;
     box-shadow: 0 16px 30px rgba(0, 0, 0, 0.4);

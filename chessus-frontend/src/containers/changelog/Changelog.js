@@ -23,6 +23,10 @@ const changelogData = [
       "Streamlined the Play menu — 'Browse Open Games' is now simply 'Open Games', and the Game Library now lives under Create.",
       "The Grove (green) theme got a refresh with brighter, more vivid greens and extra gold accents throughout.",
       "Removed old-fashioned paragraph indentation (e.g. on the About page) for a cleaner, more modern look.",
+      "Top-level navigation tabs now display in all caps, and open dropdowns connect seamlessly to their tab by overlapping the gold divider line.",
+      "Refreshed the Grove (green) theme with cleaner, more cohesive green tones (less muddy green-gray) and darker, richer buttons with a subtle gold sheen.",
+      "Card and section headings now use gold accents, and the gold borders/rings on cards were slimmed down so they read as an accent rather than a heavy outline.",
+      "Fixed label alignment on the Browse Pieces page so 'Movement:' lines up with the top line of its value.",
     ],
   },
   {

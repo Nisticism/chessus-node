@@ -368,7 +368,7 @@
 .meta-item {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   font-size: 0.9rem;
   color: var(--text-dim);
 }

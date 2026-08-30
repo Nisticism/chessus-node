@@ -171,9 +171,14 @@ code {
   
 }
 
+/* Gold headings — global default (component-scoped colors still override). */
+h2, h3 {
+  color: var(--gold);
+}
+
 /* ======= GROVE THEME (Default) ======= */
 [data-theme="grove"], :root {
-  --nav-background: #2c3530;
+  --nav-background: #24312a;
   --dark-blue-text: #244434;
   --link-text: #6d9a7a;
   --link-text-light: #8fb29a;
@@ -192,24 +197,24 @@ code {
   --interaction-hover: #64ab71;
   --interaction-hover-rgb: 100, 171, 113;
 
-  --button-primary-bg: rgb(87, 135, 95);
-  --button-primary-hover: var(--interaction-hover);
+  --button-primary-bg: rgb(52, 90, 61);
+  --button-primary-hover: rgb(72, 112, 80);
   --button-border: rgb(121, 171, 129);
   --button-border-alt: rgb(84, 113, 91);
 
-  --bg-dark: #222c24;
-  --bg-card: #28332a;
-  background-color: #2f3431;
+  --bg-dark: #1a2620;
+  --bg-card: #223029;
+  background-color: #253029;
 
   --board-bg: rgb(61, 89, 69);
   --board-border: rgb(92, 126, 99);
   --square-dark-border: rgb(52, 83, 61);
   --square-light-border: rgb(81, 121, 91);
 
-  --nav-hover: rgb(58, 90, 66);
+  --nav-hover: rgb(45, 62, 51);
   --nav-light-hover: var(--interaction-hover);
   --nav-menu-bg: rgb(193, 214, 198);
-  --nav-dropdown-bg: #333f37;
+  --nav-dropdown-bg: #2c3b31;
 
   --accent-primary: #567a5f;
   --accent-primary-text: #8fc79c;
