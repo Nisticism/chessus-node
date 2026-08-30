@@ -19,8 +19,8 @@ code {
     monospace;
 }
 
-/* Sitewide responsive page gutter: 40px on desktop, 20px on smaller screens. */
-@media (max-width: 1000px) {
+/* Sitewide responsive page gutter: 50px on desktop, 20px on smaller screens. */
+@media (max-width: 1050px) {
   :root { --page-gutter: 20px; }
 }
 
@@ -30,7 +30,7 @@ code {
   background-color: #2a2e38;
   
   --font-family: 'Manrope', sans-serif;
-  --page-gutter: 40px; /* sitewide page side padding; 20px below 1000px (see media query above) */
+  --page-gutter: 50px; /* sitewide page side padding; 20px below 1050px (see media query above) */
   --background-color: #e2ffda;
   --nav-background: #082c51;
   --dark-blue-text: #09325a;
@@ -97,6 +97,10 @@ code {
   --gold: #d4af37;
   --gold-bright: #e6c65a;
   --gold-rgb: 212, 175, 55;
+
+  /* Shared button gradient: gold sheen (upper-left) over the theme's primary. */
+  --btn-gradient: linear-gradient(135deg, rgba(var(--gold-rgb), 0.32) 0%, rgba(var(--gold-rgb), 0) 45%), linear-gradient(135deg, var(--button-primary-bg) 0%, var(--button-primary-hover) 100%);
+  --btn-gradient-hover: linear-gradient(135deg, rgba(var(--gold-rgb), 0.42) 0%, rgba(var(--gold-rgb), 0) 48%), linear-gradient(135deg, var(--button-primary-hover) 0%, var(--button-primary-bg) 100%);
 
   /* Theme-aware accent colors */
   --accent-primary: #439157;
@@ -171,8 +175,13 @@ code {
   
 }
 
-/* Gold headings — global default (component-scoped colors still override). */
-h2, h3 {
+/* Gold headings. h2 is forced gold site-wide; h3 is a soft default that
+   component-scoped colors may still override. */
+h2 {
+  color: var(--gold) !important;
+}
+
+h3 {
   color: var(--gold);
 }
 

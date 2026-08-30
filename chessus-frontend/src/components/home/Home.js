@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Link } from "react-router-dom";
+import { FaChessPawn } from "react-icons/fa";
 import { useSelector, useDispatch } from "react-redux";
 import styles from "./home.module.scss";
 import { getGames } from "../../actions/games";
@@ -373,7 +374,7 @@ const Home = () => {
         </p>
         <div className={styles["hero-buttons"]}>
           <Link to="/create/game" className={styles["primary-button"]}>
-            ♟️ Create a Game
+            <FaChessPawn /> Create a Game
           </Link>
           <Link to="/play/games" className={styles["secondary-button"]}>
             ⚔️ Play Now
@@ -597,7 +598,7 @@ const Home = () => {
                   <span>Define custom win conditions: checkmate, capture targets, control zones, and more</span>
                 </li>
                 <li>
-                  <span className={styles["info-icon"]}>♟️</span>
+                  <span className={styles["info-icon"]}><FaChessPawn /></span>
                   <span>Design unique pieces with custom movement patterns and special abilities</span>
                 </li>
                 <li>
@@ -723,7 +724,7 @@ const Home = () => {
           </Link>
         ) : (
           <Link to="/register" className={styles["primary-button"]}>
-            ♟️ Join GridGrove
+            <FaChessPawn /> Join GridGrove
           </Link>
         )}
       </section>

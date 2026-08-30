@@ -69,6 +69,13 @@ const checkPieceDuplicates = async (fields, excludeId = null) => {
   return response;
 };
 
+const comparePieces = async (pieceAId, pieceBId) => {
+  const response = await axios.get(API_URL + `pieces/${pieceAId}/compare/${pieceBId}`, {
+    headers: authHeader()
+  });
+  return response;
+};
+
 const getCommunityImages = async ({ page = 1, limit = 40, sort = 'newest', search = '' } = {}) => {
   const params = { page, limit, sort };
   if (search) params.search = search;
@@ -85,6 +92,7 @@ const PiecesService = {
   deletePiece,
   getGamesByPieceId,
   checkPieceDuplicates,
+  comparePieces,
   getCommunityImages,
 };
 

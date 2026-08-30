@@ -2269,6 +2269,161 @@ app.get("/api/pieces/community-images", async (req, res) => {
 // Returns { matches: [{id, piece_name, creator_username, is_anonymous_creator}] }
 // Does NOT require authentication � the wizard must call this for anonymous
 // creators too. Read-only and returns only identity columns, no sensitive data.
+// ---- Piece comparison field sets ----
+// These mirror the functional columns compared by the uniqueness checker
+// (/api/pieces/duplicates). They power the user-facing piece comparer below
+// (/api/pieces/:id/compare/:otherId), which reports differences & similarities.
+const CMP_BOOL_COLS = [
+  'directional_movement_style','repeating_movement','first_move_only','first_move_only_capture',
+  'up_left_movement_exact','up_movement_exact','up_right_movement_exact','right_movement_exact',
+  'down_right_movement_exact','down_movement_exact','down_left_movement_exact','left_movement_exact',
+  'up_left_capture_exact','up_capture_exact','up_right_capture_exact','right_capture_exact',
+  'down_right_capture_exact','down_capture_exact','down_left_capture_exact','left_capture_exact',
+  'up_left_attack_range_exact','up_attack_range_exact','up_right_attack_range_exact','right_attack_range_exact',
+  'down_right_attack_range_exact','down_attack_range_exact','down_left_attack_range_exact','left_attack_range_exact',
+  'ratio_movement_style','repeating_ratio','repeating_capture','repeating_ratio_capture',
+  'step_by_step_movement_style','step_by_step_attack_style',
+  'can_hop_over_allies','can_hop_over_enemies','exact_ratio_hop_only','directional_hop_disabled',
+  'hop_stop_at_occupied','directional_hop_only',
+  'can_hop_attack_over_allies','can_hop_attack_over_enemies',
+  'exact_ratio_hop_only_attack','directional_hop_disabled_attack','hop_stop_at_occupied_attack','directional_hop_only_attack',
+  'can_fire_over_allies','can_fire_over_enemies',
+  'can_capture_enemy_via_range','can_capture_enemy_on_move',
+  'can_capture_allies','cannot_be_captured',
+  'has_checkmate_rule','has_check_rule','has_lose_on_capture_rule',
+  'can_castle','can_promote','can_en_passant',
+  'capture_on_hop','chain_capture_enabled','free_move_after_promotion',
+  'chain_hop_allies','must_move_if_able','must_move_uses_action',
+  'can_capture_ally_via_range','can_capture_ally_on_range','can_attack_on_iteration',
+  'repeating_directional_ranged_attack','repeating_ratio_ranged_attack',
+  'directional_movement_change','repeating_movement_change','require_empty_via_movement',
+  'up_left_movement_change_exact','up_movement_change_exact','up_right_movement_change_exact','right_movement_change_exact',
+  'down_right_movement_change_exact','down_movement_change_exact','down_left_movement_change_exact','left_movement_change_exact',
+  'directional_capture_change','repeating_capture_change','require_empty_via_capture',
+  'require_direction_change','require_direction_change_capture',
+  'up_left_capture_change_exact','up_capture_change_exact','up_right_capture_change_exact','right_capture_change_exact',
+  'down_right_capture_change_exact','down_capture_change_exact','down_left_capture_change_exact','left_capture_change_exact',
+];
+const CMP_INT_COLS = [
+  'piece_width','piece_height',
+  'up_left_movement','up_movement','up_right_movement','right_movement',
+  'down_right_movement','down_movement','down_left_movement','left_movement',
+  'up_left_movement_available_for','up_movement_available_for','up_right_movement_available_for','right_movement_available_for',
+  'down_right_movement_available_for','down_movement_available_for','down_left_movement_available_for','left_movement_available_for',
+  'ratio_one_movement','ratio_two_movement','max_ratio_iterations',
+  'step_by_step_movement_value',
+  'min_turns_per_move','max_turns_per_move',
+  'up_left_capture','up_capture','up_right_capture','right_capture',
+  'down_right_capture','down_capture','down_left_capture','left_capture',
+  'up_left_capture_available_for','up_capture_available_for','up_right_capture_available_for','right_capture_available_for',
+  'down_right_capture_available_for','down_capture_available_for','down_left_capture_available_for','left_capture_available_for',
+  'ratio_one_capture','ratio_two_capture','max_ratio_capture_iterations','step_by_step_capture',
+  'up_left_attack_range','up_attack_range','up_right_attack_range','right_attack_range',
+  'down_right_attack_range','down_attack_range','down_left_attack_range','left_attack_range',
+  'up_left_attack_range_available_for','up_attack_range_available_for','up_right_attack_range_available_for','right_attack_range_available_for',
+  'down_right_attack_range_available_for','down_attack_range_available_for','down_left_attack_range_available_for','left_attack_range_available_for',
+  'ratio_one_attack_range','ratio_two_attack_range',
+  'step_by_step_attack_value',
+  'capture_actions_per_turn','ranged_capture_actions_per_turn',
+  'max_chain_hops',
+  'max_directional_hop_pieces','max_directional_hop_pieces_attack',
+  'available_for_captures',
+  'up_left_movement_change','up_movement_change','up_right_movement_change','right_movement_change',
+  'down_right_movement_change','down_movement_change','down_left_movement_change','left_movement_change',
+  'up_left_movement_change_available_for','up_movement_change_available_for','up_right_movement_change_available_for','right_movement_change_available_for',
+  'down_right_movement_change_available_for','down_movement_change_available_for','down_left_movement_change_available_for','left_movement_change_available_for',
+  'up_left_capture_change','up_capture_change','up_right_capture_change','right_capture_change',
+  'down_right_capture_change','down_capture_change','down_left_capture_change','left_capture_change',
+  'up_left_capture_change_available_for','up_capture_change_available_for','up_right_capture_change_available_for','right_capture_change_available_for',
+  'down_right_capture_change_available_for','down_capture_change_available_for','down_left_capture_change_available_for','left_capture_change_available_for',
+  'max_directional_movement_iterations','min_directional_movement_iterations',
+  'min_ratio_iterations',
+  'max_directional_ranged_attack_iterations','min_directional_ranged_attack_iterations',
+  'max_ratio_ranged_attack_iterations','min_ratio_ranged_attack_iterations',
+];
+const CMP_JSON_COLS = [
+  'special_scenario_moves','special_scenario_captures',
+  'custom_movement_squares','custom_attack_squares',
+  'promotion_pieces_ids',
+];
+
+const cmpNormBool = (v) => (v === 1 || v === true || v === 'true' || v === '1') ? 1 : 0;
+const cmpNormInt = (v) => (v === null || v === undefined || v === '' || v === 'null') ? 0 : (parseInt(v, 10) || 0);
+const cmpNormJson = (v) => {
+  if (v === null || v === undefined || v === '' || v === 'null') return null;
+  if (typeof v === 'string') {
+    try {
+      const parsed = JSON.parse(v);
+      if (Array.isArray(parsed) && parsed.length === 0) return null;
+      if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed) && Object.keys(parsed).length === 0) return null;
+      return JSON.stringify(parsed);
+    } catch { return v.trim() || null; }
+  }
+  if (Array.isArray(v) && v.length === 0) return null;
+  if (v !== null && typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length === 0) return null;
+  try { return JSON.stringify(v); } catch { return null; }
+};
+
+function prettifyPieceField(col) {
+  const s = col.replace(/_/g, ' ');
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+// Compare two full piece rows, bucketing every functional field into
+// differences (values differ) or similarities (both share the same non-default value).
+function comparePieceRows(a, b) {
+  const differences = [];
+  const similarities = [];
+  const consider = (col, kind) => {
+    let na, nb, da, db;
+    if (kind === 'bool') {
+      na = cmpNormBool(a[col]); nb = cmpNormBool(b[col]);
+      da = na ? 'Yes' : 'No'; db = nb ? 'Yes' : 'No';
+    } else if (kind === 'int') {
+      na = cmpNormInt(a[col]); nb = cmpNormInt(b[col]);
+      da = String(na); db = String(nb);
+    } else {
+      na = cmpNormJson(a[col]); nb = cmpNormJson(b[col]);
+      da = na ? 'Configured' : 'None'; db = nb ? 'Configured' : 'None';
+    }
+    const label = prettifyPieceField(col);
+    if (na === nb) {
+      const bothDefault = kind === 'json' ? (na === null) : (na === 0);
+      if (!bothDefault) similarities.push({ field: col, label, value: da });
+    } else {
+      differences.push({ field: col, label, a: da, b: db });
+    }
+  };
+  for (const c of CMP_BOOL_COLS) consider(c, 'bool');
+  for (const c of CMP_INT_COLS) consider(c, 'int');
+  for (const c of CMP_JSON_COLS) consider(c, 'json');
+  return { differences, similarities };
+}
+
+// Compare two pieces by id — returns differences & similarities for the UI.
+app.get("/api/pieces/:pieceId/compare/:otherId", async (req, res) => {
+  try {
+    const idA = Number(req.params.pieceId);
+    const idB = Number(req.params.otherId);
+    if (!idA || !idB) return res.status(400).json({ error: 'Invalid piece id' });
+    if (idA === idB) return res.status(400).json({ error: 'Cannot compare a piece with itself' });
+    const [rows] = await db_pool.query('SELECT * FROM pieces WHERE id IN (?, ?)', [idA, idB]);
+    const a = rows.find(r => r.id === idA);
+    const b = rows.find(r => r.id === idB);
+    if (!a || !b) return res.status(404).json({ error: 'One or both pieces not found' });
+    const { differences, similarities } = comparePieceRows(a, b);
+    res.json({
+      pieceA: { id: a.id, name: a.piece_name },
+      pieceB: { id: b.id, name: b.piece_name },
+      differences,
+      similarities,
+    });
+  } catch (err) {
+    console.error('Error in /api/pieces/compare:', err);
+    res.status(500).json({ error: 'Comparison failed' });
+  }
+});
+
 app.post("/api/pieces/duplicates", async (req, res) => {
   try {
     const { fields, excludeId } = req.body || {};

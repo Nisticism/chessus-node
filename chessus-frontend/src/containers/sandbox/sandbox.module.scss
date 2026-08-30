@@ -1151,8 +1151,8 @@
 // Buttons
 .btn-primary {
   padding: 12px 24px;
-  background: linear-gradient(135deg, var(--border-medium) 0%, var(--panel-bg-end) 100%);
-  border: 1px solid var(--border-bright);
+  background: var(--btn-gradient);
+  border: 1px solid rgba(var(--gold-rgb), 0.4);
   border-radius: 6px;
   color: var(--text-heading);
   font-size: 1rem;
@@ -1161,7 +1161,7 @@
   transition: transform 0.2s, box-shadow 0.2s;
 
   &:hover {
-    background: linear-gradient(135deg, #3a6b9d 0%, var(--panel-border) 100%);
+    background: var(--btn-gradient-hover);
     transform: translateY(-2px);
     box-shadow: 0 4px 12px rgba(var(--panel-border-rgb), 0.4);
   }

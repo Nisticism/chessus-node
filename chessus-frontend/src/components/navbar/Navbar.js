@@ -311,6 +311,7 @@ const Navbar = () => {
           )}
         </div>
         <div className="navbar-menu" ref={menuRef}>
+          <ThemeMenu />
           {currentUser && (
             <>
               <Link to="/inbox" className="notification-bell navbar-menu-bell" title="Messages" style={{ marginRight: '4px' }}>
@@ -331,7 +332,6 @@ const Navbar = () => {
               </Link>
             </>
           )}
-          <ThemeMenu />
           { toggleMenu 
             ? <RiCloseLine color="fff" size={27} onClick={() => setToggleMenu(false)} />
             : <RiMenu3Line color="fff" size={27} onClick={() => setToggleMenu(true)} />

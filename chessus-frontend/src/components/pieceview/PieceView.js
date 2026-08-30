@@ -3,6 +3,7 @@ import { useParams, useNavigate, Link } from "react-router-dom";
 import { useSelector, useDispatch } from "react-redux";
 import axios from "../../services/axios-interceptor";
 import { getPieceById, getGamesByPieceId, deletePiece, checkPieceDuplicates, setPieceValueCache } from "../../actions/pieces";
+import PiecesService from "../../services/pieces.service";
 import { estimatePieceValue } from "../../utils/pieceValueEstimator";
 import PieceBoardPreview from "../piecewizard/PieceBoardPreview";
 import InfoTooltip from "../piecewizard/InfoTooltip";
@@ -41,6 +42,15 @@ const PieceView = () => {
   const [uniquenessModalOpen, setUniquenessModalOpen] = useState(false);
   const [uniquenessMatches, setUniquenessMatches] = useState([]);
   const [uniquenessError, setUniquenessError] = useState('');
+  // Piece comparer (sub-feature of the uniqueness checker)
+  const [compareModalOpen, setCompareModalOpen] = useState(false);
+  const [compareSearch, setCompareSearch] = useState('');
+  const [compareResults, setCompareResults] = useState([]);
+  const [compareSearchLoading, setCompareSearchLoading] = useState(false);
+  const [compareData, setCompareData] = useState(null);
+  const [compareLoading, setCompareLoading] = useState(false);
+  const [compareError, setCompareError] = useState('');
+  const [compareTab, setCompareTab] = useState('differences');
 
   useEffect(() => {
     const loadPiece = async () => {
@@ -228,6 +238,51 @@ const PieceView = () => {
     }
   };
 
+  const openCompareModal = () => {
+    setCreatorMenuOpen(false);
+    setCompareSearch('');
+    setCompareResults([]);
+    setCompareData(null);
+    setCompareError('');
+    setCompareTab('differences');
+    setCompareModalOpen(true);
+  };
+
+  const handleSelectCompare = async (otherId) => {
+    setCompareLoading(true);
+    setCompareError('');
+    try {
+      const res = await PiecesService.comparePieces(pieceId, otherId);
+      setCompareData(res.data);
+      setCompareTab('differences');
+    } catch (err) {
+      setCompareError(err.response?.data?.error || 'Comparison failed. Please try again.');
+    } finally {
+      setCompareLoading(false);
+    }
+  };
+
+  // Debounced piece search for the comparer.
+  useEffect(() => {
+    if (!compareModalOpen) return undefined;
+    const term = compareSearch.trim();
+    if (term.length < 2) { setCompareResults([]); return undefined; }
+    let active = true;
+    setCompareSearchLoading(true);
+    const t = setTimeout(async () => {
+      try {
+        const res = await PiecesService.getPieces(1, 10, 'newest', term);
+        const list = (res.data?.pieces || res.data?.data || res.data || [])
+          .filter((p) => String(p.id) !== String(pieceId));
+        if (active) setCompareResults(list);
+      } catch {
+        if (active) setCompareResults([]);
+      } finally {
+        if (active) setCompareSearchLoading(false);
+      }
+    }, 350);
+    return () => { active = false; clearTimeout(t); };
+  }, [compareSearch, compareModalOpen, pieceId]);
   const pieceImages = useMemo(() => {
     if (!piece?.image_location) return [];
     try {
@@ -796,6 +851,13 @@ const PieceView = () => {
                     disabled={uniquenessCheckLoading}
                   >
                     {uniquenessCheckLoading ? '🔍 Checking…' : '🔍 Run Uniqueness Check'}
+                  </button>
+                  <button
+                    type="button"
+                    className={styles["creator-menu-item"]}
+                    onClick={openCompareModal}
+                  >
+                    🔀 Compare With Piece
                   </button>
                 </div>
               )}
@@ -1742,6 +1804,121 @@ const PieceView = () => {
               className={styles["uniqueness-modal-close"]}
               onClick={() => { setUniquenessModalOpen(false); setUniquenessError(''); }}
             >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Piece Comparer Modal */}
+      {compareModalOpen && (
+        <div className={styles["uniqueness-modal-overlay"]} onClick={() => setCompareModalOpen(false)}>
+          <div className={styles["compare-modal"]} onClick={(e) => e.stopPropagation()}>
+            <h3 className={styles["uniqueness-modal-title"]}>🔀 Compare Pieces</h3>
+            {!compareData ? (
+              <>
+                <p className={styles["compare-hint"]}>
+                  Search for another piece to compare with <strong>{piece?.piece_name}</strong>.
+                </p>
+                <input
+                  type="text"
+                  className={styles["compare-search-input"]}
+                  placeholder="Search pieces by name…"
+                  value={compareSearch}
+                  onChange={(e) => setCompareSearch(e.target.value)}
+                  autoFocus
+                />
+                {compareError && <p className={styles["compare-error"]}>{compareError}</p>}
+                <div className={styles["compare-results"]}>
+                  {compareSearchLoading ? (
+                    <p className={styles["compare-muted"]}>Searching…</p>
+                  ) : compareResults.length === 0 ? (
+                    <p className={styles["compare-muted"]}>
+                      {compareSearch.trim().length < 2 ? 'Type at least 2 characters to search.' : 'No pieces found.'}
+                    </p>
+                  ) : (
+                    compareResults.map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        className={styles["compare-result-item"]}
+                        onClick={() => handleSelectCompare(p.id)}
+                        disabled={compareLoading}
+                      >
+                        <span>{p.piece_name}</span>
+                        {p.creator_username && <span className={styles["compare-result-by"]}>by {p.creator_username}</span>}
+                      </button>
+                    ))
+                  )}
+                  {compareLoading && <p className={styles["compare-muted"]}>Comparing…</p>}
+                </div>
+              </>
+            ) : (
+              <>
+                <div className={styles["compare-header"]}>
+                  <strong>{compareData.pieceA?.name}</strong> vs <strong>{compareData.pieceB?.name}</strong>
+                </div>
+                <div className={styles["compare-tabs"]}>
+                  <button
+                    type="button"
+                    className={`${styles["compare-tab"]} ${compareTab === 'differences' ? styles["compare-tab-active"] : ''}`}
+                    onClick={() => setCompareTab('differences')}
+                  >
+                    Differences ({compareData.differences.length})
+                  </button>
+                  <button
+                    type="button"
+                    className={`${styles["compare-tab"]} ${compareTab === 'similarities' ? styles["compare-tab-active"] : ''}`}
+                    onClick={() => setCompareTab('similarities')}
+                  >
+                    Similarities ({compareData.similarities.length})
+                  </button>
+                </div>
+                <div className={styles["compare-table"]}>
+                  {compareTab === 'differences' ? (
+                    compareData.differences.length === 0 ? (
+                      <p className={styles["compare-muted"]}>No differences — these pieces are functionally identical.</p>
+                    ) : (
+                      <>
+                        <div className={`${styles["compare-row"]} ${styles["compare-row-head"]}`}>
+                          <span>Attribute</span>
+                          <span>{compareData.pieceA?.name}</span>
+                          <span>{compareData.pieceB?.name}</span>
+                        </div>
+                        {compareData.differences.map((d) => (
+                          <div key={d.field} className={styles["compare-row"]}>
+                            <span>{d.label}</span>
+                            <span>{d.a}</span>
+                            <span>{d.b}</span>
+                          </div>
+                        ))}
+                      </>
+                    )
+                  ) : (
+                    compareData.similarities.length === 0 ? (
+                      <p className={styles["compare-muted"]}>No shared non-default attributes.</p>
+                    ) : (
+                      <>
+                        <div className={`${styles["compare-row"]} ${styles["compare-row-two"]} ${styles["compare-row-head"]}`}>
+                          <span>Attribute</span>
+                          <span>Shared value</span>
+                        </div>
+                        {compareData.similarities.map((s) => (
+                          <div key={s.field} className={`${styles["compare-row"]} ${styles["compare-row-two"]}`}>
+                            <span>{s.label}</span>
+                            <span>{s.value}</span>
+                          </div>
+                        ))}
+                      </>
+                    )
+                  )}
+                </div>
+                <button type="button" className={styles["compare-back"]} onClick={() => { setCompareData(null); setCompareError(''); }}>
+                  ← Compare another
+                </button>
+              </>
+            )}
+            <button type="button" className={styles["uniqueness-modal-close"]} onClick={() => setCompareModalOpen(false)}>
               Close
             </button>
           </div>

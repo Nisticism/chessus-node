@@ -27,6 +27,10 @@ const changelogData = [
       "Refreshed the Grove (green) theme with cleaner, more cohesive green tones (less muddy green-gray) and darker, richer buttons with a subtle gold sheen.",
       "Card and section headings now use gold accents, and the gold borders/rings on cards were slimmed down so they read as an accent rather than a heavy outline.",
       "Fixed label alignment on the Browse Pieces page so 'Movement:' lines up with the top line of its value.",
+      "New: compare any two pieces. A piece's Creator Options now includes 'Compare With Piece' — search for another piece and see their Differences and Similarities side by side.",
+      "Play page: the admin-only delete button now sits in each card's lower-right (away from Join), the Join Game button follows the site theme (blue on the blue theme) and is less bright, and there's more space between the game list and its scrollbar.",
+      "More gold accents: gold section dividers (footer line and heading underlines), gold h2 headings, and buttons now share a subtle gold + theme-color gradient.",
+      "Slightly wider page margins on large screens, and replaced the remaining purple pawn icons on the home page with lighter ones.",
     ],
   },
   {
