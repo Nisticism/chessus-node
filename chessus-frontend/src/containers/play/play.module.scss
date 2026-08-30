@@ -267,7 +267,7 @@
 
   .open-matches-list {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
     gap: 16px;
   }
 }
@@ -504,7 +504,7 @@
 
 .ongoing-games-list {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
   gap: 12px;
 }
 
@@ -1425,6 +1425,57 @@
 }
 
 .private-game {
+}
+
+// Game-type search picker (top-section dropdown that replaced the left sidebar)
+.game-type-picker {
+  position: relative;
+  margin-bottom: 16px;
+}
+
+.game-type-search-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.game-type-search-input {
+  flex: 1 1 240px;
+  min-width: 0;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: var(--bg-dark);
+  color: var(--text-heading);
+  font-size: 0.95rem;
+}
+
+.game-type-filter-select,
+.game-type-creator-input {
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: var(--bg-dark);
+  color: var(--text-heading);
+  font-size: 0.9rem;
+}
+
+.game-type-creator-input {
+  flex: 0 1 150px;
+  min-width: 0;
+}
+
+.game-type-dropdown {
+  margin-top: 10px;
+  max-height: 340px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  background: var(--bg-dark);
+  border: 1px solid var(--panel-card-border);
+  border-radius: 10px;
 }
 
 // Compact Selected Game Type Section

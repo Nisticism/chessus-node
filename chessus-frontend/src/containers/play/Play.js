@@ -85,6 +85,12 @@ const Play = () => {
   const [friendSearch, setFriendSearch] = useState("");
   const [allFriends, setAllFriends] = useState([]);
 
+  // Game-type picker (search dropdown that replaced the old left sidebar)
+  const [gameTypeDropdownOpen, setGameTypeDropdownOpen] = useState(false);
+  const [gameTypeSort, setGameTypeSort] = useState('newest');
+  const [gameTypeCreatorFilter, setGameTypeCreatorFilter] = useState('');
+  const gameTypePickerRef = useRef(null);
+
   // Pagination state
   const PAGE_SIZE = 16;
   const [gameTypesPage, setGameTypesPage] = useState(1);
@@ -192,6 +198,13 @@ const Play = () => {
     return pinnedSelectedGameType ? [pinnedSelectedGameType, ...gamesList] : gamesList;
   }, [gamesList, pinnedSelectedGameType]);
 
+  // Client-side creator filter applied on top of the server-side name search.
+  const displayedGameTypes = useMemo(() => {
+    const cf = gameTypeCreatorFilter.trim().toLowerCase();
+    if (!cf) return filteredGameTypes;
+    return filteredGameTypes.filter((g) => (g.creator_username || '').toLowerCase().includes(cf));
+  }, [filteredGameTypes, gameTypeCreatorFilter]);
+
   const totalGameTypePages = Math.max(gamesPagination?.totalPages || 0, 1);
 
   const setGameTypeQueryParam = (gameTypeId) => {
@@ -240,8 +253,20 @@ const Play = () => {
 
   // Fetch the current game-type page whenever the library filters change
   useEffect(() => {
-    dispatch(getGames(gameTypesPage, PAGE_SIZE, 'newest', '', normalizedSearchTerm));
-  }, [dispatch, gameTypesPage, normalizedSearchTerm]);
+    dispatch(getGames(gameTypesPage, PAGE_SIZE, gameTypeSort, '', normalizedSearchTerm));
+  }, [dispatch, gameTypesPage, gameTypeSort, normalizedSearchTerm]);
+
+  // Close the game-type dropdown when clicking outside the picker.
+  useEffect(() => {
+    if (!gameTypeDropdownOpen) return undefined;
+    const handler = (e) => {
+      if (gameTypePickerRef.current && !gameTypePickerRef.current.contains(e.target)) {
+        setGameTypeDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [gameTypeDropdownOpen]);
 
   useEffect(() => {
     if (gameTypesPage > totalGameTypePages) {
@@ -1214,75 +1239,6 @@ const Play = () => {
       )}
 
       <div className={styles["play-content"]}>
-        {/* Sidebar - Game Types */}
-        <div className={styles["game-types-sidebar"]}>
-          <h2
-            onClick={toggleGameTypes}
-            style={{ cursor: 'pointer', userSelect: 'none' }}
-          >
-            <span style={{ display: 'inline-block', width: '1em' }}>{gameTypesCollapsed ? '\u25B6' : '\u25BC'}</span>
-            Game Types
-          </h2>
-          {!gameTypesCollapsed && (<>
-          <div className={styles["search-box"]}>
-            <input
-              type="text"
-              placeholder="Search games..."
-              value={searchTerm}
-              onChange={(e) => {
-                setSearchTerm(e.target.value);
-                setGameTypesPage(1);
-              }}
-            />
-          </div>
-          <div className={styles["game-types-list"]}>
-            {filteredGameTypes.length === 0 ? (
-              <div className={styles["no-games-message"]}>
-                {searchTerm ? "No games match your search" : "No game types available"}
-              </div>
-            ) : (
-              filteredGameTypes.map((game) => (
-                <div key={game.id}>
-                  {pinnedSelectedGameType?.id === game.id && (
-                    <div className={styles["selected-game-indicator"]}>Selected from link</div>
-                  )}
-                  <div
-                    className={`${styles["game-type-item"]} ${selectedGameType?.id === game.id ? styles.selected : ''}`}
-                    onClick={() => selectGameType(game)}
-                  >
-                    <div className={styles["game-type-name"]}>{game.game_name}</div>
-                    <div className={styles["game-type-info"]}>
-                      {game.board_width}x{game.board_height} {'\u2022'} {game.player_count || 2} players
-                    </div>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-          {totalGameTypePages > 1 && (
-            <div className={styles["game-types-pagination"]}>
-              <button
-                disabled={gameTypesPage === 1}
-                onClick={() => setGameTypesPage((page) => page - 1)}
-                className={styles["pagination-btn"]}
-              >
-                {'\u2190'} Prev
-              </button>
-              <span className={styles["pagination-info"]}>
-                {gameTypesPage} / {totalGameTypePages}
-              </span>
-              <button
-                disabled={gameTypesPage >= totalGameTypePages}
-                onClick={() => setGameTypesPage((page) => page + 1)}
-                className={styles["pagination-btn"]}
-              >
-                Next {'\u2192'}
-              </button>
-            </div>
-          )}
-          </>)}
-        </div>
-
         {/* Main Content */}
         <div className={styles["main-content"]}>
           {/* Incoming Challenges Section */}
@@ -1330,9 +1286,88 @@ const Play = () => {
 
           {/* Selected Game Type Section - Compact View */}
           <div className={styles["selected-game-section-compact"]}>
+            <div className={styles["game-type-picker"]} ref={gameTypePickerRef}>
+              <div className={styles["game-type-search-row"]}>
+                <input
+                  type="text"
+                  className={styles["game-type-search-input"]}
+                  placeholder="Search game types to host…"
+                  value={searchTerm}
+                  onChange={(e) => { setSearchTerm(e.target.value); setGameTypesPage(1); setGameTypeDropdownOpen(true); }}
+                  onFocus={() => setGameTypeDropdownOpen(true)}
+                />
+                <select
+                  className={styles["game-type-filter-select"]}
+                  value={gameTypeSort}
+                  onChange={(e) => { setGameTypeSort(e.target.value); setGameTypesPage(1); }}
+                  title="Sort game types"
+                >
+                  <option value="newest">Newest</option>
+                  <option value="oldest">Oldest</option>
+                  <option value="alphabetical">A–Z</option>
+                </select>
+                <input
+                  type="text"
+                  className={styles["game-type-creator-input"]}
+                  placeholder="Creator…"
+                  value={gameTypeCreatorFilter}
+                  onChange={(e) => setGameTypeCreatorFilter(e.target.value)}
+                  onFocus={() => setGameTypeDropdownOpen(true)}
+                />
+              </div>
+              {gameTypeDropdownOpen && (
+                <div className={styles["game-type-dropdown"]}>
+                  {displayedGameTypes.length === 0 ? (
+                    <div className={styles["no-games-message"]}>
+                      {searchTerm || gameTypeCreatorFilter ? "No games match your search" : "No game types available"}
+                    </div>
+                  ) : (
+                    displayedGameTypes.map((game) => (
+                      <div key={game.id}>
+                        {pinnedSelectedGameType?.id === game.id && (
+                          <div className={styles["selected-game-indicator"]}>Selected from link</div>
+                        )}
+                        <div
+                          className={`${styles["game-type-item"]} ${selectedGameType?.id === game.id ? styles.selected : ''}`}
+                          onClick={() => { selectGameType(game); setGameTypeDropdownOpen(false); }}
+                        >
+                          <div className={styles["game-type-name"]}>{game.game_name}</div>
+                          <div className={styles["game-type-info"]}>
+                            {game.board_width}x{game.board_height} {'\u2022'} {game.player_count || 2} players
+                            {game.creator_username ? <> {'\u2022'} by {game.creator_username}</> : null}
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                  {totalGameTypePages > 1 && (
+                    <div className={styles["game-types-pagination"]}>
+                      <button
+                        disabled={gameTypesPage === 1}
+                        onClick={() => setGameTypesPage((page) => page - 1)}
+                        className={styles["pagination-btn"]}
+                      >
+                        {'\u2190'} Prev
+                      </button>
+                      <span className={styles["pagination-info"]}>
+                        {gameTypesPage} / {totalGameTypePages}
+                      </span>
+                      <button
+                        disabled={gameTypesPage >= totalGameTypePages}
+                        onClick={() => setGameTypesPage((page) => page + 1)}
+                        className={styles["pagination-btn"]}
+                      >
+                        Next {'\u2192'}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
             {!selectedGameType ? (
               <div className={styles["no-selection"]}>
-                Select a game type to host a match
+                Search and select a game type above to host a match
               </div>
             ) : (
               <div className={styles["selected-game-compact"]}>

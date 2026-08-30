@@ -38,6 +38,9 @@ const changelogData = [
       "Headings now use a single consistent gold shade, and all dividers use a muted gold (the nav and footer hairlines are unchanged).",
       "Profile page tidy-up: Ongoing Games and Friends are now collapsible (collapsed by default), section dividers only show when a section is expanded, the divider above Delete Account was removed, and the ELO / Last Active boxes are aligned into a neat column.",
       "The 'Create Anonymous Game' title now wraps to multiple lines instead of being cut off, and usernames on the Play game cards are a bit lighter and easier to read.",
+      "Redesigned the Play page: the left game-types sidebar is gone — game selection now lives in a search box at the top that opens a dropdown of results, filterable by Newest / Oldest / A–Z and by creator. The open-matches and other sections now use the full page width, with cards that grow to fill the space.",
+      "The footer navigation now mirrors the main menu exactly (both are driven from a single shared list), and the divider styling on the Game Library and forum pages now uses the site's gold accent.",
+      "Profile page polish: collapsible section dividers are fully hidden while collapsed, the Bio section gets a matching divider, and the gear/edit icons no longer overlap the ELO box. Editor toolbar buttons (emoji / link / bullet) are now the same height.",
     ],
   },
   {

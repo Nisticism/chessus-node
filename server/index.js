@@ -2830,6 +2830,9 @@ app.get("/api/games", optionalAuthenticate, async (req, res) => {
       case 'alphabetical':
         orderClause = 'ORDER BY TRIM(gt.game_name) ASC';
         break;
+      case 'oldest':
+        orderClause = 'ORDER BY gt.id ASC';
+        break;
       case 'newest':
       default:
         orderClause = 'ORDER BY gt.id DESC';
