@@ -199,7 +199,7 @@ export function estimatePieceValue(piece, boardWidth = 8, boardHeight = 8) {
   }
 
   // Step movement (BFS)
-  const stepStyle = piece.step_by_step_movement_style || piece.step_movement_style;
+  const stepStyle = Number(piece.step_by_step_movement_value ?? piece.step_movement_value ?? 0) !== 0;
   if (stepStyle) {
     const stepVal = Number(piece.step_by_step_movement_value ?? piece.step_movement_value ?? 0);
     if (!isNaN(stepVal) && stepVal !== 0) {

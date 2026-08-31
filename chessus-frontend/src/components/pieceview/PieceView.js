@@ -323,10 +323,10 @@ const PieceView = () => {
     // Sanitize piece data to ensure no raw 0 or 1 values leak through
     const sanitized = {
       ...piece,
-      // Convert TINYINT boolean fields to actual booleans
-      directional_movement_style: !!piece.directional_movement_style,
-      ratio_movement_style: !!piece.ratio_movement_style,
-      step_by_step_movement_style: !!piece.step_by_step_movement_style,
+      // Movement "type" flags are derived from values (value-only model).
+      directional_movement_style: !!(piece.up_movement || piece.down_movement || piece.left_movement || piece.right_movement || piece.up_left_movement || piece.up_right_movement || piece.down_left_movement || piece.down_right_movement),
+      ratio_movement_style: (piece.ratio_one_movement > 0 && piece.ratio_two_movement > 0),
+      step_by_step_movement_style: Number(piece.step_by_step_movement_value ?? 0) !== 0,
       repeating_movement: !!piece.repeating_movement,
       can_capture_enemy_on_move: !!piece.can_capture_enemy_on_move,
       can_capture_enemy_via_range: !!piece.can_capture_enemy_via_range,
@@ -640,10 +640,10 @@ const PieceView = () => {
     if (!piece) return null;
     return {
       ...piece,
-      // Convert TINYINT boolean fields to actual booleans
-      directional_movement_style: !!piece.directional_movement_style,
-      ratio_movement_style: !!piece.ratio_movement_style,
-      step_by_step_movement_style: !!piece.step_by_step_movement_style,
+      // Movement "type" flags are derived from values (value-only model).
+      directional_movement_style: !!(piece.up_movement || piece.down_movement || piece.left_movement || piece.right_movement || piece.up_left_movement || piece.up_right_movement || piece.down_left_movement || piece.down_right_movement),
+      ratio_movement_style: (piece.ratio_one_movement > 0 && piece.ratio_two_movement > 0),
+      step_by_step_movement_style: Number(piece.step_by_step_movement_value ?? 0) !== 0,
       repeating_movement: !!piece.repeating_movement,
       can_capture_enemy_on_move: !!piece.can_capture_enemy_on_move,
       can_capture_enemy_via_range: !!piece.can_capture_enemy_via_range,

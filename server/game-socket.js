@@ -5157,7 +5157,8 @@ function initializeSocket(server) {
           let pieces = JSON.parse(game.pieces || "[]");
           const pieceIdsToLoad = new Set();
           pieces.forEach(p => {
-            if (p.piece_id && !p.directional_movement_style) {
+            // Missing movement data → needs enrichment from the pieces table.
+            if (p.piece_id && p.up_movement === undefined) {
               pieceIdsToLoad.add(p.piece_id);
             }
           });
@@ -9609,7 +9610,7 @@ function initializeSocket(server) {
             const pieceIdsToLoad = new Set();
             pieces.forEach(p => {
               // Check if piece is missing movement data
-              if (p.piece_id && !p.directional_movement_style) {
+              if (p.piece_id && p.up_movement === undefined) {
                 pieceIdsToLoad.add(p.piece_id);
               }
             });
@@ -11226,7 +11227,8 @@ function computePieceValue(piece, bw, bh) {
   }
 
   // --- STEP MOVEMENT (BFS on empty board) ---
-  const stepStyle = piece.step_by_step_movement_style || piece.step_movement_style;
+  // Value-only gate: active iff the step value is non-zero (no separate style flag).
+  const stepStyle = Number(piece.step_by_step_movement_value ?? piece.step_movement_value ?? 0) !== 0;
   if (stepStyle) {
     const stepValRaw = piece.step_by_step_movement_value ?? piece.step_movement_value;
     const stepVal    = Number(stepValRaw ?? 0);
@@ -16605,7 +16607,7 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
   // movement when step_movement_style (or step_by_step_movement_style) is truthy.
   // Positive step_movement_value → Chebyshev distance (includes diagonals).
   // Negative step_movement_value → Manhattan distance (orthogonal only).
-  const stepMovStyle = piece.step_by_step_movement_style || piece.step_movement_style;
+  const stepMovStyle = Number(piece.step_by_step_movement_value ?? piece.step_movement_value ?? 0) !== 0;
   if (stepMovStyle) {
     const stepValRaw = piece.step_by_step_movement_value ?? piece.step_movement_value;
     const stepVal = Number(stepValRaw ?? 0);

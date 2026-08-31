@@ -328,7 +328,8 @@ const PieceBoardPreview = ({ pieceData, showAttack = true, showLegend = true }) 
     let directionalDirection = null;
     
     // Directional movement
-    if (pieceData.directional_movement_style) {
+    if (pieceData.up_movement || pieceData.down_movement || pieceData.left_movement || pieceData.right_movement ||
+        pieceData.up_left_movement || pieceData.up_right_movement || pieceData.down_left_movement || pieceData.down_right_movement) {
       const rep = pieceData.repeating_movement;
       // Up-left diagonal
       if (rowDiff < 0 && colDiff < 0 && Math.abs(rowDiff) === Math.abs(colDiff)) {
@@ -451,7 +452,7 @@ const PieceBoardPreview = ({ pieceData, showAttack = true, showLegend = true }) 
     }
 
     // Ratio movement (L-shape like knight)
-    if (pieceData.ratio_movement_style && pieceData.ratio_one_movement && pieceData.ratio_two_movement) {
+    if (pieceData.ratio_one_movement && pieceData.ratio_two_movement) {
       const ratio1 = Math.abs(pieceData.ratio_one_movement);
       const ratio2 = Math.abs(pieceData.ratio_two_movement);
       const absRow = Math.abs(rowDiff);
@@ -476,7 +477,7 @@ const PieceBoardPreview = ({ pieceData, showAttack = true, showLegend = true }) 
     }
 
     // Step-by-step movement (takes precedence when directional is 0 or disabled)
-    if (pieceData.step_by_step_movement_style && pieceData.step_by_step_movement_value) {
+    if (pieceData.step_by_step_movement_value) {
       const maxSteps = Math.abs(pieceData.step_by_step_movement_value);
       const noDiagonal = pieceData.step_by_step_movement_value < 0;
       

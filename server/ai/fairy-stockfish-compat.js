@@ -72,7 +72,7 @@ function pieceIncompatReasons(piece, isRoyal = false, isPawn = false) {
       `Multi-tile piece (${piece.piece_width}×${piece.piece_height}). Fairy-Stockfish only supports 1×1 pieces.`,
       'Edit the piece in the piece wizard (Step 1) and set both width and height to 1.');
   }
-  if (toBool(piece.step_by_step_movement_style) || toBool(piece.step_by_step_attack_style)) {
+  if (Number(piece.step_by_step_movement_value ?? 0) !== 0 || Number(piece.step_by_step_attack_value ?? 0) !== 0) {
     push('step_by_step_movement_style',
       'Uses step-by-step movement (no equivalent in classical chess engines).',
       'In the piece wizard, disable "Step-by-step movement / attack style" in Step 2 / Step 3.');

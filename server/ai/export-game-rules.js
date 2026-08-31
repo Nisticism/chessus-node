@@ -487,10 +487,7 @@ async function exportGameRules(gameTypeId) {
       // Step-by-step movement (checkers-king-style "up to N squares").
       // Negative value = no diagonals (Manhattan), positive = with diagonals
       // (Chebyshev). Zero / null means no step-by-step movement.
-      step_by_step_movement_value:
-        toBool(p.step_by_step_movement_style)
-          ? intOr(p.step_by_step_movement_value, 0)
-          : 0,
+      step_by_step_movement_value: intOr(p.step_by_step_movement_value, 0),
       step_by_step_capture: intOr(p.step_by_step_capture, 0),
 
       can_hop_over_allies: toBool(p.can_hop_over_allies),

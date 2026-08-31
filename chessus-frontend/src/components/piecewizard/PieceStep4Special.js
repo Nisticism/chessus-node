@@ -22,15 +22,18 @@ const PieceStep4Special = ({ pieceData, updatePieceData }) => {
     (pieceData.down_left_movement || 0) === 0 &&
     (pieceData.down_right_movement || 0) === 0;
 
+  // Value-only: directional active iff any direction value is non-zero.
+  const hasDirectionalMovement = !!(
+    pieceData.up_movement || pieceData.down_movement || pieceData.left_movement || pieceData.right_movement ||
+    pieceData.up_left_movement || pieceData.up_right_movement || pieceData.down_left_movement || pieceData.down_right_movement);
+
   // Ratio movements (L-shapes like knights) can move backwards
-  const hasRatioMovement = 
-    pieceData.ratio_movement_style && 
-    ((pieceData.ratio_one_movement || 0) > 0 || (pieceData.ratio_two_movement || 0) > 0);
+  const hasRatioMovement =
+    (pieceData.ratio_one_movement || 0) > 0 && (pieceData.ratio_two_movement || 0) > 0;
 
   // Step-by-step movements can move in any direction (including backwards)
-  const hasStepByStepMovement = 
-    pieceData.step_by_step_movement_style && 
-    (pieceData.step_by_step_movement_value || 0) > 0;
+  const hasStepByStepMovement =
+    (pieceData.step_by_step_movement_value || 0) !== 0;
 
   // Piece can only en passant if it has no way to move backwards
   const hasNoBackwardMovement = hasNoBackwardDirectionalMovement && !hasRatioMovement && !hasStepByStepMovement;
@@ -191,19 +194,19 @@ const PieceStep4Special = ({ pieceData, updatePieceData }) => {
           <div className={styles["summary-item"]}>
             <span className={styles["summary-tooltip"]}>Per-direction movement with configurable distance, exact/infinite range, and first-move-only options.</span>
             <strong>Directional Movement:</strong>{" "}
-            {pieceData.directional_movement_style ? "Enabled" : "Disabled"}
+            {hasDirectionalMovement ? "Enabled" : "Disabled"}
           </div>
           <div className={styles["summary-item"]}>
             <span className={styles["summary-tooltip"]}>L-shaped movement like a knight. Moves one distance in one direction, then a different distance perpendicularly.</span>
             <strong>Ratio Movement:</strong>{" "}
-            {pieceData.ratio_movement_style
+            {hasRatioMovement
               ? `${pieceData.ratio_one_movement || 0}-${pieceData.ratio_two_movement || 0}`
               : "Disabled"}
           </div>
           <div className={styles["summary-item"]}>
             <span className={styles["summary-tooltip"]}>A step budget where the piece moves one square at a time in any direction, changing direction each step.</span>
             <strong>Step-by-Step:</strong>{" "}
-            {pieceData.step_by_step_movement_style
+            {hasStepByStepMovement
               ? `${Math.abs(pieceData.step_by_step_movement_value || 0)} steps${
                   pieceData.step_by_step_movement_value < 0 ? " (no diagonal)" : " (with diagonal)"
                 }`

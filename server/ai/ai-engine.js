@@ -1007,7 +1007,7 @@ function getPieceValue(piece, boardSize) {
     }
   }
 
-  const stepStyle = piece.step_by_step_movement_style || piece.step_movement_style;
+  const stepStyle = Number(piece.step_by_step_movement_value ?? piece.step_movement_value ?? 0) !== 0;
   if (stepStyle) {
     const stepVal = Number(piece.step_by_step_movement_value ?? piece.step_movement_value ?? 0);
     if (!isNaN(stepVal) && stepVal !== 0) {
@@ -1571,7 +1571,7 @@ function getAttackersTo(state, tx, ty, player, bs) {
 
     // --- Step-by-step captures ---
     if (!canAttack) {
-      const stepStyle = piece.step_by_step_movement_style || piece.step_movement_style;
+      const stepStyle = Number(piece.step_by_step_movement_value ?? piece.step_movement_value ?? 0) !== 0;
       if (stepStyle && (piece.can_capture_enemy_on_move || piece.step_capture_value != null)) {
         const rawVal = piece.step_capture_value ?? piece.step_by_step_movement_value ?? piece.step_movement_value ?? 0;
         const stepVal = Number(rawVal);

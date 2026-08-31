@@ -311,14 +311,7 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
       {/* Directional Movement */}
       <div className={styles["condition-section"]}>
         <h3>Directional Movement <InfoTooltip text="Configure per-direction movement. Set the number of squares (0 = disabled). 'Exact' means the piece must move exactly that distance (can't stop short). 'Infinite' means unlimited range in that direction. 'First N moves only' limits that direction to the piece's first N moves, then it becomes unavailable. You can add alternative movements per direction for different distances." /></h3>
-        <ToggleSwitch
-          checked={pieceData.directional_movement_style === true}
-          onChange={(v) => handleBooleanChange("directional_movement_style", v ? "true" : "false")}
-          label="Enable directional movement"
-        />
-
-        {pieceData.directional_movement_style && (
-          <div className={styles["directional-grid"]}>
+        <div className={styles["directional-grid"]}>
             <div className={styles["direction-row"]}>
               <div className={styles["direction-input"]}>
                 <label>↖ Up-Left</label>
@@ -707,19 +700,11 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
               </div>
             )}
           </div>
-        )}
       </div>
 
       {/* Ratio Movement (Knight-like) */}
       <div className={styles["condition-section"]}>
         <h3>Ratio Movement (L-shape) <InfoTooltip text="L-shaped movement like a chess knight. Set two ratio values — the piece moves the first value in one direction, then the second value perpendicularly. For example, a knight uses 2-1 (2 squares in one direction, then 1 square perpendicular). This movement can jump to the destination directly." /></h3>
-          <ToggleSwitch
-            checked={pieceData.ratio_movement_style === true}
-            onChange={(v) => handleBooleanChange("ratio_movement_style", v ? "true" : "false")}
-            label="Enable ratio movement"
-          />
-
-        {pieceData.ratio_movement_style && (
           <div className={styles["sub-fields"]}>
             <div className={styles["form-row"]}>
               <div className={styles["sub-field"]}>
@@ -767,21 +752,13 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
               </div>
             )}
           </div>
-        )}
       </div>
 
       {/* Step by Step Movement */}
       <div className={styles["condition-section"]}>
         <h3>Step-by-Step Movement <InfoTooltip text="The piece gets a budget of steps and can move one square at a time in any direction, changing direction with each step. Like a king that can take multiple steps per turn. Set the max steps (1–8) and optionally exclude diagonal steps. Values of 7 or higher will disable additional custom-square movement because the step area already covers the entire 15×15 custom-square grid." /></h3>
-          <ToggleSwitch
-            checked={pieceData.step_by_step_movement_style === true}
-            onChange={(v) => handleBooleanChange("step_by_step_movement_style", v ? "true" : "false")}
-            label="Enable step-by-step movement"
-          />
-
-        {pieceData.step_by_step_movement_style && (
           <div className={styles["sub-field"]}>
-            <label>Maximum Steps (1–{MAX_STEP_BY_STEP})</label>
+            <label>Maximum Steps (0–{MAX_STEP_BY_STEP})</label>
             <NumberInput
               value={Math.abs(pieceData.step_by_step_movement_value || 0) || ""}
               onChange={(val) => {
@@ -789,7 +766,7 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
                 const clamped = Math.min(MAX_STEP_BY_STEP, Math.max(0, Math.abs(val || 0)));
                 handleNumberChange("step_by_step_movement_value", noDiagonal ? -clamped : clamped);
               }}
-              options={{ min: 1, max: MAX_STEP_BY_STEP, placeholder: `Total squares piece can move (max ${MAX_STEP_BY_STEP})`, className: styles["form-input-small"] }}
+              options={{ min: 0, max: MAX_STEP_BY_STEP, placeholder: `Total squares piece can move (max ${MAX_STEP_BY_STEP})`, className: styles["form-input-small"] }}
             />
             <div className={styles["checkbox-row"]}>
               <ToggleSwitch
@@ -803,7 +780,6 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
             </div>
 
           </div>
-        )}
       </div>
 
       {/* Hopping */}

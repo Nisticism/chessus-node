@@ -45,11 +45,12 @@ const describeMovementRange = (value) => {
 const describePieceMovement = (pieceData) => {
   const movements = [];
   
-  const directionalStyle = pieceData.directional_movement_style;
-  const hasDirectional = directionalStyle === 'directional' || directionalStyle === 'both' || 
-                         directionalStyle === 1 || directionalStyle === 3;
-  const hasRatio = directionalStyle === 'ratio' || directionalStyle === 'both' || 
-                   directionalStyle === 2 || directionalStyle === 3;
+  // Value-only model: movement "type" is inferred from the configured values.
+  const hasDirectional = !!(
+    pieceData.up_movement || pieceData.down_movement || pieceData.left_movement || pieceData.right_movement ||
+    pieceData.up_left_movement || pieceData.up_right_movement || pieceData.down_left_movement || pieceData.down_right_movement);
+  const hasRatio = (pieceData.ratio_movement_1 || pieceData.ratio_one_movement || 0) > 0 &&
+                   (pieceData.ratio_movement_2 || pieceData.ratio_two_movement || 0) > 0;
   
   // Check for ratio movement values even if directional_movement_style isn't set
   // Handle both naming conventions: ratio_movement_1/2 and ratio_one_movement/ratio_two_movement
@@ -124,13 +125,12 @@ const describePieceMovement = (pieceData) => {
     }
   }
   
-  // Check step movement - handle both naming conventions
-  const stepStyle = pieceData.step_movement_style || pieceData.step_by_step_movement_style;
+  // Check step movement - handle both naming conventions (value-only model)
   const stepValue = pieceData.step_movement_value || pieceData.step_by_step_movement_value;
   
-  if (stepStyle && stepValue) {
+  if (stepValue) {
     // Negative stepValue = manhattan (diagonals excluded), positive = chebyshev (includes diagonals)
-    const isManhattan = stepStyle === 'manhattan' || stepValue < 0;
+    const isManhattan = stepValue < 0;
     const range = describeMovementRange(stepValue);
     if (range) {
       if (isManhattan) {

@@ -1353,14 +1353,13 @@ const Sandbox = () => {
     const rowDiff = playerPosition === 2 ? (fromY - toY) : (toY - fromY);
     const colDiff = playerPosition === 2 ? (fromX - toX) : (toX - fromX);
 
-    // Check directional movement
-    const directionalStyle = pieceData.directional_movement_style;
+    // Check directional movement (value-only: active iff any direction value is non-zero)
     const hasDirectionalValues = pieceData.up_movement || pieceData.down_movement || 
                                   pieceData.left_movement || pieceData.right_movement ||
                                   pieceData.up_left_movement || pieceData.up_right_movement ||
                                   pieceData.down_left_movement || pieceData.down_right_movement;
     
-    if (directionalStyle || hasDirectionalValues) {
+    if (hasDirectionalValues) {
       let directionalAllowed = false;
       const rep = pieceData.repeating_movement;
 
@@ -1387,11 +1386,10 @@ const Sandbox = () => {
 
     // Check ratio movement (L-shape like knight)
     if (!skipExactRatio) {
-    const ratioStyle = pieceData.ratio_movement_style;
     const ratio1 = pieceData.ratio_movement_1 || pieceData.ratio_one_movement || 0;
     const ratio2 = pieceData.ratio_movement_2 || pieceData.ratio_two_movement || 0;
     
-    if ((ratioStyle || (ratio1 > 0 && ratio2 > 0)) && ratio1 > 0 && ratio2 > 0) {
+    if (ratio1 > 0 && ratio2 > 0) {
       const absRow = Math.abs(rowDiff);
       const absCol = Math.abs(colDiff);
       if (pieceData.repeating_ratio) {

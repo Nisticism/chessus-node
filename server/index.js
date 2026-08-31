@@ -2274,15 +2274,15 @@ app.get("/api/pieces/community-images", async (req, res) => {
 // (/api/pieces/duplicates). They power the user-facing piece comparer below
 // (/api/pieces/:id/compare/:otherId), which reports differences & similarities.
 const CMP_BOOL_COLS = [
-  'directional_movement_style','repeating_movement','first_move_only','first_move_only_capture',
+  'repeating_movement','first_move_only','first_move_only_capture',
   'up_left_movement_exact','up_movement_exact','up_right_movement_exact','right_movement_exact',
   'down_right_movement_exact','down_movement_exact','down_left_movement_exact','left_movement_exact',
   'up_left_capture_exact','up_capture_exact','up_right_capture_exact','right_capture_exact',
   'down_right_capture_exact','down_capture_exact','down_left_capture_exact','left_capture_exact',
   'up_left_attack_range_exact','up_attack_range_exact','up_right_attack_range_exact','right_attack_range_exact',
   'down_right_attack_range_exact','down_attack_range_exact','down_left_attack_range_exact','left_attack_range_exact',
-  'ratio_movement_style','repeating_ratio','repeating_capture','repeating_ratio_capture',
-  'step_by_step_movement_style','step_by_step_attack_style',
+  'repeating_ratio','repeating_capture','repeating_ratio_capture',
+  'step_by_step_attack_style',
   'can_hop_over_allies','can_hop_over_enemies','exact_ratio_hop_only','directional_hop_disabled',
   'hop_stop_at_occupied','directional_hop_only',
   'can_hop_attack_over_allies','can_hop_attack_over_enemies',
@@ -2436,15 +2436,15 @@ app.post("/api/pieces/duplicates", async (req, res) => {
     // creator, timestamps). Comparison is field-by-field, short-circuits on
     // the first difference so the inner loop is fast.
     const BOOL_COLS = [
-      'directional_movement_style','repeating_movement','first_move_only','first_move_only_capture',
+      'repeating_movement','first_move_only','first_move_only_capture',
       'up_left_movement_exact','up_movement_exact','up_right_movement_exact','right_movement_exact',
       'down_right_movement_exact','down_movement_exact','down_left_movement_exact','left_movement_exact',
       'up_left_capture_exact','up_capture_exact','up_right_capture_exact','right_capture_exact',
       'down_right_capture_exact','down_capture_exact','down_left_capture_exact','left_capture_exact',
       'up_left_attack_range_exact','up_attack_range_exact','up_right_attack_range_exact','right_attack_range_exact',
       'down_right_attack_range_exact','down_attack_range_exact','down_left_attack_range_exact','left_attack_range_exact',
-      'ratio_movement_style','repeating_ratio','repeating_capture','repeating_ratio_capture',
-      'step_by_step_movement_style','step_by_step_attack_style',
+      'repeating_ratio','repeating_capture','repeating_ratio_capture',
+      'step_by_step_attack_style',
       'can_hop_over_allies','can_hop_over_enemies','exact_ratio_hop_only','directional_hop_disabled',
       'hop_stop_at_occupied','directional_hop_only',
       'can_hop_attack_over_allies','can_hop_attack_over_enemies',
@@ -4605,13 +4605,13 @@ app.post("/api/games/:gameId/uniqueness-check", authenticateToken, async (req, r
 
     // Piece columns to compare for uniqueness (from pieces table ? movement/attack settings)
     const pieceCompareColumns = [
-      'directional_movement_style', 'repeating_movement',
+      'repeating_movement',
       'max_directional_movement_iterations', 'min_directional_movement_iterations',
       'up_left_movement', 'up_movement', 'up_right_movement', 'right_movement',
       'down_right_movement', 'down_movement', 'down_left_movement', 'left_movement',
-      'ratio_movement_style', 'ratio_one_movement', 'ratio_two_movement',
+      'ratio_one_movement', 'ratio_two_movement',
       'repeating_ratio', 'max_ratio_iterations', 'min_ratio_iterations',
-      'step_by_step_movement_style', 'step_by_step_movement_value',
+      'step_by_step_movement_value',
       'can_hop_over_allies', 'can_hop_over_enemies', 'hop_stop_at_occupied',
       'can_capture_enemy_via_range', 'can_capture_ally_via_range',
       'can_capture_enemy_on_move', 'can_capture_ally_on_range', 'can_attack_on_iteration',

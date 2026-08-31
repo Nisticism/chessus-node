@@ -1037,6 +1037,51 @@ const runMigrations = async () => {
     console.error('Error converting point columns to DECIMAL:', err.message);
   }
 
+  // Retire the movement "style" gate flags in favor of a value-only model:
+  // an ability is active iff its value(s) are non-zero. This zeroes orphaned values
+  // left behind when a style toggle was turned off (the piece-750 phantom-move class).
+  // Gated on an orphan-count pre-check so it does real work only on the first restart.
+  try {
+    const hasStyleCol = await columnExists('pieces', 'step_by_step_movement_style');
+    if (hasStyleCol) {
+      const [chk] = await db_pool.query(`
+        SELECT
+          SUM(COALESCE(step_by_step_movement_style,0)=0 AND step_by_step_movement_value<>0) AS m,
+          SUM(COALESCE(ratio_movement_style,0)=0 AND (ratio_one_movement<>0 OR ratio_two_movement<>0)) AS r,
+          SUM(COALESCE(directional_movement_style,0)=0 AND (
+            up_movement<>0 OR up_right_movement<>0 OR right_movement<>0 OR down_right_movement<>0 OR
+            down_movement<>0 OR down_left_movement<>0 OR left_movement<>0 OR up_left_movement<>0)) AS d
+        FROM pieces
+      `);
+      const pending = chk[0] && (Number(chk[0].m) || Number(chk[0].r) || Number(chk[0].d));
+      if (pending) {
+        await runMigration(
+          `UPDATE pieces SET step_by_step_movement_value=0
+             WHERE COALESCE(step_by_step_movement_style,0)=0 AND step_by_step_movement_value<>0`,
+          'Value-only gates: zero orphaned step-by-step movement values'
+        );
+        migrationsRun++;
+        await runMigration(
+          `UPDATE pieces SET ratio_one_movement=0, ratio_two_movement=0
+             WHERE COALESCE(ratio_movement_style,0)=0 AND (ratio_one_movement<>0 OR ratio_two_movement<>0)`,
+          'Value-only gates: zero orphaned ratio movement values'
+        );
+        migrationsRun++;
+        await runMigration(
+          `UPDATE pieces SET up_movement=0, up_right_movement=0, right_movement=0, down_right_movement=0,
+             down_movement=0, down_left_movement=0, left_movement=0, up_left_movement=0
+             WHERE COALESCE(directional_movement_style,0)=0 AND (
+               up_movement<>0 OR up_right_movement<>0 OR right_movement<>0 OR down_right_movement<>0 OR
+               down_movement<>0 OR down_left_movement<>0 OR left_movement<>0 OR up_left_movement<>0)`,
+          'Value-only gates: zero orphaned directional movement values'
+        );
+        migrationsRun++;
+      }
+    }
+  } catch (err) {
+    console.error('Error retiring movement/attack style gates:', err.message);
+  }
+
   // ============================================
   // LEGACY MIGRATIONS FOR OLD TABLE STRUCTURE (HISTORICAL ONLY)
   // The following migrations modify piece_movement and piece_capture tables.

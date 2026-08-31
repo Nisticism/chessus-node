@@ -36,5 +36,8 @@ trainer-binaries/**
 chessusnode_prod.sql
 *_prod.sql
 
+# Dev-only production DB tunnel + pull scripts (contain/read RDS secrets)
+scripts/dev-db/
+
 # Local MCP config
 .vscode/mcp.json

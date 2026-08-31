@@ -624,11 +624,11 @@ const PieceWizard = ({ editPieceId = null }) => {
       return;
     }
 
-    // Warn if ratio movement style is on but both ratio values are 0
-    if (pieceData.ratio_movement_style && !bypassRatioWarning) {
+    // Warn if exactly one ratio value is set — ratio movement needs both to work.
+    if (!bypassRatioWarning) {
       const r1 = pieceData.ratio_one_movement || 0;
       const r2 = pieceData.ratio_two_movement || 0;
-      if (r1 === 0 && r2 === 0) {
+      if ((r1 > 0) !== (r2 > 0)) {
         setRatioZeroWarning(true);
         return;
       }
@@ -862,12 +862,12 @@ const PieceWizard = ({ editPieceId = null }) => {
       {ratioZeroWarning && (
         <div className={styles["warning-overlay"]}>
           <div className={styles["warning-modal"]}>
-            <h3>⚠️ Ratio Values Are Zero</h3>
+            <h3>⚠️ Incomplete Ratio Movement</h3>
             <p>
-              Ratio movement is enabled but both <strong>Ratio One</strong> and <strong>Ratio Two</strong> values are 0.
-              This means the piece cannot make any ratio (L-shape) moves.
+              Only one of <strong>Ratio One</strong> and <strong>Ratio Two</strong> is set.
+              Ratio (L-shape) movement needs <strong>both</strong> values to work, so the piece cannot make any ratio moves.
             </p>
-            <p>Go back to Step 2 and set at least one ratio value, or disable ratio movement.</p>
+            <p>Go back to Step 2 and set both ratio values, or clear both to disable ratio movement.</p>
             <div className={styles["warning-buttons"]}>
               <StandardButton
                 buttonText="Fix It"

@@ -282,14 +282,13 @@ export const canPieceMoveTo = (fromRow, fromCol, toRow, toCol, pieceData, player
     pieceData.special_scenario_moves || pieceData.special_scenario_movement
   );
 
-  // Check directional movement
-  const directionalStyle = pieceData.directional_movement_style;
+  // Check directional movement (value-only: active iff any direction value is non-zero)
   const hasDirectionalValues = pieceData.up_movement || pieceData.down_movement || 
                                 pieceData.left_movement || pieceData.right_movement ||
                                 pieceData.up_left_movement || pieceData.up_right_movement ||
                                 pieceData.down_left_movement || pieceData.down_right_movement;
 
-  if ((directionalStyle || hasDirectionalValues) && direction) {
+  if (hasDirectionalValues && direction) {
     const movementKey = `${direction}_movement`;
     const exactKey = `${direction}_movement_exact`;
     const movementValue = pieceData[movementKey];
@@ -319,12 +318,11 @@ export const canPieceMoveTo = (fromRow, fromCol, toRow, toCol, pieceData, player
     }
   }
 
-  // Check ratio movement (L-shape like knight)
-  const ratioStyle = pieceData.ratio_movement_style;
+  // Check ratio movement (L-shape like knight) — value-only: both components must be > 0
   const ratio1 = pieceData.ratio_one_movement || pieceData.ratio_movement_1 || 0;
   const ratio2 = pieceData.ratio_two_movement || pieceData.ratio_movement_2 || 0;
   
-  if ((ratioStyle || (ratio1 > 0 && ratio2 > 0)) && ratio1 > 0 && ratio2 > 0) {
+  if (ratio1 > 0 && ratio2 > 0) {
     if ((Math.abs(rowDiff) === ratio1 && Math.abs(colDiff) === ratio2) ||
         (Math.abs(rowDiff) === ratio2 && Math.abs(colDiff) === ratio1)) {
       const isFirstMoveOnly = isRatioMovementFirstMoveOnly(pieceData, specialMoves);
@@ -343,15 +341,13 @@ export const canPieceMoveTo = (fromRow, fromCol, toRow, toCol, pieceData, player
     }
   }
 
-  // Check step-by-step movement
-  const stepStyle = pieceData.step_by_step_movement_style || pieceData.step_movement_style;
+  // Check step-by-step movement (value-only: active iff step value is non-zero)
   const stepValue = pieceData.step_by_step_movement_value || pieceData.step_movement_value;
   
-  if ((stepStyle || stepValue) && stepValue) {
+  if (stepValue) {
     const maxSteps = Math.abs(stepValue);
     // Negative stepValue = Manhattan (orthogonal only), Positive = Chebyshev (includes diagonal)
-    // String style names 'manhattan'/'chebyshev' are also supported
-    const useManhattan = stepStyle === 'manhattan' || stepValue < 0;
+    const useManhattan = stepValue < 0;
 
     if (useManhattan) {
       // Manhattan distance: orthogonal only

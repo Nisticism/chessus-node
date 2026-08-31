@@ -305,16 +305,16 @@ const PieceStep3Attack = ({ pieceData, updatePieceData }) => {
       down_left_capture_available_for: pieceData.down_left_movement_available_for,
       down_capture_available_for: pieceData.down_movement_available_for,
       down_right_capture_available_for: pieceData.down_right_movement_available_for,
-      // Copy ratio movement (only if ratio movement is enabled)
-      ratio_one_capture: pieceData.ratio_movement_style ? pieceData.ratio_one_movement : 0,
-      ratio_two_capture: pieceData.ratio_movement_style ? pieceData.ratio_two_movement : 0,
+      // Copy ratio movement (only if ratio movement is configured)
+      ratio_one_capture: (pieceData.ratio_one_movement > 0 && pieceData.ratio_two_movement > 0) ? pieceData.ratio_one_movement : 0,
+      ratio_two_capture: (pieceData.ratio_one_movement > 0 && pieceData.ratio_two_movement > 0) ? pieceData.ratio_two_movement : 0,
       // Copy step-by-step
       step_by_step_capture: pieceData.step_by_step_movement_value,
       // Copy repeating movement setting
       repeating_capture: pieceData.repeating_movement,
       // Copy ratio repeating settings
-      repeating_ratio_capture: pieceData.ratio_movement_style ? pieceData.repeating_ratio : false,
-      max_ratio_capture_iterations: pieceData.ratio_movement_style ? pieceData.max_ratio_iterations : 0,
+      repeating_ratio_capture: (pieceData.ratio_one_movement > 0 && pieceData.ratio_two_movement > 0) ? pieceData.repeating_ratio : false,
+      max_ratio_capture_iterations: (pieceData.ratio_one_movement > 0 && pieceData.ratio_two_movement > 0) ? pieceData.max_ratio_iterations : 0,
       // Copy additional movements to additional captures
       ...(convertedCaptures && { special_scenario_capture: convertedCaptures }),
       // Copy custom movement squares to custom attack squares
@@ -963,7 +963,7 @@ const PieceStep3Attack = ({ pieceData, updatePieceData }) => {
             {!pieceData.attacks_like_movement && (
               <div className={styles["sub-field"]}>
                 <h4>Step-by-Step Capture <InfoTooltip text="A step budget for capturing. The piece moves one square at a time in any direction, changing direction each step, to reach and capture an enemy. Maximum 8 steps. The checkbox restricts steps to orthogonal directions only (no diagonal). Leave empty to disable. Values of 7 or higher disable additional custom-square attacks." /></h4>
-                <label>Total Capture Steps (1–{MAX_STEP_BY_STEP})</label>
+                <label>Total Capture Steps (0–{MAX_STEP_BY_STEP})</label>
                 <NumberInput
                   value={pieceData.step_by_step_capture ? Math.abs(pieceData.step_by_step_capture) : ""}
                   onChange={(val) => {
@@ -971,7 +971,7 @@ const PieceStep3Attack = ({ pieceData, updatePieceData }) => {
                     const clamped = val ? Math.min(MAX_STEP_BY_STEP, Math.max(0, Math.abs(val))) : null;
                     handleChange("step_by_step_capture", clamped && currentIsNoDiagonal ? -clamped : (clamped || null));
                   }}
-                  options={{ min: 1, max: MAX_STEP_BY_STEP, placeholder: `Leave empty to disable (max ${MAX_STEP_BY_STEP})`, className: styles["form-input-small"] }}
+                  options={{ min: 0, max: MAX_STEP_BY_STEP, placeholder: `Leave empty to disable (max ${MAX_STEP_BY_STEP})`, className: styles["form-input-small"] }}
                 />
                 <ToggleSwitch inline size="small"
                   checked={pieceData.step_by_step_capture < 0}
@@ -1366,7 +1366,7 @@ const PieceStep3Attack = ({ pieceData, updatePieceData }) => {
             {/* Step-by-Step Ranged Attack */}
             <div className={styles["sub-field"]}>
               <h4>Step-by-Step Ranged Attack <InfoTooltip text="A step budget for ranged attacks. The piece projects an attack one square at a time in any direction, changing direction each step. Maximum 8 steps. The checkbox restricts steps to orthogonal directions only (no diagonal). Leave empty to disable. Values of 7 or higher disable additional custom-square attacks." /></h4>
-              <label>Total Attack Steps (1–{MAX_STEP_BY_STEP})</label>
+              <label>Total Attack Steps (0–{MAX_STEP_BY_STEP})</label>
               <NumberInput
                 value={pieceData.step_by_step_attack_range ? Math.abs(pieceData.step_by_step_attack_range) : ""}
                 onChange={(val) => {
@@ -1374,7 +1374,7 @@ const PieceStep3Attack = ({ pieceData, updatePieceData }) => {
                   const clamped = val ? Math.min(MAX_STEP_BY_STEP, Math.max(0, Math.abs(val))) : null;
                   handleChange("step_by_step_attack_range", clamped && currentIsNoDiagonal ? -clamped : (clamped || null));
                 }}
-                options={{ min: 1, max: MAX_STEP_BY_STEP, placeholder: `Leave empty to disable (max ${MAX_STEP_BY_STEP})`, className: styles["form-input-small"] }}
+                options={{ min: 0, max: MAX_STEP_BY_STEP, placeholder: `Leave empty to disable (max ${MAX_STEP_BY_STEP})`, className: styles["form-input-small"] }}
               />
               <ToggleSwitch inline size="small"
                 checked={pieceData.step_by_step_attack_range < 0}

@@ -510,7 +510,7 @@ function pieceToBetza(piece) {
 
   // Untranslatable: must be filtered by compatibility checker, but we
   // double-check here.
-  if (toBool(piece.step_by_step_movement_style)) return null;
+  if (Number(piece.step_by_step_movement_value ?? 0) !== 0) return null;
   if (toBool(piece.directional_movement_change) || toBool(piece.directional_capture_change)) return null;
 
   const chunks = [];
@@ -532,7 +532,8 @@ function pieceToBetza(piece) {
 
   // Ratio leaper (e.g. knight = 2:1). Adds an "N" (for 2:1) or generic
   // "(m,n)" leaper. Fairy-Stockfish supports parenthesised leapers.
-  if (toBool(piece.ratio_movement_style)) {
+  if (toInt(piece.ratio_movement_1 ?? piece.ratio_one_movement) > 0 &&
+      toInt(piece.ratio_movement_2 ?? piece.ratio_two_movement) > 0) {
     const r1 = toInt(piece.ratio_movement_1 ?? piece.ratio_one_movement);
     const r2 = toInt(piece.ratio_movement_2 ?? piece.ratio_two_movement);
     if (r1 > 0 && r2 > 0) {
