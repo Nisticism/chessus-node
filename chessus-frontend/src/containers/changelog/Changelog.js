@@ -7,7 +7,7 @@ const changelogData = [
     date: "August 31, 2026",
     title: "Simpler piece movement setup + movement consistency fix",
     items: [
-      "Piece wizard: removed the separate 'Enable directional / ratio / step-by-step movement' switches. Each movement type is now simply active when you give it a value and off when it's left blank or zero — fewer clicks and no confusing enabled-but-empty state.",
+      "Piece wizard: removed the separate 'Enable' switches for directional, ratio, and step-by-step movement — and for ratio capture. Each of these is now simply active when you give it a value and off when it's left blank or zero — fewer clicks and no confusing enabled-but-empty state.",
       "Piece wizard: the step-by-step movement, capture, and ranged-attack step fields can now be set back down to 0 to turn them off.",
       "Fixed an issue where some pieces could gain an unintended extra move (for example a 1-square move in every direction) in the sandbox and in live games that didn't match how the piece was set up. Movement now consistently reflects the piece's configured values everywhere — piece page, game page, sandbox, and live play.",
       "Play page polish: a little more space before each game card's time control, and the game-type sort dropdown's arrow no longer sits flush against the right edge.",

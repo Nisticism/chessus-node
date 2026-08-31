@@ -152,7 +152,7 @@ const describePieceMovement = (pieceData) => {
   if (hoppingDetails.length > 0) {
     let hopText = `can hop over ${hoppingDetails.join(' and ')}`;
     // If hopping is disabled for directional movement, specify which movement types still allow hopping
-    const hasStepMovement = stepStyle && stepValue;
+    const hasStepMovement = !!stepValue;
     if (pieceData.directional_hop_disabled && hasDirectional) {
       const hopMovementTypes = [];
       if (hasRatio || hasRatioValues) {

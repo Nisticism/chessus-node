@@ -706,7 +706,7 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
       <div className={styles["condition-section"]}>
         <h3>Ratio Movement (L-shape) <InfoTooltip text="L-shaped movement like a chess knight. Set two ratio values — the piece moves the first value in one direction, then the second value perpendicularly. For example, a knight uses 2-1 (2 squares in one direction, then 1 square perpendicular). This movement can jump to the destination directly." /></h3>
           <div className={styles["sub-fields"]}>
-            <div className={styles["form-row"]}>
+            <div className={styles["form-row"]} style={{ alignItems: 'start' }}>
               <div className={styles["sub-field"]}>
                 <label>Ratio One Movement</label>
                 <NumberInput

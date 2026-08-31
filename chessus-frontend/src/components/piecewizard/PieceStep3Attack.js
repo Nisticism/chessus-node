@@ -894,21 +894,6 @@ const PieceStep3Attack = ({ pieceData, updatePieceData }) => {
             {!pieceData.attacks_like_movement && (
               <div className={styles["sub-field"]}>
                 <h4>Ratio Capture Movement (L-shape) <InfoTooltip text="L-shaped capture like a knight. The piece jumps one distance in one direction, then a different distance perpendicularly to land on and capture an enemy. Leave both empty to disable. Example: 2 and 1 for standard knight capture." /></h4>
-                <ToggleSwitch
-                  checked={!!(pieceData.ratio_one_capture || pieceData.ratio_two_capture)}
-                  onChange={(v) => {
-                    if (v) {
-                      if (!pieceData.ratio_one_capture && !pieceData.ratio_two_capture) {
-                        updatePieceData({ ratio_one_capture: 2, ratio_two_capture: 1 });
-                      }
-                    } else {
-                      updatePieceData({ ratio_one_capture: null, ratio_two_capture: null, repeating_ratio_capture: false, max_ratio_capture_iterations: null });
-                    }
-                  }}
-                  label="Enable ratio capture"
-                />
-                {(pieceData.ratio_one_capture || pieceData.ratio_two_capture) ? (
-                  <>
                     <div className={styles["form-row"]}>
                       <div className={styles["form-group"]}>
                         <label>Ratio One</label>
@@ -954,8 +939,6 @@ const PieceStep3Attack = ({ pieceData, updatePieceData }) => {
                         )}
                       </div>
                     )}
-                  </>
-                ) : null}
               </div>
             )}
 
