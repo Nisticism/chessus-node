@@ -841,6 +841,13 @@ export const SocketProvider = ({ children }) => {
     });
   }, [socket, connected, getAnonPlayerId]);
 
+  // Reactive veto: retract the mover's still-under-review held move (only honored
+  // by the server while the vetoer hasn't submitted a decision yet).
+  const retractVetoMove = useCallback((gameId) => {
+    if (!socket || !connected) return;
+    socket.emit('retractVetoMove', { gameId, userId: getAnonPlayerId(gameId) });
+  }, [socket, connected, getAnonPlayerId]);
+
   // Subscribe to game events
   const onGameEvent = useCallback((event, callback) => {
     if (!socket) return () => {};
@@ -884,6 +891,7 @@ export const SocketProvider = ({ children }) => {
     submitReposition,
     submitVetoes,
     sendVetoPreview,
+    retractVetoMove,
     onGameEvent,
     pauseDisconnectTimer,
     resumeDisconnectTimer,

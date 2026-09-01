@@ -61,6 +61,12 @@
       animation: pulse 2s ease-in-out infinite;
     }
 
+    .veto-phase-msg {
+      color: var(--gold-header);
+      font-size: 1.1rem;
+      font-weight: bold;
+    }
+
     .waiting-turn {
       color: #ffaa00;
       font-size: 1rem;
@@ -1111,6 +1117,34 @@
   touch-action: none; /* Prevent scroll during touch drag on mobile */
 }
 
+// Hover tooltip listing the specific vetoed move(s) on a square. No background,
+// semi-transparent bold text; one veto per line (newest first). Shown via the
+// square's :hover so there's no React re-render / hover lag.
+.veto-move-tooltip {
+  display: none;
+  position: absolute;
+  bottom: calc(50% + 12px);
+  left: 50%;
+  transform: translateX(-50%);
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  pointer-events: none;
+  z-index: 60;
+  white-space: nowrap;
+}
+.veto-move-tooltip-line {
+  font-size: clamp(8px, 1.5vmin, 13px);
+  font-weight: 800;
+  color: rgba(255, 255, 255, 0.8);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95), 0 0 2px rgba(0, 0, 0, 0.9);
+  line-height: 1.25;
+  letter-spacing: 0.02em;
+}
+.board-square:hover .veto-move-tooltip {
+  display: flex;
+}
+
 .board-square {
   display: flex;
   align-items: center;
@@ -1966,14 +2000,20 @@
     }
   }
 
-  // Pass on its own full-width row so it never overflows the narrow sidebar.
+  // Pass / veto actions wrap to additional rows rather than clipping when the
+  // sidebar is too narrow to fit them all on one line.
   .control-buttons-pass {
     display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
     margin-top: 12px;
 
     button {
-      flex: 1;
-      min-width: 0;
+      flex: 1 1 auto;
+      min-width: fit-content;
+      white-space: nowrap;
+      padding-left: 14px;
+      padding-right: 14px;
     }
   }
 }
@@ -2004,7 +2044,12 @@
   font-size: 0.95rem;
   font-weight: 500;
   cursor: pointer;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease, background 0.15s ease;
+
+  &:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  }
 
   &:disabled {
     opacity: 0.5;
@@ -2018,6 +2063,7 @@
 
   &:hover:not(:disabled) {
     background: var(--accent-secondary);
+    filter: brightness(1.15);
   }
 }
 
@@ -2027,6 +2073,7 @@
 
   &:hover:not(:disabled) {
     background: var(--panel-border);
+    filter: brightness(1.3);
   }
 }
 

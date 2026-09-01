@@ -52,6 +52,29 @@ const vetoSignatureClient = (move) => {
   return parts.join('|');
 };
 
+// Parse a veto signature back into { from, to, ranged, castling, isPlace } for
+// display (tooltips). Inverse of vetoSignatureClient's square encoding.
+const parseVetoSig = (sig) => {
+  if (typeof sig !== 'string' || !sig) return null;
+  if (sig.startsWith('place:')) {
+    const [x, y] = sig.slice(6).split(',').map(Number);
+    return { isPlace: true, to: { x, y } };
+  }
+  const parts = sig.split('|');
+  const [fx, fy] = (parts[1] || '').split(',').map(Number);
+  const [tx, ty] = (parts[2] || '').split(',').map(Number);
+  if ([fx, fy, tx, ty].some(n => Number.isNaN(n))) return null;
+  return {
+    from: { x: fx, y: fy },
+    to: { x: tx, y: ty },
+    ranged: parts.includes('r'),
+    castling: parts.some(p => p.startsWith('c')),
+  };
+};
+// Algebraic square label (a1-style) for a board of the given height.
+const vetoSquareLabel = (p, boardHeight) => p ? `${String.fromCharCode(97 + p.x)}${boardHeight - p.y}` : '?';
+
+
 // Limited-reserve helpers. When a game type has `finite_reserve`, `gameState.reserves`
 // is { [position]: { [piece_id]: remaining } }. These helpers are no-ops (treat as
 // unlimited) when reserves are absent.
@@ -324,6 +347,7 @@ const LiveGame = () => {
     submitReposition,
     submitVetoes,
     sendVetoPreview,
+    retractVetoMove,
     onGameEvent,
     spectateGame,
     pauseDisconnectTimer,
@@ -385,18 +409,36 @@ const LiveGame = () => {
   const [vetoSelectedPiece, setVetoSelectedPiece] = useState(null);
   const [vetoPieceMoves, setVetoPieceMoves] = useState([]);
   const [vetoError, setVetoError] = useState(null);
+  // Reactive style: the move the opponent just submitted (shown to the vetoer so
+  // they can ban it and/or spend remaining vetoes on other moves).
+  const [vetoRevealMove, setVetoRevealMove] = useState(null);
   const [vetoMyBudget, setVetoMyBudget] = useState(null); // { perTurnRemaining, perGameRemaining }
   // Per-game veto bank remaining for both players (null when no per-game cap set).
   const [vetoBank, setVetoBank] = useState(null); // { 1: n, 2: n }
   const [vetoPerGameLimit, setVetoPerGameLimit] = useState(null);
   // Position whose clock is currently ticking due to an active veto phase (or null).
   const [vetoChargePos, setVetoChargePos] = useState(null);
+  // Whether the veto game's clock has started (first action taken). Until then no
+  // clock ticks — a pre-emptive premove by the mover does not start it.
+  const [vetoClockStarted, setVetoClockStarted] = useState(false);
   // Live in-progress vetoes broadcast by the opponent (shown to the mover before submit).
   const [vetoPreviewSquares, setVetoPreviewSquares] = useState(null); // Map "x,y" -> count
+  const [vetoPreviewMoves, setVetoPreviewMoves] = useState(null); // Map "x,y" -> [labels], for tooltips
   // True once I've submitted (or skipped) my vetoes for the current opponent turn.
   const [vetoDoneThisTurn, setVetoDoneThisTurn] = useState(false);
+  // True (from the mover's view) once the opponent has submitted their vetoes this
+  // turn, so pre-emptive messaging can switch from "opponent choosing" to "your move".
+  const [vetoOpponentSubmitted, setVetoOpponentSubmitted] = useState(false);
   // True when I'm the mover and my submitted move is awaiting the opponent's veto decision.
   const [vetoMoveUnderReview, setVetoMoveUnderReview] = useState(false);
+  // The mover's held move, shown premove-style (from/to) so it persists visually
+  // while the opponent vetoes instead of jumping when the veto resolves.
+  const [heldMoveHighlight, setHeldMoveHighlight] = useState(null); // { from, to, pieceId, type }
+  // Pre-emptive: the mover's queued pre-move. Kept client-side (single, changeable,
+  // cancellable) and auto-sent once the vetoer submits — so pre-moving never sends
+  // multiple held moves to the server nor clears the vetoer's in-progress selection.
+  const [vetoStagedMove, setVetoStagedMove] = useState(null); // { gameId, moveData }
+  const vetoStagedMoveRef = useRef(null);
   const [hoveredPiece, setHoveredPiece] = useState(null);
   const [hoveredMoves, setHoveredMoves] = useState([]);
   const [draggedPiece, setDraggedPiece] = useState(null);
@@ -495,6 +537,7 @@ const LiveGame = () => {
   const [pendingMove, setPendingMove] = useState(null); // {gameId, moveData} awaiting confirmation
   const [preConfirmState, setPreConfirmState] = useState(null); // snapshot of gameState before visual preview
   const optimisticMoveSnapshotRef = useRef(null); // Snapshot for reverting rejected optimistic previews
+  const moveTimingRef = useRef(null); // {t, type} — measures submit -> server-confirm latency
 
   // Options menu collapse state
   const [optionsCollapsed, setOptionsCollapsed] = useState(false);
@@ -577,6 +620,16 @@ const LiveGame = () => {
     if (!tpl) return state;
     const nextPieces = parsePieces(state.pieces).map((p) => ({ ...p }));
     const neutral = !!tpl.is_neutral;
+    // Resolve the SAME player-specific image the server will send back, so the
+    // optimistic piece renders the correct side's artwork immediately and the
+    // src matches the authoritative piece once moveMade arrives — this avoids a
+    // flash/reload (and a wrong player-1 image for player-2 placements) when the
+    // temp piece is reconciled with the server piece.
+    const optImageUrl = getPlayerImageUrl(
+      tpl.image_location,
+      neutral ? 1 : placingPos,
+      neutral ? (tpl.neutral_image_index ?? null) : null
+    ) || tpl.image_url || null;
     nextPieces.push({
       id: `__opt_place_${Date.now()}`,
       piece_id: tpl.piece_id,
@@ -586,6 +639,7 @@ const LiveGame = () => {
       team: neutral ? 0 : placingPos,
       player_id: neutral ? 0 : placingPos,
       is_neutral: neutral,
+      image_url: optImageUrl,
       image_location: tpl.image_location,
       piece_width: tpl.piece_width || 1,
       piece_height: tpl.piece_height || 1,
@@ -658,6 +712,10 @@ const LiveGame = () => {
 
   // Wrapper for makeMove that supports turn confirmation in correspondence games
   const submitMove = useCallback((gId, moveData) => {
+    // Start a latency measurement from the moment the user commits the move
+    // (drop / click) until the server confirms it (moveMade). Helps distinguish
+    // real validation lag from client-side image reload flicker.
+    moveTimingRef.current = { t: (typeof performance !== 'undefined' ? performance.now() : Date.now()), type: moveData?.type || 'move' };
     const isSimulStage = gameState?.gameType?.simultaneous_turns
       && gameState?.gameType?.simul_turns_submit_mode === 'stage'
       && gameState?.status === 'active'
@@ -697,18 +755,40 @@ const LiveGame = () => {
       }
       setPendingMove({ gameId: gId, moveData });
     } else {
-      // Veto games may HOLD the move for the opponent's veto decision, so skip
-      // the optimistic preview/clock-switch — the move only lands once cleared.
+      // Veto games may HOLD the move for the opponent's veto decision. We still
+      // apply the mover's own optimistic preview (like a premove) so the move
+      // persists visually and doesn't jump when the veto resolves; moveVetoed
+      // reverts it via the snapshot. We just don't switch clocks for held moves.
       const vetoActive = !!(gameState?.gameType?.veto_enabled) && !gameState?.gameType?.simultaneous_turns;
+      const vetoStyle = gameState?.gameType?.veto_style === 'reactive' ? 'reactive' : 'preemptive';
+      const iAmMover = currentPlayerRef.current?.position === gameState?.currentTurn;
+      // Pre-emptive: while the vetoer can still veto, queue the move client-side as
+      // a single, changeable pre-move (never sent to the server) — it auto-executes
+      // when the vetoer submits. This avoids sending multiple held moves and
+      // avoids clearing the vetoer's in-progress selection.
+      if (vetoActive && vetoStyle === 'preemptive' && iAmMover && !vetoOpponentSubmitted) {
+        const clean = optimisticMoveSnapshotRef.current || optimisticSnapshot;
+        optimisticMoveSnapshotRef.current = clean;
+        setGameState((prev) => {
+          const base = { ...prev, pieces: clean.pieces };
+          return moveData.type === 'place'
+            ? applyOptimisticPlacementPreview(base, moveData, currentPlayerRef.current?.position)
+            : applyOptimisticMovePreview(base, moveData);
+        });
+        setHeldMoveHighlight({ from: moveData.from, to: moveData.to, pieceId: moveData.pieceId, type: moveData.type });
+        setVetoStagedMove({ gameId: gId, moveData });
+        return;
+      }
       // Optimistic position update: move/place piece visually before server confirms
-      if (!vetoActive) {
-        if (moveData.type === 'place') {
-          optimisticMoveSnapshotRef.current = optimisticSnapshot;
-          setGameState((prev) => applyOptimisticPlacementPreview(prev, moveData, currentPlayerRef.current?.position));
-        } else {
-          optimisticMoveSnapshotRef.current = optimisticSnapshot;
-          setGameState((prev) => applyOptimisticMovePreview(prev, moveData));
-        }
+      if (moveData.type === 'place') {
+        optimisticMoveSnapshotRef.current = optimisticSnapshot;
+        setGameState((prev) => applyOptimisticPlacementPreview(prev, moveData, currentPlayerRef.current?.position));
+      } else {
+        optimisticMoveSnapshotRef.current = optimisticSnapshot;
+        setGameState((prev) => applyOptimisticMovePreview(prev, moveData));
+      }
+      if (vetoActive) {
+        setHeldMoveHighlight({ from: moveData.from, to: moveData.to, pieceId: moveData.pieceId, type: moveData.type });
       }
       makeMove(gId, moveData);
       if (vetoActive) {
@@ -727,9 +807,31 @@ const LiveGame = () => {
         }
       }
     }
-  }, [turnConfirmEnabled, gameState?.isCorrespondence, gameState?.timeControl, gameState?.pieces, gameState?.currentTurn, gameState?.players, gameState?.gameType?.simultaneous_turns, gameState?.gameType?.simul_turns_submit_mode, gameState?.status, simulSubmittedThisRound, makeMove, createOptimisticSnapshot, applyOptimisticMovePreview, applyOptimisticPlacementPreview]);
+  }, [turnConfirmEnabled, gameState?.isCorrespondence, gameState?.timeControl, gameState?.pieces, gameState?.currentTurn, gameState?.players, gameState?.gameType?.simultaneous_turns, gameState?.gameType?.simul_turns_submit_mode, gameState?.gameType?.veto_enabled, gameState?.gameType?.veto_style, gameState?.status, simulSubmittedThisRound, vetoOpponentSubmitted, makeMove, createOptimisticSnapshot, applyOptimisticMovePreview, applyOptimisticPlacementPreview]);
 
   /* eslint-disable react-hooks/rules-of-hooks -- False positive: all hooks below are unconditionally at the top level. eslint-plugin-react-hooks v4.4.0 CFG analysis limit reached in this large component. */
+  // Cancel the pre-emptive staged pre-move: revert the optimistic board and drop it.
+  const cancelVetoStagedMove = useCallback(() => {
+    if (!vetoStagedMoveRef.current) return;
+    const snap = optimisticMoveSnapshotRef.current;
+    if (snap) {
+      setGameState(prev => ({ ...prev, pieces: snap.pieces, currentTurn: snap.currentTurn ?? prev.currentTurn }));
+    }
+    clearOptimisticMoveSnapshot();
+    vetoStagedMoveRef.current = null;
+    setVetoStagedMove(null);
+    setHeldMoveHighlight(null);
+    setSelectedPiece(null);
+    setValidMoves([]);
+  }, [clearOptimisticMoveSnapshot]);
+
+  // Reactive veto: retract the mover's held (under-review) move. Server-authoritative
+  // — the board is cleared on the vetoMoveRetracted event so a racing veto submit
+  // (which the server rejects) can't leave the UI inconsistent.
+  const cancelReactiveHeldMove = useCallback(() => {
+    retractVetoMove(parseInt(gameId));
+  }, [retractVetoMove, gameId]);
+
   // Submit / clear the staged simul move. Called from the explicit Submit
   // button rendered in the turn-indicator area when stage-mode is active.
   const submitStagedSimulMove = useCallback(() => {
@@ -1446,8 +1548,17 @@ const LiveGame = () => {
 
     const unsubscribeMove = onGameEvent("moveMade", ({ gameId: moveGameId, move, gameState: newState, regenPieces, burnPieces, burnKilledPieces, clockMultipliers, midTurnCheckmate, midTurnCheck }) => {
       if (parseInt(moveGameId) === parseInt(gameId)) {
+        if (moveTimingRef.current) {
+          const dt = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - moveTimingRef.current.t;
+          console.log(`[move-timing] ${moveTimingRef.current.type} confirmed by server in ${dt.toFixed(1)}ms`);
+          moveTimingRef.current = null;
+        }
+        try { sessionStorage.removeItem(`vetoPending_${gameId}`); } catch (_) { /* ignore */ }
         clearOptimisticMoveSnapshot();
         setBotThinking(false);
+        setHeldMoveHighlight(null);
+        setVetoStagedMove(null);
+        vetoStagedMoveRef.current = null;
         // Clear any capture action state on a normal move broadcast
         setCaptureActionPieceId(null);
         setCaptureActionData(null);
@@ -1480,7 +1591,10 @@ const LiveGame = () => {
             pieces: newState.pieces ? [...newState.pieces] : prev?.pieces,
             allowPremoves,
             rated,
-            ...(clockMultipliers !== undefined ? { clockMultipliers } : {})
+            ...(clockMultipliers !== undefined ? { clockMultipliers } : {}),
+            // The applied move resolved any open veto phase server-side; clear
+            // the mirror so the reconnect-restore effect doesn't re-open it.
+            ...(prev?.vetoState ? { vetoState: { ...prev.vetoState, phaseOpen: false, pendingMove: null, pendingBotMove: null } } : {}),
           };
           
           return updatedState;
@@ -1771,6 +1885,7 @@ const LiveGame = () => {
         }));
         clearOptimisticMoveSnapshot();
       }
+      setHeldMoveHighlight(null);
       setPendingMove(null);
       setPreConfirmState(null);
       showIllegalMoveWarning(message);
@@ -2266,6 +2381,10 @@ const LiveGame = () => {
 
     const unsubscribeVetoWindow = onGameEvent("vetoWindowOpened", ({ gameId: vGameId, mover, vetoer, revealMove, style, budget }) => {
       if (parseInt(vGameId) !== parseInt(gameId)) return;
+      // A veto window only opens during active play; if a held first move left
+      // the client showing the game as 'ready', promote it so the veto panel
+      // (which only renders for an active game) appears.
+      setGameState(prev => (prev && prev.status === 'ready') ? { ...prev, status: 'active' } : prev);
       const pos = myPosition();
       setVetoChargePos(vetoer);
       if (pos === vetoer) {
@@ -2275,39 +2394,70 @@ const LiveGame = () => {
         setVetoSelectedPiece(null);
         setVetoPieceMoves([]);
         setVetoError(null);
+        // Reactive: reveal the opponent's just-submitted move so it can be vetoed.
+        setVetoRevealMove(style === 'reactive' && revealMove ? revealMove : null);
       } else if (pos === mover) {
         setVetoMoveUnderReview(true);
       }
     });
 
-    const unsubscribeVetoesUpdated = onGameEvent("vetoesUpdated", ({ gameId: vGameId, banned }) => {
+    const unsubscribeVetoesUpdated = onGameEvent("vetoesUpdated", ({ gameId: vGameId, banned, mover }) => {
       if (parseInt(vGameId) !== parseInt(gameId)) return;
       setVetoBanned(Array.isArray(banned) ? banned : []);
       setVetoPreviewSquares(null);
+      setVetoPreviewMoves(null);
+      if (mover != null && myPosition() === mover) {
+        setVetoOpponentSubmitted(true);
+        // Auto-send my queued pre-move now that the vetoer has decided. A short
+        // delay lets me glimpse the confirmed bans before the move validates.
+        if (vetoStagedMoveRef.current) {
+          const staged = vetoStagedMoveRef.current;
+          vetoStagedMoveRef.current = null;
+          setVetoStagedMove(null);
+          setTimeout(() => {
+            if (makeMoveRef.current) makeMoveRef.current(staged.gameId, staged.moveData);
+          }, 700);
+        }
+      }
       // The vetoer resolved this action — the mover's clock starts now.
       setVetoChargePos(null);
     });
 
-    const unsubscribeVetoState = onGameEvent("vetoStateUpdate", ({ gameId: vGameId, perGameLimit, remaining, vetoClockPos }) => {
+    const unsubscribeVetoState = onGameEvent("vetoStateUpdate", ({ gameId: vGameId, perGameLimit, remaining, vetoClockPos, clockStarted }) => {
       if (parseInt(vGameId) !== parseInt(gameId)) return;
       setVetoPerGameLimit(perGameLimit != null ? perGameLimit : null);
       if (remaining) setVetoBank({ 1: remaining[1], 2: remaining[2] });
       setVetoChargePos(vetoClockPos != null ? vetoClockPos : null);
+      if (clockStarted != null) setVetoClockStarted(!!clockStarted);
     });
 
     const unsubscribeVetoPreview = onGameEvent("vetoPreviewUpdated", ({ gameId: vGameId, mover, signatures }) => {
       if (parseInt(vGameId) !== parseInt(gameId)) return;
       // Only the mover renders the opponent's in-progress preview.
       if (myPosition() !== mover) return;
+      const bh = gameState?.gameType?.board_height || 8;
       const m = new Map();
-      for (const sig of (Array.isArray(signatures) ? signatures : [])) {
+      const labels = new Map();
+      const sigs = Array.isArray(signatures) ? signatures : [];
+      for (let i = sigs.length - 1; i >= 0; i--) {
+        const sig = sigs[i];
         if (typeof sig !== 'string') continue;
         let key;
         if (sig.startsWith('place:')) key = sig.slice(6);
         else { const parts = sig.split('|'); key = parts[2]; }
-        if (key) m.set(key, (m.get(key) || 0) + 1);
+        if (!key) continue;
+        m.set(key, (m.get(key) || 0) + 1);
+        const d = parseVetoSig(sig);
+        if (d) {
+          const label = d.isPlace
+            ? `place ${vetoSquareLabel(d.to, bh)}`
+            : `${vetoSquareLabel(d.from, bh)}-${vetoSquareLabel(d.to, bh)}${d.ranged ? ' (ranged)' : ''}`;
+          if (!labels.has(key)) labels.set(key, []);
+          labels.get(key).push(label);
+        }
       }
       setVetoPreviewSquares(m.size ? m : null);
+      setVetoPreviewMoves(labels.size ? labels : null);
     });
 
     const unsubscribeVetoSubmitted = onGameEvent("vetoSubmitted", ({ banned, budget }) => {
@@ -2318,15 +2468,45 @@ const LiveGame = () => {
       setVetoSelectedPiece(null);
       setVetoPieceMoves([]);
       setVetoError(null);
+      setVetoRevealMove(null);
       setVetoDoneThisTurn(true);
+      try { sessionStorage.removeItem(`vetoPending_${gameId}`); } catch (_) { /* ignore */ }
+      setGameState(prev => prev?.vetoState ? { ...prev, vetoState: { ...prev.vetoState, phaseOpen: false, pendingMove: null, pendingBotMove: null } } : prev);
     });
 
     const unsubscribeVetoRejected = onGameEvent("vetoRejected", ({ message }) => {
       setVetoError(message || "Veto submission rejected.");
     });
 
+    // Reactive: the mover retracted their under-review held move. Clear it on the
+    // mover's board and close the veto window on the vetoer's side.
+    const unsubscribeVetoRetracted = onGameEvent("vetoMoveRetracted", ({ gameId: vGameId, mover }) => {
+      if (parseInt(vGameId) !== parseInt(gameId)) return;
+      if (myPosition() === mover) {
+        setVetoMoveUnderReview(false);
+        setHeldMoveHighlight(null);
+        setSelectedPiece(null);
+        setValidMoves([]);
+        const snap = optimisticMoveSnapshotRef.current;
+        if (snap) setGameState((prev) => ({ ...prev, pieces: snap.pieces, currentTurn: snap.currentTurn ?? prev.currentTurn }));
+        clearOptimisticMoveSnapshot();
+      } else {
+        // Vetoer: the move under review is gone — close the window + drop selection.
+        setVetoWindow(null);
+        setVetoRevealMove(null);
+        setVetoSelection([]);
+        setVetoSelectedPiece(null);
+        setVetoPieceMoves([]);
+      }
+    });
+
+    const unsubscribeVetoRetractRejected = onGameEvent("vetoRetractRejected", ({ message }) => {
+      showIllegalMoveWarning(message || "Too late to retract your move.", 2500);
+    });
+
     const unsubscribeVetoCleared = onGameEvent("vetoCleared", ({ gameId: vGameId, mover, move }) => {
       if (parseInt(vGameId) !== parseInt(gameId)) return;
+      setVetoRevealMove(null);
       if (myPosition() === mover) {
         setVetoMoveUnderReview(false);
         // The move survived the veto — re-submit it for execution.
@@ -2341,6 +2521,12 @@ const LiveGame = () => {
         setVetoMoveUnderReview(false);
         setSelectedPiece(null);
         setValidMoves([]);
+        setHeldMoveHighlight(null);
+        // Revert the optimistic preview of the held move that was just vetoed.
+        const snap = optimisticMoveSnapshotRef.current;
+        if (snap) {
+          setGameState((prev) => ({ ...prev, pieces: snap.pieces, currentTurn: snap.currentTurn ?? prev.currentTurn }));
+        }
         clearOptimisticMoveSnapshot();
         showIllegalMoveWarning(message || "That move was vetoed. Choose a different move.", 3500);
       }
@@ -2355,6 +2541,8 @@ const LiveGame = () => {
       unsubscribeVetoSubmitted();
       unsubscribeVetoRejected();
       unsubscribeVetoCleared();
+      unsubscribeVetoRetracted();
+      unsubscribeVetoRetractRejected();
       unsubscribeMoveVetoed();
       unsubscribeBotThinking();
       unsubscribeMove();
@@ -2421,22 +2609,34 @@ const LiveGame = () => {
   }, [gameState?.players, currentUser, socket?.id, gameId, getStoredAnonCorresId]);
   /* eslint-enable react-hooks/exhaustive-deps */
   useEffect(() => { currentPlayerRef.current = currentPlayer; }, [currentPlayer]);
+  useEffect(() => { vetoStagedMoveRef.current = vetoStagedMove; }, [vetoStagedMove]);
 
   // Reset transient veto UI at each turn AND each action boundary (multi-action
-  // turns record a move without flipping currentTurn). The per-game bank is
-  // tracked server-side. For pre-emptive veto, the vetoer's clock ticks from the
-  // start of each action until they submit — mirror that locally so the displayed
-  // clock matches the server (timeUpdate/vetoStateUpdate correct it thereafter).
+  // turns record a move without flipping currentTurn). Crucially this must NOT
+  // fire on the ready->active promotion (a held first move) — that would wipe a
+  // veto window the moment it opens — so the clear is gated on the turn/action
+  // boundary key, while the clock-charge derivation runs on every change.
+  const vetoBoundaryRef = useRef(null);
   useEffect(() => {
-    setVetoBanned([]);
-    setVetoWindow(null);
-    setVetoSelection([]);
-    setVetoSelectedPiece(null);
-    setVetoPieceMoves([]);
-    setVetoMoveUnderReview(false);
-    setVetoError(null);
-    setVetoDoneThisTurn(false);
-    setVetoPreviewSquares(null);
+    const boundaryKey = `${gameState?.currentTurn}:${gameState?.moveHistory?.length ?? 0}`;
+    if (vetoBoundaryRef.current !== boundaryKey) {
+      vetoBoundaryRef.current = boundaryKey;
+      setVetoBanned([]);
+      setVetoWindow(null);
+      setVetoSelection([]);
+      setVetoSelectedPiece(null);
+      setVetoPieceMoves([]);
+      setVetoMoveUnderReview(false);
+      setVetoError(null);
+      setVetoDoneThisTurn(false);
+      setVetoOpponentSubmitted(false);
+      setVetoPreviewSquares(null);
+      setVetoPreviewMoves(null);
+      setVetoRevealMove(null);
+      setHeldMoveHighlight(null);
+      setVetoStagedMove(null);
+      vetoStagedMoveRef.current = null;
+    }
     const gt = gameState?.gameType;
     if (gt?.veto_enabled && !gt?.simultaneous_turns && gt?.veto_style !== 'reactive'
         && gameState?.status === 'active' && gameState?.currentTurn != null) {
@@ -2447,6 +2647,61 @@ const LiveGame = () => {
       setVetoChargePos(null);
     }
   }, [gameState?.currentTurn, gameState?.moveHistory?.length, gameState?.status, gameState?.gameType, gameState?.botPlayer]);
+
+  // Restore an in-progress REACTIVE veto window after a reconnect/refresh. The
+  // reset effect above wipes transient veto UI on every gameState change; this
+  // runs immediately after it (same commit) and re-opens the window from the
+  // authoritative server vetoState so refreshing mid-veto doesn't strand the
+  // game. Only fires when the server state actually has an open phase — normal
+  // live holds are driven by the vetoWindowOpened event and clear phaseOpen via
+  // moveMade/vetoSubmitted, so this won't double-fire during ordinary play.
+  useEffect(() => {
+    const vs = gameState?.vetoState;
+    const gt = gameState?.gameType;
+    if (!vs?.phaseOpen || !gt?.veto_enabled || gt?.veto_style !== 'reactive'
+        || gameState?.status !== 'active' || gameState?.currentTurn == null) return;
+    const moverPos = gameState.currentTurn;
+    const vetoerPos = moverPos === 1 ? 2 : 1;
+    const myPos = currentPlayerRef.current?.position ?? null;
+    if (myPos == null) return;
+    if (myPos === vetoerPos) {
+      // If we already submitted/skipped this action but the confirmation was
+      // lost to a refresh, re-send it so the veto registers and the game
+      // continues (double-submit is safely rejected server-side).
+      let pending = null;
+      try { pending = JSON.parse(sessionStorage.getItem(`vetoPending_${gameId}`) || 'null'); } catch (_) { /* ignore */ }
+      if (pending && pending.actionKey === vs.lastActionKey && Array.isArray(pending.vetoes)) {
+        try { sessionStorage.removeItem(`vetoPending_${gameId}`); } catch (_) { /* ignore */ }
+        submitVetoes(parseInt(gameId), pending.vetoes);
+        return;
+      }
+      if (pending) { try { sessionStorage.removeItem(`vetoPending_${gameId}`); } catch (_) { /* ignore */ } }
+      const reveal = vs.pendingBotMove || (vs.pendingMove && vs.pendingMove.move) || null;
+      setVetoWindow({ style: 'reactive', revealMove: reveal, budget: null });
+      setVetoRevealMove(reveal);
+      setVetoChargePos(vetoerPos);
+    } else if (myPos === moverPos && (vs.pendingMove || vs.pendingBotMove)) {
+      setVetoMoveUnderReview(true);
+    }
+  }, [gameState?.vetoState, gameState?.currentTurn, gameState?.status, gameState?.gameType, gameId, submitVetoes]);
+
+  // Pre-emptive: if the vetoer already committed their bans for this action
+  // (phaseResolved), restore that on reload — mark the mover as good-to-move and
+  // the vetoer as done — so a mid-veto refresh doesn't strand the game or let the
+  // vetoer re-submit into a "0 left" rejection. Also recovers games stuck by the
+  // old missing-gameId bug.
+  useEffect(() => {
+    const gt = gameState?.gameType;
+    const vs = gameState?.vetoState;
+    if (!gt?.veto_enabled || gt?.simultaneous_turns) return;
+    const style = gt?.veto_style === 'reactive' ? 'reactive' : 'preemptive';
+    if (style !== 'preemptive' || gameState?.currentTurn == null) return;
+    if (!vs?.phaseResolved) return;
+    const myPos = currentPlayerRef.current?.position ?? null;
+    if (myPos == null) return;
+    if (myPos === gameState.currentTurn) setVetoOpponentSubmitted(true); // I'm the mover
+    else setVetoDoneThisTurn(true); // I'm the vetoer — already submitted this action
+  }, [gameState?.vetoState?.phaseResolved, gameState?.gameType, gameState?.currentTurn]);
 
   // Initialize the veto bank display from the game type (both players start at the
   // per-game cap); server vetoStateUpdate events keep it current thereafter.
@@ -2461,6 +2716,17 @@ const LiveGame = () => {
       setVetoBank(null);
     }
   }, [gameState?.gameType?.veto_enabled, gameState?.gameType?.veto_per_game_limit]);
+
+  // Keep the confirmed bans visible until the move validates: the turn-boundary
+  // reset clears them, so no extra lingering is needed.
+
+  // Sync the veto clock-started flag from authoritative game state (covers load /
+  // reconnect). Non-veto games are never frozen. Once started it stays started.
+  useEffect(() => {
+    const gt = gameState?.gameType;
+    if (!gt?.veto_enabled || gt?.simultaneous_turns) { setVetoClockStarted(true); return; }
+    if (gameState?.vetoState?.clockStarted) setVetoClockStarted(true);
+  }, [gameState?.gameType, gameState?.vetoState?.clockStarted]);
 
   // Escape cancels a queued premove.
   useEffect(() => {
@@ -2477,16 +2743,119 @@ const LiveGame = () => {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [premove, sendClearPremove, gameId]);
 
-  // Live-broadcast the vetoer's in-progress selection so the mover sees vetoes
-  // arrive during a pre-emptive veto phase (before they are submitted).
+  // Escape cancels a pre-emptive staged pre-move.
+  useEffect(() => {
+    if (!vetoStagedMove) return undefined;
+    const onKeyDown = (e) => {
+      if (e.key === 'Escape') cancelVetoStagedMove();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [vetoStagedMove, cancelVetoStagedMove]);
+
+  // Escape retracts a reactive held move that's still under review (vetoer hasn't
+  // responded yet). Allowed even though board input is otherwise locked.
+  useEffect(() => {
+    const style = gameState?.gameType?.veto_style === 'reactive' ? 'reactive' : 'preemptive';
+    if (style !== 'reactive' || !vetoMoveUnderReview) return undefined;
+    const onKeyDown = (e) => {
+      if (e.key === 'Escape') cancelReactiveHeldMove();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [gameState?.gameType?.veto_style, vetoMoveUnderReview, cancelReactiveHeldMove]);
+
+  // Live-broadcast the vetoer's in-progress selection so the opponent sees vetoes
+  // arrive as they are picked (both pre-emptive and reactive).
   useEffect(() => {
     const gt = gameState?.gameType;
-    if (!gt?.veto_enabled || gt?.simultaneous_turns || gt?.veto_style === 'reactive') return;
-    if (gameState?.status !== 'active' || !currentPlayer) return;
+    if (!gt?.veto_enabled || gt?.simultaneous_turns) return;
+    if ((gameState?.status !== 'active' && gameState?.status !== 'ready') || !currentPlayer) return;
     if (currentPlayer.position === gameState.currentTurn) return; // only the vetoer previews
     const sigs = (vetoSelection || []).map(vetoSignatureClient).filter(Boolean);
     sendVetoPreview(parseInt(gameId), sigs);
   }, [vetoSelection, gameState?.currentTurn, gameState?.status, gameState?.gameType, currentPlayer, gameId, sendVetoPreview]);
+
+  // Shared veto UI state (used by the panel and the persistent Actions buttons).
+  const vetoUi = useMemo(() => {
+    const gt = gameState?.gameType;
+    const on = !!(gt?.veto_enabled && !gt?.simultaneous_turns && (gameState?.status === 'active' || gameState?.status === 'ready') && currentPlayer);
+    if (!on) return { on: false, canSelect: false };
+    const isVetoer = currentPlayer.position !== gameState.currentTurn;
+    const style = gt?.veto_style === 'reactive' ? 'reactive' : 'preemptive';
+    const canSelect = isVetoer && !vetoDoneThisTurn && (style === 'preemptive' || !!vetoWindow);
+    return { on: true, isVetoer, style, canSelect };
+  }, [gameState?.gameType, gameState?.status, gameState?.currentTurn, currentPlayer, vetoDoneThisTurn, vetoWindow]);
+
+  // Add a veto descriptor to the current selection (respects budget + dedupe).
+  const addVetoDescriptor = useCallback((desc) => {
+    if (!desc) return;
+    const cap = vetoMyBudget?.perGameRemaining == null
+      ? (vetoMyBudget?.perTurnRemaining ?? 5)
+      : Math.min(vetoMyBudget?.perTurnRemaining ?? 5, vetoMyBudget.perGameRemaining);
+    setVetoError(null);
+    setVetoSelection(prev => {
+      const sig = vetoSignatureClient(desc);
+      if (prev.some(d => vetoSignatureClient(d) === sig)) return prev;
+      if (prev.length >= cap) return prev;
+      return [...prev, desc];
+    });
+  }, [vetoMyBudget]);
+
+  // Submit / skip / clear the current veto selection.
+  // Persist the submission (keyed by the action being vetoed) so an instant
+  // refresh re-sends it on reconnect instead of losing it and re-charging the
+  // vetoer's clock.
+  const persistPendingVeto = useCallback((vetoes) => {
+    try {
+      const actionKey = gameState?.vetoState?.lastActionKey ?? gameState?.moveHistory?.length ?? 0;
+      sessionStorage.setItem(`vetoPending_${gameId}`, JSON.stringify({ actionKey, vetoes }));
+    } catch (_) { /* ignore */ }
+  }, [gameId, gameState?.vetoState?.lastActionKey, gameState?.moveHistory?.length]);
+  const submitVetoSelection = useCallback(() => {
+    if (!vetoUi.canSelect) return;
+    persistPendingVeto(vetoSelection);
+    submitVetoes(parseInt(gameId), vetoSelection);
+  }, [vetoUi.canSelect, submitVetoes, gameId, vetoSelection, persistPendingVeto]);
+  const skipVetoSelection = useCallback(() => {
+    if (!vetoUi.canSelect) return;
+    persistPendingVeto([]);
+    submitVetoes(parseInt(gameId), []);
+  }, [vetoUi.canSelect, submitVetoes, gameId, persistPendingVeto]);
+  const clearVetoSelection = useCallback(() => {
+    setVetoSelection([]);
+    setVetoSelectedPiece(null);
+    setVetoPieceMoves([]);
+  }, []);
+
+  // Enter submits the current veto selection during a veto phase.
+  useEffect(() => {
+    if (!vetoUi.canSelect) return undefined;
+    const onKeyDown = (e) => {
+      if (e.key === 'Enter' && !e.repeat) {
+        e.preventDefault();
+        submitVetoSelection();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [vetoUi.canSelect, submitVetoSelection]);
+
+  // Persistent veto action buttons (Submit / Skip / Clear) for the Actions panel,
+  // always visible in veto games and greyed out when not applicable.
+  const renderVetoActionButtons = useCallback(() => {
+    if (!vetoUi.on) return null;
+    const canAct = vetoUi.canSelect;
+    return (
+      <div className={styles["control-buttons-pass"]}>
+        <button className={`${styles.btn} ${styles["btn-success"]}`} disabled={!canAct} onClick={submitVetoSelection} title="Submit your vetoes">
+          Submit Veto{vetoSelection.length > 0 ? ` (${vetoSelection.length})` : ''}
+        </button>
+        <button className={`${styles.btn} ${styles["btn-secondary"]}`} disabled={!canAct} onClick={skipVetoSelection} title="Decline to veto this turn">Skip Veto</button>
+        <button className={`${styles.btn} ${styles["btn-secondary"]}`} disabled={!canAct || vetoSelection.length === 0} onClick={clearVetoSelection} title="Clear your selected vetoes">Clear Veto</button>
+      </div>
+    );
+  }, [vetoUi.on, vetoUi.canSelect, vetoSelection.length, submitVetoSelection, skipVetoSelection, clearVetoSelection]);
 
   // Board-overlay square counts for veto: candidate targets (vetoer), selected
   // bans (vetoer), and server-confirmed bans (mover). Multiple vetoes can stack
@@ -2502,6 +2871,23 @@ const LiveGame = () => {
     }
     return m;
   }, [vetoBanned]);
+  // Per-square list of vetoed-move labels (newest first) for hover tooltips.
+  const vetoBannedMoves = useMemo(() => {
+    const bh = gameState?.gameType?.board_height || 8;
+    const m = new Map();
+    const all = vetoBanned || [];
+    for (let i = all.length - 1; i >= 0; i--) {
+      const d = parseVetoSig(all[i]);
+      if (!d) continue;
+      const key = `${d.to.x},${d.to.y}`;
+      const label = d.isPlace
+        ? `place ${vetoSquareLabel(d.to, bh)}`
+        : `${vetoSquareLabel(d.from, bh)}-${vetoSquareLabel(d.to, bh)}${d.ranged ? ' (ranged)' : ''}`;
+      if (!m.has(key)) m.set(key, []);
+      m.get(key).push(label);
+    }
+    return m;
+  }, [vetoBanned, gameState?.gameType?.board_height]);
   const vetoSelectedCounts = useMemo(() => {
     const m = new Map();
     for (const d of vetoSelection || []) {
@@ -2511,6 +2897,23 @@ const LiveGame = () => {
     }
     return m;
   }, [vetoSelection]);
+  // Per-square move labels (newest first) for the vetoer's own selection tooltips.
+  const vetoSelectedMoves = useMemo(() => {
+    const bh = gameState?.gameType?.board_height || 8;
+    const m = new Map();
+    const arr = vetoSelection || [];
+    for (let i = arr.length - 1; i >= 0; i--) {
+      const d = arr[i];
+      if (!d || !d.to) continue;
+      const key = `${d.to.x},${d.to.y}`;
+      const label = (d.type === 'place' || d.isPlacement)
+        ? `place ${vetoSquareLabel(d.to, bh)}`
+        : `${vetoSquareLabel(d.from, bh)}-${vetoSquareLabel(d.to, bh)}${d.isRangedAttack ? ' (ranged)' : ''}`;
+      if (!m.has(key)) m.set(key, []);
+      m.get(key).push(label);
+    }
+    return m;
+  }, [vetoSelection, gameState?.gameType?.board_height]);
   const vetoCandidateSquares = useMemo(
     () => new Set((vetoPieceMoves || []).map(m => `${m.x},${m.y}`)),
     [vetoPieceMoves]
@@ -2554,6 +2957,42 @@ const LiveGame = () => {
     const rp = gameState.repositionPhase;
     return !!(rp?.active && rp.currentTurn === currentPlayer.position);
   }, [currentPlayer, gameState]);
+
+  // Reactive veto: once I (the mover) submit a move, it's revealed to my opponent
+  // and under review — I must not be able to submit or change another move until
+  // they respond (veto → I re-pick; clear → it executes). Pre-emptive is exempt:
+  // the vetoer bans blind, so the mover may freely change their premove.
+  const reactiveMoveLocked = useMemo(() => {
+    const gt = gameState?.gameType;
+    if (!gt?.veto_enabled || gt?.simultaneous_turns) return false;
+    const style = gt.veto_style === 'reactive' ? 'reactive' : 'preemptive';
+    return style === 'reactive' && vetoMoveUnderReview;
+  }, [gameState?.gameType, vetoMoveUnderReview]);
+
+  // Phase-aware status line for veto games (replaces the plain "Your turn!").
+  const vetoPhaseMessage = useMemo(() => {
+    const gt = gameState?.gameType;
+    if (!gt?.veto_enabled || gt?.simultaneous_turns) return null;
+    // Allow 'ready' too so a fresh veto game never flashes the green "Your turn!".
+    if ((gameState?.status !== 'active' && gameState?.status !== 'ready') || !currentPlayer) return null;
+    if (gameState?.currentTurn == null) return null;
+    const style = gt.veto_style === 'reactive' ? 'reactive' : 'preemptive';
+    const iAmMover = currentPlayer.position === gameState.currentTurn;
+    if (iAmMover) {
+      if (style === 'reactive') {
+        if (vetoMoveUnderReview) return "Opponent is deciding whether to veto your move…";
+        return "It's your move — your opponent may veto it.";
+      }
+      // Pre-emptive: the opponent vetoes first; a premove doesn't change that.
+      return vetoOpponentSubmitted ? "It's your move." : "Opponent is choosing vetoes…";
+    }
+    // I'm the vetoer
+    if (vetoDoneThisTurn) return "Waiting for your opponent to move…";
+    if (style === 'reactive') {
+      return vetoWindow ? "Veto your opponent's move, or skip." : "Waiting for your opponent's move…";
+    }
+    return "Your veto phase — ban your opponent's moves, then submit.";
+  }, [gameState?.gameType, gameState?.status, gameState?.currentTurn, currentPlayer, vetoMoveUnderReview, vetoOpponentSubmitted, vetoDoneThisTurn, vetoWindow]);
 
   // True when the current player has no remaining repositions (or is not in reposition phase).
   // Premoves are only allowed once this player's own repositions are done.
@@ -2608,12 +3047,22 @@ const LiveGame = () => {
   // Applies clock multiplier so the visual tick rate matches the real server drain rate
   useEffect(() => {
     if (!gameState?.timeControl || gameState?.status !== 'active') return;
+    // Freeze the clock in a veto game until the first action starts it (mirrors
+    // the server so no time is drained during the opening veto/premove phase).
+    const isVetoGame = !!(gameState?.gameType?.veto_enabled && !gameState?.gameType?.simultaneous_turns);
+    const clockFrozen = isVetoGame && !vetoClockStarted;
     const interval = setInterval(() => {
       if (!lastServerTickRef.current || !serverTimesRef.current) return;
+      if (clockFrozen) {
+        // Keep the anchor fresh so unfreezing doesn't drain a backlog of time.
+        lastServerTickRef.current = Date.now();
+        setDisplayTimes({ ...serverTimesRef.current });
+        return;
+      }
       const elapsed = (Date.now() - lastServerTickRef.current) / 1000;
       const newTimes = {};
       for (const [pid, srvTime] of Object.entries(serverTimesRef.current)) {
-        if (pid === String(activeClockPlayerRef.current)) {
+        if (!clockFrozen && pid === String(activeClockPlayerRef.current)) {
           const multiplier = gameState?.clockMultipliers?.[pid] || 1;
           newTimes[pid] = Math.max(0, srvTime - elapsed * multiplier);
         } else {
@@ -2623,7 +3072,7 @@ const LiveGame = () => {
       setDisplayTimes(newTimes);
     }, 100);
     return () => clearInterval(interval);
-  }, [gameState?.timeControl, gameState?.status, gameState?.clockMultipliers]);
+  }, [gameState?.timeControl, gameState?.status, gameState?.clockMultipliers, gameState?.gameType?.veto_enabled, gameState?.gameType?.simultaneous_turns, vetoClockStarted]);
 
   // Get display time for a player (interpolated if available, else server time)
   const getDisplayTime = useCallback((playerId) => {
@@ -4295,6 +4744,17 @@ const LiveGame = () => {
   const handleSquareClick = useCallback((x, y) => {
     // Block interactions while a move is pending confirmation
     if (pendingMove) return;
+    // Reactive veto: clicking my under-review held move's from/to square retracts
+    // it (allowed before the opponent responds — runs BEFORE the review lock).
+    if (reactiveMoveLocked && heldMoveHighlight) {
+      const h = heldMoveHighlight;
+      if ((h.from && h.from.x === x && h.from.y === y) || (h.to && h.to.x === x && h.to.y === y)) {
+        cancelReactiveHeldMove();
+        return;
+      }
+    }
+    // Block interactions while my reactive move is awaiting the opponent's veto.
+    if (reactiveMoveLocked) return;
 
     // Block interactions while a promotion choice is pending
     if (showPromotionModal) return;
@@ -4302,11 +4762,20 @@ const LiveGame = () => {
     // Block all interactions for spectators
     if (!currentPlayer) return;
 
+    // Clicking the staged pre-emptive pre-move's from/to square cancels it.
+    if (vetoStagedMoveRef.current && heldMoveHighlight) {
+      const h = heldMoveHighlight;
+      if ((h.from && h.from.x === x && h.from.y === y) || (h.to && h.to.x === x && h.to.y === y)) {
+        cancelVetoStagedMove();
+        return;
+      }
+    }
+
     // ── Veto selection mode: the vetoer picks the opponent's moves to ban ──
     {
       const gt = gameState?.gameType;
       const vetoOn = gt?.veto_enabled && !gt?.simultaneous_turns;
-      const iAmVetoer = vetoOn && gameState?.status === 'active' && currentPlayer.position !== gameState.currentTurn;
+      const iAmVetoer = vetoOn && (gameState?.status === 'active' || gameState?.status === 'ready') && currentPlayer.position !== gameState.currentTurn;
       const vStyle = gt?.veto_style === 'reactive' ? 'reactive' : 'preemptive';
       const vetoSelectActive = iAmVetoer && !vetoDoneThisTurn && (vStyle === 'preemptive' || !!vetoWindow);
       if (vetoSelectActive) {
@@ -4436,7 +4905,11 @@ const LiveGame = () => {
     // OR allow selecting own pieces when it's opponent's turn for premoves
     // In bot games, also allow premove selection on your own turn since the bot responds quickly
     const isBotGame = !!gameState.botPlayer;
-    const canSelectForPremove = ((!isMyTurn || isBotGame) && (gameState.status === 'active' || gameState.status === 'ready') && gameState.allowPremoves !== false && isOwnPiece && myRepositionsDone);
+    // Regular pre-moves are impossible in veto games — the mover instead makes a
+    // client-staged "veto pre-move" (handled by canMakeMove). Only true regular
+    // pre-moves (opponent's turn, no veto phase) go through this path.
+    const vetoNoPremove = !!(gameState?.gameType?.veto_enabled && !gameState?.gameType?.simultaneous_turns);
+    const canSelectForPremove = ((!isMyTurn || isBotGame) && (gameState.status === 'active' || gameState.status === 'ready') && gameState.allowPremoves !== false && isOwnPiece && myRepositionsDone && !vetoNoPremove);
     // If selected piece can capture allies and there's a valid capture move to this ally, skip re-selection
     const hasAllyCaptureMove = selectedPiece && isOwnPiece && clickedPiece && selectedPiece.can_capture_allies &&
       clickedPiece.id !== selectedPiece.id &&
@@ -4476,7 +4949,7 @@ const LiveGame = () => {
 
     // If piece is selected and clicking on valid move, make the move (during ready or active game)
     const canMakeMove = selectedPiece && isMyTurn && (gameState.status === 'active' || gameState.status === 'ready');
-    const canPremove = selectedPiece && (!isMyTurn || isBotGame) && (gameState.status === 'active' || gameState.status === 'ready') && gameState.allowPremoves !== false && myRepositionsDone;
+    const canPremove = selectedPiece && (!isMyTurn || isBotGame) && (gameState.status === 'active' || gameState.status === 'ready') && gameState.allowPremoves !== false && myRepositionsDone && !vetoNoPremove;
     
     if (canMakeMove) {
       // Clean up any castle hold state.
@@ -4666,7 +5139,7 @@ const LiveGame = () => {
       setSelectedPiece(null);
       setValidMoves([]);
     }
-  }, [isMyTurn, gameState, currentPlayer, selectedPiece, validMoves, calculateValidMoves, submitMove, sendPremove, setPremove, gameId, rangedSelectedPiece, setShowPlacementModal, setPlacementTarget, pendingMove, ghostMoveIndex, captureActionPieceId, showIllegalMoveWarning, placementUseLeftClick, specialSquares, showPromotionModal, vetoWindow, vetoSelectedPiece, vetoPieceMoves, vetoMyBudget, vetoDoneThisTurn, vetoSelection, premove, sendClearPremove]);
+  }, [isMyTurn, gameState, currentPlayer, selectedPiece, validMoves, calculateValidMoves, submitMove, sendPremove, setPremove, gameId, rangedSelectedPiece, setShowPlacementModal, setPlacementTarget, pendingMove, ghostMoveIndex, captureActionPieceId, showIllegalMoveWarning, placementUseLeftClick, specialSquares, showPromotionModal, vetoWindow, vetoSelectedPiece, vetoPieceMoves, vetoMyBudget, vetoDoneThisTurn, vetoSelection, premove, sendClearPremove, reactiveMoveLocked, heldMoveHighlight, cancelVetoStagedMove, cancelReactiveHeldMove]);
   /* eslint-enable react-hooks/exhaustive-deps */
 
   // Handle piece hover for movement helpers
@@ -4707,6 +5180,11 @@ const LiveGame = () => {
       e.preventDefault();
       return;
     }
+    // Block dragging while my reactive move is awaiting the opponent's veto.
+    if (reactiveMoveLocked) {
+      e.preventDefault();
+      return;
+    }
 
     // Block dragging while a promotion choice is pending
     if (showPromotionModal) {
@@ -4740,14 +5218,14 @@ const LiveGame = () => {
 
     // Allow dragging own pieces during your turn OR for premoves during opponent's turn
     const canDragForMove = isMyTurn && (gameState?.status === 'active' || gameState?.status === 'ready') && isOwnPiece;
-    const canDragForPremove = !isMyTurn && (gameState?.status === 'active' || gameState?.status === 'ready') && gameState?.allowPremoves !== false && isOwnPiece;
+    const canDragForPremove = !isMyTurn && (gameState?.status === 'active' || gameState?.status === 'ready') && gameState?.allowPremoves !== false && isOwnPiece && !(gameState?.gameType?.veto_enabled && !gameState?.gameType?.simultaneous_turns);
 
     // Veto phase: allow dragging the mover's (opponent's) piece to a square to
     // declare a veto of that move. Uses the same candidate-move set as clicking.
     {
       const gt = gameState?.gameType;
       const vetoOn = gt?.veto_enabled && !gt?.simultaneous_turns;
-      const iAmVetoer = vetoOn && gameState?.status === 'active' && currentPlayer && currentPlayer.position !== gameState.currentTurn;
+      const iAmVetoer = vetoOn && (gameState?.status === 'active' || gameState?.status === 'ready') && currentPlayer && currentPlayer.position !== gameState.currentTurn;
       const vStyle = gt?.veto_style === 'reactive' ? 'reactive' : 'preemptive';
       const vetoSelectActive = iAmVetoer && !vetoDoneThisTurn && (vStyle === 'preemptive' || !!vetoWindow);
       const moverPos = gameState?.currentTurn;
@@ -4821,7 +5299,7 @@ const LiveGame = () => {
     e.dataTransfer.setDragImage(pieceEl, rect.width / 2, rect.height / 2);
     
     e.currentTarget.style.opacity = '0.5';
-  }, [isMyTurn, gameState, currentPlayer, calculateValidMoves, pendingMove, showPromotionModal, vetoDoneThisTurn, vetoWindow]);
+  }, [isMyTurn, gameState, currentPlayer, calculateValidMoves, pendingMove, showPromotionModal, vetoDoneThisTurn, vetoWindow, reactiveMoveLocked]);
 
   const handleDragEnd = useCallback((e) => {
     e.currentTarget.style.opacity = '1';
@@ -4900,6 +5378,13 @@ const LiveGame = () => {
       return;
     }
 
+    // Block drop while my reactive move is awaiting the opponent's veto.
+    if (reactiveMoveLocked) {
+      setDraggedPiece(null);
+      setDragValidMoves([]);
+      return;
+    }
+
     // Block drop while a promotion choice is pending
     if (showPromotionModal) {
       setDraggedPiece(null);
@@ -4911,7 +5396,7 @@ const LiveGame = () => {
     {
       const gt = gameState?.gameType;
       const vetoOn = gt?.veto_enabled && !gt?.simultaneous_turns;
-      const iAmVetoer = vetoOn && gameState?.status === 'active' && currentPlayer && currentPlayer.position !== gameState.currentTurn;
+      const iAmVetoer = vetoOn && (gameState?.status === 'active' || gameState?.status === 'ready') && currentPlayer && currentPlayer.position !== gameState.currentTurn;
       const vStyle = gt?.veto_style === 'reactive' ? 'reactive' : 'preemptive';
       const vetoSelectActive = iAmVetoer && !vetoDoneThisTurn && (vStyle === 'preemptive' || !!vetoWindow);
       const moverPos = gameState?.currentTurn;
@@ -5054,7 +5539,7 @@ const LiveGame = () => {
     if (validMove) {
       // Check if this is a regular move or premove
       const canMakeMove = isMyTurn && (gameState?.status === 'active' || gameState?.status === 'ready');
-      const canMakePremove = (!isMyTurn || !!gameState?.botPlayer) && (gameState?.status === 'active' || gameState?.status === 'ready') && gameState?.allowPremoves !== false && myRepositionsDone;
+      const canMakePremove = (!isMyTurn || !!gameState?.botPlayer) && (gameState?.status === 'active' || gameState?.status === 'ready') && gameState?.allowPremoves !== false && myRepositionsDone && !(gameState?.gameType?.veto_enabled && !gameState?.gameType?.simultaneous_turns);
       
       if (canMakeMove) {
         const moveData = {
@@ -5109,7 +5594,7 @@ const LiveGame = () => {
     setValidMoves([]);
     setDraggedPiece(null);
     setDragValidMoves([]);
-  }, [draggedPiece, dragValidMoves, isMyTurn, isMyRepositionTurn, myRepositionsDone, gameState, submitMove, submitReposition, sendPremove, gameId, inCheck, currentPlayer, soundEnabledRef, calculateValidMoves, pendingMove, showPromotionModal, castleArmedSquare, castleHoldSquare, vetoDoneThisTurn, vetoWindow, vetoMyBudget]);
+  }, [draggedPiece, dragValidMoves, isMyTurn, isMyRepositionTurn, myRepositionsDone, gameState, submitMove, submitReposition, sendPremove, gameId, inCheck, currentPlayer, soundEnabledRef, calculateValidMoves, pendingMove, showPromotionModal, castleArmedSquare, castleHoldSquare, vetoDoneThisTurn, vetoWindow, vetoMyBudget, reactiveMoveLocked]);
 
   // Check if board should be flipped (player 2 sees board from their perspective)
   const shouldFlipBoard = useMemo(() => {
@@ -5191,6 +5676,8 @@ const LiveGame = () => {
   const handleTouchStart = useCallback((e, piece) => {
     // Block dragging while a move is pending confirmation
     if (pendingMove) return;
+    // Block dragging while my reactive move is awaiting the opponent's veto.
+    if (reactiveMoveLocked) return;
 
     // Block dragging while a promotion choice is pending
     if (showPromotionModal) return;
@@ -5212,7 +5699,7 @@ const LiveGame = () => {
     }
 
     const canDragForMove = isMyTurn && (gameState?.status === 'active' || gameState?.status === 'ready') && isOwnPiece;
-    const canDragForPremove = !isMyTurn && (gameState?.status === 'active' || gameState?.status === 'ready') && gameState?.allowPremoves !== false && isOwnPiece;
+    const canDragForPremove = !isMyTurn && (gameState?.status === 'active' || gameState?.status === 'ready') && gameState?.allowPremoves !== false && isOwnPiece && !(gameState?.gameType?.veto_enabled && !gameState?.gameType?.simultaneous_turns);
 
     if (!canDragForMove && !canDragForPremove) return;
 
@@ -5255,7 +5742,7 @@ const LiveGame = () => {
     touchDragRef.current = { piece, moves, startX: touch.clientX, startY: touch.clientY, isDragging: false, grabOffset };
     setSelectedPiece(piece);
     setValidMoves(moves);
-  }, [isMyTurn, isMyRepositionTurn, gameState, currentPlayer, calculateValidMoves, pendingMove, captureActionPieceId, showIllegalMoveWarning, showPromotionModal]);
+  }, [isMyTurn, isMyRepositionTurn, gameState, currentPlayer, calculateValidMoves, pendingMove, captureActionPieceId, showIllegalMoveWarning, showPromotionModal, reactiveMoveLocked]);
 
   const handleTouchMove = useCallback((e) => {
     const td = touchDragRef.current;
@@ -5355,7 +5842,7 @@ const LiveGame = () => {
 
           if (validMove) {
             const canMakeMove = isMyTurn && (gameState?.status === 'active' || gameState?.status === 'ready');
-            const canMakePremove = (!isMyTurn || !!gameState?.botPlayer) && (gameState?.status === 'active' || gameState?.status === 'ready') && gameState?.allowPremoves !== false && myRepositionsDone;
+            const canMakePremove = (!isMyTurn || !!gameState?.botPlayer) && (gameState?.status === 'active' || gameState?.status === 'ready') && gameState?.allowPremoves !== false && myRepositionsDone && !(gameState?.gameType?.veto_enabled && !gameState?.gameType?.simultaneous_turns);
 
             if (canMakeMove) {
               const moveData = {
@@ -5667,7 +6154,7 @@ const LiveGame = () => {
     {
       const gt = gameState?.gameType;
       const vetoOn = gt?.veto_enabled && !gt?.simultaneous_turns;
-      const iAmVetoer = vetoOn && gameState?.status === 'active' && currentPlayer && currentPlayer.position !== gameState.currentTurn;
+      const iAmVetoer = vetoOn && (gameState?.status === 'active' || gameState?.status === 'ready') && currentPlayer && currentPlayer.position !== gameState.currentTurn;
       const vStyle = gt?.veto_style === 'reactive' ? 'reactive' : 'preemptive';
       const vetoSelectActive = iAmVetoer && !vetoDoneThisTurn && (vStyle === 'preemptive' || !!vetoWindow);
       if (vetoSelectActive) {
@@ -6143,6 +6630,11 @@ const LiveGame = () => {
       gameState.gameType?.draw_equal_points_at_turn != null ||
       gameState.gameType?.draw_equal_points_consecutive != null;
 
+    // Veto X colour: one shared shade for both players (slightly darker than the
+    // old light red, but not the dark red), keeping the light-X drop shadow.
+    const vetoMarkColor = '#ee5751';
+    const vetoMarkShadow = '0 0 3px rgba(0,0,0,0.85), 0 1px 2px rgba(0,0,0,0.9)';
+
     // ── Fog of War visibility ────────────────────────────────────────────────
     // fogVisibleSquares is a Set<"x,y"> of squares the viewing player can see.
     // null means fog is disabled (all squares visible).
@@ -6332,6 +6824,10 @@ const LiveGame = () => {
           && gameY >= premove.from.y && gameY < premove.from.y + pmPh;
         const isPremoveTo = premove && gameX >= premove.to.x && gameX < premove.to.x + pmPw
           && gameY >= premove.to.y && gameY < premove.to.y + pmPh;
+        // A move held pending the opponent's veto is shown with the same premove
+        // styling so it persists visually instead of jumping when the veto resolves.
+        const isHeldMoveFrom = !!(heldMoveHighlight?.from && gameX === heldMoveHighlight.from.x && gameY === heldMoveHighlight.from.y);
+        const isHeldMoveTo = !!(heldMoveHighlight?.to && gameX === heldMoveHighlight.to.x && gameY === heldMoveHighlight.to.y);
 
         // Directional arrow for last-move "from" square (skip for ranged attacks and for moves where piece didn't change position)
         const arrowMoveData = isLastMoveFrom
@@ -6438,6 +6934,7 @@ const LiveGame = () => {
               ${canMove ? styles["can-move"] : ''}
               ${isInCheck ? styles["in-check"] : ''}
               ${isPremoveFrom || isPremoveTo ? styles["premove"] : ''}
+              ${isHeldMoveFrom || isHeldMoveTo ? styles["premove"] : ''}
               ${specialSquareType === 'promotion' ? styles["promotion-square"] : ''}
               ${specialSquareType === 'range' ? styles["range-square"] : ''}
               ${specialSquareType === 'control' ? styles["control-square"] : ''}
@@ -6492,6 +6989,13 @@ const LiveGame = () => {
             {draggedPiece && dragOverSquare && dragOverSquare.x === gameX && dragOverSquare.y === gameY && (
               <span style={{ position: 'absolute', inset: 0, boxShadow: 'inset 0 0 0 3px rgba(255,255,255,0.75)', borderRadius: 2, pointerEvents: 'none', zIndex: 5 }} />
             )}
+            {/* Reactive veto: highlight the opponent's just-played move (from → to). */}
+            {vetoRevealMove?.from && vetoRevealMove.from.x === gameX && vetoRevealMove.from.y === gameY && (
+              <span style={{ position: 'absolute', inset: 0, background: 'rgba(80,140,255,0.22)', pointerEvents: 'none', zIndex: 4 }} />
+            )}
+            {vetoRevealMove?.to && vetoRevealMove.to.x === gameX && vetoRevealMove.to.y === gameY && (
+              <span style={{ position: 'absolute', inset: 0, background: 'rgba(80,140,255,0.30)', boxShadow: 'inset 0 0 0 3px rgba(80,140,255,0.9)', pointerEvents: 'none', zIndex: 4 }} />
+            )}
             {/* Veto overlays: candidate ban target (vetoer), selected ban(s)
                 (vetoer), and server-confirmed ban(s) (mover), with a stacked
                 quantity badge when more than one veto sits on the square. */}
@@ -6499,26 +7003,47 @@ const LiveGame = () => {
               <span style={{ position: 'absolute', inset: '18%', borderRadius: '50%', border: '2px dashed rgba(255,90,90,0.85)', pointerEvents: 'none', zIndex: 6 }} />
             )}
             {vetoSelectedCounts.get(`${gameX},${gameY}`) > 0 && (
-              <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ff5050', fontWeight: 900, fontSize: '1.5em', pointerEvents: 'none', zIndex: 7 }}>
+              <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: vetoMarkColor, textShadow: vetoMarkShadow, fontWeight: 900, fontSize: '1.5em', pointerEvents: 'none', zIndex: 7 }}>
                 X
                 {vetoSelectedCounts.get(`${gameX},${gameY}`) > 1 && (
-                  <span style={{ position: 'absolute', top: '4%', right: '8%', fontSize: '0.42em', background: '#ff5050', color: '#fff', borderRadius: '999px', minWidth: '1.4em', height: '1.4em', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}>{vetoSelectedCounts.get(`${gameX},${gameY}`)}</span>
+                  <span style={{ position: 'absolute', top: '4%', right: '8%', fontSize: '0.42em', background: vetoMarkColor, color: '#fff', borderRadius: '999px', minWidth: '1.4em', height: '1.4em', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}>{vetoSelectedCounts.get(`${gameX},${gameY}`)}</span>
+                )}
+                {vetoSelectedMoves.get(`${gameX},${gameY}`)?.length > 0 && (
+                  <span className={styles["veto-move-tooltip"]}>
+                    {vetoSelectedMoves.get(`${gameX},${gameY}`).map((lbl, i) => (
+                      <span key={i} className={styles["veto-move-tooltip-line"]}>{lbl}</span>
+                    ))}
+                  </span>
                 )}
               </span>
             )}
             {vetoBannedCounts.get(`${gameX},${gameY}`) > 0 && (
-              <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ff3030', fontWeight: 900, fontSize: '1.3em', pointerEvents: 'none', zIndex: 7, background: 'rgba(255,0,0,0.14)' }}>
+              <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: vetoMarkColor, textShadow: vetoMarkShadow, fontWeight: 900, fontSize: '1.3em', pointerEvents: 'none', zIndex: 7, background: 'rgba(0,0,0,0.2)' }}>
                 X
                 {vetoBannedCounts.get(`${gameX},${gameY}`) > 1 && (
-                  <span style={{ position: 'absolute', top: '4%', right: '8%', fontSize: '0.48em', background: '#ff3030', color: '#fff', borderRadius: '999px', minWidth: '1.4em', height: '1.4em', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}>{vetoBannedCounts.get(`${gameX},${gameY}`)}</span>
+                  <span style={{ position: 'absolute', top: '4%', right: '8%', fontSize: '0.48em', background: vetoMarkColor, color: '#fff', borderRadius: '999px', minWidth: '1.4em', height: '1.4em', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}>{vetoBannedCounts.get(`${gameX},${gameY}`)}</span>
+                )}
+                {vetoBannedMoves.get(`${gameX},${gameY}`)?.length > 0 && (
+                  <span className={styles["veto-move-tooltip"]}>
+                    {vetoBannedMoves.get(`${gameX},${gameY}`).map((lbl, i) => (
+                      <span key={i} className={styles["veto-move-tooltip-line"]}>{lbl}</span>
+                    ))}
+                  </span>
                 )}
               </span>
             )}
             {vetoPreviewSquares && vetoPreviewSquares.get(`${gameX},${gameY}`) > 0 && !vetoBannedCounts.get(`${gameX},${gameY}`) && (
-              <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ffb020', fontWeight: 900, fontSize: '1.3em', pointerEvents: 'none', zIndex: 7 }}>
+              <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: vetoMarkColor, textShadow: vetoMarkShadow, opacity: 0.72, fontWeight: 900, fontSize: '1.3em', pointerEvents: 'none', zIndex: 7 }}>
                 X
                 {vetoPreviewSquares.get(`${gameX},${gameY}`) > 1 && (
-                  <span style={{ position: 'absolute', top: '4%', right: '8%', fontSize: '0.48em', background: '#ffb020', color: '#000', borderRadius: '999px', minWidth: '1.4em', height: '1.4em', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}>{vetoPreviewSquares.get(`${gameX},${gameY}`)}</span>
+                  <span style={{ position: 'absolute', top: '4%', right: '8%', fontSize: '0.48em', background: vetoMarkColor, color: '#fff', borderRadius: '999px', minWidth: '1.4em', height: '1.4em', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}>{vetoPreviewSquares.get(`${gameX},${gameY}`)}</span>
+                )}
+                {vetoPreviewMoves && vetoPreviewMoves.get(`${gameX},${gameY}`)?.length > 0 && (
+                  <span className={styles["veto-move-tooltip"]}>
+                    {vetoPreviewMoves.get(`${gameX},${gameY}`).map((lbl, i) => (
+                      <span key={i} className={styles["veto-move-tooltip-line"]}>{lbl}</span>
+                    ))}
+                  </span>
                 )}
               </span>
             )}
@@ -6580,11 +7105,11 @@ const LiveGame = () => {
               const pieceTeam = piece.player_id || piece.team;
               const isOwnPiece = currentPlayer && (pieceTeam === currentPlayer.position || piece.is_neutral);
               const canDragForMove = isMyTurn && (gameState?.status === 'active' || gameState?.status === 'ready') && isOwnPiece;
-              const canDragForPremove = !isMyTurn && (gameState?.status === 'active' || gameState?.status === 'ready') && gameState?.allowPremoves !== false && isOwnPiece;
+              const canDragForPremove = !isMyTurn && (gameState?.status === 'active' || gameState?.status === 'ready') && gameState?.allowPremoves !== false && isOwnPiece && !(gameState?.gameType?.veto_enabled && !gameState?.gameType?.simultaneous_turns);
               // Veto phase: the vetoer may drag the mover's (opponent's) piece to veto a move.
               const _vetoOn = gameState?.gameType?.veto_enabled && !gameState?.gameType?.simultaneous_turns;
               const _vStyle = gameState?.gameType?.veto_style === 'reactive' ? 'reactive' : 'preemptive';
-              const _iAmVetoer = _vetoOn && gameState?.status === 'active' && currentPlayer && currentPlayer.position !== gameState.currentTurn;
+              const _iAmVetoer = _vetoOn && (gameState?.status === 'active' || gameState?.status === 'ready') && currentPlayer && currentPlayer.position !== gameState.currentTurn;
               const _canDragForVeto = _iAmVetoer && !vetoDoneThisTurn && (_vStyle === 'preemptive' || !!vetoWindow)
                 && !isOwnPiece && (pieceTeam === gameState.currentTurn || piece.is_neutral);
               const _repoKeyOnly = !!gameState?.gameType?.reposition_key_pieces_only;
@@ -7195,6 +7720,13 @@ const LiveGame = () => {
                       ? gameState.repositionPhase.p1Remaining
                       : gameState.repositionPhase.p2Remaining} remaining)
                   </span>
+                )}
+              </>
+            ) : vetoPhaseMessage ? (
+              <>
+                <span className={styles["veto-phase-msg"]}>{vetoPhaseMessage}</span>
+                {inCheck && currentPlayer.position === gameState.currentTurn && (
+                  <span className={styles["check-warning"]}>⚠️ You are in CHECK!</span>
                 )}
               </>
             ) : isMyTurn ? (
@@ -7911,6 +8443,7 @@ const LiveGame = () => {
                     </button>
                   </div>
                 )}
+                {renderVetoActionButtons()}
               </div>
             )}
           </div>
@@ -7931,7 +8464,7 @@ const LiveGame = () => {
           )}
           {(() => {
             const gt = gameState?.gameType;
-            const vetoOn = gt?.veto_enabled && !gt?.simultaneous_turns && gameState?.status === 'active';
+            const vetoOn = gt?.veto_enabled && !gt?.simultaneous_turns && (gameState?.status === 'active' || gameState?.status === 'ready');
             if (!vetoOn || !currentPlayer) return null;
             const iAmVetoer = currentPlayer.position !== gameState.currentTurn;
             const vStyle = gt?.veto_style === 'reactive' ? 'reactive' : 'preemptive';
@@ -7939,28 +8472,42 @@ const LiveGame = () => {
             if (canSelect) {
               const perTurn = vetoMyBudget?.perTurnRemaining ?? Math.max(1, Math.min(5, Number(gt.veto_per_turn_limit) || 1));
               const perGame = vetoMyBudget?.perGameRemaining;
+              const bh = gt?.board_height || 8;
+              const sq = (p) => p ? `${String.fromCharCode(97 + p.x)}${bh - p.y}` : '?';
+              const revealDesc = vetoRevealMove ? {
+                pieceId: vetoRevealMove.pieceId,
+                from: vetoRevealMove.from,
+                to: vetoRevealMove.to,
+                isRangedAttack: !!vetoRevealMove.isRangedAttack,
+                isCastling: !!vetoRevealMove.isCastling,
+                castlingWith: vetoRevealMove.castlingWith,
+                via: vetoRevealMove.via,
+              } : null;
+              const revealSelected = !!revealDesc && vetoSelection.some(d => vetoSignatureClient(d) === vetoSignatureClient(revealDesc));
               return (
                 <div className={styles["veto-panel"]}>
                   <div className={styles["veto-title"]}>Veto phase — ban your opponent's moves</div>
-                  <div className={styles["veto-hint"]}>
-                    {vStyle === 'reactive' && vetoWindow?.revealMove
-                      ? 'Your opponent submitted a move. Click their piece then a highlighted square to ban that move. Right-click a square to remove a veto.'
-                      : 'Click an opponent piece, then a highlighted square to ban that move (or drag it there). Click again to also ban a ranged attack to the same square. Right-click a square to remove a veto.'}
-                  </div>
+                  {vStyle === 'reactive' && vetoRevealMove ? (
+                    <>
+                      <div className={styles["veto-hint"]}>
+                        Your opponent played <strong>{sq(vetoRevealMove.from)}→{sq(vetoRevealMove.to)}{vetoRevealMove.isRangedAttack ? ' (ranged)' : ''}</strong> (highlighted in blue). Veto it to force a different move, and/or ban other potential moves, then Submit (or press Enter).
+                      </div>
+                      <div className={styles["veto-buttons"]}>
+                        <button className={`${styles.btn} ${styles["btn-danger"]}`} disabled={revealSelected} onClick={() => addVetoDescriptor(revealDesc)}>
+                          {revealSelected ? 'Move vetoed ✓' : 'Veto this move'}
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <div className={styles["veto-hint"]}>
+                      Click an opponent piece, then a highlighted square to ban that move (or drag it there). Click again to also ban a ranged attack to the same square. Right-click a square to remove a veto.
+                    </div>
+                  )}
                   <div className={styles["veto-status"]}>
                     Selected: {vetoSelection.length} · Vetoes left this turn: {perTurn}
                     {perGame != null ? ` · This game: ${perGame}` : ''}
                   </div>
                   {vetoError && <div className={styles["veto-error"]}>{vetoError}</div>}
-                  <div className={styles["veto-buttons"]}>
-                    <button className={`${styles.btn} ${styles["btn-success"]}`} onClick={() => submitVetoes(parseInt(gameId), vetoSelection)}>
-                      Submit{vetoSelection.length > 0 ? ` (${vetoSelection.length})` : ''}
-                    </button>
-                    <button className={`${styles.btn} ${styles["btn-secondary"]}`} onClick={() => submitVetoes(parseInt(gameId), [])}>Skip</button>
-                    {vetoSelection.length > 0 && (
-                      <button className={`${styles.btn} ${styles["btn-secondary"]}`} onClick={() => { setVetoSelection([]); setVetoSelectedPiece(null); setVetoPieceMoves([]); }}>Clear</button>
-                    )}
-                  </div>
                 </div>
               );
             }
@@ -7968,7 +8515,7 @@ const LiveGame = () => {
               return <div className={styles["veto-panel"]}>Veto power is active. Wait for your opponent to submit a move, then you may veto it.</div>;
             }
             if (vetoMoveUnderReview) {
-              return <div className={styles["veto-panel"]}>Your move is under veto review…</div>;
+              return <div className={styles["veto-panel"]}>Your move is under veto review… <span style={{ opacity: 0.8 }}>(press Esc or click your moved piece to take it back)</span></div>;
             }
             if (vetoBanned && vetoBanned.length > 0) {
               return <div className={styles["veto-panel"]}>Your opponent vetoed {vetoBanned.length} move(s) this turn. Choose a different move.</div>;
@@ -7978,8 +8525,9 @@ const LiveGame = () => {
         </div>
       )}
 
-      {/* Special Squares Legend Row - below board and clocks */}
-      {hasSpecialSquares && (
+      {/* Special Squares Legend Row - below board and clocks. Only render when it
+          actually has content so the empty container doesn't add spacing. */}
+      {hasSpecialSquares && (showAllSpecialSquares || Object.keys(specialSquares.control).length > 0) && (
         <div className={styles["layout-row-legend"]}>
           {showAllSpecialSquares && (
             <BoardLegend
@@ -8560,6 +9108,7 @@ const LiveGame = () => {
                   Resign
                 </button>
               </div>
+              {renderVetoActionButtons()}
             </div>
           )}
         </div>

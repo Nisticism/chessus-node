@@ -464,9 +464,10 @@ function buildOtherData(gameState, extraFields = {}) {
     ...(gameState.recentPositionHashes && gameState.recentPositionHashes.length ? { recentPositionHashes: gameState.recentPositionHashes } : {}),
     ...(gameState.seenPositions && gameState.seenPositions.size ? { seenPositions: Array.from(gameState.seenPositions) } : {}),
     ...(gameState.consecutivePasses ? { consecutivePasses: gameState.consecutivePasses } : {}),
-    // Veto power: per-game remaining bank, per-turn usage, and the current
-    // opponent-turn ban set — persisted so vetoes survive a server restart.
-    ...(gameState.vetoState && ((gameState.vetoState.banned && gameState.vetoState.banned.length) || Object.keys(gameState.vetoState.usedThisTurn || {}).length || Object.keys(gameState.vetoState.remaining || {}).length)
+    // Veto power: per-game remaining bank, per-turn usage, the current
+    // opponent-turn ban set, and any held/pending move — persisted so vetoes
+    // (and an in-flight veto window) survive a server restart.
+    ...(gameState.vetoState && ((gameState.vetoState.banned && gameState.vetoState.banned.length) || Object.keys(gameState.vetoState.usedThisTurn || {}).length || Object.keys(gameState.vetoState.remaining || {}).length || gameState.vetoState.pendingMove || gameState.vetoState.pendingBotMove || gameState.vetoState.phaseOpen || gameState.vetoState.clockStarted)
       ? { vetoState: gameState.vetoState }
       : {}),
     ...extraFields
@@ -700,7 +701,11 @@ async function applyBotVetoes(io, gameState, gameId, moverPos, vetoerPos) {
   if (!cfg) return;
   const vs = syncVetoTurn(gameState);
   if (vs.phaseResolved) return;
+  armVetoClock(gameState);
+  const _botVetoStart = Date.now();
   const chosen = chooseBotVetoes(gameState, moverPos, vetoerPos);
+  const _botVetoMs = Date.now() - _botVetoStart;
+  if (_botVetoMs > 60) console.log(`[veto-timing] bot veto decision took ${_botVetoMs}ms in game ${gameId}`);
   const sigs = Array.from(new Set(chosen.map(vetoSignature).filter(Boolean)));
   if (sigs.length > 0) {
     vs.banned = Array.from(new Set([...(vs.banned || []), ...sigs]));
@@ -716,9 +721,46 @@ async function applyBotVetoes(io, gameState, gameId, moverPos, vetoerPos) {
     await db_pool.query("UPDATE games SET other_data = ? WHERE id = ?", [buildOtherData(gameState), gameId]);
   } catch (_) { /* non-fatal */ }
   if (sigs.length > 0) {
-    emitToGameRoom(io, gameState, "vetoesUpdated", { banned: vs.banned, vetoer: vetoerPos, mover: moverPos, style: cfg.style });
+    emitToGameRoom(io, gameState, "vetoesUpdated", { gameId, banned: vs.banned, vetoer: vetoerPos, mover: moverPos, style: cfg.style });
   }
   emitVetoState(io, gameState, gameId);
+}
+
+// Reactive style + bot mover: hold the bot's chosen move and reveal it to the
+// human vetoer so they can react to it before it lands. Returns true when the
+// move was held (caller must stop and return). submitVetoes resolves the hold:
+// if the human bans it the bot recomputes, otherwise the held move is executed.
+async function maybeHoldBotMoveForReactiveVeto(io, gameId, gameState, botMove) {
+  const cfg = getVetoConfig(gameState);
+  if (!cfg || cfg.style !== 'reactive') return false;
+  if (!botMove || botMove.type === 'pass' || botMove.isPass) return false;
+  const moverPos = gameState.currentTurn;
+  const vetoerPos = moverPos === 1 ? 2 : 1;
+  if (vetoPositionIsBot(gameState, vetoerPos)) return false; // only a human reacts
+  const vs = syncVetoTurn(gameState);
+  if (vs.phaseResolved) return false;
+  if (vetoBudgetRemaining(gameState, vetoerPos) <= 0) return false;
+  armVetoClock(gameState);
+  vs.pendingBotMove = botMove;
+  vs.phaseOpen = true;
+  try {
+    await db_pool.query("UPDATE games SET other_data = ? WHERE id = ?", [buildOtherData(gameState), gameId]);
+  } catch (_) { /* non-fatal */ }
+  const vetoerPlayer = gameState.players.find(p => p.position === vetoerPos);
+  emitToGameRoom(io, gameState, "vetoWindowOpened", {
+    gameId,
+    mover: moverPos,
+    vetoer: vetoerPos,
+    vetoerId: vetoerPlayer ? vetoerPlayer.id : null,
+    revealMove: botMove,
+    style: cfg.style,
+    budget: {
+      perTurnRemaining: cfg.perTurn - (vs.usedThisTurn[vetoerPos] || 0),
+      perGameRemaining: cfg.perGame == null ? null : (vs.remaining[vetoerPos] != null ? vs.remaining[vetoerPos] : cfg.perGame),
+    },
+  });
+  emitVetoState(io, gameState, gameId);
+  return true;
 }
 
 // Which player's clock should tick right now due to veto (the vetoer while their
@@ -760,7 +802,17 @@ function emitVetoState(io, gameState, gameId) {
     remaining,
     mover: gameState.currentTurn,
     vetoClockPos: vetoClockPos(gameState),
+    clockStarted: !!vs.clockStarted,
   });
+}
+
+// Mark the veto game's clock as started (first real action taken). Returns true
+// when it flips from not-started to started so callers can persist/broadcast.
+function armVetoClock(gameState) {
+  const vs = initVetoState(gameState);
+  if (vs.clockStarted) return false;
+  vs.clockStarted = true;
+  return true;
 }
 
 /**
@@ -5910,6 +5962,8 @@ function initializeSocket(server) {
           }
         }
         socket.emit("gameState", fogFilterPayload(gameState, gameState, getViewerPosition(gameState, userId)));
+        // Re-sync veto bank + clock charge on (re)join (see getGameState).
+        if (getVetoConfig(gameState)) emitVetoState(io, gameState, gameId);
       }
     });
 
@@ -6007,7 +6061,7 @@ function initializeSocket(server) {
     // Live veto preview: while the vetoer is still selecting (pre-emptive), relay
     // their in-progress bans to the room so both players see vetoes as they come in
     // (before they are committed via submitVetoes).
-    socket.on("vetoPreview", (data) => {
+    socket.on("vetoPreview", async (data) => {
       try {
         const { gameId, userId, signatures } = data || {};
         const gameState = activeGames.get(String(gameId));
@@ -6017,6 +6071,12 @@ function initializeSocket(server) {
         const vetoer = mover === 1 ? 2 : 1;
         const vetoerPlayer = gameState.players.find(p => p.position === vetoer);
         if (!vetoerPlayer || vetoerPlayer.id !== userId) return;
+        // First veto cast starts the game + clock (pre-emptive: the vetoer acts first).
+        if (Array.isArray(signatures) && signatures.length > 0 && armVetoClock(gameState)) {
+          await activateGameOnFirstMove(io, gameState, gameId);
+          db_pool.query("UPDATE games SET other_data = ? WHERE id = ?", [buildOtherData(gameState), gameId]).catch(() => {});
+          emitVetoState(io, gameState, gameId);
+        }
         emitToGameRoom(io, gameState, "vetoPreviewUpdated", {
           gameId: Number(gameId),
           vetoer,
@@ -6049,11 +6109,16 @@ function initializeSocket(server) {
 
         syncVetoTurn(gameState);
         const vs = gameState.vetoState;
+        // The vetoer submitting (or skipping) is a real action — start the game
+        // (pre-emptive: the vetoer acts first, before any move) and the clock.
+        await activateGameOnFirstMove(io, gameState, gameId);
+        armVetoClock(gameState);
 
         // Reactive style bans a move only after it is submitted — require an open
-        // window (a held move) so the vetoer cannot ban blindly. Exception: a
-        // deferred bot move (bot is the mover) is vetoed pre-emptively.
-        if (cfg.style === 'reactive' && !vs.pendingMove && !(vetoPositionIsBot(gameState, mover) && vs.phaseOpen)) {
+        // window (a held move) so the vetoer cannot ban blindly. Exceptions: a
+        // deferred bot move being vetoed, either held-and-revealed (reactive) or
+        // pre-emptively while the bot is the mover.
+        if (cfg.style === 'reactive' && !vs.pendingMove && !vs.pendingBotMove && !(vetoPositionIsBot(gameState, mover) && vs.phaseOpen)) {
           return socket.emit("vetoRejected", { message: "Wait for your opponent to submit a move before vetoing." });
         }
 
@@ -6083,6 +6148,9 @@ function initializeSocket(server) {
         // Resolve a held move if one is pending.
         const held = vs.pendingMove;
         vs.pendingMove = null;
+        // Reactive: a bot move may be held awaiting the human's reaction.
+        const heldBot = vs.pendingBotMove;
+        vs.pendingBotMove = null;
 
         try {
           await db_pool.query("UPDATE games SET other_data = ? WHERE id = ?", [buildOtherData(gameState), gameId]);
@@ -6090,7 +6158,7 @@ function initializeSocket(server) {
           console.error("submitVetoes persist error:", e.message);
         }
 
-        emitToGameRoom(io, gameState, "vetoesUpdated", { banned: vs.banned, vetoer, mover, style: cfg.style });
+        emitToGameRoom(io, gameState, "vetoesUpdated", { gameId, banned: vs.banned, vetoer, mover, style: cfg.style });
         socket.emit("vetoSubmitted", { banned: vs.banned, budget });
         emitVetoState(io, gameState, gameId);
 
@@ -6116,6 +6184,16 @@ function initializeSocket(server) {
               move: held.move,
             });
           }
+        } else if (heldBot) {
+          // Reactive: a bot move was held for the human's reaction. If they banned
+          // it, the bot recomputes a different move (phaseResolved is now set, so
+          // it won't be held again); otherwise the held move executes as-is.
+          const botMoveBanned = vs.banned.includes(vetoSignature(heldBot));
+          if (botMoveBanned) {
+            processBotTurn(io, gameId, gameState).catch(e => console.error('[veto] bot recompute after veto error:', e));
+          } else {
+            processBotTurn(io, gameId, gameState, heldBot).catch(e => console.error('[veto] bot held move error:', e));
+          }
         } else if (vetoPositionIsBot(gameState, mover)) {
           // A deferred bot move was awaiting the human's vetoes — let it move now
           // (it will respect the bans just applied).
@@ -6124,6 +6202,38 @@ function initializeSocket(server) {
       } catch (err) {
         console.error("submitVetoes error:", err);
         socket.emit("error", { message: "Failed to submit vetoes" });
+      }
+    });
+
+    // Reactive veto: the mover retracts their still-under-review held move (only
+    // valid while the vetoer has NOT yet submitted a decision). Lets the mover
+    // change their mind before the veto lands. Races are resolved by ordering:
+    // if submitVetoes arrives first, phaseResolved is set and this is rejected;
+    // if this arrives first, pendingMove is cleared and a late submit is rejected.
+    socket.on("retractVetoMove", async (data) => {
+      try {
+        const { gameId, userId } = data || {};
+        const gameState = activeGames.get(String(gameId));
+        if (!gameState) return;
+        const cfg = getVetoConfig(gameState);
+        if (!cfg || cfg.style !== 'reactive') return;
+        const vs = gameState.vetoState;
+        if (!vs || !vs.pendingMove || vs.phaseResolved) {
+          return socket.emit("vetoRetractRejected", { message: "Too late to retract — your opponent already responded." });
+        }
+        const mover = gameState.currentTurn;
+        const moverPlayer = gameState.players.find(p => p.position === mover);
+        if (!moverPlayer || moverPlayer.id !== userId) return;
+        // Clear the held move + close the window. No bans/budget were committed.
+        vs.pendingMove = null;
+        vs.phaseOpen = false;
+        try {
+          await db_pool.query("UPDATE games SET other_data = ? WHERE id = ?", [buildOtherData(gameState), gameId]);
+        } catch (_) { /* non-fatal */ }
+        emitToGameRoom(io, gameState, "vetoMoveRetracted", { gameId, mover });
+        emitVetoState(io, gameState, gameId);
+      } catch (err) {
+        console.error("retractVetoMove error:", err);
       }
     });
 
@@ -6194,6 +6304,10 @@ function initializeSocket(server) {
           return socket.emit("error", { message: "You must make a ranged attack with this piece, or skip your remaining ranged capture action" });
         }
 
+        // Activate the game before any veto hold so a held first move still
+        // starts the clock and the vetoer's (active-game-gated) panel appears.
+        await activateGameOnFirstMove(io, gameState, gameId);
+
         // Veto power: reject a move the opponent has banned this turn, or HOLD
         // the move to open a veto window when the opponent still has vetoes to
         // spend. Bans never affect check detection and are guaranteed to leave
@@ -6202,6 +6316,13 @@ function initializeSocket(server) {
           const vcfg = getVetoConfig(gameState);
           syncVetoTurn(gameState);
           const vetoerPos = gameState.currentTurn === 1 ? 2 : 1;
+          // Reactive: a submitted move is revealed and under review — reject any
+          // further move from the mover until the vetoer responds (which clears
+          // pendingMove via submitVetoes). Pre-emptive holds are blind, so the
+          // mover may freely replace their premove and this guard doesn't apply.
+          if (vcfg.style === 'reactive' && gameState.vetoState.pendingMove && !move._vetoCleared) {
+            return socket.emit("error", { message: "Your move is under veto review — wait for your opponent's decision." });
+          }
           // Bot vetoer: compute and apply its bans now (before enforcing this move).
           if (vetoPositionIsBot(gameState, vetoerPos) && !gameState.vetoState.phaseResolved) {
             await applyBotVetoes(io, gameState, gameId, gameState.currentTurn, vetoerPos);
@@ -6219,6 +6340,10 @@ function initializeSocket(server) {
             !vetoPositionIsBot(gameState, vetoerPos) &&
             vetoBudgetRemaining(gameState, vetoerPos) > 0;
           if (shouldHold) {
+            // Reactive: the mover's held move is revealed to the vetoer, so it's
+            // the first real action and starts the clock. Pre-emptive holds are
+            // blind premoves and must NOT start the clock.
+            if (vcfg.style === 'reactive') armVetoClock(gameState);
             // Stash the move and open the veto window. The vetoer resolves it via
             // submitVetoes; the vetoer's clock ticks meanwhile (see startGameTimer).
             gameState.vetoState.pendingMove = { move, userId, moverPos: gameState.currentTurn };
@@ -6246,48 +6371,9 @@ function initializeSocket(server) {
           }
         }
 
-        // Start the game if this is the first move
-        if (gameState.status === 'ready' && gameState.moveHistory.length === 0) {
-          gameState.status = 'active';
-          gameState.startTime = Date.now();
-          // Snapshot initial pieces for replay (if not already set)
-          if (!gameState.initialPieces) {
-            gameState.initialPieces = JSON.parse(JSON.stringify(gameState.pieces));
-          }
-          const startTimeStr = new Date().toISOString().slice(0, 19).replace('T', ' ');
-          await db_pool.query(
-            "UPDATE games SET status = 'active', start_time = ?, other_data = ? WHERE id = ?",
-            [startTimeStr, buildOtherData(gameState), gameId]
-          );
-          
-          // Update last_played_at on the game type
-          if (gameState.gameTypeId) {
-            try {
-              await db_pool.query(
-                "UPDATE game_types SET last_played_at = ? WHERE id = ?",
-                [startTimeStr, gameState.gameTypeId]
-              );
-            } catch (err) {
-              console.error('Failed to update last_played_at:', err);
-            }
-          }
-          
-          // Initialize castling partners for all pieces that can castle
-          initializeCastlingPartners(gameState);
-          
-          // Initialize position history with starting position (for N-fold repetition)
-          if (gameState.gameType?.repetition_draw_count) {
-            const initialPositionHash = getPositionHash(gameState.pieces, 1, gameState.reserves); // Player 1 starts
-            gameState.positionHistory = { [initialPositionHash]: 1 };
-          }
-          
-          // Notify everyone that a new game has started (for ongoing games list)
-          io.emit("gameStarted", { gameId });
-          invalidateLobbyCache();
-          
-          // Start the game timer
-          startGameTimer(io, gameId);
-        }
+        // Start the game if this is the first move (idempotent — already run
+        // above before the veto hold for pre-emptive veto games).
+        await activateGameOnFirstMove(io, gameState, gameId);
 
         // Handle piece placement action (Othello-style)
         const otherData = gameState.otherGameData || {};
@@ -9972,6 +10058,10 @@ function initializeSocket(server) {
             allReady: false,
           });
         }
+        // Re-sync the veto bank + who the clock is charging so a reconnecting
+        // player's clock reflects server truth (bot games send no periodic
+        // timeUpdate, so the client would otherwise keep charging the vetoer).
+        if (getVetoConfig(gameState)) emitVetoState(io, gameState, gameId);
       } else {
         // Try to load from database
         try {
@@ -10585,6 +10675,8 @@ function initializeSocket(server) {
               allReady: false,
             });
           }
+          // Re-sync veto bank + clock charge on reconnect (see in-memory path).
+          if (getVetoConfig(gameState)) emitVetoState(io, gameState, gameId);
         } catch (error) {
           console.error("Error loading game state:", error);
           socket.emit("error", { message: "Failed to load game" });
@@ -12072,6 +12164,42 @@ function getClockMultiplier(gameState, playerId) {
   return 1.0; // Ahead or equal — normal speed
 }
 
+// Activate a 'ready' game on its first move: status, clock, castling partners,
+// position history, lobby notify. Idempotent (guarded) so it's safe to call
+// before a pre-emptive veto hold — a held first move still starts the game so
+// the vetoer's panel (which only renders for an active game) appears.
+async function activateGameOnFirstMove(io, gameState, gameId) {
+  if (!(gameState.status === 'ready' && gameState.moveHistory.length === 0)) return;
+  gameState.status = 'active';
+  gameState.startTime = Date.now();
+  if (!gameState.initialPieces) {
+    gameState.initialPieces = JSON.parse(JSON.stringify(gameState.pieces));
+  }
+  const startTimeStr = new Date().toISOString().slice(0, 19).replace('T', ' ');
+  await db_pool.query(
+    "UPDATE games SET status = 'active', start_time = ?, other_data = ? WHERE id = ?",
+    [startTimeStr, buildOtherData(gameState), gameId]
+  );
+  if (gameState.gameTypeId) {
+    try {
+      await db_pool.query(
+        "UPDATE game_types SET last_played_at = ? WHERE id = ?",
+        [startTimeStr, gameState.gameTypeId]
+      );
+    } catch (err) {
+      console.error('Failed to update last_played_at:', err);
+    }
+  }
+  initializeCastlingPartners(gameState);
+  if (gameState.gameType?.repetition_draw_count) {
+    const initialPositionHash = getPositionHash(gameState.pieces, 1, gameState.reserves);
+    gameState.positionHistory = { [initialPositionHash]: 1 };
+  }
+  io.emit("gameStarted", { gameId });
+  invalidateLobbyCache();
+  startGameTimer(io, gameId);
+}
+
 function startGameTimer(io, gameId) {
   const gameIdStr = gameId.toString();
   const gameState = activeGames.get(gameIdStr);
@@ -12172,6 +12300,13 @@ function startGameTimer(io, gameId) {
     // mover's clock only starts once vetoes are submitted.
     let clockPlayer = currentPlayer;
     if (getVetoConfig(currentGameState)) {
+      // At game start no clock runs until the first real action is taken (the
+      // vetoer's first veto in pre-emptive, or the mover's revealed move in
+      // reactive). A pre-emptive premove by the mover must NOT start the clock.
+      if (!initVetoState(currentGameState).clockStarted) {
+        lastTickAt = now;
+        return;
+      }
       syncVetoTurn(currentGameState);
       const vcp = vetoClockPos(currentGameState);
       if (vcp != null) {
@@ -18839,10 +18974,13 @@ async function _processBotTurnInner(io, gameId, gameState, precomputedMove = nul
 
   // Veto power: if the human opponent may veto the bot's move, open a veto
   // window and defer the bot's move until they submit (or skip) their vetoes.
-  // submitVetoes re-invokes processBotTurn once resolved. Bot moves as mover are
-  // treated as pre-emptive (the vetoer bans before the bot commits). Skipped for
-  // precomputed (Fairy-Stockfish client) moves.
-  if (!precomputedMove && getVetoConfig(gameState) && botPlayer && gameState.currentTurn === botPlayer.position) {
+  // submitVetoes re-invokes processBotTurn once resolved. This PRE-EMPTIVE path
+  // opens the window before the bot commits (the human bans blind). Reactive
+  // games instead let the bot commit and reveal its move (see
+  // maybeHoldBotMoveForReactiveVeto below). Skipped for precomputed
+  // (Fairy-Stockfish client) moves.
+  const _vetoCfgTop = getVetoConfig(gameState);
+  if (!precomputedMove && _vetoCfgTop && _vetoCfgTop.style === 'preemptive' && botPlayer && gameState.currentTurn === botPlayer.position) {
     const moverPos = gameState.currentTurn;
     const vetoerPos = moverPos === 1 ? 2 : 1;
     syncVetoTurn(gameState);
@@ -18851,7 +18989,7 @@ async function _processBotTurnInner(io, gameId, gameState, precomputedMove = nul
       gameState.vetoState.phaseOpen = true;
       try { await db_pool.query("UPDATE games SET other_data = ? WHERE id = ?", [buildOtherData(gameState), gameId]); } catch (_) { /* non-fatal */ }
       const vetoerPlayer = gameState.players.find(p => p.position === vetoerPos);
-      const vcfg = getVetoConfig(gameState);
+      const vcfg = _vetoCfgTop;
       emitToGameRoom(io, gameState, "vetoWindowOpened", {
         gameId,
         mover: moverPos,
@@ -19162,6 +19300,18 @@ async function _processBotTurnInner(io, gameId, gameState, precomputedMove = nul
       if (gameState.status === 'completed') {
         console.log(`[Bot] Game ${gameId} ended while bot was thinking, skipping move`);
         return;
+      }
+
+      // Reactive veto: hold the bot's chosen move and reveal it so the human can
+      // react before it lands. On resume the move arrives as precomputedMove and
+      // skips this block; if it was vetoed the bot recomputes a different move.
+      if (!precomputedMove) {
+        const heldForReactiveVeto = await maybeHoldBotMoveForReactiveVeto(io, gameId, gameState, bestMove);
+        if (heldForReactiveVeto) {
+          io.to(`game-${gameId}`).emit("botThinking", { gameId, thinking: false });
+          clearTimeout(safetyTimer);
+          return;
+        }
       }
 
       // ── PASS MOVE HANDLING ──────────────────────────────────────────────────
