@@ -93,6 +93,12 @@ const GameWizard = ({ editGameId }) => {
     simul_turns_free_move_after_capture: 'disable',
     simul_turns_simultaneous_capture_draw: true,
     simul_turns_simultaneous_checkmate_draw: true,
+    veto_enabled: false,
+    veto_style: 'preemptive',
+    veto_per_turn_limit: 1,
+    veto_per_game_limit: null,
+    veto_disallow_placement: false,
+    veto_disallow_promotion: false,
     
     // Step 4: Advanced Settings
     starting_piece_count: 0,
@@ -219,6 +225,12 @@ const GameWizard = ({ editGameId }) => {
             simul_turns_free_move_after_capture: existingGame.simul_turns_free_move_after_capture || 'disable',
             simul_turns_simultaneous_capture_draw: existingGame.simul_turns_simultaneous_capture_draw == null ? true : Boolean(Number(existingGame.simul_turns_simultaneous_capture_draw)),
             simul_turns_simultaneous_checkmate_draw: existingGame.simul_turns_simultaneous_checkmate_draw == null ? true : Boolean(Number(existingGame.simul_turns_simultaneous_checkmate_draw)),
+            veto_enabled: Boolean(existingGame.veto_enabled),
+            veto_style: existingGame.veto_style || 'preemptive',
+            veto_per_turn_limit: existingGame.veto_per_turn_limit != null ? Number(existingGame.veto_per_turn_limit) : 1,
+            veto_per_game_limit: existingGame.veto_per_game_limit != null ? Number(existingGame.veto_per_game_limit) : null,
+            veto_disallow_placement: Boolean(existingGame.veto_disallow_placement),
+            veto_disallow_promotion: Boolean(existingGame.veto_disallow_promotion),
             starting_piece_count: existingGame.starting_piece_count || 0,
             pieces_string: existingGame.pieces_string || "[]",
             range_squares_string: existingGame.range_squares_string || "",
@@ -615,6 +627,38 @@ const GameWizard = ({ editGameId }) => {
     }
   };
 
+  const handleDuplicateAsDraft = async () => {
+    setSaveError(null);
+    setIsSavingDraft(true);
+    try {
+      let pieceCount = 0;
+      try {
+        pieceCount = Object.values(JSON.parse(gameData.pieces_string || '{}')).filter(p => !p._occupied).length;
+      } catch (e) {
+        pieceCount = 0;
+      }
+      // Save the CURRENT editor state as a brand-new draft copy and open it.
+      const copyData = {
+        ...gameData,
+        game_name: `${(gameData.game_name || 'Untitled').trim()} (Copy)`.slice(0, 100),
+        starting_piece_count: pieceCount,
+        is_draft: true,
+        draft_saved_step: currentStep,
+        is_anonymous_creator: !currentUser || gameData.is_anonymous_creator,
+      };
+      const result = await dispatch(createGame(copyData));
+      trackEvent('Game', 'DuplicateAsDraft', gameData.game_name);
+      if (result?.result?.id) {
+        navigate(`/create/game/edit/${result.result.id}`);
+      }
+    } catch (error) {
+      const msg = error?.response?.data?.message || error?.message || 'Failed to duplicate game.';
+      setSaveError(msg);
+    } finally {
+      setIsSavingDraft(false);
+    }
+  };
+
   const renderStep = () => {
     switch (currentStep) {
       case 1:
@@ -747,6 +791,13 @@ const GameWizard = ({ editGameId }) => {
               <StandardButton 
                 buttonText={isSavingDraft ? "Saving..." : (isPublishedGame ? "📋 Copy as Draft" : "💾 Save as Draft")} 
                 onClick={() => guardLeavingStep3(handleSaveDraft)}
+                disabled={isSubmitting || isSavingDraft}
+              />
+            )}
+            {isEditMode && currentUser && (
+              <StandardButton 
+                buttonText="⧉ Duplicate as Draft" 
+                onClick={() => guardLeavingStep3(handleDuplicateAsDraft)}
                 disabled={isSubmitting || isSavingDraft}
               />
             )}

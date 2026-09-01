@@ -3,10 +3,11 @@ import authHeader from "./auth-header";
 
 import API_URL from "../global/global.js";
 
-const getPieces = async (page = 1, limit = 20, sort = 'newest', search = '', creatorId = '') => {
+const getPieces = async (page = 1, limit = 20, sort = 'newest', search = '', creatorId = '', includeDrafts = '') => {
   const params = { page, limit, sort };
   if (search) params.search = search;
   if (creatorId) params.creatorId = creatorId;
+  if (includeDrafts) params.includeDrafts = 'true';
   const response = await axios.get(API_URL + "pieces", { 
     params,
     headers: authHeader() 
@@ -55,6 +56,13 @@ const deletePiece = async (pieceId) => {
   return response;
 };
 
+const duplicatePiece = async (pieceId) => {
+  const response = await axios.post(API_URL + `pieces/${pieceId}/duplicate`, {}, {
+    headers: authHeader()
+  });
+  return response;
+};
+
 const getGamesByPieceId = async (pieceId) => {
   const response = await axios.get(API_URL + `pieces/${pieceId}/games`, {
     headers: authHeader()
@@ -90,6 +98,7 @@ const PiecesService = {
   createPiece,
   updatePiece,
   deletePiece,
+  duplicatePiece,
   getGamesByPieceId,
   checkPieceDuplicates,
   comparePieces,

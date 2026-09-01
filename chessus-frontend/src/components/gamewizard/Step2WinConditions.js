@@ -542,6 +542,111 @@ const Step2WinConditions = ({ gameData, updateGameData }) => {
       </ToggleRow>
 
       <ToggleRow
+        title="Veto Power"
+        tooltip="When enabled, each player gets a bank of vetoes they can spend to ban specific opponent moves. A veto bans one candidate move (or one placement square) chosen from the opponent's options. Vetoes never affect check — a king in check must still escape even if the capturing move is vetoed. Not compatible with Simultaneous Turns."
+        checked={!!gameData.veto_enabled}
+        onChange={(val) => handleChange("veto_enabled", val)}
+      >
+        {gameData.simultaneous_turns && (
+          <p className={styles["validation-error"]} style={{ marginBottom: '0.75rem' }}>
+            Veto Power is not compatible with Simultaneous Turns. Disable one of them.
+          </p>
+        )}
+        <div className={styles["sub-field"]}>
+          <div className={styles["form-group"]} style={{ marginBottom: '0.75rem' }}>
+            <label className={styles["form-label"]} style={{ fontSize: '0.85rem' }}>
+              Veto style{' '}
+              <InfoTooltip text="Pre-emptive: the vetoer bans moves before you move — your clock does not start until their vetoes are in, and you can pre-select your move (it plays instantly if it wasn't banned). Reactive: you submit a move first, then the opponent gets a window to veto it and force a different move (classic veto chess)." />
+            </label>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '4px' }}>
+              {[
+                ['preemptive', 'Pre-emptive — veto before the move'],
+                ['reactive', 'Reactive — veto after the move (classic veto chess)'],
+              ].map(([val, txt]) => (
+                <label key={val} style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', cursor: 'pointer', fontSize: '0.88rem' }}>
+                  <input
+                    type="radio"
+                    name="veto_style"
+                    style={{ marginTop: '3px' }}
+                    checked={(gameData.veto_style || 'preemptive') === val}
+                    onChange={() => handleChange("veto_style", val)}
+                  />
+                  <span>{txt}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div className={styles["form-group"]} style={{ marginBottom: '0.75rem' }}>
+            <label className={styles["form-label"]} style={{ fontSize: '0.85rem' }}>
+              Vetoes per turn{' '}
+              <InfoTooltip text="Maximum vetoes a player may spend against a single opponent turn. Standard veto chess uses 1. Up to 5." />
+            </label>
+            <NumberInput
+              value={gameData.veto_per_turn_limit || 1}
+              onChange={(val) => handleChange("veto_per_turn_limit", Math.min(5, Math.max(1, val | 0)))}
+              options={{ min: 1, max: 5, placeholder: "1", className: styles["form-input-small"] }}
+            />
+          </div>
+
+          <div className={styles["form-group"]} style={{ marginBottom: '0.75rem', display: 'flex', justifyContent: 'flex-start' }}>
+            <ToggleSwitch
+              checked={gameData.veto_per_game_limit != null}
+              onChange={(val) => handleChange("veto_per_game_limit", val ? (gameData.veto_per_game_limit != null ? gameData.veto_per_game_limit : 10) : null)}
+              size="small"
+              label={
+                <span style={{ fontSize: '0.9rem' }}>
+                  Limit total vetoes per game{' '}
+                  <InfoTooltip text="Off (default): players may veto up to their per-turn maximum every turn, with no game-wide cap. On: each player gets a fixed bank of vetoes for the whole game (up to 100), still bounded by the per-turn limit." />
+                </span>
+              }
+            />
+          </div>
+
+          {gameData.veto_per_game_limit != null && (
+            <div className={styles["form-group"]} style={{ marginBottom: '0.75rem' }}>
+              <label className={styles["form-label"]} style={{ fontSize: '0.85rem' }}>
+                Vetoes per game
+              </label>
+              <NumberInput
+                value={gameData.veto_per_game_limit || 10}
+                onChange={(val) => handleChange("veto_per_game_limit", Math.min(100, Math.max(1, val | 0)))}
+                options={{ min: 1, max: 100, placeholder: "10", className: styles["form-input-small"] }}
+              />
+            </div>
+          )}
+
+          <div className={styles["form-group"]} style={{ marginBottom: '0.75rem', display: 'flex', justifyContent: 'flex-start' }}>
+            <ToggleSwitch
+              checked={!!gameData.veto_disallow_placement}
+              onChange={(val) => handleChange("veto_disallow_placement", val)}
+              size="small"
+              label={
+                <span style={{ fontSize: '0.9rem' }}>
+                  Cannot veto piece placement{' '}
+                  <InfoTooltip text="Off (default): a veto can block placing a piece on a square (any piece — the square itself is blocked). On: placement can never be vetoed." />
+                </span>
+              }
+            />
+          </div>
+
+          <div className={styles["form-group"]} style={{ marginBottom: 0, display: 'flex', justifyContent: 'flex-start' }}>
+            <ToggleSwitch
+              checked={!!gameData.veto_disallow_promotion}
+              onChange={(val) => handleChange("veto_disallow_promotion", val)}
+              size="small"
+              label={
+                <span style={{ fontSize: '0.9rem' }}>
+                  Cannot veto promotion{' '}
+                  <InfoTooltip text="The specific promotion choice can never be vetoed. Off (default): the move that triggers promotion is vetoable like any move (if vetoed, promotion does not happen). On: the promoting move itself also cannot be vetoed." />
+                </span>
+              }
+            />
+          </div>
+        </div>
+      </ToggleRow>
+
+      <ToggleRow
         title="Place Pieces Action"
         tooltip="When enabled, players can spend actions to place pieces onto empty squares during their turn. The specific pieces available for placement are configured in Step 4 (Pieces)."
         checked={otherData.place_pieces_action === true}

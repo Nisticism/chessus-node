@@ -819,6 +819,28 @@ export const SocketProvider = ({ children }) => {
     });
   }, [socket, connected, getAnonPlayerId]);
 
+  // Veto power: submit the vetoing player's set of banned moves/placements for
+  // the current opponent turn. An empty array means "skip / decline to veto".
+  const submitVetoes = useCallback((gameId, vetoes) => {
+    if (!socket || !connected) return;
+    socket.emit('submitVetoes', {
+      gameId,
+      userId: getAnonPlayerId(gameId),
+      vetoes: Array.isArray(vetoes) ? vetoes : [],
+    });
+  }, [socket, connected, getAnonPlayerId]);
+
+  // Veto power: live preview of in-progress (uncommitted) vetoes so both players
+  // see them as they are selected during a pre-emptive veto phase.
+  const sendVetoPreview = useCallback((gameId, signatures) => {
+    if (!socket || !connected) return;
+    socket.emit('vetoPreview', {
+      gameId,
+      userId: getAnonPlayerId(gameId),
+      signatures: Array.isArray(signatures) ? signatures : [],
+    });
+  }, [socket, connected, getAnonPlayerId]);
+
   // Subscribe to game events
   const onGameEvent = useCallback((event, callback) => {
     if (!socket) return () => {};
@@ -860,6 +882,8 @@ export const SocketProvider = ({ children }) => {
     skipCaptureAction,
     skipRangedCaptureAction,
     submitReposition,
+    submitVetoes,
+    sendVetoPreview,
     onGameEvent,
     pauseDisconnectTimer,
     resumeDisconnectTimer,

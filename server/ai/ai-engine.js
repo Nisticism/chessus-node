@@ -2634,6 +2634,25 @@ function getBestMoveSync(gameState, botPosition, difficulty, settingsOverride) {
   if (legalMoves.length === 0) return null;
   if (legalMoves.length === 1) return legalMoves[0];
 
+  // Veto power: the bot must not play a move the opponent has banned this turn.
+  // Filter banned moves from the root candidate list (the veto submission that
+  // created the bans already guaranteed >=1 legal move remains).
+  const vetoBanned = gameState.vetoState && Array.isArray(gameState.vetoState.banned) && gameState.vetoState.banned.length
+    ? gameState.vetoState.banned
+    : null;
+  if (vetoBanned) {
+    const gs = getGameSocket();
+    if (typeof gs.vetoSignature === 'function') {
+      const bannedSet = new Set(vetoBanned);
+      const filtered = legalMoves.filter(m => !bannedSet.has(gs.vetoSignature(m)));
+      if (filtered.length > 0) {
+        legalMoves.length = 0;
+        legalMoves.push(...filtered);
+      }
+      if (legalMoves.length === 1) return legalMoves[0];
+    }
+  }
+
   // NOTE: the random-move chance (for easy/medium variety) is checked AFTER
   // the instant tactical bailouts below. Otherwise easy/medium would skip
   // obvious escape/capture moves in favor of a 20%/2% random blunder.

@@ -418,6 +418,7 @@ const getAllPiecesWithMovement = async () => {
       p.require_direction_change_capture
     FROM chessusnode.pieces p
     LEFT JOIN chessusnode.users u ON p.creator_id = u.id
+    WHERE (p.is_draft = 0 OR p.is_draft IS NULL)
     ORDER BY p.id DESC
   `);
 };

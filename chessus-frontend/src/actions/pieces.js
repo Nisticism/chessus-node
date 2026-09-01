@@ -7,9 +7,9 @@ import {
   INVALIDATE_PIECE_VALUE_CACHE,
 } from "./types";
 
-export const getPieces = (page = 1, limit = 20, sort = 'newest', search = '', creatorId = '') => async (dispatch) => {
+export const getPieces = (page = 1, limit = 20, sort = 'newest', search = '', creatorId = '', includeDrafts = '') => async (dispatch) => {
   try {
-    const response = await PiecesService.getPieces(page, limit, sort, search, creatorId);
+    const response = await PiecesService.getPieces(page, limit, sort, search, creatorId, includeDrafts);
     dispatch({
       type: LIST_PIECES,
       payload: response.data,
@@ -81,6 +81,17 @@ export const updatePiece = async (pieceId, formData) => {
 export const deletePiece = async (pieceId) => {
   try {
     const response = await PiecesService.deletePiece(pieceId);
+    return response.data;
+  } catch (error) {
+    const message = getErrorMessage(error);
+    return Promise.reject(message);
+  }
+};
+
+// Duplicate a piece as a new draft owned by the current user. Returns { id }.
+export const duplicatePiece = async (pieceId) => {
+  try {
+    const response = await PiecesService.duplicatePiece(pieceId);
     return response.data;
   } catch (error) {
     const message = getErrorMessage(error);

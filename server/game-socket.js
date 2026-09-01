@@ -464,7 +464,302 @@ function buildOtherData(gameState, extraFields = {}) {
     ...(gameState.recentPositionHashes && gameState.recentPositionHashes.length ? { recentPositionHashes: gameState.recentPositionHashes } : {}),
     ...(gameState.seenPositions && gameState.seenPositions.size ? { seenPositions: Array.from(gameState.seenPositions) } : {}),
     ...(gameState.consecutivePasses ? { consecutivePasses: gameState.consecutivePasses } : {}),
+    // Veto power: per-game remaining bank, per-turn usage, and the current
+    // opponent-turn ban set — persisted so vetoes survive a server restart.
+    ...(gameState.vetoState && ((gameState.vetoState.banned && gameState.vetoState.banned.length) || Object.keys(gameState.vetoState.usedThisTurn || {}).length || Object.keys(gameState.vetoState.remaining || {}).length)
+      ? { vetoState: gameState.vetoState }
+      : {}),
     ...extraFields
+  });
+}
+
+// ─── Veto power helpers ──────────────────────────────────────────────────────
+// Generalized "veto power": a player spends vetoes from a bank to BAN specific
+// opponent moves. Vetoes never affect check/threat detection — a king in check
+// must still escape even if the capturing move is banned, and a veto set can
+// never leave the opponent with zero legal moves.
+
+// Returns the veto config for a game, or null when veto is off (cheap opt-out
+// for the common case). Mutually exclusive with simultaneous_turns.
+function getVetoConfig(gameState) {
+  const gt = gameState && gameState.gameType;
+  if (!gt || !gt.veto_enabled || gt.simultaneous_turns) return null;
+  return {
+    style: gt.veto_style === 'reactive' ? 'reactive' : 'preemptive',
+    perTurn: Math.max(1, Math.min(5, Number(gt.veto_per_turn_limit) || 1)),
+    perGame: gt.veto_per_game_limit == null ? null : Math.max(1, Math.min(100, Number(gt.veto_per_game_limit))),
+    disallowPlacement: !!gt.veto_disallow_placement,
+    disallowPromotion: !!gt.veto_disallow_promotion,
+  };
+}
+
+// Canonical signature for one candidate move or placement. Placement is
+// piece-agnostic (square only) so banning a square blocks any piece there.
+// Action discriminators keep a ranged attack / castling / en-passant /
+// direction-change distinct from a plain move to the same square.
+function vetoSignature(move) {
+  if (!move || !move.to) return '';
+  if (move.type === 'place' || move.isPlacement) {
+    return `place:${move.to.x},${move.to.y}`;
+  }
+  const parts = [`p${move.pieceId}`, `${move.from ? move.from.x : '?'},${move.from ? move.from.y : '?'}`, `${move.to.x},${move.to.y}`];
+  if (move.isRangedAttack) parts.push('r');
+  if (move.isCastling) parts.push(`c${move.castlingDirection || move.castlingWith || ''}`);
+  if (move.via) parts.push(`v${move.via.x},${move.via.y}`);
+  return parts.join('|');
+}
+
+// Lazily initialize per-game veto runtime state on gameState.
+function initVetoState(gameState) {
+  if (!gameState.vetoState) {
+    const cfg = getVetoConfig(gameState);
+    gameState.vetoState = {
+      remaining: cfg && cfg.perGame != null ? { 1: cfg.perGame, 2: cfg.perGame } : {},
+      usedThisTurn: {},
+      banned: [],
+      lastMover: null,
+    };
+  }
+  return gameState.vetoState;
+}
+
+// Reset per-action veto state at action/turn boundaries. A turn change (the
+// mover flips) resets everything including the per-turn bank. Within a turn,
+// each new action (a move recorded in history while the same player is still to
+// move — e.g. actions_per_turn>1, chain captures, free move after promotion)
+// starts a fresh veto phase and ban set, but the per-turn spent-count carries
+// over so the bank spans the whole turn.
+function syncVetoTurn(gameState) {
+  const vs = initVetoState(gameState);
+  const mover = gameState.currentTurn;
+  const actionKey = Array.isArray(gameState.moveHistory) ? gameState.moveHistory.length : 0;
+  if (vs.lastMover !== mover) {
+    vs.lastMover = mover;
+    vs.lastActionKey = actionKey;
+    vs.banned = [];
+    vs.usedThisTurn = {};
+    vs.phaseResolved = false;
+    vs.phaseOpen = false;
+    vs.pendingMove = null;
+  } else if (vs.lastActionKey !== actionKey) {
+    // Same mover, next action of a multi-action turn: fresh phase, keep the bank.
+    vs.lastActionKey = actionKey;
+    vs.banned = [];
+    vs.phaseResolved = false;
+    vs.phaseOpen = false;
+    vs.pendingMove = null;
+  }
+  return vs;
+}
+
+// Vetoes the given player position may still spend this turn (min of per-turn
+// remaining and per-game remaining).
+function vetoBudgetRemaining(gameState, pos) {
+  const cfg = getVetoConfig(gameState);
+  if (!cfg) return 0;
+  const vs = initVetoState(gameState);
+  const perTurnLeft = cfg.perTurn - (vs.usedThisTurn[pos] || 0);
+  if (cfg.perGame == null) return Math.max(0, perTurnLeft);
+  const perGameLeft = vs.remaining[pos] != null ? vs.remaining[pos] : cfg.perGame;
+  return Math.max(0, Math.min(perTurnLeft, perGameLeft));
+}
+
+// True when the given player position is controlled by the bot.
+function vetoPositionIsBot(gameState, pos) {
+  return !!(gameState.botPlayer && gameState.botPlayer.position === pos);
+}
+
+function isMoveBanned(gameState, move) {
+  const vs = gameState.vetoState;
+  if (!vs || !vs.banned || vs.banned.length === 0) return false;
+  return vs.banned.includes(vetoSignature(move));
+}
+
+// Lightweight, side-effect-free check: does this move land a promotable piece
+// on a promotion square? Used only to enforce veto_disallow_promotion.
+function moveTriggersPromotion(gameState, move) {
+  if (!move || !move.to || move.type === 'place') return false;
+  const piece = gameState.pieces.find(p => p.id === move.pieceId);
+  if (!piece || !piece.can_promote || piece.disable_promotion) return false;
+  const gt = gameState.gameType;
+  if (!gt) return false;
+  const squares = {};
+  try {
+    if (gt.promotion_squares_string) {
+      const parsed = JSON.parse(gt.promotion_squares_string);
+      if (parsed && typeof parsed === 'object') Object.assign(squares, parsed);
+    }
+  } catch (_) { /* ignore */ }
+  try {
+    if (gt.special_squares_string) {
+      const custom = typeof gt.special_squares_string === 'string' ? JSON.parse(gt.special_squares_string) : gt.special_squares_string;
+      if (custom && typeof custom === 'object') {
+        for (const [key, cfg] of Object.entries(custom)) {
+          if (cfg && cfg.asPromotion && !squares[key]) squares[key] = { type: 'promotion' };
+        }
+      }
+    }
+  } catch (_) { /* ignore */ }
+  return !!squares[`${move.to.y},${move.to.x}`];
+}
+
+// Validate a proposed veto set (raw descriptors) submitted by the vetoer against
+// the mover's legal moves. Guarantees: each veto targets a currently-legal move,
+// respects disallow-placement/promotion, stays within budget, and leaves the
+// mover at least one legal move. Returns { ok, reason, signatures }.
+function validateVetoSubmission(gameState, moverPos, vetoerPos, vetoDescriptors) {
+  const cfg = getVetoConfig(gameState);
+  if (!cfg) return { ok: false, reason: 'Veto is not enabled for this game' };
+  const descriptors = Array.isArray(vetoDescriptors) ? vetoDescriptors : [];
+  const requested = Array.from(new Set(descriptors.map(vetoSignature).filter(Boolean)));
+  const vs = initVetoState(gameState);
+
+  const usedThisTurn = vs.usedThisTurn[vetoerPos] || 0;
+  const perTurnRemaining = cfg.perTurn - usedThisTurn;
+  if (requested.length > perTurnRemaining) {
+    return { ok: false, reason: `You can veto at most ${Math.max(0, perTurnRemaining)} more move(s) this turn` };
+  }
+  if (cfg.perGame != null) {
+    const remainingGame = vs.remaining[vetoerPos] != null ? vs.remaining[vetoerPos] : cfg.perGame;
+    if (requested.length > remainingGame) {
+      return { ok: false, reason: `You only have ${remainingGame} veto(es) left this game` };
+    }
+  }
+
+  // Map the mover's legal moves by signature (placements collapse per-square).
+  const legalMoves = getAllLegalMovesForPlayer(gameState, moverPos);
+  const legalBySig = new Map();
+  for (const m of legalMoves) {
+    const sig = vetoSignature(m);
+    if (!legalBySig.has(sig)) legalBySig.set(sig, m);
+  }
+
+  for (const sig of requested) {
+    const moveObj = legalBySig.get(sig);
+    if (!moveObj) return { ok: false, reason: 'One of your vetoes no longer matches a legal opponent move — reassign it.' };
+    if (cfg.disallowPlacement && sig.startsWith('place:')) {
+      return { ok: false, reason: 'Piece placement cannot be vetoed in this game.' };
+    }
+    if (cfg.disallowPromotion && moveTriggersPromotion(gameState, moveObj)) {
+      return { ok: false, reason: 'The move that triggers promotion cannot be vetoed in this game.' };
+    }
+  }
+
+  // Distinct legal signatures remaining after the bans must be >= 1.
+  const remainingCount = [...legalBySig.keys()].filter(sig => !requested.includes(sig)).length;
+  if (remainingCount < 1) {
+    return { ok: false, reason: 'Your veto choices left no legal moves for the opponent. You must reassign your vetoes.' };
+  }
+  return { ok: true, signatures: requested };
+}
+
+// Choose which of the mover's moves a bot vetoer should ban. Heuristic: rank the
+// mover's legal moves by how good they are FOR THE MOVER (via the AI evaluator)
+// and ban the top ones, within budget, always leaving >=1 legal move and
+// respecting the disallow-placement / disallow-promotion settings.
+function chooseBotVetoes(gameState, moverPos, vetoerPos) {
+  const cfg = getVetoConfig(gameState);
+  if (!cfg) return [];
+  const budget = vetoBudgetRemaining(gameState, vetoerPos);
+  if (budget <= 0) return [];
+  let ai;
+  try { ai = require('./ai/ai-engine'); } catch (_) { return []; }
+  const legalMoves = getAllLegalMovesForPlayer(gameState, moverPos);
+  if (!legalMoves || legalMoves.length <= 1) return [];
+  const totalDistinctLegal = new Set(legalMoves.map(vetoSignature)).size;
+  if (totalDistinctLegal <= 1) return [];
+
+  const vetoable = legalMoves.filter(m => {
+    const sig = vetoSignature(m);
+    if (cfg.disallowPlacement && sig.startsWith('place:')) return false;
+    if (cfg.disallowPromotion && moveTriggersPromotion(gameState, m)) return false;
+    return true;
+  });
+  if (vetoable.length === 0) return [];
+
+  const bySig = new Map();
+  for (const m of vetoable) {
+    const sig = vetoSignature(m);
+    let score = 0;
+    try {
+      const clone = ai.cloneState(gameState);
+      ai.applyMove(clone, m);
+      score = ai.evaluatePosition(clone, moverPos);
+    } catch (_) { score = 0; }
+    if (!bySig.has(sig) || score > bySig.get(sig).score) bySig.set(sig, { move: m, score });
+  }
+  const ranked = [...bySig.values()].sort((a, b) => b.score - a.score);
+  const maxBans = Math.min(budget, cfg.perTurn, totalDistinctLegal - 1, ranked.length);
+  return ranked.slice(0, Math.max(0, maxBans)).map(s => s.move);
+}
+
+// Apply a bot vetoer's bans for the current opponent turn (used when the vetoing
+// side is controlled by the bot). Mirrors submitVetoes' commit path.
+async function applyBotVetoes(io, gameState, gameId, moverPos, vetoerPos) {
+  const cfg = getVetoConfig(gameState);
+  if (!cfg) return;
+  const vs = syncVetoTurn(gameState);
+  if (vs.phaseResolved) return;
+  const chosen = chooseBotVetoes(gameState, moverPos, vetoerPos);
+  const sigs = Array.from(new Set(chosen.map(vetoSignature).filter(Boolean)));
+  if (sigs.length > 0) {
+    vs.banned = Array.from(new Set([...(vs.banned || []), ...sigs]));
+    vs.usedThisTurn[vetoerPos] = (vs.usedThisTurn[vetoerPos] || 0) + sigs.length;
+    if (cfg.perGame != null) {
+      const prev = vs.remaining[vetoerPos] != null ? vs.remaining[vetoerPos] : cfg.perGame;
+      vs.remaining[vetoerPos] = Math.max(0, prev - sigs.length);
+    }
+  }
+  vs.phaseResolved = true;
+  vs.phaseOpen = false;
+  try {
+    await db_pool.query("UPDATE games SET other_data = ? WHERE id = ?", [buildOtherData(gameState), gameId]);
+  } catch (_) { /* non-fatal */ }
+  if (sigs.length > 0) {
+    emitToGameRoom(io, gameState, "vetoesUpdated", { banned: vs.banned, vetoer: vetoerPos, mover: moverPos, style: cfg.style });
+  }
+  emitVetoState(io, gameState, gameId);
+}
+
+// Which player's clock should tick right now due to veto (the vetoer while their
+// phase is active), or null when the normal mover's clock applies. Pre-emptive:
+// the vetoer's phase runs from the start of the mover's action until they submit
+// (so the mover's clock only starts once vetoes are in). Reactive: only during an
+// explicitly open window (after the mover submits a held move).
+function vetoClockPos(gameState) {
+  const cfg = getVetoConfig(gameState);
+  if (!cfg) return null;
+  const vs = gameState.vetoState;
+  if (!vs) return null;
+  const moverPos = gameState.currentTurn;
+  const vetoerPos = moverPos === 1 ? 2 : 1;
+  if (vs.phaseOpen) return vetoerPos;
+  if (cfg.style === 'preemptive' && !vs.phaseResolved
+    && !vetoPositionIsBot(gameState, vetoerPos)
+    && vetoBudgetRemaining(gameState, vetoerPos) > 0) {
+    return vetoerPos;
+  }
+  return null;
+}
+
+// Broadcast the per-game veto bank (remaining for both players) + who the clock
+// is charging, so clients can render a permanent bank display and mirror the clock.
+function emitVetoState(io, gameState, gameId) {
+  const cfg = getVetoConfig(gameState);
+  if (!cfg) return;
+  const vs = initVetoState(gameState);
+  const remaining = cfg.perGame == null ? null : {
+    1: vs.remaining[1] != null ? vs.remaining[1] : cfg.perGame,
+    2: vs.remaining[2] != null ? vs.remaining[2] : cfg.perGame,
+  };
+  emitToGameRoom(io, gameState, "vetoStateUpdate", {
+    gameId: Number(gameId),
+    perGameLimit: cfg.perGame,
+    perTurnLimit: cfg.perTurn,
+    style: cfg.style,
+    remaining,
+    mover: gameState.currentTurn,
+    vetoClockPos: vetoClockPos(gameState),
   });
 }
 
@@ -5709,6 +6004,129 @@ function initializeSocket(server) {
       }
     });
 
+    // Live veto preview: while the vetoer is still selecting (pre-emptive), relay
+    // their in-progress bans to the room so both players see vetoes as they come in
+    // (before they are committed via submitVetoes).
+    socket.on("vetoPreview", (data) => {
+      try {
+        const { gameId, userId, signatures } = data || {};
+        const gameState = activeGames.get(String(gameId));
+        if (!gameState) return;
+        if (!getVetoConfig(gameState)) return;
+        const mover = gameState.currentTurn;
+        const vetoer = mover === 1 ? 2 : 1;
+        const vetoerPlayer = gameState.players.find(p => p.position === vetoer);
+        if (!vetoerPlayer || vetoerPlayer.id !== userId) return;
+        emitToGameRoom(io, gameState, "vetoPreviewUpdated", {
+          gameId: Number(gameId),
+          vetoer,
+          mover,
+          signatures: Array.isArray(signatures) ? signatures : [],
+        });
+      } catch (_) { /* non-fatal */ }
+    });
+
+    // Submit vetoes: the player who is NOT to move bans a set of the mover's
+    // candidate moves (or placement squares). Both veto styles use this same
+    // set-based submission; the set is validated atomically (must leave the mover
+    // >=1 legal move) and, on success, decrements the vetoer's per-turn and
+    // per-game budgets. An empty set means "skip / decline to veto". When a move
+    // is being held (veto window open), this resolves it.
+    socket.on("submitVetoes", async (data) => {
+      try {
+        const { gameId, userId, vetoes } = data;
+        const gameState = activeGames.get(String(gameId));
+        if (!gameState) return socket.emit("error", { message: "Game not found" });
+        const cfg = getVetoConfig(gameState);
+        if (!cfg) return socket.emit("error", { message: "Veto is not enabled for this game" });
+
+        const mover = gameState.currentTurn;
+        const vetoer = mover === 1 ? 2 : 1;
+        const vetoerPlayer = gameState.players.find(p => p.position === vetoer);
+        if (!vetoerPlayer || vetoerPlayer.id !== userId) {
+          return socket.emit("error", { message: "You are not the vetoing player right now" });
+        }
+
+        syncVetoTurn(gameState);
+        const vs = gameState.vetoState;
+
+        // Reactive style bans a move only after it is submitted — require an open
+        // window (a held move) so the vetoer cannot ban blindly. Exception: a
+        // deferred bot move (bot is the mover) is vetoed pre-emptively.
+        if (cfg.style === 'reactive' && !vs.pendingMove && !(vetoPositionIsBot(gameState, mover) && vs.phaseOpen)) {
+          return socket.emit("vetoRejected", { message: "Wait for your opponent to submit a move before vetoing." });
+        }
+
+        const requested = Array.isArray(vetoes) ? vetoes : [];
+        const result = validateVetoSubmission(gameState, mover, vetoer, requested);
+        if (!result.ok) {
+          return socket.emit("vetoRejected", { message: result.reason });
+        }
+
+        // Commit the bans + spend budget.
+        if (result.signatures.length > 0) {
+          vs.banned = Array.from(new Set([...(vs.banned || []), ...result.signatures]));
+          vs.usedThisTurn[vetoer] = (vs.usedThisTurn[vetoer] || 0) + result.signatures.length;
+          if (cfg.perGame != null) {
+            const prev = vs.remaining[vetoer] != null ? vs.remaining[vetoer] : cfg.perGame;
+            vs.remaining[vetoer] = Math.max(0, prev - result.signatures.length);
+          }
+        }
+        vs.phaseResolved = true;
+        vs.phaseOpen = false;
+
+        const budget = {
+          perTurnRemaining: cfg.perTurn - (vs.usedThisTurn[vetoer] || 0),
+          perGameRemaining: cfg.perGame == null ? null : (vs.remaining[vetoer] != null ? vs.remaining[vetoer] : cfg.perGame),
+        };
+
+        // Resolve a held move if one is pending.
+        const held = vs.pendingMove;
+        vs.pendingMove = null;
+
+        try {
+          await db_pool.query("UPDATE games SET other_data = ? WHERE id = ?", [buildOtherData(gameState), gameId]);
+        } catch (e) {
+          console.error("submitVetoes persist error:", e.message);
+        }
+
+        emitToGameRoom(io, gameState, "vetoesUpdated", { banned: vs.banned, vetoer, mover, style: cfg.style });
+        socket.emit("vetoSubmitted", { banned: vs.banned, budget });
+        emitVetoState(io, gameState, gameId);
+
+        if (held) {
+          const heldBanned = vs.banned.includes(vetoSignature(held.move));
+          if (heldBanned) {
+            // The held move was vetoed — the mover must choose a different move.
+            emitToGameRoom(io, gameState, "moveVetoed", {
+              gameId,
+              mover,
+              userId: held.userId,
+              message: "Your move was vetoed. Choose a different move.",
+              signature: vetoSignature(held.move),
+              banned: vs.banned,
+            });
+          } else {
+            // The held move survived — tell the mover's client to re-submit it for
+            // execution (phaseResolved is now set, so it will not be held again).
+            emitToGameRoom(io, gameState, "vetoCleared", {
+              gameId,
+              mover,
+              userId: held.userId,
+              move: held.move,
+            });
+          }
+        } else if (vetoPositionIsBot(gameState, mover)) {
+          // A deferred bot move was awaiting the human's vetoes — let it move now
+          // (it will respect the bans just applied).
+          processBotTurn(io, gameId, gameState).catch(e => console.error('[veto] bot move after veto error:', e));
+        }
+      } catch (err) {
+        console.error("submitVetoes error:", err);
+        socket.emit("error", { message: "Failed to submit vetoes" });
+      }
+    });
+
     // Make a move
     socket.on("makeMove", async (data) => {
       try {
@@ -5774,6 +6192,58 @@ function initializeSocket(server) {
         // Ranged capture actions must be ranged attacks: prevents using a free movement action after a ranged capture
         if (gameState.rangedCaptureActionsPieceId != null && move.pieceId === gameState.rangedCaptureActionsPieceId && !move.isRangedAttack) {
           return socket.emit("error", { message: "You must make a ranged attack with this piece, or skip your remaining ranged capture action" });
+        }
+
+        // Veto power: reject a move the opponent has banned this turn, or HOLD
+        // the move to open a veto window when the opponent still has vetoes to
+        // spend. Bans never affect check detection and are guaranteed to leave
+        // >=1 legal move (see validateVetoSubmission).
+        if (getVetoConfig(gameState)) {
+          const vcfg = getVetoConfig(gameState);
+          syncVetoTurn(gameState);
+          const vetoerPos = gameState.currentTurn === 1 ? 2 : 1;
+          // Bot vetoer: compute and apply its bans now (before enforcing this move).
+          if (vetoPositionIsBot(gameState, vetoerPos) && !gameState.vetoState.phaseResolved) {
+            await applyBotVetoes(io, gameState, gameId, gameState.currentTurn, vetoerPos);
+          }
+          if (!move._vetoCleared && isMoveBanned(gameState, move)) {
+            return socket.emit("moveVetoed", {
+              message: "That move was vetoed by your opponent. Choose a different move.",
+              signature: vetoSignature(move),
+              banned: gameState.vetoState.banned,
+            });
+          }
+          const shouldHold =
+            !move._vetoCleared &&
+            !gameState.vetoState.phaseResolved &&
+            !vetoPositionIsBot(gameState, vetoerPos) &&
+            vetoBudgetRemaining(gameState, vetoerPos) > 0;
+          if (shouldHold) {
+            // Stash the move and open the veto window. The vetoer resolves it via
+            // submitVetoes; the vetoer's clock ticks meanwhile (see startGameTimer).
+            gameState.vetoState.pendingMove = { move, userId, moverPos: gameState.currentTurn };
+            gameState.vetoState.phaseOpen = true;
+            try {
+              await db_pool.query("UPDATE games SET other_data = ? WHERE id = ?", [buildOtherData(gameState), gameId]);
+            } catch (e) { /* non-fatal */ }
+            const vetoerPlayer = gameState.players.find(p => p.position === vetoerPos);
+            emitToGameRoom(io, gameState, "vetoWindowOpened", {
+              gameId,
+              mover: gameState.currentTurn,
+              vetoer: vetoerPos,
+              vetoerId: vetoerPlayer ? vetoerPlayer.id : null,
+              // Pre-emptive: the vetoer bans blind (never sees the move).
+              // Reactive: the vetoer sees the move before deciding.
+              revealMove: vcfg.style === 'reactive' ? move : null,
+              style: vcfg.style,
+              budget: {
+                perTurnRemaining: vcfg.perTurn - (gameState.vetoState.usedThisTurn[vetoerPos] || 0),
+                perGameRemaining: vcfg.perGame == null ? null : (gameState.vetoState.remaining[vetoerPos] != null ? gameState.vetoState.remaining[vetoerPos] : vcfg.perGame),
+              },
+            });
+            emitVetoState(io, gameState, gameId);
+            return;
+          }
         }
 
         // Start the game if this is the first move
@@ -9910,6 +10380,7 @@ function initializeSocket(server) {
             recentPositionHashes: otherData?.recentPositionHashes || [],
             seenPositions: new Set(otherData?.seenPositions || []),
             consecutivePasses: otherData?.consecutivePasses || 0,
+            vetoState: otherData?.vetoState || undefined,
             captureScores: normalizeCaptureScores(otherData?.captureScores, gameType?.starting_points_p1, gameType?.starting_points_p2), // Permanent points
             consecutiveEqualScoreTurns: otherData?.consecutiveEqualScoreTurns || 0,
             totalHalfMoves: otherData?.totalHalfMoves || 0,
@@ -11696,13 +12167,26 @@ function startGameTimer(io, gameId) {
       return;
     }
 
+    // Veto: while the vetoer's phase is active (pre-emptive from the start of the
+    // action, or an explicit reactive/bot hold window), charge THEIR clock so the
+    // mover's clock only starts once vetoes are submitted.
+    let clockPlayer = currentPlayer;
+    if (getVetoConfig(currentGameState)) {
+      syncVetoTurn(currentGameState);
+      const vcp = vetoClockPos(currentGameState);
+      if (vcp != null) {
+        const vp = currentGameState.players.find(p => p.position === vcp);
+        if (vp) clockPlayer = vp;
+      }
+    }
+
     // If the active player changed since the last tick, OR the tick was
     // delayed dramatically (event loop blocked), skip this iteration's
     // deduction and re-anchor. This avoids charging the bot's thinking time
     // to the user, and avoids charging a single huge chunk after any other
     // long blocking operation.
-    if (currentPlayer.id !== lastActivePlayerId || (now - lastTickAt) > TICK_MS * 5) {
-      lastActivePlayerId = currentPlayer.id;
+    if (clockPlayer.id !== lastActivePlayerId || (now - lastTickAt) > TICK_MS * 5) {
+      lastActivePlayerId = clockPlayer.id;
       lastTickAt = now;
       return;
     }
@@ -11710,26 +12194,26 @@ function startGameTimer(io, gameId) {
     lastTickAt = now;
     
     // Decrement current player's time using exact elapsed wall-clock time
-    if (currentGameState.playerTimes[currentPlayer.id] !== null) {
+    if (currentGameState.playerTimes[clockPlayer.id] !== null) {
       // Material clock multiplier: penalty speeds up, handicap slows down
-      const clockMultiplier = getClockMultiplier(currentGameState, currentPlayer.id);
-      currentGameState.playerTimes[currentPlayer.id] -= elapsedSec * clockMultiplier;
+      const clockMultiplier = getClockMultiplier(currentGameState, clockPlayer.id);
+      currentGameState.playerTimes[clockPlayer.id] -= elapsedSec * clockMultiplier;
       
       // Check for timeout
-      if (currentGameState.playerTimes[currentPlayer.id] <= 0) {
-        currentGameState.playerTimes[currentPlayer.id] = 0;
+      if (currentGameState.playerTimes[clockPlayer.id] <= 0) {
+        currentGameState.playerTimes[clockPlayer.id] = 0;
         stopGameTimer(gameId);
         
         // Player ran out of time - game over
-        const winner = currentGameState.players.find(p => p.id !== currentPlayer.id);
+        const winner = currentGameState.players.find(p => p.id !== clockPlayer.id);
         currentGameState.status = 'completed';
         currentGameState.winner = winner?.id;
         currentGameState.winReason = 'timeout';
 
         // Update ELO ratings only if game is rated
         let eloChanges = null;
-        if (currentGameState.rated !== false && winner?.id && currentPlayer.id) {
-          eloChanges = await updateEloRatings(winner.id, currentPlayer.id);
+        if (currentGameState.rated !== false && winner?.id && clockPlayer.id) {
+          eloChanges = await updateEloRatings(winner.id, clockPlayer.id);
         }
         
         const endTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
@@ -11776,11 +12260,13 @@ function startGameTimer(io, gameId) {
       // countdown handles the bot-side ticking.
       if (!currentGameState.botPlayer && (now - lastBroadcastAt) >= 950) {
         lastBroadcastAt = now;
+        const vetoClk = getVetoConfig(currentGameState) ? vetoClockPos(currentGameState) : null;
         io.to(`game-${gameId}`).emit("timeUpdate", {
           gameId,
           playerTimes: currentGameState.playerTimes,
           currentTurn: currentGameState.currentTurn,
-          ...(clockMultipliers ? { clockMultipliers } : {})
+          ...(clockMultipliers ? { clockMultipliers } : {}),
+          ...(vetoClk != null ? { vetoClockPos: vetoClk } : {})
         });
       } else {
         void clockMultipliers;
@@ -18351,6 +18837,38 @@ async function processBotTurn(io, gameId, gameState, precomputedMove = null, opt
 async function _processBotTurnInner(io, gameId, gameState, precomputedMove = null, options = {}) {
   const botPlayer = gameState.botPlayer;
 
+  // Veto power: if the human opponent may veto the bot's move, open a veto
+  // window and defer the bot's move until they submit (or skip) their vetoes.
+  // submitVetoes re-invokes processBotTurn once resolved. Bot moves as mover are
+  // treated as pre-emptive (the vetoer bans before the bot commits). Skipped for
+  // precomputed (Fairy-Stockfish client) moves.
+  if (!precomputedMove && getVetoConfig(gameState) && botPlayer && gameState.currentTurn === botPlayer.position) {
+    const moverPos = gameState.currentTurn;
+    const vetoerPos = moverPos === 1 ? 2 : 1;
+    syncVetoTurn(gameState);
+    const humanVetoer = !vetoPositionIsBot(gameState, vetoerPos);
+    if (humanVetoer && !gameState.vetoState.phaseResolved && vetoBudgetRemaining(gameState, vetoerPos) > 0) {
+      gameState.vetoState.phaseOpen = true;
+      try { await db_pool.query("UPDATE games SET other_data = ? WHERE id = ?", [buildOtherData(gameState), gameId]); } catch (_) { /* non-fatal */ }
+      const vetoerPlayer = gameState.players.find(p => p.position === vetoerPos);
+      const vcfg = getVetoConfig(gameState);
+      emitToGameRoom(io, gameState, "vetoWindowOpened", {
+        gameId,
+        mover: moverPos,
+        vetoer: vetoerPos,
+        vetoerId: vetoerPlayer ? vetoerPlayer.id : null,
+        revealMove: null,
+        style: vcfg.style,
+        budget: {
+          perTurnRemaining: vcfg.perTurn - (gameState.vetoState.usedThisTurn[vetoerPos] || 0),
+          perGameRemaining: vcfg.perGame == null ? null : (gameState.vetoState.remaining[vetoerPos] != null ? gameState.vetoState.remaining[vetoerPos] : vcfg.perGame),
+        },
+      });
+      emitVetoState(io, gameState, gameId);
+      return; // deferred — submitVetoes will re-invoke processBotTurn
+    }
+  }
+
   // Per-turn fallback difficulty: when the Fairy-Stockfish client (or the
   // server-side engine fallback) can't compute a move for THIS position, we
   // run our built-in AI for just this turn. The bot's persistent difficulty
@@ -20641,6 +21159,9 @@ module.exports = {
   doesPieceOccupySquare,
   canRangedAttackTo,
   isRangedPathClear,
+  // Veto power (used by AI engine to respect opponent bans)
+  vetoSignature,
+  getVetoConfig,
   getValidFlankingPlacements,
   applyFlankingCaptures,
   // Surround (enclosure) capture + scoring

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { useSelector, useDispatch } from "react-redux";
 import axios from "../../services/axios-interceptor";
-import { getPieceById, getGamesByPieceId, deletePiece, checkPieceDuplicates, setPieceValueCache } from "../../actions/pieces";
+import { getPieceById, getGamesByPieceId, deletePiece, duplicatePiece, checkPieceDuplicates, setPieceValueCache } from "../../actions/pieces";
 import PiecesService from "../../services/pieces.service";
 import { estimatePieceValue } from "../../utils/pieceValueEstimator";
 import PieceBoardPreview from "../piecewizard/PieceBoardPreview";
@@ -196,6 +196,17 @@ const PieceView = () => {
       navigate('/create/pieces');
     } catch (error) {
       alert('Failed to delete piece: ' + (error.message || error));
+    }
+  };
+
+  const handleDuplicatePiece = async () => {
+    try {
+      const result = await duplicatePiece(pieceId);
+      if (result?.id) {
+        navigate(`/create/piece/edit/${result.id}`);
+      }
+    } catch (error) {
+      alert('Failed to duplicate piece: ' + (error.message || error));
     }
   };
 
@@ -837,6 +848,12 @@ const PieceView = () => {
                     onClick={() => { setCreatorMenuOpen(false); navigate(`/create/piece/edit/${pieceId}`); }}
                   >
                     ✏️ Edit Piece
+                  </button>
+                  <button
+                    className={styles["creator-menu-item"]}
+                    onClick={() => { setCreatorMenuOpen(false); handleDuplicatePiece(); }}
+                  >
+                    📋 Duplicate as Draft
                   </button>
                   <button
                     className={styles["creator-menu-item"]}

@@ -4,7 +4,7 @@ import { useDispatch, useSelector } from "react-redux";
 import axios from "../../services/axios-interceptor";
 import API_URL from "../../global/global";
 import authHeader from "../../services/auth-header";
-import { getGameById, deleteGame, toggleUpvote, getUpvoteStatus, runUniquenessCheck } from "../../actions/games";
+import { getGameById, deleteGame, duplicateGame, toggleUpvote, getUpvoteStatus, runUniquenessCheck } from "../../actions/games";
 import { getPieceById } from "../../actions/pieces";
 import styles from "./gametypeview.module.scss";
 import {
@@ -2588,6 +2588,25 @@ const GameTypeView = () => {
       specialRulesContent.push(`**Forced Capture**\nIf any of your pieces can make a capturing move on your turn, you MUST make a capture (any capture). Non-capturing moves are rejected whenever a capture is available. Combine with Lose All Pieces for classic anti-chess.`);
     }
 
+    // Veto Power mechanic
+    if (game.veto_enabled) {
+      const perTurn = Math.max(1, Math.min(5, Number(game.veto_per_turn_limit) || 1));
+      const perGame = game.veto_per_game_limit == null ? null : Math.max(1, Math.min(100, Number(game.veto_per_game_limit)));
+      const styleLine = (game.veto_style === 'reactive')
+        ? 'Reactive: after your opponent submits a move, you get a window to veto it and force a different move (classic veto chess).'
+        : 'Pre-emptive: you ban moves before your opponent moves — their clock does not start until your vetoes are in, and a pre-selected move plays instantly if it was not banned.';
+      const budgetLine = perGame == null
+        ? `Each player may veto up to ${perTurn} move${perTurn !== 1 ? 's' : ''} per opponent turn, with no game-wide cap.`
+        : `Each player may veto up to ${perTurn} move${perTurn !== 1 ? 's' : ''} per opponent turn, and up to ${perGame} veto${perGame !== 1 ? 's' : ''} for the whole game.`;
+      const placementLine = game.veto_disallow_placement
+        ? '• Piece placement cannot be vetoed.'
+        : '• A veto can also block piece placement on a square (any piece — the square itself is blocked).';
+      const promotionLine = game.veto_disallow_promotion
+        ? '• The move that triggers promotion cannot be vetoed.'
+        : '• The move that triggers promotion can be vetoed like any move; if vetoed, promotion does not happen. The specific promotion choice can never be vetoed.';
+      specialRulesContent.push(`**Veto Power**\nEach player has a bank of vetoes used to ban specific opponent moves. ${budgetLine}\n\n• ${styleLine}\n${placementLine}\n${promotionLine}\n• Vetoes never affect check: a king in check must still escape even if the capturing move is vetoed, and vetoes can never be used to leave the opponent with no legal move.`);
+    }
+
     // Fog of War mechanic
     if (game.fog_of_war) {
       const permanentRevealNote = game.permanent_fog_reveal
@@ -2982,6 +3001,17 @@ const GameTypeView = () => {
     }
   };
 
+  const handleDuplicateGame = async () => {
+    try {
+      const result = await dispatch(duplicateGame(gameId));
+      if (result?.id) {
+        navigate(`/create/game/edit/${result.id}`);
+      }
+    } catch (error) {
+      alert('Failed to duplicate game: ' + (error.response?.data?.message || error.message || error));
+    }
+  };
+
   const handleUniquenessCheck = async () => {
     setUniquenessCheckLoading(true);
     setUniquenessError(null);
@@ -3071,6 +3101,12 @@ const GameTypeView = () => {
                     onClick={() => { setCreatorMenuOpen(false); navigate(`/create/game/edit/${gameId}`); }}
                   >
                     ✏️ Edit Game
+                  </button>
+                  <button
+                    className={styles["creator-menu-item"]}
+                    onClick={() => { setCreatorMenuOpen(false); handleDuplicateGame(); }}
+                  >
+                    📋 Duplicate as Draft
                   </button>
                   <button
                     className={styles["creator-menu-item"]}

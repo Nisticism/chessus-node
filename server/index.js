@@ -2106,6 +2106,13 @@ app.get("/api/pieces", async (req, res) => {
       whereParams.push(creatorId);
     }
 
+    // Draft pieces are private: only surfaced when a creator views their own list
+    // (includeDrafts=true + creatorId), mirroring the games list behavior.
+    const includeDrafts = req.query.includeDrafts === 'true';
+    if (!includeDrafts || !creatorId) {
+      conditions.push('(p.is_draft = 0 OR p.is_draft IS NULL)');
+    }
+
     // Exclude pieces whose name is pending professional-name review from public listings.
     // When filtering by a specific creator, show their pending items so they can track status.
     if (!creatorId) {
@@ -2963,6 +2970,70 @@ app.get("/api/games/:gameId/upvote", optionalAuthenticate, async (req, res) => {
   }
 });
 
+// Duplicate a game type as a new draft owned by the requester (creator or moderator).
+app.post("/api/games/:gameId/duplicate", authenticateToken, async (req, res) => {
+  try {
+    const { gameId } = req.params;
+    const userId = req.user.id;
+    const userRole = req.user.role;
+
+    const source = await dbHelpers.getGameById(gameId);
+    if (!source) return res.status(404).send({ message: "Game not found" });
+
+    if (source.creator_id !== userId) {
+      const creator = await dbHelpers.findUserById(source.creator_id);
+      const creatorRole = creator?.role || 'user';
+      if (!canModerate(userRole, creatorRole)) {
+        return res.status(403).send({ message: "You can only duplicate your own games" });
+      }
+    }
+
+    const dbName = process.env.DB_NAME || 'chessusnode';
+    // Copy the game_types row, overriding owner/draft columns inline so the copy
+    // never carries the source's creator_id (which may not exist locally → FK failure).
+    const [gtCols] = await db_pool.query(
+      "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'game_types' AND COLUMN_NAME <> 'id'",
+      [dbName]
+    );
+    const cols = gtCols.map(r => r.COLUMN_NAME);
+    const nowStr = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    const newName = `${source.game_name || 'Untitled'} (Copy)`.slice(0, 100);
+    const overrides = { creator_id: userId, is_anonymous_creator: 0, is_draft: 1, draft_saved_step: 1, game_name: newName, created_at: nowStr };
+    if (cols.includes('last_played_at')) overrides.last_played_at = null;
+    if (cols.includes('initial_state_warning')) overrides.initial_state_warning = null;
+    const overrideKeys = Object.keys(overrides).filter(k => cols.includes(k));
+    const copyCols = cols.filter(c => !overrideKeys.includes(c));
+    const insertCols = [...copyCols, ...overrideKeys].map(c => `\`${c}\``).join(', ');
+    const selectExprs = [...copyCols.map(c => `\`${c}\``), ...overrideKeys.map(() => '?')].join(', ');
+    const [ins] = await db_pool.query(
+      `INSERT INTO game_types (${insertCols}) SELECT ${selectExprs} FROM game_types WHERE id = ?`,
+      [...overrideKeys.map(k => overrides[k]), gameId]
+    );
+    const newId = ins.insertId;
+
+    // Copy piece placements (game_type_pieces) to the new game type.
+    const [gtpCols] = await db_pool.query(
+      "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'game_type_pieces' AND COLUMN_NAME NOT IN ('id','game_type_id')",
+      [dbName]
+    );
+    const pCols = gtpCols.map(r => r.COLUMN_NAME);
+    if (pCols.length > 0) {
+      const pColList = pCols.map(c => `\`${c}\``).join(', ');
+      await db_pool.query(
+        `INSERT INTO game_type_pieces (game_type_id, ${pColList}) SELECT ?, ${pColList} FROM game_type_pieces WHERE game_type_id = ?`,
+        [newId, gameId]
+      );
+    }
+
+    try { _resyncAiRules(newId); } catch (_) { /* non-fatal */ }
+
+    return res.status(201).send({ id: newId, message: "Game duplicated as draft" });
+  } catch (err) {
+    console.error("Error duplicating game:", err);
+    return res.status(500).send({ message: "Failed to duplicate game" });
+  }
+});
+
 // Update game by ID
 app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
   try {
@@ -3108,6 +3179,12 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
       simul_turns_free_move_after_capture:   ['disable', 'restage', 'allow'].includes(gameData.simul_turns_free_move_after_capture) ? gameData.simul_turns_free_move_after_capture : 'disable',
       simul_turns_simultaneous_capture_draw: gameData.simul_turns_simultaneous_capture_draw === false || gameData.simul_turns_simultaneous_capture_draw === 0 ? 0 : 1,
       simul_turns_simultaneous_checkmate_draw: gameData.simul_turns_simultaneous_checkmate_draw === false || gameData.simul_turns_simultaneous_checkmate_draw === 0 ? 0 : 1,
+      veto_enabled:                          (gameData.veto_enabled && !gameData.simultaneous_turns) ? 1 : 0,
+      veto_style:                            ['preemptive', 'reactive'].includes(gameData.veto_style) ? gameData.veto_style : 'preemptive',
+      veto_per_turn_limit:                   Math.max(1, Math.min(5, Number(gameData.veto_per_turn_limit) || 1)),
+      veto_per_game_limit:                   gameData.veto_per_game_limit == null ? null : Math.max(1, Math.min(100, Number(gameData.veto_per_game_limit) || 1)),
+      veto_disallow_placement:               gameData.veto_disallow_placement ? 1 : 0,
+      veto_disallow_promotion:               gameData.veto_disallow_promotion ? 1 : 0,
       board_width:                           gameData.board_width || 8,
       board_height:                          gameData.board_height || 8,
       player_count:                          gameData.player_count || 2,
@@ -7745,6 +7822,12 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
       simul_turns_free_move_after_capture:   ['disable', 'restage', 'allow'].includes(gameData.simul_turns_free_move_after_capture) ? gameData.simul_turns_free_move_after_capture : 'disable',
       simul_turns_simultaneous_capture_draw: gameData.simul_turns_simultaneous_capture_draw === false || gameData.simul_turns_simultaneous_capture_draw === 0 ? 0 : 1,
       simul_turns_simultaneous_checkmate_draw: gameData.simul_turns_simultaneous_checkmate_draw === false || gameData.simul_turns_simultaneous_checkmate_draw === 0 ? 0 : 1,
+      veto_enabled:                          (gameData.veto_enabled && !gameData.simultaneous_turns) ? 1 : 0,
+      veto_style:                            ['preemptive', 'reactive'].includes(gameData.veto_style) ? gameData.veto_style : 'preemptive',
+      veto_per_turn_limit:                   Math.max(1, Math.min(5, Number(gameData.veto_per_turn_limit) || 1)),
+      veto_per_game_limit:                   gameData.veto_per_game_limit == null ? null : Math.max(1, Math.min(100, Number(gameData.veto_per_game_limit) || 1)),
+      veto_disallow_placement:               gameData.veto_disallow_placement ? 1 : 0,
+      veto_disallow_promotion:               gameData.veto_disallow_promotion ? 1 : 0,
       board_width:                           gameData.board_width || 8,
       board_height:                          gameData.board_height || 8,
       player_count:                          gameData.player_count || 2,
@@ -8008,6 +8091,57 @@ const validatePieceLimits = (pieceData) => {
   return null;
 };
 
+// Duplicate a piece as a new draft owned by the requester (creator or moderator).
+// Shares the source image files (paths are copied; delete does not remove files).
+app.post("/api/pieces/:pieceId/duplicate", authenticateToken, async (req, res) => {
+  try {
+    const { pieceId } = req.params;
+    const userId = req.user.id;
+    const userRole = req.user.role;
+
+    const source = await dbHelpers.getPieceById(pieceId);
+    if (!source) return res.status(404).send({ message: "Piece not found" });
+
+    if (source.creator_id !== parseInt(userId)) {
+      const creator = await dbHelpers.findUserById(source.creator_id);
+      const creatorRole = creator?.role || 'user';
+      if (!canModerate(userRole, creatorRole)) {
+        return res.status(403).send({ message: "You can only duplicate your own pieces" });
+      }
+    }
+
+    const dbName = process.env.DB_NAME || 'chessusnode';
+    const [pCols] = await db_pool.query(
+      "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'pieces' AND COLUMN_NAME <> 'id'",
+      [dbName]
+    );
+    const cols = pCols.map(r => r.COLUMN_NAME);
+    const nowStr = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    const newName = `${source.piece_name || 'Untitled'} (Copy)`.slice(0, 100);
+    // Override owner/draft columns inline in the INSERT so the copy never carries
+    // the source's creator_id (which may not exist locally → FK failure) or a
+    // stale game_type_id. Image paths are copied as-is (shared, safe if missing).
+    const overrides = { creator_id: userId, is_anonymous_creator: 0, is_draft: 1, draft_saved_step: 1, piece_name: newName, created_at: nowStr };
+    if (cols.includes('name_review_status')) overrides.name_review_status = null;
+    if (cols.includes('moderation_status')) overrides.moderation_status = 'approved';
+    if (cols.includes('game_type_id')) overrides.game_type_id = null;
+    const overrideKeys = Object.keys(overrides).filter(k => cols.includes(k));
+    const copyCols = cols.filter(c => !overrideKeys.includes(c));
+    const insertCols = [...copyCols, ...overrideKeys].map(c => `\`${c}\``).join(', ');
+    const selectExprs = [...copyCols.map(c => `\`${c}\``), ...overrideKeys.map(() => '?')].join(', ');
+    const [ins] = await db_pool.query(
+      `INSERT INTO pieces (${insertCols}) SELECT ${selectExprs} FROM pieces WHERE id = ?`,
+      [...overrideKeys.map(k => overrides[k]), pieceId]
+    );
+    const newId = ins.insertId;
+
+    return res.status(201).send({ id: newId, message: "Piece duplicated as draft" });
+  } catch (err) {
+    console.error("Error duplicating piece:", err);
+    return res.status(500).send({ message: "Failed to duplicate piece" });
+  }
+});
+
 app.post("/api/pieces/create", authenticateToken, multerWrap(pieceUpload.array('piece_images', 8), '2 MB'), async (req, res) => {
   try {
     const pieceData = req.body;
@@ -8016,7 +8150,9 @@ app.post("/api/pieces/create", authenticateToken, multerWrap(pieceUpload.array('
     const is_anonymous_creator = rawAnonCreator === 'true' || rawAnonCreator === true ? 1 : 0;
     const imageFiles = Array.isArray(req.files) ? req.files : [];
 
-    if (!imageFiles || imageFiles.length < 2) {
+    // Drafts may be saved before images are added; only require images on publish.
+    const isDraftCreate = (Array.isArray(pieceData.is_draft) ? pieceData.is_draft[0] : pieceData.is_draft) === 'true';
+    if (!isDraftCreate && (!imageFiles || imageFiles.length < 2)) {
       return res.status(400).send({ message: "At least two piece images are required (Player 1 light and Player 2 dark)" });
     }
 
@@ -8060,7 +8196,18 @@ app.post("/api/pieces/create", authenticateToken, multerWrap(pieceUpload.array('
       dedupeUploadedFile(file);
     }
 
-    const imagePaths = imageFiles.map(file => `/uploads/pieces/${file.filename}`);
+    const uploadedPaths = imageFiles.map(file => `/uploads/pieces/${file.filename}`);
+    // Honor existing image paths so duplicating a piece via the wizard shares the
+    // source images instead of re-uploading them.
+    let existingPaths = [];
+    try {
+      const rawExisting = Array.isArray(pieceData.existing_images) ? pieceData.existing_images[0] : pieceData.existing_images;
+      if (rawExisting) {
+        const parsed = JSON.parse(rawExisting);
+        if (Array.isArray(parsed)) existingPaths = parsed.filter(p => typeof p === 'string');
+      }
+    } catch (_) { existingPaths = []; }
+    const imagePaths = [...existingPaths, ...uploadedPaths].slice(0, 8);
     const imagesJSON = JSON.stringify(imagePaths);
     const hasRangedAttack = pieceData.can_capture_enemy_via_range === 'true';
 
@@ -8441,6 +8588,13 @@ app.post("/api/pieces/create", authenticateToken, multerWrap(pieceUpload.array('
 
     const [result] = await db_pool.query(pieceSql, pieceValues);
     const pieceId = result.insertId;
+
+    // Draft support (mirrors game drafts): keep the piece private until published.
+    const pieceIsDraft = parseBooleanField(pieceData.is_draft);
+    if (pieceIsDraft) {
+      const pieceDraftStep = parseInt(pieceData.draft_saved_step) || null;
+      await db_pool.query("UPDATE pieces SET is_draft = 1, draft_saved_step = ? WHERE id = ?", [pieceDraftStep, pieceId]);
+    }
 
     // Update moderation status if images need review
     if (moderationStatus !== 'approved') {
@@ -9130,6 +9284,17 @@ app.put("/api/pieces/:pieceId", authenticateToken, multerWrap(pieceUpload.array(
     ];
 
     await db_pool.query(pieceSql, pieceValues);
+
+    // Draft support: apply is_draft / draft_saved_step when the field is present
+    // in the payload (publishing sets is_draft=0; saving a draft keeps it 1).
+    if (pieceData.is_draft !== undefined) {
+      const pieceIsDraft = parseBooleanField(pieceData.is_draft);
+      const pieceDraftStep = pieceIsDraft ? (parseInt(pieceData.draft_saved_step) || null) : null;
+      await db_pool.query(
+        "UPDATE pieces SET is_draft = ?, draft_saved_step = ? WHERE id = ?",
+        [pieceIsDraft ? 1 : 0, pieceDraftStep, pieceId]
+      );
+    }
 
     // Update moderation status if new images need review
     if (moderationStatus !== (existingPiece.moderation_status || 'approved')) {

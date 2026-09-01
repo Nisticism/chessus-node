@@ -27,7 +27,8 @@ const PieceList = () => {
   useEffect(() => {
     const creatorId = sortBy === 'my_pieces' && currentUser ? currentUser.id : '';
     const actualSort = sortBy === 'my_pieces' ? 'newest' : sortBy;
-    dispatch(getPieces(currentPage, 20, actualSort, searchQuery, creatorId));
+    const includeDrafts = sortBy === 'my_pieces' && currentUser ? 'true' : '';
+    dispatch(getPieces(currentPage, 20, actualSort, searchQuery, creatorId, includeDrafts));
   }, [currentPage, sortBy, searchQuery, currentUser, dispatch]);
 
   const handleSortChange = (e) => {
@@ -130,7 +131,8 @@ const PieceList = () => {
       setTimeout(() => {
         const creatorId = sortBy === 'my_pieces' && currentUser ? currentUser.id : '';
         const actualSort = sortBy === 'my_pieces' ? 'newest' : sortBy;
-        dispatch(getPieces(currentPage, 20, actualSort, searchQuery, creatorId));
+        const includeDrafts = sortBy === 'my_pieces' && currentUser ? 'true' : '';
+        dispatch(getPieces(currentPage, 20, actualSort, searchQuery, creatorId, includeDrafts));
       }, 100);
     } catch (error) {
       console.error("Error deleting piece:", error);
@@ -218,7 +220,11 @@ const PieceList = () => {
           
           <div className={styles["piece-content"]}>
             <h3 className={styles["piece-name"]}>{piece.piece_name || 'Unnamed Piece'}</h3>
-            
+
+            {piece.is_draft ? (
+              <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 4, background: '#8a6d3b', color: '#fff', fontSize: '0.7rem', fontWeight: 700, marginBottom: 4 }}>DRAFT</span>
+            ) : null}
+
             {piece.moderation_status && piece.moderation_status !== 'approved' && 
              (currentUser && (currentUser.id === piece.creator_id || currentUser.role === 'admin' || currentUser.role === 'owner')) && (
               <span className={styles[`moderation-badge-${piece.moderation_status}`]}>

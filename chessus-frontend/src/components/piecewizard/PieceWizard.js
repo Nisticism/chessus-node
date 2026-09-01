@@ -19,6 +19,8 @@ const PieceWizard = ({ editPieceId = null }) => {
   
   const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSavingDraft, setIsSavingDraft] = useState(false);
+  const [isDraftMode, setIsDraftMode] = useState(false);
   const [isLoading, setIsLoading] = useState(!!editPieceId);
   const [isEditMode, setIsEditMode] = useState(!!editPieceId);
   const [existingImages, setExistingImages] = useState([]);
@@ -538,6 +540,10 @@ const PieceWizard = ({ editPieceId = null }) => {
           });
           
           setIsEditMode(true);
+          setIsDraftMode(!!piece.is_draft);
+          if (piece.is_draft && piece.draft_saved_step) {
+            setCurrentStep(Math.min(4, Math.max(1, Number(piece.draft_saved_step))));
+          }
         } catch (error) {
           console.error("Error loading piece:", error);
           navigate("/create/pieces");
@@ -602,7 +608,7 @@ const PieceWizard = ({ editPieceId = null }) => {
     return fields;
   };
 
-  const handleSubmit = async (bypassDuplicateCheck = false, bypassRatioWarning = false) => {
+  const handleSubmit = async (bypassDuplicateCheck = false, bypassRatioWarning = false, asDraft = false, opts = {}) => {
     // Collect all missing required fields
     const missing = [];
     
@@ -612,11 +618,13 @@ const PieceWizard = ({ editPieceId = null }) => {
     
     const hasP1 = pieceData.piece_image_previews?.[0] || (isEditMode && existingImages[0]);
     const hasP2 = pieceData.piece_image_previews?.[1] || (isEditMode && existingImages[1]);
-    if (!hasP1) {
-      missing.push({ field: 'Player 1 (light) image', step: 1 });
-    }
-    if (!hasP2) {
-      missing.push({ field: 'Player 2 (dark) image', step: 1 });
+    if (!asDraft) {
+      if (!hasP1) {
+        missing.push({ field: 'Player 1 (light) image', step: 1 });
+      }
+      if (!hasP2) {
+        missing.push({ field: 'Player 2 (dark) image', step: 1 });
+      }
     }
     
     if (missing.length > 0) {
@@ -625,7 +633,7 @@ const PieceWizard = ({ editPieceId = null }) => {
     }
 
     // Warn if exactly one ratio value is set — ratio movement needs both to work.
-    if (!bypassRatioWarning) {
+    if (!asDraft && !bypassRatioWarning) {
       const r1 = pieceData.ratio_one_movement || 0;
       const r2 = pieceData.ratio_two_movement || 0;
       if ((r1 > 0) !== (r2 > 0)) {
@@ -634,8 +642,8 @@ const PieceWizard = ({ editPieceId = null }) => {
       }
     }
 
-    // Duplicate ruleset check — skip if user clicked "Save Anyway"
-    if (!bypassDuplicateCheck) {      const normalizedFields = buildDuplicateCheckFields();
+    // Duplicate ruleset check — skip if user clicked "Save Anyway" or saving a draft
+    if (!asDraft && !bypassDuplicateCheck) {      const normalizedFields = buildDuplicateCheckFields();
       const { matches } = await checkPieceDuplicates(
         normalizedFields,
         isEditMode ? editPieceId : null
@@ -666,6 +674,7 @@ const PieceWizard = ({ editPieceId = null }) => {
     }
 
     setIsSubmitting(true);
+    if (asDraft) setIsSavingDraft(true);
     
     try {
       // Prepare the final piece data
@@ -729,26 +738,44 @@ const PieceWizard = ({ editPieceId = null }) => {
       formData.append('creator_id', currentUser ? currentUser.id : '');
       formData.append('user_role', currentUser ? currentUser.role : '');
       formData.append('is_anonymous_creator', !currentUser || pieceData.is_anonymous_creator ? 'true' : 'false');
+      formData.append('is_draft', asDraft ? 'true' : 'false');
+      if (asDraft) formData.append('draft_saved_step', String(currentStep));
+      // Duplicate: append a name suffix so the copy is distinguishable.
+      if (opts.nameSuffix) {
+        const baseName = (pieceData.piece_name || 'Untitled').trim();
+        formData.set('piece_name', `${baseName}${opts.nameSuffix}`.slice(0, 100));
+      }
       
-      if (isEditMode && editPieceId) {
+      const forceCreate = !!opts.forceCreate;
+      if (isEditMode && editPieceId && !forceCreate) {
         // Update existing piece
         await updatePiece(editPieceId, formData);
         dispatch(invalidatePieceValueCache(editPieceId));
-        trackEvent('Piece', 'Update', pieceData.piece_name);
+        trackEvent('Piece', asDraft ? 'SaveDraft' : 'Update', pieceData.piece_name);
         navigate("/create/pieces");
       } else {
-        // Create new piece
-        await createPiece(formData);
+        // Create new piece (fresh, draft save, or duplicate of current state)
+        const result = await createPiece(formData);
         trackPieceCreation(pieceData.piece_name);
-        navigate("/create/pieces");
+        if ((asDraft || forceCreate) && result?.result?.id) {
+          navigate(`/create/piece/edit/${result.result.id}`);
+        } else {
+          navigate("/create/pieces");
+        }
       }
     } catch (error) {
       console.error(isEditMode ? "Error updating piece:" : "Error creating piece:", error);
       setSubmitError(error || 'Failed to save piece. Please try again.');
     } finally {
       setIsSubmitting(false);
+      setIsSavingDraft(false);
     }
   };
+
+  const handleSaveDraft = () => handleSubmit(true, true, true);
+
+  // Duplicate: save the CURRENT editor state as a brand-new draft copy and open it.
+  const handleDuplicateAsDraft = () => handleSubmit(true, true, true, { forceCreate: true, nameSuffix: ' (Copy)' });
 
   const renderStep = () => {
     switch (currentStep) {
@@ -792,7 +819,10 @@ const PieceWizard = ({ editPieceId = null }) => {
   return (
     <div className={styles["wizard-container"]}>
       <div className={styles["wizard-header"]}>
-        <h1>{isEditMode ? "Edit Piece" : "Create New Piece"}</h1>
+        <h1>{isEditMode ? (isDraftMode ? "Edit Draft Piece" : "Edit Piece") : "Create New Piece"}</h1>
+        {isDraftMode && (
+          <span style={{ marginLeft: 8, padding: '2px 8px', borderRadius: 4, background: '#8a6d3b', color: '#fff', fontSize: '0.75rem', fontWeight: 700, verticalAlign: 'middle' }}>DRAFT</span>
+        )}
       </div>
 
       <div className={styles["progress-bar"]}>
@@ -846,6 +876,22 @@ const PieceWizard = ({ editPieceId = null }) => {
               buttonText={isSubmitting ? (isEditMode ? "Saving..." : "Creating...") : (isEditMode ? "Save Changes" : "Create Piece")} 
               onClick={handleSubmit}
               disabled={isSubmitting}
+            />
+          )}
+
+          {currentUser && (
+            <StandardButton 
+              buttonText={isSavingDraft ? "Saving..." : "\uD83D\uDCBE Save as Draft"} 
+              onClick={handleSaveDraft}
+              disabled={isSubmitting || isSavingDraft}
+            />
+          )}
+
+          {isEditMode && currentUser && (
+            <StandardButton 
+              buttonText="⧉ Duplicate as Draft" 
+              onClick={handleDuplicateAsDraft}
+              disabled={isSubmitting || isSavingDraft}
             />
           )}
 

@@ -130,6 +130,23 @@ pub struct GameType {
     /// does not yet model promotions so this is unused until that lands.
     pub simul_turns_free_move_after_capture: Option<String>,
 
+    // ---- Veto power ----
+    /// When true, players may spend vetoes to ban specific opponent moves.
+    /// Not consumed by the trainer yet (Rust self-play veto is deferred);
+    /// stored to avoid silent data loss.
+    pub veto_enabled: bool,
+    /// 'preemptive' (default) or 'reactive'.
+    pub veto_style: Option<String>,
+    /// Max vetoes a player may spend per opponent turn (1-5).
+    #[serde(default = "default_one_i32")]
+    pub veto_per_turn_limit: i32,
+    /// Max vetoes per game (None = unlimited, bounded by per-turn limit).
+    pub veto_per_game_limit: Option<i32>,
+    /// If true, placement cannot be vetoed.
+    pub veto_disallow_placement: bool,
+    /// If true, the promotion-triggering move cannot be vetoed.
+    pub veto_disallow_promotion: bool,
+
     // Special-square JSON blobs (parsed lazily in rules.rs)
     pub range_squares_string: Option<String>,
     pub promotion_squares_string: Option<String>,

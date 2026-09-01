@@ -57,6 +57,16 @@ export const getGameById = (gameId) => async () => {
   }
 };
 
+// Duplicate a game as a new draft owned by the current user. Returns { id }.
+export const duplicateGame = (gameId) => async () => {
+  const response = await axios.post(
+    API_URL + "games/" + gameId + "/duplicate",
+    {},
+    { headers: authHeader() }
+  );
+  return response.data;
+};
+
 export const toggleUpvote = async (gameId) => {
   const response = await axios.post(
     API_URL + "games/" + gameId + "/upvote",

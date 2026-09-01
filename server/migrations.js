@@ -3132,6 +3132,54 @@ const runMigrations = async () => {
       console.error('Error adding simul-turns sub-setting columns:', err.message);
     }
 
+    // Add veto mechanic columns to game_types (generalized "veto power": ban opponent moves from a bank)
+    try {
+      if (!(await columnExists('game_types', 'veto_enabled'))) {
+        await runMigration(
+          "ALTER TABLE game_types ADD COLUMN veto_enabled TINYINT(1) DEFAULT 0 COMMENT 'If true, players may spend vetoes to ban specific opponent moves'",
+          "Add veto_enabled column to game_types"
+        );
+        migrationsRun++;
+      }
+      if (!(await columnExists('game_types', 'veto_style'))) {
+        await runMigration(
+          "ALTER TABLE game_types ADD COLUMN veto_style ENUM('preemptive','reactive') DEFAULT 'preemptive' COMMENT 'preemptive = veto phase before the move (mover clock waits); reactive = mover submits, then vetoer window'",
+          "Add veto_style column to game_types"
+        );
+        migrationsRun++;
+      }
+      if (!(await columnExists('game_types', 'veto_per_turn_limit'))) {
+        await runMigration(
+          "ALTER TABLE game_types ADD COLUMN veto_per_turn_limit SMALLINT DEFAULT 1 COMMENT 'Max vetoes a player may spend per opponent turn (1-5)'",
+          "Add veto_per_turn_limit column to game_types"
+        );
+        migrationsRun++;
+      }
+      if (!(await columnExists('game_types', 'veto_per_game_limit'))) {
+        await runMigration(
+          "ALTER TABLE game_types ADD COLUMN veto_per_game_limit SMALLINT NULL DEFAULT NULL COMMENT 'Max vetoes a player may spend per game (NULL = unlimited, bounded only by per-turn limit); 1-100'",
+          "Add veto_per_game_limit column to game_types"
+        );
+        migrationsRun++;
+      }
+      if (!(await columnExists('game_types', 'veto_disallow_placement'))) {
+        await runMigration(
+          "ALTER TABLE game_types ADD COLUMN veto_disallow_placement TINYINT(1) DEFAULT 0 COMMENT 'If true, vetoes cannot block piece placement (normally placement is vetoable)'",
+          "Add veto_disallow_placement column to game_types"
+        );
+        migrationsRun++;
+      }
+      if (!(await columnExists('game_types', 'veto_disallow_promotion'))) {
+        await runMigration(
+          "ALTER TABLE game_types ADD COLUMN veto_disallow_promotion TINYINT(1) DEFAULT 0 COMMENT 'If true, the move that triggers promotion cannot be vetoed (the promotion choice is never vetoable regardless)'",
+          "Add veto_disallow_promotion column to game_types"
+        );
+        migrationsRun++;
+      }
+    } catch (err) {
+      console.error('Error adding veto mechanic columns:', err.message);
+    }
+
     // Add promotion_condition column to game_types (win when a promotable piece reaches a promotion square)
     try {
       const promotionConditionCol = await columnExists('game_types', 'promotion_condition');
@@ -3232,6 +3280,26 @@ const runMigrations = async () => {
     }
   } catch (err) {
     console.error('Error adding draft_saved_step column:', err.message);
+  }
+
+  // Add draft support columns to pieces (mirrors game_types drafts)
+  try {
+    if (!(await columnExists('pieces', 'is_draft'))) {
+      await runMigration(
+        `ALTER TABLE pieces ADD COLUMN is_draft TINYINT(1) DEFAULT 0 COMMENT 'If true, piece is a draft and not publicly visible'`,
+        "Add is_draft column to pieces table"
+      );
+      migrationsRun++;
+    }
+    if (!(await columnExists('pieces', 'draft_saved_step'))) {
+      await runMigration(
+        `ALTER TABLE pieces ADD COLUMN draft_saved_step INT DEFAULT NULL COMMENT 'Piece wizard step number where draft was last saved'`,
+        "Add draft_saved_step column to pieces table"
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding pieces draft columns:', err.message);
   }
 
   // Add updated_at column to game_types so admin draft listing can sort by last edit time
