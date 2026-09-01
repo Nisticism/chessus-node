@@ -1283,6 +1283,12 @@ function getPieceValue(piece, boardSize) {
   const hasBackward = !!(piece.down_movement  || piece.down_capture  || piece.down_left_movement  || piece.down_right_movement  || piece.down_left_capture  || piece.down_right_capture) || hasRatioMove || hasStepMove || hasMoveSetBackward;
   if (!hasForward || !hasBackward) internal *= 0.7;
 
+  // Multi-tile footprint: a W×H piece controls more board, blocks more squares,
+  // and presents a wider effective move/attack front than the single anchor tile
+  // the simulation above measured. Scale value up with tile count (sub-linear; capped).
+  const tiles = (piece.piece_width || 1) * (piece.piece_height || 1);
+  if (tiles > 1) internal *= Math.min(1 + 0.25 * (tiles - 1), 2.5);
+
   // HP scaling
   const hp    = piece.current_hp ?? piece.hit_points ?? 1;
   const maxHp = piece.hit_points || 1;
