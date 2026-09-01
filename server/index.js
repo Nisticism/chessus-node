@@ -12442,6 +12442,16 @@ app.post("/api/analytics/pageview", async (req, res) => {
 app.get("/api/admin/analytics", authenticateAdmin, async (req, res) => {
   try {
     const days = Math.min(365, Math.max(1, parseInt(req.query.days) || 30));
+    // Timezone used to bucket the daily traffic breakdown. Defaults to US
+    // Central time; admins can view the daily tab from any IANA timezone.
+    let tz = (req.query.tz || 'America/Chicago').toString();
+    let dayFmt;
+    try {
+      dayFmt = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' });
+    } catch (_e) {
+      tz = 'America/Chicago';
+      dayFmt = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' });
+    }
     const [[totals]] = await db_pool.query(
       `SELECT COUNT(*) AS views,
               COUNT(DISTINCT visitor_id) AS visitors,
@@ -12472,15 +12482,31 @@ app.get("/api/admin/analytics", authenticateAdmin, async (req, res) => {
         GROUP BY source ORDER BY views DESC LIMIT 25`,
       [days]
     );
-    const [daily] = await db_pool.query(
-      `SELECT DATE_FORMAT(created_at, '%Y-%m-%d') AS day, COUNT(*) AS views, COUNT(DISTINCT visitor_id) AS visitors
+    // Bucket the daily breakdown in the requested timezone (DST-aware) rather
+    // than by UTC calendar day. We pull the absolute instants and group them in
+    // JS so the "did traffic happen on this day" decision follows the admin's
+    // chosen timezone instead of a universal UTC day boundary.
+    const [dailyRows] = await db_pool.query(
+      `SELECT UNIX_TIMESTAMP(created_at) AS ts, visitor_id
          FROM analytics_pageviews
-        WHERE created_at >= DATE_SUB(NOW(), INTERVAL ? DAY)
-        GROUP BY day ORDER BY day ASC`,
+        WHERE created_at >= DATE_SUB(NOW(), INTERVAL ? DAY)`,
       [days]
     );
+    const dayMap = new Map();
+    for (const row of dailyRows) {
+      if (row.ts == null) continue;
+      const day = dayFmt.format(new Date(Number(row.ts) * 1000));
+      let entry = dayMap.get(day);
+      if (!entry) { entry = { views: 0, visitors: new Set() }; dayMap.set(day, entry); }
+      entry.views++;
+      if (row.visitor_id != null) entry.visitors.add(row.visitor_id);
+    }
+    const daily = Array.from(dayMap.entries())
+      .map(([day, e]) => ({ day, views: e.views, visitors: e.visitors.size }))
+      .sort((a, b) => a.day.localeCompare(b.day));
     res.json({
       days,
+      timezone: tz,
       geoEnabled: !!_geoip,
       totals: {
         views: Number(totals.views || 0),
@@ -12491,7 +12517,7 @@ app.get("/api/admin/analytics", authenticateAdmin, async (req, res) => {
       byCountry: byCountry.map(r => ({ country: r.country, views: Number(r.views), visitors: Number(r.visitors) })),
       topPages: topPages.map(r => ({ path: r.path, views: Number(r.views) })),
       topReferrers: topReferrers.map(r => ({ source: r.source, views: Number(r.views), visitors: Number(r.visitors) })),
-      daily: daily.map(r => ({ day: r.day, views: Number(r.views), visitors: Number(r.visitors) })),
+      daily,
     });
   } catch (err) {
     console.error("Error in /api/admin/analytics:", err);

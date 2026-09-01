@@ -16,23 +16,58 @@ function flag(cc) {
   try { return String.fromCodePoint(A + cc.charCodeAt(0) - base, A + cc.charCodeAt(1) - base); } catch (_) { return ''; }
 }
 
+// Curated timezone list for the daily-traffic viewpoint dropdown. Central time
+// (America/Chicago) is the default. The viewer's own timezone is appended if it
+// isn't already in the list.
+const BASE_TIMEZONES = [
+  { value: 'America/Chicago', label: 'US Central (Chicago)' },
+  { value: 'America/New_York', label: 'US Eastern (New York)' },
+  { value: 'America/Denver', label: 'US Mountain (Denver)' },
+  { value: 'America/Los_Angeles', label: 'US Pacific (Los Angeles)' },
+  { value: 'America/Anchorage', label: 'US Alaska (Anchorage)' },
+  { value: 'Pacific/Honolulu', label: 'US Hawaii (Honolulu)' },
+  { value: 'UTC', label: 'UTC' },
+  { value: 'America/Sao_Paulo', label: 'Brazil (São Paulo)' },
+  { value: 'Europe/London', label: 'UK (London)' },
+  { value: 'Europe/Paris', label: 'Central Europe (Paris)' },
+  { value: 'Europe/Moscow', label: 'Russia (Moscow)' },
+  { value: 'Asia/Kolkata', label: 'India (Kolkata)' },
+  { value: 'Asia/Shanghai', label: 'China (Shanghai)' },
+  { value: 'Asia/Tokyo', label: 'Japan (Tokyo)' },
+  { value: 'Australia/Sydney', label: 'Australia (Sydney)' },
+];
+
+function buildTimezoneOptions() {
+  const list = [...BASE_TIMEZONES];
+  try {
+    const local = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (local && !list.some(z => z.value === local)) {
+      list.push({ value: local, label: `Your timezone (${local})` });
+    }
+  } catch (_) { /* ignore */ }
+  return list;
+}
+
+const TIMEZONE_OPTIONS = buildTimezoneOptions();
+
 function TrafficPanel() {
   const [days, setDays] = useState(30);
+  const [tz, setTz] = useState('America/Chicago');
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  const load = useCallback(async (d) => {
+  const load = useCallback(async (d, z) => {
     setLoading(true); setError(null);
     try {
-      const resp = await axios.get(`${API_URL}admin/analytics?days=${d}`, { headers: authHeader() });
+      const resp = await axios.get(`${API_URL}admin/analytics?days=${d}&tz=${encodeURIComponent(z)}`, { headers: authHeader() });
       setData(resp.data);
     } catch (e) {
       setError(e.response?.data?.message || e.message || 'Failed to load analytics');
     } finally { setLoading(false); }
   }, []);
 
-  useEffect(() => { load(days); }, [days, load]);
+  useEffect(() => { load(days, tz); }, [days, tz, load]);
 
   const t = data?.totals;
   const maxDaily = Math.max(1, ...((data?.daily || []).map(d => d.views)));
@@ -50,6 +85,18 @@ function TrafficPanel() {
             </button>
           ))}
         </div>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+          <span style={{ opacity: 0.75 }}>Timezone</span>
+          <select
+            value={tz}
+            onChange={(e) => setTz(e.target.value)}
+            style={{ padding: '4px 8px', background: 'var(--bg-panel, #14202e)', color: 'inherit', border: '1px solid rgba(255,255,255,0.18)', borderRadius: 6 }}
+          >
+            {TIMEZONE_OPTIONS.map(z => (
+              <option key={z.value} value={z.value}>{z.label}</option>
+            ))}
+          </select>
+        </label>
         {data && !data.geoEnabled && (
           <span style={{ color: '#d4a64a', fontSize: 12 }}>Country lookup unavailable (geoip-lite not installed on server)</span>
         )}
@@ -68,6 +115,9 @@ function TrafficPanel() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 24 }}>
             <div>
               <h3>Daily page views</h3>
+              <p style={{ margin: '-6px 0 8px', fontSize: 11, opacity: 0.6 }}>
+                Days bucketed in {data.timezone || tz}
+              </p>
               {(!data.daily || data.daily.length === 0) ? (
                 <p style={{ opacity: 0.6 }}>No data yet.</p>
               ) : (
