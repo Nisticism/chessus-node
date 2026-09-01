@@ -324,6 +324,14 @@
   padding-bottom: 15px;
 }
 
+// Drop the divider + spacing when the section is collapsed, matching the
+// other collapsible sections on the profile page.
+.section-title.title-collapsed {
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-bottom: 0;
+}
+
 .collapse-arrow {
   font-size: 1.2rem;
   transition: transform 0.3s ease;

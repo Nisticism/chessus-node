@@ -154,7 +154,7 @@ const MatchHistory = ({ userId, username }) => {
   if (loading && games.length === 0) {
     return (
       <div className={styles["match-history"]}>
-        <h2 className={styles["section-title"]} onClick={() => setCollapsed(!collapsed)}>
+        <h2 className={`${styles["section-title"]} ${collapsed ? styles["title-collapsed"] : ''}`} onClick={() => setCollapsed(!collapsed)}>
           Match History
           <span className={`${styles["collapse-arrow"]} ${collapsed ? styles["collapsed"] : ''}`}>▼</span>
         </h2>
@@ -166,7 +166,7 @@ const MatchHistory = ({ userId, username }) => {
   if (error) {
     return (
       <div className={styles["match-history"]}>
-        <h2 className={styles["section-title"]} onClick={() => setCollapsed(!collapsed)}>
+        <h2 className={`${styles["section-title"]} ${collapsed ? styles["title-collapsed"] : ''}`} onClick={() => setCollapsed(!collapsed)}>
           Match History
           <span className={`${styles["collapse-arrow"]} ${collapsed ? styles["collapsed"] : ''}`}>▼</span>
         </h2>
@@ -178,7 +178,7 @@ const MatchHistory = ({ userId, username }) => {
   if (games.length === 0) {
     return (
       <div className={styles["match-history"]}>
-        <h2 className={styles["section-title"]} onClick={() => setCollapsed(!collapsed)}>
+        <h2 className={`${styles["section-title"]} ${collapsed ? styles["title-collapsed"] : ''}`} onClick={() => setCollapsed(!collapsed)}>
           Match History
           <span className={`${styles["collapse-arrow"]} ${collapsed ? styles["collapsed"] : ''}`}>▼</span>
         </h2>
@@ -194,7 +194,7 @@ const MatchHistory = ({ userId, username }) => {
 
   return (
     <div className={styles["match-history"]} id="match-history">
-      <h2 className={styles["section-title"]} onClick={() => setCollapsed(!collapsed)}>
+      <h2 className={`${styles["section-title"]} ${collapsed ? styles["title-collapsed"] : ''}`} onClick={() => setCollapsed(!collapsed)}>
         Match History
         <span className={`${styles["collapse-arrow"]} ${collapsed ? styles["collapsed"] : ''}`}>▼</span>
       </h2>

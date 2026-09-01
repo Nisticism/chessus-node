@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import styles from "./gamewizard.module.scss";
 import PieceSelector, { defaultCastlingDistanceForBoard } from "./PieceSelector";
+import ToggleSwitch from "../common/ToggleSwitch";
 import PiecesService from "../../services/pieces.service";
 import { isTouchDevice } from "../../helpers/mobileUtils";
 import { 
@@ -2025,16 +2026,15 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
             const isDefault = defaultStartingMode === mode;
             return (
               <div key={mode} style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', opacity: isAvailable ? 1 : 0.5, marginBottom: '8px' }}>
-                <label className={styles["checkbox-label"]} style={{ flex: 1, margin: 0 }}>
-                  <input
-                    type="checkbox"
+                <div style={{ flex: 1 }}>
+                  <ToggleSwitch
                     checked={isChecked}
                     onChange={() => handleStartingModeToggle(mode)}
                     disabled={!isAvailable || isOnlyOne}
+                    label={label}
+                    hint={hint}
                   />
-                  <span>{label}</span>
-                  <p className={styles["checkbox-hint"]}>{hint}</p>
-                </label>
+                </div>
                 {isChecked && (
                   <button
                     type="button"
