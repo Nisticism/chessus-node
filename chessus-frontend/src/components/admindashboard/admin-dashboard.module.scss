@@ -13,7 +13,8 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 30px;
+  max-width: 1400px;
+  margin: 0 auto 30px;
   padding: 0 20px;
 
   h1 {
@@ -27,7 +28,8 @@
 .tabs {
   display: flex;
   gap: 10px;
-  margin-bottom: 30px;
+  max-width: 1400px;
+  margin: 0 auto 30px;
   padding: 0 20px;
   flex-wrap: wrap;
 }
@@ -62,7 +64,8 @@
   border: 2px solid var(--panel-card-border);
   border-radius: 6px;
   padding: 30px;
-  margin: 0 20px;
+  max-width: 1400px;
+  margin: 0 auto;
   box-shadow: var(--shadow-card);
   // overflow: clip clips the painted area without creating a scroll container,
   // so mobile browsers do not intercept touch-scroll events before they reach
@@ -74,6 +77,7 @@
   overflow-x: auto;
   -webkit-overflow-scrolling: touch; // smooth momentum scroll on older iOS
   margin-bottom: 20px;
+  max-width: 100%;
 }
 
 .data-table {
