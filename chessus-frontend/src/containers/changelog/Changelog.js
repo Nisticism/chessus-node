@@ -4,17 +4,43 @@ import styles from "./changelog.module.scss";
 
 const changelogData = [
   {
+    date: "September 1, 2026",
+    title: "Veto fixes, admin portal width & multi-tile piece values",
+    items: [
+      "Reactive Veto Power now works against the computer. Previously reactive games could stall with the computer never moving. Now the computer commits its move and reveals it so you can react and veto it (forcing it to pick another), and the computer will veto your moves too using the same judgement it uses to play.",
+      "Fixed a reactive veto game getting stuck if you refreshed the page while it was your turn to veto — the veto window is now restored after a reload so the game can continue.",
+      "Reactive veto clocks are now accurate across a page refresh: your submitted (or skipped) veto is re-sent if a reload interrupts it, and the clock no longer keeps charging you after you've decided.",
+      "Fixed pre-emptive veto games freezing on the very first move: the game now starts correctly when the first move is made, so the opposing player gets their veto panel and the move can proceed.",
+      "In pre-emptive veto games, the move you make while your opponent is still vetoing now stays shown on the board (like a premove) instead of jumping into place once they submit.",
+      "Veto marks now appear for both players — live as the vetoer picks them, and briefly after they're submitted — and you can hover a veto X to see the exact move(s) it blocks (e.g. e3-e5), listed newest first when more than one veto sits on a square.",
+      "Veto polish: the status line at the top now describes the current veto phase (e.g. 'Opponent is choosing vetoes', 'It's your move') in gold instead of a generic 'Your turn'; veto marks are coloured by player (Player 1 light red, Player 2 dark red); and the hover tooltip sits closer to the veto mark.",
+      "Pre-emptive veto clocks: neither clock runs until the first veto is cast (Player 2 acts first), and Player 1 pre-playing their move no longer starts the clock. Reactive veto now prevents making a second move while your first is under review.",
+      "Fixed veto regressions: reactive games now correctly open the veto window for the opponent (and reveal your move) instead of getting stuck; the held-move premove no longer sticks without its piece; veto marks clear as soon as a move validates; and the status line no longer briefly flashes green before showing the veto phase.",
+      "The Actions buttons (Offer Draw, and the Submit / Skip / Clear veto buttons) now have clear hover feedback and wrap neatly onto a second row when the panel is too narrow, instead of being cut off.",
+      "Fixed pre-emptive veto games getting stuck after the vetoer submitted: the opponent's vetoes now register on the mover's screen so their move goes through instead of freezing on 'Opponent is choosing vetoes'. A refresh now also recovers correctly.",
+      "In reactive veto games you can now take back your move while it's still under review — press Escape or click your moved piece — as long as your opponent hasn't submitted their veto yet.",
+      "Veto X marks now use a single consistent shade of red for both players.",
+      "Admin portal: the dashboard now respects the site's 1400px maximum width on large screens, and tabs with wide tables scroll horizontally within the tab instead of stretching or overlapping other content.",
+      "Piece values now account for multi-tile pieces: a piece that occupies more than one square (e.g. a 2×2 'Giant Pawn') is valued higher to reflect its larger board presence — shown on the piece detail page and used by the computer when it decides how to play.",
+    ],
+  },
+  {
     date: "August 31, 2026",
     title: "Simpler piece movement setup + movement consistency fix",
     items: [
       "New game mechanic — Veto Power: give players a bank of vetoes to ban specific opponent moves (generalized 'veto chess'). Configure it under Game Mechanics in the game wizard: choose pre-emptive or reactive style, set vetoes per turn (1–5) and an optional per-game cap (up to 100), and optionally disallow vetoing placement or promotion. In game, the vetoing player clicks or drags an opponent piece to a square to ban that move (click again to also ban a ranged attack to the same square), right-clicks a square to remove a veto, and vetoes stack with a count when more than one sits on a square. Vetoes never affect check — a king in check must still escape even if the capturing move is vetoed. Works against the computer too.",
       "Premoves are now easier to cancel: press Escape, or left/right-click your premoved piece or its destination square.",
+      "Veto Power polish: in reactive games the opponent's just-played move is now revealed on the board so you can see exactly what you're vetoing, and you can ban it plus spend remaining vetoes on other moves. The Submit / Skip / Clear veto buttons now live in the Actions panel (greyed out when it isn't your veto), and you can press Enter to submit your vetoes.",
       "Duplicate as Draft: you can now duplicate your own games and pieces into an editable draft copy. Use it from the Creator Options menu on a game or piece detail page, or from inside the edit wizard (which duplicates your current edits). The copy is saved immediately as a private draft (named '… (Copy)') and opens straight in the editor.",
       "Pieces now support drafts, just like games: a draft piece stays private (hidden from public lists and game setup) until you publish it, and shows a DRAFT badge under 'My Pieces'. The piece wizard now has a 'Save as Draft' button.",
       "Piece wizard: removed the separate 'Enable' switches for directional, ratio, and step-by-step movement — and for ratio capture. Each of these is now simply active when you give it a value and off when it's left blank or zero — fewer clicks and no confusing enabled-but-empty state.",
       "Piece wizard: the step-by-step movement, capture, and ranged-attack step fields can now be set back down to 0 to turn them off.",
       "Fixed an issue where some pieces could gain an unintended extra move (for example a 1-square move in every direction) in the sandbox and in live games that didn't match how the piece was set up. Movement now consistently reflects the piece's configured values everywhere — piece page, game page, sandbox, and live play.",
       "Play page polish: a little more space before each game card's time control, and the game-type sort dropdown's arrow no longer sits flush against the right edge.",
+      "Game wizard: the 'Allowed Starting Positions' options are now large toggle switches (matching the rest of the wizard) instead of checkboxes, and the section dividers on the win-conditions and board steps now use the site's muted-gold accent.",
+      "Match History on player profiles now hides its divider line while collapsed, matching the other collapsible profile sections.",
+      "Live games: fixed a brief flicker/wrong-image flash when placing a piece — the placed piece now appears instantly with the correct artwork for your side.",
+      "Admin traffic analytics: the daily tab now buckets days by US Central time by default, with a timezone dropdown to view the data from any timezone.",
     ],
   },
   {
