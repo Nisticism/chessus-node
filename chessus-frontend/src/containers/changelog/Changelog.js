@@ -24,6 +24,7 @@ const changelogData = [
       "Piece values are now much more accurate for multi-tile pieces: a piece that occupies more than one square (e.g. a 2×2 'Giant Pawn') now counts the moves and attacks reaching out from every square of its footprint — so a big pawn that threatens ~12 squares is valued accordingly (about 3.2 instead of 1.5) both on its detail page and in the computer's judgement.",
       "Reactive Veto Power vs. the computer is now more natural: when there's no per-game veto limit, the computer only vetoes your move if the move you actually played is one worth denying, instead of pre-marking moves you didn't make.",
       "Fixed the on-screen clock appearing to jump/restart during reactive veto games (e.g. when a move is vetoed and replayed). The displayed time now stays continuous through the veto phase and still corrects to the server's exact time once a move is made.",
+      "Computer strength: fixed a bug where the computer would 'escape' a threatened piece by moving it onto another defended square — losing it anyway (e.g. fleeing a bishop straight into a rook). It now checks that the escape square is actually safe, and if no safe retreat exists it looks for a defense or counter instead of throwing the piece away.",
     ],
   },
   {

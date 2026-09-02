@@ -2771,24 +2771,41 @@ function getBestMoveSync(gameState, botPosition, difficulty, settingsOverride) {
         const { piece: hungPiece, see: hungSee } = urgentHang;
         const escapeMoves = legalMoves.filter(m => m.pieceId === hungPiece.id);
         if (escapeMoves.length > 0) {
-          // Pick the destination with lowest opponent threat (best SEE for us)
+          const ourVal = getPieceValue(hungPiece, bsRoot);
+          // Pick the escape that nets the most material AFTER the move. Crucially,
+          // evaluate the destination in the POST-MOVE position (our piece actually
+          // sitting there, any captured enemy removed) so we don't "escape" onto a
+          // defended square and lose the piece to a recapture (e.g. fleeing a bishop
+          // straight into a rook on an open file).
           let bestEscape = escapeMoves[0];
-          let bestEscapeSee = -Infinity;
+          let bestEscapeValue = -Infinity;
           for (const em of escapeMoves) {
-            const movedPieces = gameState.pieces.map(p =>
-              p.id === hungPiece.id ? { ...p, x: em.to.x, y: em.to.y } : p
-            );
-            const oppAtks = getAttackersTo(
-              { ...gameState, pieces: movedPieces },
-              em.to.x, em.to.y, opponent, bsRoot
-            );
-            const destSee = oppAtks.length === 0 ? 0 :
-              -staticExchangeEval(gameState, em.to.x, em.to.y,
-                oppAtks[0].piece.id, oppAtks[0].value, hungSee, opponent, bsRoot);
-            if (destSee > bestEscapeSee) { bestEscapeSee = destSee; bestEscape = em; }
+            const capturedHere = gameState.pieces.find(p =>
+              p.x === em.to.x && p.y === em.to.y && (p.team || p.player_id) === opponent);
+            const capturedVal = capturedHere ? getPieceValue(capturedHere, bsRoot) : 0;
+            const movedPieces = gameState.pieces
+              .filter(p => !(capturedHere && p.id === capturedHere.id))
+              .map(p => p.id === hungPiece.id ? { ...p, x: em.to.x, y: em.to.y } : p);
+            const movedState = { ...gameState, pieces: movedPieces };
+            const oppAtks = getAttackersTo(movedState, em.to.x, em.to.y, opponent, bsRoot);
+            let escapeValue;
+            if (oppAtks.length === 0) {
+              escapeValue = capturedVal; // safe square — piece kept (plus anything grabbed)
+            } else {
+              // Material the opponent wins by capturing our piece on the destination.
+              const oppGain = staticExchangeEval(movedState, em.to.x, em.to.y,
+                oppAtks[0].piece.id, oppAtks[0].value, ourVal, opponent, bsRoot);
+              escapeValue = capturedVal - Math.max(0, oppGain);
+            }
+            if (escapeValue > bestEscapeValue) { bestEscapeValue = escapeValue; bestEscape = em; }
           }
-          console.log(`[AI] Instant escape: piece ${hungPiece.id} SEE=${hungSee.toFixed(1)} -> (${bestEscape.to.x},${bestEscape.to.y})`);
-          return bestEscape;
+          // Only shortcut when the escape actually saves the piece. If every square
+          // still loses material, fall through to the full search (it may find a
+          // defense, block, or a stronger counter-capture instead of a bad flee).
+          if (bestEscapeValue >= -1.0) {
+            console.log(`[AI] Instant escape: piece ${hungPiece.id} SEE=${hungSee.toFixed(1)} -> (${bestEscape.to.x},${bestEscape.to.y}) escVal=${bestEscapeValue.toFixed(1)}`);
+            return bestEscape;
+          }
         }
       }
     }
