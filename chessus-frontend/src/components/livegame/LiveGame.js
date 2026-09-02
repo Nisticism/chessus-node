@@ -348,6 +348,7 @@ const LiveGame = () => {
     submitVetoes,
     sendVetoPreview,
     retractVetoMove,
+    requestBotVeto,
     onGameEvent,
     spectateGame,
     pauseDisconnectTimer,
@@ -2713,6 +2714,26 @@ const LiveGame = () => {
     if (myPos === gameState.currentTurn) setVetoOpponentSubmitted(true); // I'm the mover
     else setVetoDoneThisTurn(true); // I'm the vetoer — already submitted this action
   }, [gameState?.vetoState?.phaseResolved, gameState?.gameType, gameState?.currentTurn]);
+
+  // Pre-emptive vs. a bot vetoer: the bot never submits vetoes interactively, so
+  // my staged pre-move would wait forever. When it's my turn to move, ask the
+  // server to commit the bot's blind vetoes (idempotent, once per action) — the
+  // resulting vetoesUpdated unblocks me and reveals the bans.
+  const botVetoRequestedRef = useRef(null);
+  useEffect(() => {
+    const gt = gameState?.gameType;
+    if (!gt?.veto_enabled || gt?.simultaneous_turns) return;
+    if ((gt?.veto_style === 'reactive' ? 'reactive' : 'preemptive') !== 'preemptive') return;
+    if (!gameState?.botPlayer || gameState?.currentTurn == null) return;
+    if (gameState?.status !== 'active' && gameState?.status !== 'ready') return;
+    const myPos = currentPlayer?.position ?? null;
+    if (myPos == null || myPos !== gameState.currentTurn) return; // only the human mover
+    if (vetoOpponentSubmitted) return; // bot already resolved this action
+    const key = `${gameState.currentTurn}:${gameState.moveHistory?.length ?? 0}`;
+    if (botVetoRequestedRef.current === key) return;
+    botVetoRequestedRef.current = key;
+    requestBotVeto(parseInt(gameId));
+  }, [gameState?.gameType, gameState?.status, gameState?.currentTurn, gameState?.moveHistory?.length, gameState?.botPlayer, currentPlayer, vetoOpponentSubmitted, requestBotVeto, gameId]);
 
   // Initialize the veto bank display from the game type (both players start at the
   // per-game cap); server vetoStateUpdate events keep it current thereafter.

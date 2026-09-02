@@ -17,7 +17,7 @@ const COPY = {
     title: "Fairy Stockfish compatibility - Board & Placement",
     yes:  "no placement-action, no start repositions; randomization 'none', 'backrow' or 'mirrored' (the Chess960 / Fischer-random style)",
     no:   "place-pieces action, start repositions; randomization 'independent', 'shared' or 'full'",
-    safe: "Fog of War, Hidden Enemy Pieces, and Veto Power - the game is playable, but the engine sees the full board / doesn't strategically model these mechanics",
+    safe: "Fog of War and Hidden Enemy Pieces - the game is playable, but the engine sees the full board rather than respecting hidden squares/pieces",
   },
   pieceMovement: {
     title: "Fairy Stockfish compatibility - Piece Movement",

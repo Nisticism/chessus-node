@@ -728,10 +728,29 @@ async function applyBotVetoes(io, gameState, gameId, moverPos, vetoerPos, played
   try {
     await db_pool.query("UPDATE games SET other_data = ? WHERE id = ?", [buildOtherData(gameState), gameId]);
   } catch (_) { /* non-fatal */ }
-  if (sigs.length > 0) {
-    emitToGameRoom(io, gameState, "vetoesUpdated", { gameId, banned: vs.banned, vetoer: vetoerPos, mover: moverPos, style: cfg.style });
-  }
+  // Always emit — even with zero bans — so a human mover waiting on a bot vetoer
+  // (pre-emptive) gets the resolution signal and can proceed.
+  emitToGameRoom(io, gameState, "vetoesUpdated", { gameId, banned: vs.banned, vetoer: vetoerPos, mover: moverPos, style: cfg.style });
   emitVetoState(io, gameState, gameId);
+}
+
+// Pre-emptive + bot vetoer + human mover: the human's move is queued client-side
+// and only sent once the vetoer "submits". A bot vetoer never submits interactively,
+// so this proactively computes and commits its blind vetoes when it becomes the
+// human's turn, unblocking the human and revealing the bans. Idempotent.
+async function applyBotPreemptiveVetoIfNeeded(io, gameId, gameState) {
+  const cfg = getVetoConfig(gameState);
+  if (!cfg || cfg.style !== 'preemptive') return false;
+  if (!gameState.botPlayer || gameState.status === 'completed') return false;
+  const moverPos = gameState.currentTurn;
+  const vetoerPos = moverPos === 1 ? 2 : 1;
+  if (!vetoPositionIsBot(gameState, vetoerPos)) return false; // bot must be the vetoer
+  if (vetoPositionIsBot(gameState, moverPos)) return false;   // human must be the mover
+  const vs = syncVetoTurn(gameState);
+  if (vs.phaseResolved) return false;
+  await activateGameOnFirstMove(io, gameState, gameId);
+  await applyBotVetoes(io, gameState, gameId, moverPos, vetoerPos);
+  return true;
 }
 
 // Reactive style + bot mover: hold the bot's chosen move and reveal it to the
@@ -6308,6 +6327,34 @@ function initializeSocket(server) {
         emitVetoState(io, gameState, gameId);
       } catch (err) {
         console.error("retractVetoMove error:", err);
+      }
+    });
+
+    // Pre-emptive + bot vetoer: the human mover's client requests the bot to
+    // commit its blind vetoes so the human isn't stuck waiting for an opponent
+    // that never submits interactively. Idempotent (phaseResolved re-broadcasts).
+    socket.on("requestBotVeto", async (data) => {
+      try {
+        const { gameId, userId } = data || {};
+        const gameState = activeGames.get(String(gameId));
+        if (!gameState) return;
+        const cfg = getVetoConfig(gameState);
+        if (!cfg || cfg.style !== 'preemptive' || !gameState.botPlayer) return;
+        const moverPos = gameState.currentTurn;
+        const vetoerPos = moverPos === 1 ? 2 : 1;
+        if (!vetoPositionIsBot(gameState, vetoerPos) || vetoPositionIsBot(gameState, moverPos)) return;
+        const mover = gameState.players.find(p => p.position === moverPos);
+        if (!mover || mover.id !== userId) return;
+        syncVetoTurn(gameState);
+        if (gameState.vetoState.phaseResolved) {
+          // Already done — re-broadcast so a reconnecting/retrying client unblocks.
+          emitToGameRoom(io, gameState, "vetoesUpdated", { gameId, banned: gameState.vetoState.banned || [], vetoer: vetoerPos, mover: moverPos, style: cfg.style });
+          emitVetoState(io, gameState, gameId);
+          return;
+        }
+        await applyBotPreemptiveVetoIfNeeded(io, gameId, gameState);
+      } catch (err) {
+        console.error("requestBotVeto error:", err);
       }
     });
 

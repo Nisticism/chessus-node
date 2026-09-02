@@ -848,6 +848,13 @@ export const SocketProvider = ({ children }) => {
     socket.emit('retractVetoMove', { gameId, userId: getAnonPlayerId(gameId) });
   }, [socket, connected, getAnonPlayerId]);
 
+  // Pre-emptive veto vs. a bot vetoer: ask the server to commit the bot's blind
+  // vetoes so a human mover isn't left waiting for an opponent that never submits.
+  const requestBotVeto = useCallback((gameId) => {
+    if (!socket || !connected) return;
+    socket.emit('requestBotVeto', { gameId, userId: getAnonPlayerId(gameId) });
+  }, [socket, connected, getAnonPlayerId]);
+
   // Subscribe to game events
   const onGameEvent = useCallback((event, callback) => {
     if (!socket) return () => {};
@@ -892,6 +899,7 @@ export const SocketProvider = ({ children }) => {
     submitVetoes,
     sendVetoPreview,
     retractVetoMove,
+    requestBotVeto,
     onGameEvent,
     pauseDisconnectTimer,
     resumeDisconnectTimer,
