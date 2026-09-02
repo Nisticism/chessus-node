@@ -21,7 +21,9 @@ const changelogData = [
       "In reactive veto games you can now take back your move while it's still under review — press Escape or click your moved piece — as long as your opponent hasn't submitted their veto yet.",
       "Veto X marks now use a single consistent shade of red for both players.",
       "Admin portal: the dashboard now respects the site's 1400px maximum width on large screens, and tabs with wide tables scroll horizontally within the tab instead of stretching or overlapping other content.",
-      "Piece values now account for multi-tile pieces: a piece that occupies more than one square (e.g. a 2×2 'Giant Pawn') is valued higher to reflect its larger board presence — shown on the piece detail page and used by the computer when it decides how to play.",
+      "Piece values are now much more accurate for multi-tile pieces: a piece that occupies more than one square (e.g. a 2×2 'Giant Pawn') now counts the moves and attacks reaching out from every square of its footprint — so a big pawn that threatens ~12 squares is valued accordingly (about 3.2 instead of 1.5) both on its detail page and in the computer's judgement.",
+      "Reactive Veto Power vs. the computer is now more natural: when there's no per-game veto limit, the computer only vetoes your move if the move you actually played is one worth denying, instead of pre-marking moves you didn't make.",
+      "Fixed the on-screen clock appearing to jump/restart during reactive veto games (e.g. when a move is vetoed and replayed). The displayed time now stays continuous through the veto phase and still corrects to the server's exact time once a move is made.",
     ],
   },
   {
