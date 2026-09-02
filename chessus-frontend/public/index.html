@@ -39,9 +39,68 @@
     <meta name="twitter:image" content="https://gridgrove.gg/logo512.png" />
 
     <title>GridGrove - Create and Play Strategy Games</title>
+
+    <!-- Structured data: crawlers read this even without executing JavaScript. -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebSite",
+        "name": "GridGrove",
+        "url": "https://gridgrove.gg/",
+        "description": "GridGrove lets you create custom strategy games with your own pieces, rules, and boards, then play them online against friends or the computer in real time."
+      }
+    </script>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "Organization",
+        "name": "GridGrove",
+        "url": "https://gridgrove.gg/",
+        "logo": "https://gridgrove.gg/logo512.png"
+      }
+    </script>
   </head>
   <body>
-    <noscript>You need to enable JavaScript to run this app.</noscript>
+    <!--
+      Static, crawlable fallback. Search engines and AI crawlers that don't run
+      JavaScript get real, indexable content and a link graph here instead of a
+      blank "enable JavaScript" page. Browsers with JS never see it (React
+      replaces #root on load), and this <noscript> block only renders when
+      scripting is disabled.
+    -->
+    <noscript>
+      <header>
+        <h1>GridGrove - Create and Play Custom Strategy Games</h1>
+        <p>
+          GridGrove is a platform for building and playing custom strategy and
+          chess-variant games. Design your own pieces with unique movement and
+          abilities, set your own win conditions and board layouts, and play
+          online against friends or a built-in computer opponent in real time.
+        </p>
+      </header>
+      <main>
+        <h2>What you can do on GridGrove</h2>
+        <ul>
+          <li><strong>Create custom games</strong> - define the board, pieces, rules, and win conditions in a step-by-step wizard.</li>
+          <li><strong>Design custom pieces</strong> - build pieces with their own movement, capture, and special abilities.</li>
+          <li><strong>Play online multiplayer</strong> - challenge friends or other players in real time, or play against the computer.</li>
+          <li><strong>Explore the community</strong> - browse games and pieces made by other creators, view leaderboards, and follow updates.</li>
+        </ul>
+        <h2>Explore GridGrove</h2>
+        <ul>
+          <li><a href="https://gridgrove.gg/play/games">Play games</a></li>
+          <li><a href="https://gridgrove.gg/create/games">Browse custom games</a></li>
+          <li><a href="https://gridgrove.gg/create/pieces">Browse custom pieces</a></li>
+          <li><a href="https://gridgrove.gg/create">Create a game or piece</a></li>
+          <li><a href="https://gridgrove.gg/community">Community</a></li>
+          <li><a href="https://gridgrove.gg/community/leaderboard">Leaderboard</a></li>
+          <li><a href="https://gridgrove.gg/community/about">About GridGrove</a></li>
+          <li><a href="https://gridgrove.gg/faq">Frequently asked questions</a></li>
+          <li><a href="https://gridgrove.gg/news">News</a></li>
+        </ul>
+        <p>Please enable JavaScript for the full interactive experience.</p>
+      </main>
+    </noscript>
     <div id="root"></div>
     <!--
       This HTML file is a template.

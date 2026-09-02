@@ -25,6 +25,8 @@ const changelogData = [
       "Reactive Veto Power vs. the computer is now more natural: when there's no per-game veto limit, the computer only vetoes your move if the move you actually played is one worth denying, instead of pre-marking moves you didn't make.",
       "Fixed the on-screen clock appearing to jump/restart during reactive veto games (e.g. when a move is vetoed and replayed). The displayed time now stays continuous through the veto phase and still corrects to the server's exact time once a move is made.",
       "Computer strength: fixed a bug where the computer would 'escape' a threatened piece by moving it onto another defended square — losing it anyway (e.g. fleeing a bishop straight into a rook). It now checks that the escape square is actually safe, and if no safe retreat exists it looks for a defense or counter instead of throwing the piece away.",
+      "Veto Power now works with the Fairy Stockfish computer: its move is held so you can veto it (it then plays a replacement), and it vetoes your moves too. Fairy Stockfish compatibility now also notes that Hidden Enemy Pieces and Veto Power are playable but not strategically modeled by the engine (shown in the game wizard and the host-game screen).",
+      "SEO: search engines and AI crawlers that don't run JavaScript now see real page content, a site description, and navigation links (plus structured data) instead of a blank 'You need to enable JavaScript' page.",
     ],
   },
   {
