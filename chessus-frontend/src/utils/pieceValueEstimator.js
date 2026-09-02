@@ -30,10 +30,21 @@ export function estimatePieceValue(piece, boardWidth = 8, boardHeight = 8) {
 
   const bw = boardWidth  || 8;
   const bh = boardHeight || 8;
-  const cx = Math.floor((bw - 1) / 2);
-  const cy = Math.floor((bh - 1) / 2);
+  // Anchor the (possibly multi-tile) footprint near board center and emanate all
+  // moves/captures from EVERY footprint sub-square (matching live move-gen), so a
+  // 2xN piece threatens a wider area than a single tile.
+  const pw = Math.max(1, Math.round(Number(piece.piece_width) || 1));
+  const ph = Math.max(1, Math.round(Number(piece.piece_height) || 1));
+  const cx = Math.max(0, Math.floor((bw - pw) / 2));
+  const cy = Math.max(0, Math.floor((bh - ph) / 2));
   const DIVISOR = 5.5;
   const isOnBoard = (x, y) => x >= 0 && x < bw && y >= 0 && y < bh;
+  const footprint = new Set();
+  const origins = [];
+  for (let ffx = 0; ffx < pw; ffx++) for (let ffy = 0; ffy < ph; ffy++) {
+    footprint.add(`${cx + ffx},${cy + ffy}`);
+    origins.push([cx + ffx, cy + ffy]);
+  }
 
   const moveSet      = new Set();
   const stepMoveSet   = new Set(); // squares reached via step-by-step movement (weighted ×1.2)
@@ -44,7 +55,7 @@ export function estimatePieceValue(piece, boardWidth = 8, boardHeight = 8) {
     if (cur === undefined || w > cur) attackMap.set(key, w);
   };
 
-  function walkDir(dx, dy, range, exact, repeating) {
+  function walkDir(ox, oy, dx, dy, range, exact, repeating) {
     if (!range || range === 0) return [];
     const absRange = Math.abs(range);
     const isExact  = exact || range < 0;
@@ -52,14 +63,21 @@ export function estimatePieceValue(piece, boardWidth = 8, boardHeight = 8) {
     const maxIter  = (isExact && repeating) ? Math.max(bw, bh) : limit;
     const result   = [];
     for (let dist = 1; dist <= maxIter; dist++) {
-      const x = cx + dx * dist, y = cy + dy * dist;
+      const x = ox + dx * dist, y = oy + dy * dist;
       if (!isOnBoard(x, y)) break;
+      if (footprint.has(`${x},${y}`)) continue; // pass over own tiles, don't count them
       if (!isExact || (repeating ? dist % absRange === 0 : dist === absRange)) {
         result.push(`${x},${y}`);
       }
     }
     return result;
   }
+  // Union a directional walk taken from every footprint sub-square.
+  const walkAll = (dx, dy, range, exact, repeating) => {
+    const out = [];
+    for (const [ox, oy] of origins) out.push(...walkDir(ox, oy, dx, dy, range, exact, repeating));
+    return out;
+  };
 
   const hasDedicatedCap = !!(
     piece.up_capture    || piece.down_capture    ||
@@ -94,7 +112,7 @@ export function estimatePieceValue(piece, boardWidth = 8, boardHeight = 8) {
     const dirFMO      = dirAvailFor > 0;
 
     if (moveRange > 0) {
-      const sqs = walkDir(dir.dx, dir.dy, moveRange, moveExact, repM && moveExact);
+      const sqs = walkAll(dir.dx, dir.dy, moveRange, moveExact, repM && moveExact);
       for (const key of sqs) {
         moveSet.add(key);
         if (canCaptureOnMove && (!hasDedicatedCap || capRange > 0)) {
@@ -103,7 +121,7 @@ export function estimatePieceValue(piece, boardWidth = 8, boardHeight = 8) {
       }
     }
     if (capRange > 0) {
-      for (const key of walkDir(dir.dx, dir.dy, capRange, capExact, repC && capExact)) {
+      for (const key of walkAll(dir.dx, dir.dy, capRange, capExact, repC && capExact)) {
         addAttack(key, firstMoveOnlyCapture ? 0.5 : 1.0);
       }
     }
@@ -124,7 +142,7 @@ export function estimatePieceValue(piece, boardWidth = 8, boardHeight = 8) {
     for (const d of rd) {
       const range = piece[d.f] || 0;
       if (!range) continue;
-      for (const key of walkDir(d.dx, d.dy, range, !!piece[`${d.f}_exact`], false)) {
+      for (const key of walkAll(d.dx, d.dy, range, !!piece[`${d.f}_exact`], false)) {
         addAttack(key, 1.5);
       }
     }
@@ -272,7 +290,7 @@ export function estimatePieceValue(piece, boardWidth = 8, boardHeight = 8) {
       const fmo = !!(opt.firstMoveOnly || opt.availableForMoves > 0);
       let maxD = opt.value || 0;
       if (opt.infinite) maxD = 99;
-      for (const key of walkDir(dx, dy, maxD, !!opt.exact, false)) {
+      for (const key of walkAll(dx, dy, maxD, !!opt.exact, false)) {
         moveSet.add(key);
         if (canCaptureOnMove && !hasDedicatedCap) addAttack(key, (firstMoveOnlyCapture || fmo) ? 0.5 : 1.0);
       }
@@ -399,13 +417,6 @@ export function estimatePieceValue(piece, boardWidth = 8, boardHeight = 8) {
   const hasForward  = !!(piece.up_movement   || piece.up_capture   || piece.up_left_movement   || piece.up_right_movement   || piece.up_left_capture   || piece.up_right_capture)   || hasRatioMove || hasStepMove || hasMoveSetForward;
   const hasBackward = !!(piece.down_movement || piece.down_capture || piece.down_left_movement || piece.down_right_movement || piece.down_left_capture || piece.down_right_capture) || hasRatioMove || hasStepMove || hasMoveSetBackward;
   if (!hasForward || !hasBackward) internal *= 0.7;
-
-  // Multi-tile footprint: a W×H piece controls more board, blocks more squares,
-  // and presents a wider effective move/attack front than a single tile (which
-  // is all the simulation above measured). Scale value up with tile count
-  // (sub-linear; capped so very large pieces don't explode).
-  const tiles = (piece.piece_width || 1) * (piece.piece_height || 1);
-  if (tiles > 1) internal *= Math.min(1 + 0.25 * (tiles - 1), 2.5);
 
   // HP scaling (for live-captured-piece display)
   const hp    = piece.current_hp ?? piece.hit_points ?? 1;
