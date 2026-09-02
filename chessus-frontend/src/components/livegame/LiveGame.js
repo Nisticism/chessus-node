@@ -518,6 +518,7 @@ const LiveGame = () => {
   const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1920);
   const [windowHeight, setWindowHeight] = useState(typeof window !== 'undefined' ? window.innerHeight : 1080);
   const [displayTimes, setDisplayTimes] = useState({}); // Locally interpolated clock times for sub-second display
+  const displayTimesRef = useRef({}); // Mirror of displayTimes for use inside effects/handlers without a re-render dep
   const lastServerTickRef = useRef(null); // Timestamp of last server timeUpdate
   const serverTimesRef = useRef({}); // Last raw server playerTimes
   const activeClockPlayerRef = useRef(null); // Which player's clock is ticking
@@ -1526,9 +1527,14 @@ const LiveGame = () => {
     const newActiveId = cp?.id ?? null;
     if (newActiveId == null) return;
     if (activeClockPlayerRef.current !== newActiveId) {
-      // Active player changed (or never set) — re-anchor with the latest
-      // server-authoritative times so we drain the correct player's clock.
-      serverTimesRef.current = { ...gameState.playerTimes };
+      // Active player changed (or never set). During a veto phase the server has
+      // NOT sent fresh times (the held move hasn't executed), so gameState.playerTimes
+      // is stale — re-anchoring to it would snap the displayed clock back up. Base
+      // the new anchor on the already-drained displayTimes instead so the clock
+      // continues smoothly; a real move re-anchors to authoritative times via moveMade.
+      const drained = displayTimesRef.current;
+      const base = (drained && Object.keys(drained).length) ? { ...drained } : { ...gameState.playerTimes };
+      serverTimesRef.current = base;
       lastServerTickRef.current = Date.now();
       activeClockPlayerRef.current = newActiveId;
     } else if (lastServerTickRef.current == null) {
@@ -3056,6 +3062,7 @@ const LiveGame = () => {
       if (clockFrozen) {
         // Keep the anchor fresh so unfreezing doesn't drain a backlog of time.
         lastServerTickRef.current = Date.now();
+        displayTimesRef.current = { ...serverTimesRef.current };
         setDisplayTimes({ ...serverTimesRef.current });
         return;
       }
@@ -3069,6 +3076,7 @@ const LiveGame = () => {
           newTimes[pid] = srvTime;
         }
       }
+      displayTimesRef.current = newTimes;
       setDisplayTimes(newTimes);
     }, 100);
     return () => clearInterval(interval);

@@ -696,14 +696,22 @@ function chooseBotVetoes(gameState, moverPos, vetoerPos) {
 
 // Apply a bot vetoer's bans for the current opponent turn (used when the vetoing
 // side is controlled by the bot). Mirrors submitVetoes' commit path.
-async function applyBotVetoes(io, gameState, gameId, moverPos, vetoerPos) {
+async function applyBotVetoes(io, gameState, gameId, moverPos, vetoerPos, playedMove = null) {
   const cfg = getVetoConfig(gameState);
   if (!cfg) return;
   const vs = syncVetoTurn(gameState);
   if (vs.phaseResolved) return;
   armVetoClock(gameState);
   const _botVetoStart = Date.now();
-  const chosen = chooseBotVetoes(gameState, moverPos, vetoerPos);
+  let chosen = chooseBotVetoes(gameState, moverPos, vetoerPos);
+  // Reactive + unlimited (no per-game bank): a human reactor only bothers vetoing
+  // when the ACTUAL played move is worth denying. Don't pre-ban moves the opponent
+  // didn't play — veto the played move only if it's among the ones the bot wanted
+  // to veto, otherwise skip vetoing entirely.
+  if (cfg.style === 'reactive' && cfg.perGame == null && playedMove) {
+    const playedSig = vetoSignature(playedMove);
+    chosen = chosen.filter(m => vetoSignature(m) === playedSig);
+  }
   const _botVetoMs = Date.now() - _botVetoStart;
   if (_botVetoMs > 60) console.log(`[veto-timing] bot veto decision took ${_botVetoMs}ms in game ${gameId}`);
   const sigs = Array.from(new Set(chosen.map(vetoSignature).filter(Boolean)));
@@ -6324,8 +6332,9 @@ function initializeSocket(server) {
             return socket.emit("error", { message: "Your move is under veto review — wait for your opponent's decision." });
           }
           // Bot vetoer: compute and apply its bans now (before enforcing this move).
+          // Pass the played move so reactive/unlimited games can veto only that move.
           if (vetoPositionIsBot(gameState, vetoerPos) && !gameState.vetoState.phaseResolved) {
-            await applyBotVetoes(io, gameState, gameId, gameState.currentTurn, vetoerPos);
+            await applyBotVetoes(io, gameState, gameId, gameState.currentTurn, vetoerPos, move);
           }
           if (!move._vetoCleared && isMoveBanned(gameState, move)) {
             return socket.emit("moveVetoed", {
