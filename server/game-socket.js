@@ -542,6 +542,7 @@ function syncVetoTurn(gameState) {
     vs.phaseResolved = false;
     vs.phaseOpen = false;
     vs.pendingMove = null;
+    vs.botMoveDispatched = false;
   } else if (vs.lastActionKey !== actionKey) {
     // Same mover, next action of a multi-action turn: fresh phase, keep the bank.
     vs.lastActionKey = actionKey;
@@ -549,6 +550,7 @@ function syncVetoTurn(gameState) {
     vs.phaseResolved = false;
     vs.phaseOpen = false;
     vs.pendingMove = null;
+    vs.botMoveDispatched = false;
   }
   return vs;
 }
@@ -704,11 +706,11 @@ async function applyBotVetoes(io, gameState, gameId, moverPos, vetoerPos, played
   armVetoClock(gameState);
   const _botVetoStart = Date.now();
   let chosen = chooseBotVetoes(gameState, moverPos, vetoerPos);
-  // Reactive + unlimited (no per-game bank): a human reactor only bothers vetoing
-  // when the ACTUAL played move is worth denying. Don't pre-ban moves the opponent
-  // didn't play — veto the played move only if it's among the ones the bot wanted
-  // to veto, otherwise skip vetoing entirely.
-  if (cfg.style === 'reactive' && cfg.perGame == null && playedMove) {
+  // Reactive: the vetoer reacts to the move the mover ACTUALLY played, so only
+  // ever veto that one move (and only if it's worth denying). Never pre-ban moves
+  // the opponent didn't play — in reactive that would show a pointless veto X on a
+  // move you didn't make. Applies regardless of the per-game bank.
+  if (cfg.style === 'reactive' && playedMove) {
     const playedSig = vetoSignature(playedMove);
     chosen = chosen.filter(m => vetoSignature(m) === playedSig);
   }
@@ -6068,6 +6070,16 @@ function initializeSocket(server) {
         if (gameState.vetoState && gameState.vetoState.phaseOpen && gameState.vetoState.pendingBotMove) {
           return;
         }
+        // A bot move was already dispatched for THIS turn as the outcome of a
+        // resolved veto (reactive: the held engine move was banned and the
+        // built-in AI substituted a ban-respecting replacement, or the held move
+        // was released). A late client re-submit of the engine's move must NOT be
+        // executed — the browser engine can't be re-driven, so it re-picks its
+        // banned move and would land on the vetoed square. Drop it.
+        if (gameState.vetoState && gameState.vetoState.botMoveDispatched) {
+          console.log(`[FairyStockfish] Dropping late engine submit for game ${gameId} — bot move already dispatched this turn`);
+          return;
+        }
         // Requester must be a player in the game (the human host of the bot match).
         const requester = gameState.players.find(p => p.id === userId);
         if (!requester) return socket.emit('error', { message: 'You are not a player in this game' });
@@ -6098,6 +6110,22 @@ function initializeSocket(server) {
           const held = await holdBotMoveForVeto(io, gameId, gameState, preMove);
           if (held) {
             console.log(`[FairyStockfish] Engine move held for veto in game ${gameId}`);
+            return;
+          }
+          // Not held (the veto phase already resolved — e.g. pre-emptive, where the
+          // human banned first). The browser engine computed WITHOUT knowing the
+          // bans, so its move may be a banned one. If so, don't execute it — run the
+          // built-in AI, which filters banned moves at the root, so the bot never
+          // lands on a vetoed square.
+          const vs = syncVetoTurn(gameState);
+          if (Array.isArray(vs.banned) && vs.banned.length && vs.banned.includes(vetoSignature(preMove))) {
+            console.log(`[FairyStockfish] Submitted move is banned in game ${gameId}; substituting a ban-respecting built-in AI move`);
+            vs.botMoveDispatched = true;
+            processBotTurn(io, gameId, gameState, null, {
+              forceServerMove: true,
+              fallbackDifficulty: fairyFallbackDifficulty(gameState),
+              isFairyFallback: true,
+            }).catch(e => console.error('[veto] FS banned-move substitution error:', e));
             return;
           }
         }
@@ -6274,7 +6302,10 @@ function initializeSocket(server) {
         } else if (heldBot) {
           // Reactive: a bot move was held for the human's reaction. If they banned
           // it, the bot recomputes a different move (phaseResolved is now set, so
-          // it won't be held again); otherwise the held move executes as-is.
+          // it won't be held again); otherwise the held move executes as-is. Mark
+          // the bot move as dispatched so a late client engine re-submit is dropped
+          // (the browser engine can't be re-driven and would re-pick its banned move).
+          vs.botMoveDispatched = true;
           const botMoveBanned = vs.banned.includes(vetoSignature(heldBot));
           if (botMoveBanned) {
             // The engine's move was banned. A Fairy-Stockfish bot's engine runs in
