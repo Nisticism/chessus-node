@@ -771,9 +771,53 @@ async function maybeHoldBotMoveForReactiveVeto(io, gameId, gameState, botMove) {
   return true;
 }
 
-// Which player's clock should tick right now due to veto (the vetoer while their
-// phase is active), or null when the normal mover's clock applies. Pre-emptive:
-// the vetoer's phase runs from the start of the mover's action until they submit
+// Fairy-Stockfish bot mover: the browser engine computes the move and submits it,
+// so it never passes through the JS-bot veto paths. This holds the submitted
+// engine move and opens the veto window (reactive reveals it; pre-emptive bans
+// blind). submitVetoes resolves it: if the human bans it, the SERVER AI recomputes
+// a ban-respecting replacement (the client engine can't be re-driven mid-hold);
+// otherwise the held engine move executes as-is. Returns true when held.
+async function holdBotMoveForVeto(io, gameId, gameState, botMove) {
+  const cfg = getVetoConfig(gameState);
+  if (!cfg) return false;
+  if (!botMove || botMove.type === 'pass' || botMove.isPass) return false;
+  const moverPos = gameState.currentTurn;
+  const vetoerPos = moverPos === 1 ? 2 : 1;
+  if (vetoPositionIsBot(gameState, vetoerPos)) return false; // only a human reacts
+  const vs = syncVetoTurn(gameState);
+  if (vs.phaseResolved) return false;
+  if (vetoBudgetRemaining(gameState, vetoerPos) <= 0) return false;
+  armVetoClock(gameState);
+  vs.pendingBotMove = botMove;
+  vs.phaseOpen = true;
+  try {
+    await db_pool.query("UPDATE games SET other_data = ? WHERE id = ?", [buildOtherData(gameState), gameId]);
+  } catch (_) { /* non-fatal */ }
+  const vetoerPlayer = gameState.players.find(p => p.position === vetoerPos);
+  emitToGameRoom(io, gameState, "vetoWindowOpened", {
+    gameId,
+    mover: moverPos,
+    vetoer: vetoerPos,
+    vetoerId: vetoerPlayer ? vetoerPlayer.id : null,
+    revealMove: cfg.style === 'reactive' ? botMove : null, // pre-emptive bans blind
+    style: cfg.style,
+    budget: {
+      perTurnRemaining: cfg.perTurn - (vs.usedThisTurn[vetoerPos] || 0),
+      perGameRemaining: cfg.perGame == null ? null : (vs.remaining[vetoerPos] != null ? vs.remaining[vetoerPos] : cfg.perGame),
+    },
+  });
+  emitVetoState(io, gameState, gameId);
+  return true;
+}
+
+// Difficulty the built-in AI should use to stand in for a Fairy-Stockfish bot
+// (per-move fallback + post-veto recompute), scaled by the configured strength.
+function fairyFallbackDifficulty(gameState) {
+  const lvl = Math.max(1, Math.min(5, parseInt(gameState?.botPlayer?.stockfishLevel, 10) || 3));
+  return lvl <= 1 ? 'easy' : (lvl === 2 ? 'medium' : 'hard');
+}
+
+
 // (so the mover's clock only starts once vetoes are in). Reactive: only during an
 // explicitly open window (after the mover submits a held move).
 function vetoClockPos(gameState) {
@@ -5999,6 +6043,12 @@ function initializeSocket(server) {
         if (gameState.currentTurn !== gameState.botPlayer.position) {
           return socket.emit('error', { message: "Not the bot's turn" });
         }
+        // If the engine's move for this turn is already held awaiting the human's
+        // veto, ignore duplicate submits (the client re-fires after its in-flight
+        // debounce while the board hasn't advanced).
+        if (gameState.vetoState && gameState.vetoState.phaseOpen && gameState.vetoState.pendingBotMove) {
+          return;
+        }
         // Requester must be a player in the game (the human host of the bot match).
         const requester = gameState.players.find(p => p.id === userId);
         if (!requester) return socket.emit('error', { message: 'You are not a player in this game' });
@@ -6022,6 +6072,16 @@ function initializeSocket(server) {
           preMove.promotionChar = move.promotionChar.toLowerCase();
         }
         console.log(`[FairyStockfish] Submitted move for game ${gameId}: ${JSON.stringify(preMove)}`);
+        // Veto power: let the human veto the engine's move before it lands (reactive
+        // reveals it, pre-emptive bans blind). If vetoed, the server AI picks a
+        // ban-respecting replacement since the browser engine can't be re-driven here.
+        if (getVetoConfig(gameState)) {
+          const held = await holdBotMoveForVeto(io, gameId, gameState, preMove);
+          if (held) {
+            console.log(`[FairyStockfish] Engine move held for veto in game ${gameId}`);
+            return;
+          }
+        }
         processBotTurn(io, gameId, gameState, preMove);
       } catch (err) {
         console.error('[submitFairyStockfishMove] error:', err);
@@ -6198,7 +6258,13 @@ function initializeSocket(server) {
           // it won't be held again); otherwise the held move executes as-is.
           const botMoveBanned = vs.banned.includes(vetoSignature(heldBot));
           if (botMoveBanned) {
-            processBotTurn(io, gameId, gameState).catch(e => console.error('[veto] bot recompute after veto error:', e));
+            // The engine's move was banned. A Fairy-Stockfish bot's engine runs in
+            // the browser and can't be re-driven mid-hold, so recompute with the
+            // built-in AI (which filters banned moves at the root); a JS bot simply
+            // recomputes normally (phaseResolved is now set, so it won't re-hold).
+            const isFs = gameState.botPlayer && gameState.botPlayer.difficulty === 'stockfish';
+            const opts = isFs ? { forceServerMove: true, fallbackDifficulty: fairyFallbackDifficulty(gameState), isFairyFallback: true } : {};
+            processBotTurn(io, gameId, gameState, null, opts).catch(e => console.error('[veto] bot recompute after veto error:', e));
           } else {
             processBotTurn(io, gameId, gameState, heldBot).catch(e => console.error('[veto] bot held move error:', e));
           }

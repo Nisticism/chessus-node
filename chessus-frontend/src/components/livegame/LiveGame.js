@@ -1343,6 +1343,9 @@ const LiveGame = () => {
     if (!fairyStockfish.engineReady) return;
     if (!fairyTranslation) return;
     if (fairyMoveInFlightRef.current) return;
+    // Don't recompute while the human is vetoing the engine's already-submitted
+    // move (it's held server-side); the veto resolution drives what happens next.
+    if (vetoWindow || vetoRevealMove) return;
 
     const fen = buildFairyFEN(
       gameState.pieces,
@@ -1511,6 +1514,8 @@ const LiveGame = () => {
     socket,
     gameId,
     currentUser?.id,
+    vetoWindow,
+    vetoRevealMove,
   ]);
 
   // Defensive re-anchor: any time the authoritative server-side currentTurn
