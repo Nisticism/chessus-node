@@ -404,6 +404,10 @@ const LiveGame = () => {
   const [vetoWindow, setVetoWindow] = useState(null);
   // Server-confirmed banned signatures for the current opponent turn (shown to the mover).
   const [vetoBanned, setVetoBanned] = useState([]);
+  // Which player position the current bans apply to (the mover). Ban X-marks are
+  // only rendered for that player — otherwise the vetoer would see a spurious
+  // "flash" on the board, sometimes landing on their own moves.
+  const [vetoBannedMover, setVetoBannedMover] = useState(null);
   // Vetoes I'm building as the vetoer (array of move/placement descriptors).
   const [vetoSelection, setVetoSelection] = useState([]);
   // Opponent piece I've clicked to preview its candidate moves for vetoing.
@@ -547,7 +551,7 @@ const LiveGame = () => {
   const boardAnimationsEnabled = typeof window !== 'undefined' && localStorage.getItem('boardAnimations') !== 'false';
   const pieceShadowEnabled = typeof window !== 'undefined' && localStorage.getItem('pieceShadow') === 'true';
   const persistLastMoveHighlight = typeof window !== 'undefined' && localStorage.getItem('persistLastMoveHighlight') === 'true';
-  const hideMoveArrow = typeof window !== 'undefined' && localStorage.getItem('hideMoveArrow') === 'true';
+  const hideMoveArrow = typeof window === 'undefined' || localStorage.getItem('hideMoveArrow') !== 'false';
 
   // Track previous lastMove so we can fade out the prior move's highlight for ~1s
   // after a new move is made.
@@ -1347,6 +1351,17 @@ const LiveGame = () => {
     // Don't recompute while the human is vetoing the engine's already-submitted
     // move (it's held server-side); the veto resolution drives what happens next.
     if (vetoWindow || vetoRevealMove) return;
+    // Pre-emptive veto vs a Fairy-Stockfish mover: the human vetoer bans FIRST,
+    // then the engine plays a ban-respecting move. Hold the engine compute until
+    // the human has submitted (or skipped) their vetoes this turn — otherwise the
+    // engine would submit its move before the ban is applied and land on the
+    // vetoed square. `vetoDoneThisTurn` flips true once the vetoer submits/skips
+    // (or on the server-confirmed resolution via vetoesUpdated).
+    {
+      const gt = gameState.gameType;
+      const isPreemptiveVeto = gt?.veto_enabled && !gt?.simultaneous_turns && gt?.veto_style !== 'reactive';
+      if (isPreemptiveVeto && !vetoDoneThisTurn) return;
+    }
 
     const fen = buildFairyFEN(
       gameState.pieces,
@@ -1517,6 +1532,7 @@ const LiveGame = () => {
     currentUser?.id,
     vetoWindow,
     vetoRevealMove,
+    vetoDoneThisTurn,
   ]);
 
   // Defensive re-anchor: any time the authoritative server-side currentTurn
@@ -2416,6 +2432,7 @@ const LiveGame = () => {
     const unsubscribeVetoesUpdated = onGameEvent("vetoesUpdated", ({ gameId: vGameId, banned, mover }) => {
       if (parseInt(vGameId) !== parseInt(gameId)) return;
       setVetoBanned(Array.isArray(banned) ? banned : []);
+      setVetoBannedMover(mover != null ? mover : null);
       setVetoPreviewSquares(null);
       setVetoPreviewMoves(null);
       if (mover != null && myPosition() === mover) {
@@ -2474,6 +2491,9 @@ const LiveGame = () => {
 
     const unsubscribeVetoSubmitted = onGameEvent("vetoSubmitted", ({ banned, budget }) => {
       setVetoBanned(Array.isArray(banned) ? banned : []);
+      // These are the bans I (the vetoer) just committed against my opponent, so
+      // the mover is the opponent — I should not see the X-marks on my own board.
+      setVetoBannedMover(myPosition() === 1 ? 2 : 1);
       setVetoMyBudget(budget || null);
       setVetoWindow(null);
       setVetoSelection([]);
@@ -2529,6 +2549,7 @@ const LiveGame = () => {
     const unsubscribeMoveVetoed = onGameEvent("moveVetoed", ({ gameId: vGameId, mover, message, banned }) => {
       if (vGameId != null && parseInt(vGameId) !== parseInt(gameId)) return;
       if (Array.isArray(banned)) setVetoBanned(banned);
+      if (mover != null) setVetoBannedMover(mover);
       if (mover == null || myPosition() === mover) {
         setVetoMoveUnderReview(false);
         setSelectedPiece(null);
@@ -2634,6 +2655,7 @@ const LiveGame = () => {
     if (vetoBoundaryRef.current !== boundaryKey) {
       vetoBoundaryRef.current = boundaryKey;
       setVetoBanned([]);
+      setVetoBannedMover(null);
       setVetoWindow(null);
       setVetoSelection([]);
       setVetoSelectedPiece(null);
@@ -2878,22 +2900,50 @@ const LiveGame = () => {
   const renderVetoActionButtons = useCallback(() => {
     if (!vetoUi.on) return null;
     const canAct = vetoUi.canSelect;
+    const isReactive = gameState?.gameType?.veto_style === 'reactive';
+    const revealDesc = vetoRevealMove ? {
+      pieceId: vetoRevealMove.pieceId,
+      from: vetoRevealMove.from,
+      to: vetoRevealMove.to,
+      isRangedAttack: !!vetoRevealMove.isRangedAttack,
+      isCastling: !!vetoRevealMove.isCastling,
+      castlingWith: vetoRevealMove.castlingWith,
+      via: vetoRevealMove.via,
+    } : null;
+    const revealSelected = !!revealDesc && vetoSelection.some(d => vetoSignatureClient(d) === vetoSignatureClient(revealDesc));
+    const canVetoMove = canAct && isReactive && !!revealDesc && !revealSelected;
     return (
-      <div className={styles["control-buttons-pass"]}>
-        <button className={`${styles.btn} ${styles["btn-success"]}`} disabled={!canAct} onClick={submitVetoSelection} title="Submit your vetoes">
-          Submit Veto{vetoSelection.length > 0 ? ` (${vetoSelection.length})` : ''}
-        </button>
-        <button className={`${styles.btn} ${styles["btn-secondary"]}`} disabled={!canAct} onClick={skipVetoSelection} title="Decline to veto this turn">Skip Veto</button>
-        <button className={`${styles.btn} ${styles["btn-secondary"]}`} disabled={!canAct || vetoSelection.length === 0} onClick={clearVetoSelection} title="Clear your selected vetoes">Clear Veto</button>
-      </div>
+      <>
+        {isReactive && (
+          <div className={styles["control-buttons-pass"]}>
+            <button
+              className={`${styles.btn} ${styles["btn-danger"]}`}
+              disabled={!canVetoMove}
+              onClick={() => revealDesc && addVetoDescriptor(revealDesc)}
+              title="Veto the opponent's revealed move to force them to pick another"
+            >
+              {revealSelected ? 'Move vetoed ✓' : 'Veto this move'}
+            </button>
+          </div>
+        )}
+        <div className={styles["control-buttons-pass"]}>
+          <button className={`${styles.btn} ${styles["btn-success"]}`} disabled={!canAct} onClick={submitVetoSelection} title="Submit your vetoes">
+            Submit Veto{vetoSelection.length > 0 ? ` (${vetoSelection.length})` : ''}
+          </button>
+          <button className={`${styles.btn} ${styles["btn-secondary"]}`} disabled={!canAct} onClick={skipVetoSelection} title="Decline to veto this turn">Skip Veto</button>
+          <button className={`${styles.btn} ${styles["btn-secondary"]}`} disabled={!canAct || vetoSelection.length === 0} onClick={clearVetoSelection} title="Clear your selected vetoes">Clear Veto</button>
+        </div>
+      </>
     );
-  }, [vetoUi.on, vetoUi.canSelect, vetoSelection.length, submitVetoSelection, skipVetoSelection, clearVetoSelection]);
+  }, [vetoUi.on, vetoUi.canSelect, gameState?.gameType?.veto_style, vetoRevealMove, vetoSelection, addVetoDescriptor, submitVetoSelection, skipVetoSelection, clearVetoSelection]);
 
   // Board-overlay square counts for veto: candidate targets (vetoer), selected
   // bans (vetoer), and server-confirmed bans (mover). Multiple vetoes can stack
   // on one square (e.g. two pieces moving there, or a move + a ranged attack).
   const vetoBannedCounts = useMemo(() => {
     const m = new Map();
+    // Only the mover (the player whose moves were banned) sees the X-marks.
+    if (vetoBannedMover != null && (currentPlayer?.position ?? null) !== vetoBannedMover) return m;
     for (const sig of vetoBanned || []) {
       if (typeof sig !== 'string') continue;
       let key;
@@ -2902,11 +2952,12 @@ const LiveGame = () => {
       if (key) m.set(key, (m.get(key) || 0) + 1);
     }
     return m;
-  }, [vetoBanned]);
+  }, [vetoBanned, vetoBannedMover, currentPlayer?.position]);
   // Per-square list of vetoed-move labels (newest first) for hover tooltips.
   const vetoBannedMoves = useMemo(() => {
     const bh = gameState?.gameType?.board_height || 8;
     const m = new Map();
+    if (vetoBannedMover != null && (currentPlayer?.position ?? null) !== vetoBannedMover) return m;
     const all = vetoBanned || [];
     for (let i = all.length - 1; i >= 0; i--) {
       const d = parseVetoSig(all[i]);
@@ -2919,7 +2970,7 @@ const LiveGame = () => {
       m.get(key).push(label);
     }
     return m;
-  }, [vetoBanned, gameState?.gameType?.board_height]);
+  }, [vetoBanned, vetoBannedMover, gameState?.gameType?.board_height, currentPlayer?.position]);
   const vetoSelectedCounts = useMemo(() => {
     const m = new Map();
     for (const d of vetoSelection || []) {
@@ -8508,28 +8559,13 @@ const LiveGame = () => {
               const perGame = vetoMyBudget?.perGameRemaining;
               const bh = gt?.board_height || 8;
               const sq = (p) => p ? `${String.fromCharCode(97 + p.x)}${bh - p.y}` : '?';
-              const revealDesc = vetoRevealMove ? {
-                pieceId: vetoRevealMove.pieceId,
-                from: vetoRevealMove.from,
-                to: vetoRevealMove.to,
-                isRangedAttack: !!vetoRevealMove.isRangedAttack,
-                isCastling: !!vetoRevealMove.isCastling,
-                castlingWith: vetoRevealMove.castlingWith,
-                via: vetoRevealMove.via,
-              } : null;
-              const revealSelected = !!revealDesc && vetoSelection.some(d => vetoSignatureClient(d) === vetoSignatureClient(revealDesc));
               return (
                 <div className={styles["veto-panel"]}>
                   <div className={styles["veto-title"]}>Veto phase — ban your opponent's moves</div>
                   {vStyle === 'reactive' && vetoRevealMove ? (
                     <>
                       <div className={styles["veto-hint"]}>
-                        Your opponent played <strong>{sq(vetoRevealMove.from)}→{sq(vetoRevealMove.to)}{vetoRevealMove.isRangedAttack ? ' (ranged)' : ''}</strong> (highlighted in blue). Veto it to force a different move, and/or ban other potential moves, then Submit (or press Enter).
-                      </div>
-                      <div className={styles["veto-buttons"]}>
-                        <button className={`${styles.btn} ${styles["btn-danger"]}`} disabled={revealSelected} onClick={() => addVetoDescriptor(revealDesc)}>
-                          {revealSelected ? 'Move vetoed ✓' : 'Veto this move'}
-                        </button>
+                        Your opponent played <strong>{sq(vetoRevealMove.from)}→{sq(vetoRevealMove.to)}{vetoRevealMove.isRangedAttack ? ' (ranged)' : ''}</strong> (highlighted in blue). Use "Veto this move" in the Actions panel to force a different move, and/or ban other potential moves, then Submit (or press Enter).
                       </div>
                     </>
                   ) : (
@@ -8546,7 +8582,7 @@ const LiveGame = () => {
               );
             }
             if (iAmVetoer) {
-              return <div className={styles["veto-panel"]}>Veto power is active. Wait for your opponent to submit a move, then you may veto it.</div>;
+              return <div className={styles["veto-panel"]}>Veto ability is active. Wait for your opponent to submit a move, then you may veto it.</div>;
             }
             if (vetoMoveUnderReview) {
               return <div className={styles["veto-panel"]}>Your move is under veto review… <span style={{ opacity: 0.8 }}>(press Esc or click your moved piece to take it back)</span></div>;

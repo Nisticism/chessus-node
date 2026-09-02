@@ -542,14 +542,14 @@ const Step2WinConditions = ({ gameData, updateGameData }) => {
       </ToggleRow>
 
       <ToggleRow
-        title="Veto Power"
+        title="Veto Ability"
         tooltip="When enabled, each player gets a bank of vetoes they can spend to ban specific opponent moves. A veto bans one candidate move (or one placement square) chosen from the opponent's options. Vetoes never affect check — a king in check must still escape even if the capturing move is vetoed. Not compatible with Simultaneous Turns."
         checked={!!gameData.veto_enabled}
         onChange={(val) => handleChange("veto_enabled", val)}
       >
         {gameData.simultaneous_turns && (
           <p className={styles["validation-error"]} style={{ marginBottom: '0.75rem' }}>
-            Veto Power is not compatible with Simultaneous Turns. Disable one of them.
+            Veto Ability is not compatible with Simultaneous Turns. Disable one of them.
           </p>
         )}
         <div className={styles["sub-field"]}>

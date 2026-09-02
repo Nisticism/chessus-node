@@ -148,7 +148,8 @@ const Preferences = () => {
   });
 
   const [hideMoveArrow, setHideMoveArrow] = useState(() => {
-    return localStorage.getItem('hideMoveArrow') === 'true';
+    // Default OFF (hidden) for new accounts; only shown when explicitly enabled.
+    return localStorage.getItem('hideMoveArrow') !== 'false';
   });
 
   const [siteTheme, setSiteTheme] = useState(() => {

@@ -2604,7 +2604,7 @@ const GameTypeView = () => {
       const promotionLine = game.veto_disallow_promotion
         ? '• The move that triggers promotion cannot be vetoed.'
         : '• The move that triggers promotion can be vetoed like any move; if vetoed, promotion does not happen. The specific promotion choice can never be vetoed.';
-      specialRulesContent.push(`**Veto Power**\nEach player has a bank of vetoes used to ban specific opponent moves. ${budgetLine}\n\n• ${styleLine}\n${placementLine}\n${promotionLine}\n• Vetoes never affect check: a king in check must still escape even if the capturing move is vetoed, and vetoes can never be used to leave the opponent with no legal move.`);
+      specialRulesContent.push(`**Veto Ability**\nEach player has a bank of vetoes used to ban specific opponent moves. ${budgetLine}\n\n• ${styleLine}\n${placementLine}\n${promotionLine}\n• Vetoes never affect check: a king in check must still escape even if the capturing move is vetoed, and vetoes can never be used to leave the opponent with no legal move.`);
     }
 
     // Fog of War mechanic
