@@ -15,8 +15,9 @@ const COPY = {
   },
   piecePlacement: {
     title: "Fairy Stockfish compatibility - Board & Placement",
-    yes:  "Fog of War off, no placement-action, no start repositions; randomization 'none', 'backrow' or 'mirrored' (the Chess960 / Fischer-random style)",
-    no:   "Fog of War, place-pieces action, start repositions; randomization 'independent', 'shared' or 'full'",
+    yes:  "no placement-action, no start repositions; randomization 'none', 'backrow' or 'mirrored' (the Chess960 / Fischer-random style)",
+    no:   "place-pieces action, start repositions; randomization 'independent', 'shared' or 'full'",
+    safe: "Fog of War, Hidden Enemy Pieces, and Veto Power - the game is playable, but the engine sees the full board / doesn't strategically model these mechanics",
   },
   pieceMovement: {
     title: "Fairy Stockfish compatibility - Piece Movement",
@@ -53,6 +54,9 @@ export default function FairyStockfishInfoNote({ kind }) {
       <div style={{ fontWeight: 600, marginBottom: 4 }}>{c.title}</div>
       <div><span style={{ color: "#7bd88f" }}>Compatible:</span> {c.yes}</div>
       <div><span style={{ color: "#ff7a7a" }}>Not compatible:</span> {c.no}</div>
+      {c.safe && (
+        <div><span style={{ color: "#e2c14d" }}>Playable, but not modeled:</span> {c.safe}</div>
+      )}
     </div>
   );
 }
