@@ -1,0 +1,114 @@
+/* Shared board zoom/fit viewport. Used across all board surfaces via useBoardViewport. */
+
+.viewport {
+  position: relative;
+  width: 100%;
+  overflow: auto;
+  display: flex;               /* centers the board when it's smaller than the viewport */
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain; /* keep zoom scroll inside the container, not the page */
+  scrollbar-width: thin;
+}
+
+/* Hide scrollbars while the board fits (or squares are comfortably large). The board
+   is still pannable via drag/pinch; scrollbars only appear when zoomed in enough. */
+.noScrollbars {
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+    display: none;
+  }
+}
+
+/* The sized board wrapper. Its width/height come from the hook (contentStyle). */
+.content {
+  flex: 0 0 auto;
+}
+
+/* Zoom widget — sits below the board (or beside it for tall boards), never overlapping. */
+.controls {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bg-dark, #0b1a33) 82%, transparent);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.14));
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.28);
+  pointer-events: auto;
+  flex: 0 0 auto;
+}
+
+.controls.below {          /* below the board */
+  flex-direction: row;
+}
+
+.controls.side {           /* beside a tall board */
+  flex-direction: column;
+  margin-top: 4px;
+}
+
+/* Transient error/notice toast shown above the board. */
+.boardToast {
+  position: absolute;
+  top: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 40;
+  max-width: 92%;
+  padding: 8px 14px;
+  border-radius: 8px;
+  background: rgba(190, 40, 45, 0.96);
+  color: #fff;
+  font-size: 0.9rem;
+  font-weight: 600;
+  line-height: 1.3;
+  text-align: center;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+  animation: boardToastIn 0.14s ease-out;
+}
+
+@keyframes boardToastIn {
+  from { opacity: 0; transform: translate(-50%, -6px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+
+.btn {
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-heading, #eaf1ff);
+  cursor: pointer;
+  transition: background 0.12s ease, opacity 0.12s ease;
+
+  svg { width: 16px; height: 16px; display: block; }
+
+  &:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--text-heading, #fff) 16%, transparent);
+  }
+
+  &:active:not(:disabled) {
+    background: color-mix(in srgb, var(--text-heading, #fff) 26%, transparent);
+  }
+
+  &:disabled {
+    opacity: 0.35;
+    cursor: default;
+  }
+}
+
+@media (max-width: 768px) {
+  .btn {           /* larger touch targets on mobile */
+    width: 38px;
+    height: 38px;
+    svg { width: 18px; height: 18px; }
+  }
+  .controls { gap: 6px; }
+}

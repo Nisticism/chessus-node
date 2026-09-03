@@ -152,6 +152,10 @@ const Preferences = () => {
     return localStorage.getItem('hideMoveArrow') !== 'false';
   });
 
+  const [hideBoardZoomWidget, setHideBoardZoomWidget] = useState(() => {
+    return localStorage.getItem('hideBoardZoomWidget') === 'true';
+  });
+
   const [siteTheme, setSiteTheme] = useState(() => {
     return localStorage.getItem('siteTheme') || 'grove';
   });
@@ -268,6 +272,12 @@ const Preferences = () => {
   useEffect(() => {
     localStorage.setItem('hideMoveArrow', hideMoveArrow ? 'true' : 'false');
   }, [hideMoveArrow]);
+
+  useEffect(() => {
+    localStorage.setItem('hideBoardZoomWidget', hideBoardZoomWidget ? 'true' : 'false');
+    // Notify any mounted board zoom widgets in this same tab.
+    window.dispatchEvent(new Event('boardZoomWidgetPrefChanged'));
+  }, [hideBoardZoomWidget]);
 
   useEffect(() => {
     localStorage.setItem('pieceShadow', pieceShadow ? 'true' : 'false');
@@ -594,6 +604,12 @@ const Preferences = () => {
               onChange={(v) => setHideMoveArrow(!v)}
               label="Show last-move arrow"
               tooltip={<InfoTooltip text="Displays a directional arrow on the square a piece moved from, indicating which direction it moved. Uncheck to hide the arrow while keeping the square highlight." />}
+            />
+            <ToggleSwitch
+              checked={!hideBoardZoomWidget}
+              onChange={(v) => setHideBoardZoomWidget(!v)}
+              label="Show board zoom controls"
+              tooltip={<InfoTooltip text="Shows the on-board zoom widget (zoom in/out and fit buttons). When hidden, you can still zoom with the mouse wheel over the board or a two-finger pinch on touch devices." />}
             />
           </div>
 
