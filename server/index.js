@@ -2569,196 +2569,20 @@ app.post("/api/pieces/duplicates", async (req, res) => {
       return res.json({ matches: [] });
     }
 
-    // These are ALL functional columns � everything that controls how a piece
-    // actually behaves, excluding identity (name, images, description, category,
-    // creator, timestamps). Comparison is field-by-field, short-circuits on
-    // the first difference so the inner loop is fast.
-    const BOOL_COLS = [
-      'repeating_movement','first_move_only','first_move_only_capture',
-      'up_left_movement_exact','up_movement_exact','up_right_movement_exact','right_movement_exact',
-      'down_right_movement_exact','down_movement_exact','down_left_movement_exact','left_movement_exact',
-      'up_left_capture_exact','up_capture_exact','up_right_capture_exact','right_capture_exact',
-      'down_right_capture_exact','down_capture_exact','down_left_capture_exact','left_capture_exact',
-      'up_left_attack_range_exact','up_attack_range_exact','up_right_attack_range_exact','right_attack_range_exact',
-      'down_right_attack_range_exact','down_attack_range_exact','down_left_attack_range_exact','left_attack_range_exact',
-      'repeating_ratio','repeating_capture','repeating_ratio_capture',
-      'step_by_step_attack_style',
-      'can_hop_over_allies','can_hop_over_enemies','exact_ratio_hop_only','directional_hop_disabled',
-      'hop_stop_at_occupied','directional_hop_only',
-      'can_hop_attack_over_allies','can_hop_attack_over_enemies',
-      'exact_ratio_hop_only_attack','directional_hop_disabled_attack','hop_stop_at_occupied_attack','directional_hop_only_attack',
-      'can_fire_over_allies','can_fire_over_enemies',
-      'can_capture_enemy_via_range','can_capture_enemy_on_move',
-      'can_capture_allies','cannot_be_captured',
-      'has_checkmate_rule','has_check_rule','has_lose_on_capture_rule',
-      'can_castle','can_promote','can_en_passant',
-      'capture_on_hop','chain_capture_enabled','free_move_after_promotion',
-      'chain_hop_allies','must_move_if_able','must_move_uses_action',
-      'can_capture_ally_via_range','can_capture_ally_on_range','can_attack_on_iteration',
-      'repeating_directional_ranged_attack','repeating_ratio_ranged_attack',
-      'directional_movement_change','repeating_movement_change','require_empty_via_movement',
-      'up_left_movement_change_exact','up_movement_change_exact','up_right_movement_change_exact','right_movement_change_exact',
-      'down_right_movement_change_exact','down_movement_change_exact','down_left_movement_change_exact','left_movement_change_exact',
-      'directional_capture_change','repeating_capture_change','require_empty_via_capture',
-      'require_direction_change','require_direction_change_capture',
-      'up_left_capture_change_exact','up_capture_change_exact','up_right_capture_change_exact','right_capture_change_exact',
-      'down_right_capture_change_exact','down_capture_change_exact','down_left_capture_change_exact','left_capture_change_exact',
-    ];
-    // Integer columns � coerce null/undefined to 0 so that an older piece
-    // (column was NULL from a migration default) and a newer piece (wizard sent 0)
-    // are still considered functionally identical for disabled/inapplicable fields.
-    // NOTE: available_for_moves is intentionally excluded from comparison.
-    // It is a future "first N game-turns" restriction (like a pawn's extended first move)
-    // that is NOT yet consumed by game-socket.js. Old pieces have their available_for_moves
-    // set to 1 as a data artifact from the legacy piece_movement boolean migration; a startup
-    // migration now cleans those values to NULL. Re-add this column once the feature is
-    // implemented in game-socket.js and the piece wizard exposes it.
-    const INT_COLS = [
-      'piece_width','piece_height',
-      'up_left_movement','up_movement','up_right_movement','right_movement',
-      'down_right_movement','down_movement','down_left_movement','left_movement',
-      'up_left_movement_available_for','up_movement_available_for','up_right_movement_available_for','right_movement_available_for',
-      'down_right_movement_available_for','down_movement_available_for','down_left_movement_available_for','left_movement_available_for',
-      'ratio_one_movement','ratio_two_movement','max_ratio_iterations',
-      'step_by_step_movement_value',
-      'min_turns_per_move','max_turns_per_move',
-      'up_left_capture','up_capture','up_right_capture','right_capture',
-      'down_right_capture','down_capture','down_left_capture','left_capture',
-      'up_left_capture_available_for','up_capture_available_for','up_right_capture_available_for','right_capture_available_for',
-      'down_right_capture_available_for','down_capture_available_for','down_left_capture_available_for','left_capture_available_for',
-      'ratio_one_capture','ratio_two_capture','max_ratio_capture_iterations','step_by_step_capture',
-      'up_left_attack_range','up_attack_range','up_right_attack_range','right_attack_range',
-      'down_right_attack_range','down_attack_range','down_left_attack_range','left_attack_range',
-      'up_left_attack_range_available_for','up_attack_range_available_for','up_right_attack_range_available_for','right_attack_range_available_for',
-      'down_right_attack_range_available_for','down_attack_range_available_for','down_left_attack_range_available_for','left_attack_range_available_for',
-      'ratio_one_attack_range','ratio_two_attack_range',
-      'step_by_step_attack_value',
-      'capture_actions_per_turn','ranged_capture_actions_per_turn',
-      'max_chain_hops',
-      'max_directional_hop_pieces','max_directional_hop_pieces_attack',
-      'available_for_captures',
-      'up_left_movement_change','up_movement_change','up_right_movement_change','right_movement_change',
-      'down_right_movement_change','down_movement_change','down_left_movement_change','left_movement_change',
-      'up_left_movement_change_available_for','up_movement_change_available_for','up_right_movement_change_available_for','right_movement_change_available_for',
-      'down_right_movement_change_available_for','down_movement_change_available_for','down_left_movement_change_available_for','left_movement_change_available_for',
-      'up_left_capture_change','up_capture_change','up_right_capture_change','right_capture_change',
-      'down_right_capture_change','down_capture_change','down_left_capture_change','left_capture_change',
-      'up_left_capture_change_available_for','up_capture_change_available_for','up_right_capture_change_available_for','right_capture_change_available_for',
-      'down_right_capture_change_available_for','down_capture_change_available_for','down_left_capture_change_available_for','left_capture_change_available_for',
-      // Iteration min/max fields — all affect how many times a move pattern may be repeated
-      'max_directional_movement_iterations','min_directional_movement_iterations',
-      'min_ratio_iterations',
-      'max_directional_ranged_attack_iterations','min_directional_ranged_attack_iterations',
-      'max_ratio_ranged_attack_iterations','min_ratio_ranged_attack_iterations',
-    ];
-    // JSON / text columns � compare by canonical JSON (or trimmed string).
-    // Empty arrays and empty objects are treated as null (= "not configured").
-    const JSON_COLS = [
-      'special_scenario_moves','special_scenario_captures',
-      'custom_movement_squares','custom_attack_squares',
-      'promotion_pieces_ids',
-    ];
+    // Functional comparison is shared with the piece comparer
+    // (/api/pieces/:id/compare/:otherId) via comparePieceRows, so the uniqueness
+    // checker and "Compare Pieces" can never disagree: if the comparer reports no
+    // differences, this reports a duplicate. That includes the gate table, so a
+    // setting whose enabling ability is off is not treated as making a piece unique.
+    const isIdentical = (dbPiece) => comparePieceRows(fields, dbPiece).differences.length === 0;
 
-    const normBool = (v) => (v === 1 || v === true || v === 'true' || v === '1') ? 1 : 0;
-    const normInt  = (v) => (v === null || v === undefined || v === '' || v === 'null') ? 0 : (parseInt(v, 10) || 0);
-    const normJson = (v) => {
-      if (v === null || v === undefined || v === '' || v === 'null') return null;
-      if (typeof v === 'string') {
-        try {
-          const parsed = JSON.parse(v);
-          if (Array.isArray(parsed) && parsed.length === 0) return null;
-          if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed) && Object.keys(parsed).length === 0) return null;
-          return JSON.stringify(parsed);
-        } catch { return v.trim() || null; }
-      }
-      if (Array.isArray(v) && v.length === 0) return null;
-      if (v !== null && typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length === 0) return null;
-      try { return JSON.stringify(v); } catch { return null; }
-    };
-
-    // Check if two pieces are functionally identical. Short-circuits on first diff.
-    const isIdentical = (dbPiece) => {
-      for (const col of BOOL_COLS) {
-        if (normBool(dbPiece[col]) !== normBool(fields[col])) return false;
-      }
-      for (const col of INT_COLS) {
-        if (normInt(dbPiece[col]) !== normInt(fields[col])) return false;
-      }
-      for (const col of JSON_COLS) {
-        if (normJson(dbPiece[col]) !== normJson(fields[col])) return false;
-      }
-      return true;
-    };
-
+    // p.* rather than an explicit column list: comparePieceRows reads gate inputs
+    // (can_capture_enemy_via_range, chain_capture_enabled, directional_movement_change,
+    // …) as well as the compared columns, and a column missing from the SELECT would
+    // read as undefined and silently close its gate.
     const [pieces] = await db_pool.query(`
-      SELECT p.id, p.piece_name, p.is_anonymous_creator,
-        CASE WHEN p.is_anonymous_creator = 1 THEN 'Anonymous' ELSE u.username END AS creator_username,
-        p.piece_width, p.piece_height,
-        p.directional_movement_style, p.repeating_movement, p.first_move_only, p.first_move_only_capture,
-        p.up_left_movement, p.up_movement, p.up_right_movement, p.right_movement,
-        p.down_right_movement, p.down_movement, p.down_left_movement, p.left_movement,
-        p.up_left_movement_exact, p.up_movement_exact, p.up_right_movement_exact, p.right_movement_exact,
-        p.down_right_movement_exact, p.down_movement_exact, p.down_left_movement_exact, p.left_movement_exact,
-        p.up_left_movement_available_for, p.up_movement_available_for, p.up_right_movement_available_for, p.right_movement_available_for,
-        p.down_right_movement_available_for, p.down_movement_available_for, p.down_left_movement_available_for, p.left_movement_available_for,
-        p.ratio_movement_style, p.ratio_one_movement, p.ratio_two_movement, p.repeating_ratio, p.max_ratio_iterations,
-        p.step_by_step_movement_style, p.step_by_step_movement_value,
-        p.can_hop_over_allies, p.can_hop_over_enemies, p.exact_ratio_hop_only, p.directional_hop_disabled,
-        p.hop_stop_at_occupied,
-        p.min_turns_per_move, p.max_turns_per_move,
-        p.special_scenario_moves,
-        p.can_capture_enemy_via_range, p.can_capture_enemy_on_move,
-        p.first_move_only_capture, p.available_for_captures,
-        p.up_left_capture, p.up_capture, p.up_right_capture, p.right_capture,
-        p.down_right_capture, p.down_capture, p.down_left_capture, p.left_capture,
-        p.up_left_capture_exact, p.up_capture_exact, p.up_right_capture_exact, p.right_capture_exact,
-        p.down_right_capture_exact, p.down_capture_exact, p.down_left_capture_exact, p.left_capture_exact,
-        p.up_left_capture_available_for, p.up_capture_available_for, p.up_right_capture_available_for, p.right_capture_available_for,
-        p.down_right_capture_available_for, p.down_capture_available_for, p.down_left_capture_available_for, p.left_capture_available_for,
-        p.ratio_one_capture, p.ratio_two_capture, p.repeating_capture, p.repeating_ratio_capture, p.max_ratio_capture_iterations, p.step_by_step_capture,
-        p.up_left_attack_range, p.up_attack_range, p.up_right_attack_range, p.right_attack_range,
-        p.down_right_attack_range, p.down_attack_range, p.down_left_attack_range, p.left_attack_range,
-        p.up_left_attack_range_exact, p.up_attack_range_exact, p.up_right_attack_range_exact, p.right_attack_range_exact,
-        p.down_right_attack_range_exact, p.down_attack_range_exact, p.down_left_attack_range_exact, p.left_attack_range_exact,
-        p.up_left_attack_range_available_for, p.up_attack_range_available_for, p.up_right_attack_range_available_for, p.right_attack_range_available_for,
-        p.down_right_attack_range_available_for, p.down_attack_range_available_for, p.down_left_attack_range_available_for, p.left_attack_range_available_for,
-        p.ratio_one_attack_range, p.ratio_two_attack_range,
-        p.step_by_step_attack_style, p.step_by_step_attack_value,
-        p.capture_actions_per_turn, p.ranged_capture_actions_per_turn,
-        p.special_scenario_captures,
-        p.can_fire_over_allies, p.can_fire_over_enemies, p.can_en_passant,
-        p.capture_on_hop, p.chain_capture_enabled, p.free_move_after_promotion, p.promotion_pieces_ids,
-        p.can_hop_attack_over_allies, p.can_hop_attack_over_enemies, p.chain_hop_allies,
-        p.exact_ratio_hop_only_attack, p.directional_hop_disabled_attack, p.hop_stop_at_occupied_attack, p.directional_hop_only, p.directional_hop_only_attack,
-        p.max_directional_hop_pieces, p.max_directional_hop_pieces_attack,
-        p.can_capture_allies, p.cannot_be_captured, p.max_chain_hops,
-        p.custom_movement_squares, p.custom_attack_squares,
-        p.must_move_if_able, p.must_move_uses_action,
-        p.has_checkmate_rule, p.has_check_rule, p.has_lose_on_capture_rule,
-        p.can_castle, p.can_promote,
-        p.can_capture_ally_via_range, p.can_capture_ally_on_range, p.can_attack_on_iteration,
-        p.repeating_directional_ranged_attack, p.repeating_ratio_ranged_attack,
-        p.directional_movement_change,
-        p.up_left_movement_change, p.up_movement_change, p.up_right_movement_change, p.right_movement_change,
-        p.down_right_movement_change, p.down_movement_change, p.down_left_movement_change, p.left_movement_change,
-        p.up_left_movement_change_exact, p.up_movement_change_exact, p.up_right_movement_change_exact, p.right_movement_change_exact,
-        p.down_right_movement_change_exact, p.down_movement_change_exact, p.down_left_movement_change_exact, p.left_movement_change_exact,
-        p.up_left_movement_change_available_for, p.up_movement_change_available_for, p.up_right_movement_change_available_for, p.right_movement_change_available_for,
-        p.down_right_movement_change_available_for, p.down_movement_change_available_for, p.down_left_movement_change_available_for, p.left_movement_change_available_for,
-        p.repeating_movement_change, p.require_empty_via_movement,
-        p.directional_capture_change,
-        p.up_left_capture_change, p.up_capture_change, p.up_right_capture_change, p.right_capture_change,
-        p.down_right_capture_change, p.down_capture_change, p.down_left_capture_change, p.left_capture_change,
-        p.up_left_capture_change_exact, p.up_capture_change_exact, p.up_right_capture_change_exact, p.right_capture_change_exact,
-        p.down_right_capture_change_exact, p.down_capture_change_exact, p.down_left_capture_change_exact, p.left_capture_change_exact,
-        p.up_left_capture_change_available_for, p.up_capture_change_available_for, p.up_right_capture_change_available_for, p.right_capture_change_available_for,
-        p.down_right_capture_change_available_for, p.down_capture_change_available_for, p.down_left_capture_change_available_for, p.left_capture_change_available_for,
-        p.repeating_capture_change, p.require_empty_via_capture,
-        p.require_direction_change, p.require_direction_change_capture,
-        p.max_directional_movement_iterations, p.min_directional_movement_iterations,
-        p.min_ratio_iterations,
-        p.max_directional_ranged_attack_iterations, p.min_directional_ranged_attack_iterations,
-        p.max_ratio_ranged_attack_iterations, p.min_ratio_ranged_attack_iterations
+      SELECT p.*, p.is_anonymous_creator,
+        CASE WHEN p.is_anonymous_creator = 1 THEN 'Anonymous' ELSE u.username END AS creator_username
       FROM chessusnode.pieces p
       LEFT JOIN chessusnode.users u ON p.creator_id = u.id
     `);
