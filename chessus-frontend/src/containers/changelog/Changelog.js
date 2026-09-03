@@ -5,6 +5,20 @@ import styles from "./changelog.module.scss";
 const changelogData = [
   {
     date: "September 3, 2026",
+    title: "Movement helpers in match replays, clearer move dots & fairer piece comparisons",
+    items: [
+      "Match replays now have movement helpers: hover any piece on a finished game's board to see everywhere it can move and attack. Works at every step of the replay, so you can walk through a game and check exactly what each side could do.",
+      "Move dots now tell you more. A blue dot means the piece can move to that square, a red dot means it attacks that square, and a dot that's half blue and half red means it can do both — so you can tell a piece that only captures where it moves apart from one with separate movement and attack patterns.",
+      "Move dots now scale with the board, so they no longer look oversized on a small phone board or tiny on a large zoomed-in one.",
+      "Match replays have a new collapsible Legend below the board explaining every indicator, including ranged attacks, splash-damage zones, and the turning point of direction-change moves. Only the indicators the game actually uses are listed.",
+      "New replay option, 'Hide self-defeating moves': by default you see every square a piece can reach (the same view a spectator gets in a live game); turn it on to hide moves that would leave that side's game-losing piece capturable. It works for any game with a piece you can't afford to lose, not just checkmate games.",
+      "Custom-square moves are no longer given their own colour — a move is a move, so they're shown with the same blue/red/split dots as everything else.",
+      "Fixed: stepping back through a replay didn't track how many times each piece had already moved, so first-move-only abilities and castling could show as available when they weren't (and vice versa).",
+      "Piece comparison and the uniqueness checker no longer report settings that can't do anything as differences. For example, 'hop stop at occupied' was listed as a difference between two pieces that both had every hopping ability switched off. The same now applies to attack-range settings on a piece with no ranged attack, direction-change details with direction change turned off, promotion and chain-capture options that aren't enabled, and repeat limits on abilities that don't repeat.",
+    ],
+  },
+  {
+    date: "September 3, 2026",
     title: "Search visibility, quick zoom toggle, traffic filters & admin polish",
     items: [
       "Board zoom controls can now be toggled from the settings gear in the navbar, not just the Preferences page.",
