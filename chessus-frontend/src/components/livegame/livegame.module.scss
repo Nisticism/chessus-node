@@ -1313,45 +1313,49 @@
     }
   }
 
-  // Move indicator dot via CSS ::after (no React DOM node churn on hover)
+  // Move indicator dot via CSS ::after (no React DOM node churn on hover).
+  // Sized as a share of the square (25% of its width) instead of a fixed pixel
+  // size, so it stays proportional whether the board is a zoomed-out 16x16 or a
+  // zoomed-in 8x8. Percentages resolve against the square itself, so this adds
+  // no JS and no per-piece work on large boards.
   &.has-move-dot::after {
     content: '';
     position: absolute;
-    width: 14px;
-    height: 14px;
+    width: 25%;
+    aspect-ratio: 1;
     border-radius: 50%;
     background: var(--move-dot-bg, rgba(33,150,243,0.55));
     top: 50%;
     left: 50%;
-    margin-top: -7px;
-    margin-left: -7px;
+    translate: -50% -50%;
     pointer-events: none;
     z-index: 5;
   }
 
   // Safety net: when both has-move-dot and impassable-square are active, the impassable
   // ::after (inset: 0) overrides the dot positioning via cascade. Re-center explicitly.
+  // Note: no `background-image: none` here — the shorthand above already resets it,
+  // and an explicit reset would wipe the half-and-half move+attack gradient.
   &.has-move-dot.impassable-square::after {
     inset: unset;
     top: 50%;
     left: 50%;
-    width: 14px;
-    height: 14px;
-    margin-top: -7px;
-    margin-left: -7px;
+    width: 25%;
+    height: auto;
+    aspect-ratio: 1;
+    translate: -50% -50%;
     background: var(--move-dot-bg, rgba(33,150,243,0.55));
-    background-image: none;
     z-index: 5;
   }
 
   // Offset the regular dot left when a ranged indicator is also present
   &.has-move-dot.has-ranged-dot::after {
-    margin-left: -17px;
+    translate: -110% -50%;
   }
 
   // Offset the ranged icon right when a regular dot is also present
   &.has-move-dot .ranged-icon {
-    margin-left: 2px;
+    translate: -5% -50%;
   }
 
   // ── Castle-alternative indicator ─────────────────────────────────────────
@@ -1361,10 +1365,13 @@
     position: absolute;
     top: 50%;
     left: 50%;
-    width: 9px;
-    height: 9px;
-    margin-top: -22px; // sit above the centered main dot
-    margin-left: -4.5px;
+    width: 16%;
+    height: auto;
+    aspect-ratio: 1;
+    // Sit above the centred main dot; both scale with the square
+    margin-top: calc(var(--square-size, 32px) * -0.44);
+    margin-left: 0;
+    translate: -50% 0;
     border-radius: 50%;
     background: rgba(255, 200, 60, 0.85);
     box-shadow: 0 0 0 1.5px rgba(0, 0, 0, 0.35);
@@ -1534,13 +1541,14 @@
   animation: lastMoveArrowFadeOut 2s ease-out forwards;
 }
 
+// An emoji can't be sized in percentages, so it reads --square-size, which the
+// board grid sets once and every square inherits.
 .ranged-icon {
   position: absolute;
   top: 50%;
   left: 50%;
-  margin-top: -8px;
-  margin-left: -8px;
-  font-size: 16px;
+  translate: -50% -50%;
+  font-size: calc(var(--square-size, 32px) * 0.45);
   z-index: 5;
   pointer-events: none;
   line-height: 1;

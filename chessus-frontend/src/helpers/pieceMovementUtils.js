@@ -1284,7 +1284,18 @@ export const replayToMove = (initialPieces, moveHistory, targetIndex) => {
           partner.x = move.to.x - 1;
           partner.y = move.to.y;
         }
+        partner.hasMoved = true;
+        partner.moveCount = (partner.moveCount || 0) + 1;
       }
+    }
+
+    // Advance the mover's counters. Ranged attacks and cancelled moves still
+    // count as actions taken by the piece, matching the server. These drive
+    // first-move-only abilities and castling eligibility, so a replayed
+    // position needs them to be accurate.
+    if (movingPiece) {
+      movingPiece.hasMoved = true;
+      movingPiece.moveCount = (movingPiece.moveCount || 0) + 1;
     }
   }
 

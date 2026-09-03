@@ -4,7 +4,14 @@ import { useSelector } from "react-redux";
 import axios from "axios";
 import styles from "./matchview.module.scss";
 import API_URL from "../../global/global";
-import { colToFile, rowToRank, formatMoveNotation, replayToMove } from "../../helpers/pieceMovementUtils";
+import { colToFile, rowToRank, formatMoveNotation, replayToMove, doesPieceOccupySquare } from "../../helpers/pieceMovementUtils";
+import {
+  createMoveEngine,
+  getMoveDotType,
+  MOVE_DOT_BACKGROUNDS,
+  describeBoardIndicators,
+} from "../../helpers/moveEngine";
+import BoardLegend from "../common/BoardLegend";
 import authHeader from "../../services/auth-header";
 import { applySvgStretchBackground } from "../../helpers/svgStretchUtils";
 import { parseServerDate } from "../../helpers/date-formatter";
@@ -40,6 +47,16 @@ const MatchView = () => {
   const [reviewMoveIndex, setReviewMoveIndex] = useState(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+
+  // Movement helpers: the game type row carries the rules (special squares,
+  // mate condition) the move engine needs to reproduce the live board's
+  // highlights. It is fetched separately because /api/match returns only
+  // presentational game-type fields.
+  const [gameType, setGameType] = useState(null);
+  const [hoveredPiece, setHoveredPiece] = useState(null);
+  const [hoveredMoves, setHoveredMoves] = useState([]);
+  const [legendOpen, setLegendOpen] = useState(false);
+  const [hideSelfDefeating, setHideSelfDefeating] = useState(false);
 
   // Fit-to-container sizing + zoom for the replay board.
   const boardVpHook = useBoardViewport({
@@ -79,6 +96,48 @@ const MatchView = () => {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [reviewMoveIndex, match?.moveHistory]);
+
+  // Load the full game type once the match tells us which one it is.
+  useEffect(() => {
+    if (!match?.gameTypeId) return;
+    let cancelled = false;
+    axios.get(`${API_URL}games/${match.gameTypeId}`)
+      .then(res => { if (!cancelled) setGameType(res.data); })
+      .catch(() => { /* movement helpers are optional — board still renders */ });
+    return () => { cancelled = true; };
+  }, [match?.gameTypeId]);
+
+  // Special squares drive range boosts, restriction zones and custom-square
+  // rules. Parsed the same way LiveGame parses them off the game state.
+  const specialSquares = useMemo(() => {
+    const squares = { range: {}, promotion: {}, control: {}, special: {} };
+    if (!gameType) return squares;
+    const fields = {
+      range: 'range_squares_string',
+      promotion: 'promotion_squares_string',
+      control: 'control_squares_string',
+      special: 'special_squares_string',
+    };
+    for (const [key, field] of Object.entries(fields)) {
+      try {
+        if (gameType[field]) squares[key] = JSON.parse(gameType[field]);
+      } catch (e) {
+        console.error(`Error parsing ${field}:`, e);
+      }
+    }
+    return squares;
+  }, [gameType]);
+
+  // currentPlayerPosition is null so the engine skips its own
+  // leave-yourself-in-check filter — hovering any piece shows raw reachability,
+  // exactly what a spectator sees in a live game. The "legal moves only" toggle
+  // applies that filter afterwards, per hovered piece.
+  const moveEngine = useMemo(() => createMoveEngine({
+    specialSquares,
+    gameType,
+    enPassantTarget: null,
+    currentPlayerPosition: null,
+  }), [specialSquares, gameType]);
 
   const fetchChatHistory = async () => {
     try {
@@ -218,6 +277,87 @@ const MatchView = () => {
     };
   }, [capturedPieces, match?.boardWidth, match?.boardHeight]);
 
+  // Pieces currently on the board: the replayed position while reviewing,
+  // otherwise the final position. Memoised so the hover handler and the board
+  // renderer always agree on the same piece objects.
+  // reviewMoveIndex === -1 means starting position (no moves applied).
+  const displayedPieces = useMemo(() => {
+    if (!match) return [];
+    const isReviewing = reviewMoveIndex !== null && match.initialPieces;
+    if (!isReviewing) return Array.isArray(match.pieces) ? match.pieces : [];
+    if (reviewMoveIndex < 0) {
+      return Array.isArray(match.initialPieces) ? JSON.parse(JSON.stringify(match.initialPieces)) : [];
+    }
+    return replayToMove(match.initialPieces, match.moveHistory, reviewMoveIndex);
+  }, [match, reviewMoveIndex]);
+
+  // Which indicator rows the legend needs. Derived from every piece the match
+  // ever had, not just the position on screen, so an item doesn't vanish from
+  // the legend the moment the only ranged piece gets captured.
+  const boardIndicators = useMemo(() => describeBoardIndicators([
+    ...(Array.isArray(match?.initialPieces) ? match.initialPieces : []),
+    ...(Array.isArray(match?.pieces) ? match.pieces : []),
+  ]), [match?.initialPieces, match?.pieces]);
+
+  // The self-defeating filter only means something when a side actually has a
+  // piece whose loss ends the game — a checkmate piece under a mate condition,
+  // or any capture-loss piece. Games decided on points, control squares,
+  // elimination or piece count have nothing for it to hide, so it stays hidden.
+  const canHideSelfDefeating = useMemo(
+    () => [1, 2].some(pos => moveEngine.hasGameLosingPieces(displayedPieces, pos)),
+    [moveEngine, displayedPieces]
+  );
+
+  // Hovering a piece highlights everywhere it can move and attack, using the
+  // same engine the live board uses.
+  //   forHoverDisplay — splits each square into move / attack / both, and
+  //                     includes every reachable ranged square, not just
+  //                     occupied targets
+  //   forFog          — also surfaces squares the capture pattern covers while
+  //                     empty (a pawn's diagonals), which is what makes this a
+  //                     threat map rather than just a move list. Paths are still
+  //                     checked, unlike premove display.
+  const handlePieceHover = (piece) => {
+    if (!piece) {
+      setHoveredPiece(null);
+      setHoveredMoves([]);
+      return;
+    }
+    const boardWidth = match?.boardWidth || 8;
+    const boardHeight = match?.boardHeight || 8;
+    let moves = moveEngine.calculateValidMoves(
+      piece,
+      displayedPieces,
+      boardWidth,
+      boardHeight,
+      true,   // skipCheckFilter — raw reachability
+      false,  // forPremove
+      true,   // forHoverDisplay
+      true    // forFog
+    );
+    if (hideSelfDefeating) {
+      // Only squares the piece would actually relocate to can be self-defeating.
+      // Ranged attacks and attack-coverage squares (ones the capture pattern
+      // reaches but the movement pattern doesn't) never move the piece, so they
+      // stay as threat information regardless of the filter.
+      const team = piece.player_id || piece.team;
+      moves = moves.filter(m => {
+        if (m.isRangedAttack || !m.reachedByMove) return true;
+        return !moveEngine.wouldMoveLoseTheGame(
+          piece, m.x, m.y, displayedPieces, team, boardWidth, boardHeight
+        );
+      });
+    }
+    setHoveredPiece(piece);
+    setHoveredMoves(moves);
+  };
+
+  // Stepping through the replay invalidates the hovered piece's position.
+  useEffect(() => {
+    setHoveredPiece(null);
+    setHoveredMoves([]);
+  }, [reviewMoveIndex]);
+
   const renderBoard = () => {
     if (!match || !match.pieces) return null;
 
@@ -226,22 +366,34 @@ const MatchView = () => {
     const squareSize = boardVpHook.squareSize;
     if (!squareSize) return null;
     const squares = [];
-    
+
     // Flip the board so the current user's (or profile owner's) side is at the bottom
     const userPlayer = currentUser && match.players?.find(p => p.id === currentUser.id);
     const viewerPlayer = viewerUserId ? match.players?.find(p => p.id === viewerUserId) : null;
     const orientPlayer = userPlayer || viewerPlayer;
     const shouldFlip = orientPlayer?.position === 2;
-    
-    // Use replayed pieces when reviewing, otherwise show final position.
-    // reviewMoveIndex === -1 means starting position (no moves applied).
+
     const isReviewing = reviewMoveIndex !== null && match.initialPieces;
-    const pieces = isReviewing
-      ? (reviewMoveIndex < 0
-          ? (Array.isArray(match.initialPieces) ? JSON.parse(JSON.stringify(match.initialPieces)) : [])
-          : replayToMove(match.initialPieces, match.moveHistory, reviewMoveIndex))
-      : (Array.isArray(match.pieces) ? match.pieces : []);
+    const pieces = displayedPieces;
     const lastMove = isReviewing && reviewMoveIndex >= 0 ? match.moveHistory[reviewMoveIndex] : null;
+
+    const hpw = hoveredPiece?.piece_width || 1;
+    const hph = hoveredPiece?.piece_height || 1;
+
+    // Splash zone around every square the hovered piece can capture on.
+    const attackRadiusSplashSquares = new Set();
+    if (hoveredPiece && (hoveredPiece.attack_radius || 0) > 0 && hoveredMoves.length > 0) {
+      const radius = hoveredPiece.attack_radius;
+      for (const target of hoveredMoves.filter(m => m.isCapture || m.isRangedAttack)) {
+        for (let sr = target.y - radius; sr <= target.y + radius; sr++) {
+          for (let sc = target.x - radius; sc <= target.x + radius; sc++) {
+            if (sr < 0 || sr >= boardHeight || sc < 0 || sc >= boardWidth) continue;
+            if (sr === target.y && sc === target.x) continue;
+            attackRadiusSplashSquares.add(`${sc},${sr}`);
+          }
+        }
+      }
+    }
 
     for (let displayY = 0; displayY < boardHeight; displayY++) {
       for (let displayX = 0; displayX < boardWidth; displayX++) {
@@ -267,12 +419,37 @@ const MatchView = () => {
           return Math.atan2(dy, dx) * 180 / Math.PI;
         })() : null;
 
+        // ── Hover movement helpers ───────────────────────────────────────
+        // A multi-tile piece covers hpw × hph squares from its destination
+        // anchor, so a destination lights up every square its footprint lands on.
+        const inHoveredFootprint = hoveredPiece && doesPieceOccupySquare(hoveredPiece, x, y);
+        const hoveredRegularMove = hoveredPiece && !inHoveredFootprint
+          ? hoveredMoves.find(m => !m.isRangedAttack &&
+              x >= m.x && x < m.x + hpw && y >= m.y && y < m.y + hph)
+          : null;
+        const hoveredRangedMove = hoveredPiece
+          ? hoveredMoves.find(m => m.x === x && m.y === y && m.isRangedAttack)
+          : null;
+        const isHoverViaForDcMove = !!hoveredPiece && hoveredMoves.some(
+          m => m.isDirectionChange && m.via && m.via.x === x && m.via.y === y && !m.isCapture
+        );
+        const isHoverViaForDcCapture = !!hoveredPiece && hoveredMoves.some(
+          m => m.isDirectionChange && m.via && m.via.x === x && m.via.y === y && !!m.isCapture
+        );
+        const dotType = getMoveDotType(hoveredRegularMove);
+        const isHoverSource = !!inHoveredFootprint;
+
         squares.push(
           <div
             key={`${x}-${y}`}
-            className={`${styles["board-square"]} ${isLight ? styles["light"] : styles["dark"]}${isLastMoveFrom ? ` ${isLight ? styles["last-move-from-light"] : styles["last-move-from-dark"]}` : ''}${isLastMoveTo ? ` ${styles["last-move-to"]}` : ''}`}
-            style={{ position: 'relative', ...(isAnchor && ((piece?.piece_width || 1) > 1 || (piece?.piece_height || 1) > 1) ? { zIndex: 10 } : undefined) }}
+            className={`${styles["board-square"]} ${isLight ? styles["light"] : styles["dark"]}${isLastMoveFrom ? ` ${isLight ? styles["last-move-from-light"] : styles["last-move-from-dark"]}` : ''}${isLastMoveTo ? ` ${styles["last-move-to"]}` : ''}${dotType ? ` ${styles["has-move-dot"]}` : ''}${hoveredRangedMove ? ` ${styles["has-ranged-dot"]}` : ''}${attackRadiusSplashSquares.has(`${x},${y}`) ? ` ${styles["hover-attack-radius"]}` : ''}${isHoverViaForDcMove ? ` ${styles["hover-dc-via-move"]}` : ''}${isHoverViaForDcCapture ? ` ${styles["hover-dc-via-capture"]}` : ''}${isHoverSource ? ` ${styles["hover-source"]}` : ''}`}
+            style={{
+              position: 'relative',
+              ...(dotType ? { '--move-dot-bg': MOVE_DOT_BACKGROUNDS[dotType] } : {}),
+              ...(isAnchor && ((piece?.piece_width || 1) > 1 || (piece?.piece_height || 1) > 1) ? { zIndex: 10 } : undefined),
+            }}
           >
+            {hoveredRangedMove && <span className={styles["ranged-icon"]}>{'💥'}</span>}
             {arrowAngleDeg !== null && (
               <svg
                 className={styles["last-move-arrow"]}
@@ -300,7 +477,12 @@ const MatchView = () => {
               const pieceImageUrl = (piece.image || piece.image_url) ? 
                 ((piece.image || piece.image_url).startsWith('http') ? (piece.image || piece.image_url) : `${ASSET_URL}${piece.image || piece.image_url}`) : null;
               return (
-              <div className={`${styles["piece"]} ${piece.player_id === 1 || piece.team === 1 ? styles["player1"] : styles["player2"]}`} style={multiTileStyle}>
+              <div
+                className={`${styles["piece"]} ${piece.player_id === 1 || piece.team === 1 ? styles["player1"] : styles["player2"]}${gameType ? ` ${styles["hoverable"]}` : ''}`}
+                style={multiTileStyle}
+                onMouseEnter={() => gameType && handlePieceHover(piece)}
+                onMouseLeave={() => gameType && handlePieceHover(null)}
+              >
                 {pieceImageUrl ? (
                   isNonSquareMultiTile ? (
                     <div
@@ -375,7 +557,10 @@ const MatchView = () => {
               gridTemplateRows: `repeat(${boardHeight}, ${squareSize}px)`,
               width: 'fit-content',
               maxWidth: 'none',
-              aspectRatio: 'unset'
+              aspectRatio: 'unset',
+              // Set once here and inherited by every square, so indicators that
+              // can't use percentages (emoji, offsets) still scale with the board.
+              '--square-size': `${squareSize}px`
             }}
           >
             {squares}
@@ -576,6 +761,66 @@ const MatchView = () => {
             </div>
             <BoardZoomControls {...boardVpHook.controlProps} />
           </div>
+
+          {/* Movement helpers legend — only useful once the game type (and so
+              the movement rules) has loaded. */}
+          {gameType && (
+            <div className={styles["legend-section"]}>
+              <p className={styles["legend-hint"]}>
+                Hover over a piece to see where it can move and attack
+              </p>
+              <h3 className={styles["collapsible-header"]} onClick={() => setLegendOpen(prev => !prev)}>
+                <span className={`${styles["collapse-arrow"]} ${legendOpen ? styles["open"] : ''}`}>▼</span>
+                Legend
+              </h3>
+              {legendOpen && (
+                <div className={styles["legend-body"]}>
+                  <BoardLegend
+                    showMove={false}
+                    showFirstMove={false}
+                    showAttack={false}
+                    showFirstAttack={false}
+                    showRanged={false}
+                    showHopCapture={false}
+                    showDots
+                    showDotCastle={boardIndicators.castle}
+                    showDotRanged={boardIndicators.ranged}
+                    showDotAttackRadius={boardIndicators.attackRadius}
+                    showDotDCVia={boardIndicators.dcVia}
+                    specialSquares={{
+                      promotion: Object.keys(specialSquares.promotion).length > 0,
+                      range: Object.keys(specialSquares.range).length > 0,
+                      control: Object.keys(specialSquares.control).length > 0,
+                      special: Object.keys(specialSquares.special).length > 0,
+                    }}
+                  />
+                  {canHideSelfDefeating && (
+                    <>
+                      <div className={styles["legend-toggle-row"]}>
+                        <label className={styles["legend-toggle"]}>
+                          <input
+                            type="checkbox"
+                            checked={hideSelfDefeating}
+                            onChange={(e) => {
+                              setHideSelfDefeating(e.target.checked);
+                              handlePieceHover(null);
+                            }}
+                          />
+                          Hide self-defeating moves
+                        </label>
+                      </div>
+                      <p className={styles["legend-toggle-note"]}>
+                        Off (default): every square the piece can reach, the same view a
+                        spectator gets in a live game. On: hides moves that would leave one
+                        of that side&apos;s game-losing pieces capturable — so a trapped piece
+                        shows nothing at all.
+                      </p>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Captured Pieces */}

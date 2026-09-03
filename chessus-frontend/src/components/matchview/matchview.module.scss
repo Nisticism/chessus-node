@@ -329,12 +329,90 @@
   background: var(--nav-background);
 }
 
+/* ── Hover movement helpers ───────────────────────────────────────────────
+   Mirrors the live board's indicators (livegame.module.scss) so a replay
+   reads exactly like the game did. The dot colour is driven by the
+   --move-dot-bg custom property set inline, which avoids creating and
+   destroying DOM nodes on every hover. */
+
+/* The dot is sized as a share of the square (25% of its width) rather than a
+   fixed pixel size, so it stays proportional from a zoomed-out 16x16 board to a
+   zoomed-in 8x8 one. Percentages resolve against the square itself, so this
+   costs no JS and no extra layout work per piece on large boards. */
+.board-square.has-move-dot::after {
+  content: '';
+  position: absolute;
+  width: 25%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: var(--move-dot-bg, rgba(33, 150, 243, 0.55));
+  top: 50%;
+  left: 50%;
+  translate: -50% -50%;
+  pointer-events: none;
+  z-index: 5;
+}
+
+/* When a ranged indicator shares the square, shift the pair apart so both read */
+.board-square.has-move-dot.has-ranged-dot::after {
+  translate: -110% -50%;
+}
+
+.board-square.has-move-dot .ranged-icon {
+  translate: -5% -50%;
+}
+
+/* An emoji can't be sized in percentages, so it reads --square-size, which the
+   board grid sets once and every square inherits. */
+.ranged-icon {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  translate: -50% -50%;
+  font-size: calc(var(--square-size, 32px) * 0.45);
+  z-index: 5;
+  pointer-events: none;
+  line-height: 1;
+  user-select: none;
+}
+
+/* Attack-radius splash zone around a hovered piece's capture targets */
+.board-square.hover-attack-radius::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 193, 7, 0.18);
+  border: 2px solid rgba(255, 193, 7, 0.5);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Direction-change via squares (the turning point of a bent move) */
+.board-square.hover-dc-via-move {
+  &.light { box-shadow: inset 0 0 0 5px rgba(0, 25, 100, 0.6); }
+  &.dark  { box-shadow: inset 0 0 0 5px rgba(130, 195, 255, 0.65); }
+}
+
+.board-square.hover-dc-via-capture {
+  &.light { box-shadow: inset 0 0 0 5px rgba(130, 50, 0, 0.6); }
+  &.dark  { box-shadow: inset 0 0 0 5px rgba(255, 175, 85, 0.65); }
+}
+
+/* The hovered piece's own square */
+.board-square.hover-source {
+  box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.55);
+}
+
 .piece {
   width: 80%;
   height: 80%;
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.piece.hoverable {
+  cursor: pointer;
 }
 
 .piece-image {
@@ -480,6 +558,55 @@
   &.open {
     transform: rotate(0deg);
   }
+}
+
+/* Collapsible movement-helper legend under the replay board */
+.legend-section {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.legend-hint {
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  margin: 0 0 12px;
+}
+
+.legend-body {
+  margin-top: 12px;
+}
+
+.legend-toggle-row {
+  display: flex;
+  justify-content: center;
+  margin-top: 4px;
+}
+
+.legend-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.75);
+
+  input {
+    cursor: pointer;
+    margin: 0;
+  }
+}
+
+.legend-toggle-note {
+  text-align: center;
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  margin: 6px 0 0;
+  max-width: 520px;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 .details-grid {

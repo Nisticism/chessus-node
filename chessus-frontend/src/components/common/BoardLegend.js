@@ -1,5 +1,6 @@
 import React from 'react';
 import styles from './boardlegend.module.scss';
+import { MOVE_DOT_BACKGROUNDS } from '../../helpers/moveEngine';
 
 /**
  * Unified board legend component used across all board views.
@@ -74,6 +75,19 @@ const LABELS = {
   },
 };
 
+// Dot indicators drawn directly on the live and replay boards (a coloured dot in
+// the centre of the square, rather than the tinted-square style above). These are
+// worded the same in every labelStyle because they describe board feedback, not a
+// piece's abilities. Colours come from the shared move engine so the legend can
+// never drift from what the boards actually draw.
+const DOT_ITEMS = {
+  dotMove: { label: 'Move only', color: MOVE_DOT_BACKGROUNDS.move },
+  dotCapture: { label: 'Attack only', color: MOVE_DOT_BACKGROUNDS.capture },
+  dotBoth: { label: 'Move or attack', color: MOVE_DOT_BACKGROUNDS.both },
+  dotFirst: { label: 'First-move-only', color: MOVE_DOT_BACKGROUNDS.first },
+  dotCastle: { label: 'Castling', color: MOVE_DOT_BACKGROUNDS.castle },
+};
+
 const BoardLegend = ({
   showMove = true,
   showFirstMove = true,
@@ -86,6 +100,12 @@ const BoardLegend = ({
   showCustomAttack = false,
   showDCMove = false,
   showDCCapture = false,
+  // Board-indicator (dot) legend — used by the live and replay boards
+  showDots = false,
+  showDotCastle = false,
+  showDotRanged = false,
+  showDotAttackRadius = false,
+  showDotDCVia = false,
   showCheckmate = false,
   showCaptureLoss = false,
   players = null,
@@ -110,6 +130,20 @@ const BoardLegend = ({
   if (showCustomAttack) items.push({ key: 'customAttack', type: 'customAttack', label: labels.customAttack });
   if (showDCMove) items.push({ key: 'dcMove', type: 'dcMove', label: labels.dcMove || 'Direction Change Move' });
   if (showDCCapture) items.push({ key: 'dcCapture', type: 'dcCapture', label: labels.dcCapture || 'Direction Change Capture' });
+
+  // Board-indicator dots
+  if (showDots) {
+    ['dotMove', 'dotCapture', 'dotBoth', 'dotFirst'].forEach(key => {
+      items.push({ key, type: 'dot', color: DOT_ITEMS[key].color, label: DOT_ITEMS[key].label });
+    });
+  }
+  if (showDotCastle) items.push({ key: 'dotCastle', type: 'dot', color: DOT_ITEMS.dotCastle.color, label: DOT_ITEMS.dotCastle.label });
+  if (showDotRanged) items.push({ key: 'dotRanged', type: 'rangedIcon', label: 'Ranged attack' });
+  if (showDotAttackRadius) items.push({ key: 'dotAttackRadius', type: 'attackRadius', label: 'Splash damage zone' });
+  if (showDotDCVia) {
+    items.push({ key: 'dcViaMove', type: 'dcVia', color: 'rgba(130,195,255,0.65)', label: 'Turning point (move)' });
+    items.push({ key: 'dcViaCapture', type: 'dcVia', color: 'rgba(255,175,85,0.65)', label: 'Turning point (attack)' });
+  }
 
   // Game condition items
   if (showCheckmate) items.push({ key: 'checkmate', type: 'checkmate', label: labels.checkmate });
@@ -166,6 +200,14 @@ const BoardLegend = ({
         return <div className={styles.swatch} style={{ outline: '3px solid rgba(13, 71, 161, 0.65)', outlineOffset: '-3px', background: 'rgba(13, 71, 161, 0.25)' }} />;
       case 'dcCapture':
         return <div className={styles.swatch} style={{ outline: '3px solid rgba(183, 84, 0, 0.65)', outlineOffset: '-3px', background: 'rgba(183, 84, 0, 0.25)' }} />;
+      case 'dot':
+        return <div className={styles.dotSwatch} style={{ '--legend-dot-bg': item.color }} />;
+      case 'rangedIcon':
+        return <span className={styles.iconSwatch}>{'💥'}</span>;
+      case 'attackRadius':
+        return <div className={styles.attackRadiusSwatch} />;
+      case 'dcVia':
+        return <div className={styles.dcViaSwatch} style={{ '--legend-dc-color': item.color }} />;
       case 'checkmate':
         return (
           <span className={styles.iconSwatch}>
