@@ -440,6 +440,7 @@
   min-width: 0; // allow the center grid track to shrink without page overflow
   align-items: center;
   justify-content: flex-start;
+  justify-self: stretch; // fill the grid track so the board can size to the full width
 }
 
 // Move history column (right side)
@@ -1012,10 +1013,11 @@
   display: flex;
   justify-content: center;
   align-items: center;
+  align-self: stretch;   // fill the board column so the board sizes to the full width available
 
   @media (max-width: 1200px) {
     margin: 0 auto;
-    width: fit-content;
+    width: 100%;
     max-width: calc(100vw - 24px);
   }
 }

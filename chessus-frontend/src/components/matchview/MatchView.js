@@ -10,6 +10,9 @@ import { applySvgStretchBackground } from "../../helpers/svgStretchUtils";
 import { parseServerDate } from "../../helpers/date-formatter";
 import { handlePieceImageError } from "../../utils/pieceFallback";
 import { totalMaterialValue } from "../../utils/pieceValueEstimator";
+import useBoardViewport from "../common/useBoardViewport";
+import BoardZoomControls from "../common/BoardZoomControls";
+import boardVp from "../common/boardViewport.module.scss";
 
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "";
 
@@ -37,6 +40,14 @@ const MatchView = () => {
   const [reviewMoveIndex, setReviewMoveIndex] = useState(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+
+  // Fit-to-container sizing + zoom for the replay board.
+  const boardVpHook = useBoardViewport({
+    boardWidth: match?.boardWidth,
+    boardHeight: match?.boardHeight,
+    insetW: 28,
+    insetH: 24,
+  });
 
   /* eslint-disable react-hooks/exhaustive-deps */
   useEffect(() => {
@@ -212,10 +223,8 @@ const MatchView = () => {
 
     const boardWidth = match.boardWidth || 8;
     const boardHeight = match.boardHeight || 8;
-    // Calculate square size to keep squares square, responsive to viewport
-    // Account for padding (48px board-container padding) + rank labels (~20px) + border (6px) + page margins (~32px)
-    const availableWidth = Math.min(480, window.innerWidth - 106);
-    const squareSize = Math.min(60, availableWidth / Math.max(boardWidth, boardHeight));
+    const squareSize = boardVpHook.squareSize;
+    if (!squareSize) return null;
     const squares = [];
     
     // Flip the board so the current user's (or profile owner's) side is at the bottom
@@ -365,6 +374,7 @@ const MatchView = () => {
               gridTemplateColumns: `repeat(${boardWidth}, ${squareSize}px)`,
               gridTemplateRows: `repeat(${boardHeight}, ${squareSize}px)`,
               width: 'fit-content',
+              maxWidth: 'none',
               aspectRatio: 'unset'
             }}
           >
@@ -554,7 +564,18 @@ const MatchView = () => {
               <button onClick={() => setReviewMoveIndex(null)} disabled={reviewMoveIndex === null}>⏭ Final</button>
             </div>
           )}
-          {renderBoard()}
+          <div style={boardVpHook.frameStyle}>
+            <div
+              className={`${boardVp.viewport} ${boardVpHook.hideScrollbars ? boardVp.noScrollbars : ''}`}
+              ref={boardVpHook.viewportRef}
+              style={boardVpHook.viewportStyle}
+            >
+              <div style={boardVpHook.contentStyle}>
+                {renderBoard()}
+              </div>
+            </div>
+            <BoardZoomControls {...boardVpHook.controlProps} />
+          </div>
         </div>
 
         {/* Captured Pieces */}

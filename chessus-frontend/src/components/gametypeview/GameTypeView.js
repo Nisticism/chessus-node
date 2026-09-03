@@ -23,6 +23,9 @@ import { renderContent } from "../../helpers/render-content";
 import PieceBadges from "../common/PieceBadges";
 import SquareHighlightOverlay from "../common/SquareHighlightOverlay";
 import InfoTooltip from "../piecewizard/InfoTooltip";
+import useBoardViewport from "../common/useBoardViewport";
+import BoardZoomControls from "../common/BoardZoomControls";
+import boardVp from "../common/boardViewport.module.scss";
 
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";
 
@@ -492,8 +495,6 @@ const GameTypeView = () => {
   const [uniquenessCheckLoading, setUniquenessCheckLoading] = useState(false);
   const [uniquenessResult, setUniquenessResult] = useState(null);
   const [uniquenessError, setUniquenessError] = useState(null);
-  const [boardContainerWidth, setBoardContainerWidth] = useState(0);
-  const boardContainerRef = useRef(null);
   const [upvoteCount, setUpvoteCount] = useState(0);
   const [hasUpvoted, setHasUpvoted] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
@@ -651,20 +652,6 @@ const GameTypeView = () => {
 
   // Track board container width for responsive sizing
   // Re-run when loading finishes so the ref is available in the DOM
-  useEffect(() => {
-    const el = boardContainerRef.current;
-    if (!el) return;
-    // Measure immediately so the board renders at the right size
-    setBoardContainerWidth(el.clientWidth - 40);
-    const observer = new ResizeObserver(entries => {
-      for (const entry of entries) {
-        setBoardContainerWidth(entry.contentRect.width - 40); // subtract padding
-      }
-    });
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [loading]);
-
   useEffect(() => {
     const loadGame = async () => {
       try {
@@ -2634,12 +2621,15 @@ const GameTypeView = () => {
     return rules;
   }, [game, piecePlacements, pieceDataMap, specialSquares]);
 
-  // Compute square size responsively based on container width, capped so board stays within 850px
-  const squareSize = useMemo(() => {
-    if (!game || boardContainerWidth === 0) return 0;
-    const availableWidth = Math.min(Math.max(boardContainerWidth, 100), 850);
-    return Math.floor(availableWidth / game.board_width);
-  }, [game, boardContainerWidth]);
+  // Fit-to-container sizing + zoom for the starting-board preview.
+  const boardVpHook = useBoardViewport({
+    boardWidth: game?.board_width,
+    boardHeight: game?.board_height,
+    // Reserve space for rank/file labels + the 2px board border when details show.
+    insetW: showDetails ? 32 : 4,
+    insetH: showDetails ? 28 : 4,
+  });
+  const squareSize = boardVpHook.squareSize;
 
   const renderBoard = () => {
     if (!game || squareSize === 0) return null;
@@ -3576,7 +3566,14 @@ const GameTypeView = () => {
           {showDetails && <p style={{ textAlign: 'center', fontSize: '0.85rem', color: 'var(--text-dim)', marginBottom: '10px' }}>
             Hover over a piece to see where it can move and attack
           </p>}
-          <div className={styles["board-container"]} ref={boardContainerRef}>
+          <div className={styles["board-container"]}>
+            <div style={boardVpHook.frameStyle}>
+              <div
+                className={`${boardVp.viewport} ${boardVpHook.hideScrollbars ? boardVp.noScrollbars : ''}`}
+                ref={boardVpHook.viewportRef}
+                style={boardVpHook.viewportStyle}
+              >
+                <div style={boardVpHook.contentStyle}>
             {showDetails ? (
               <div className={styles["board-with-notation"]}>
                 <div
@@ -3627,6 +3624,10 @@ const GameTypeView = () => {
                 {renderBoard()}
               </div>
             )}
+                </div>
+              </div>
+              <BoardZoomControls {...boardVpHook.controlProps} />
+            </div>
           </div>
         </div>
 

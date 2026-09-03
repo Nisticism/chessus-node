@@ -12,6 +12,9 @@ import BoardLegend from "../common/BoardLegend";
 import PieceBadges from "../common/PieceBadges";
 import GameChat from "./GameChat";
 import ToggleSwitch from "../common/ToggleSwitch";
+import useBoardViewport from "../common/useBoardViewport";
+import BoardZoomControls from "../common/BoardZoomControls";
+import boardVp from "../common/boardViewport.module.scss";
 import {
   canPieceMoveTo as canPieceMoveToUtil,
   canCaptureOnMoveTo as canCaptureOnMoveToUtil,
@@ -522,6 +525,18 @@ const LiveGame = () => {
   const [isJoiningAsGuest, setIsJoiningAsGuest] = useState(false);
   const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1920);
   const [windowHeight, setWindowHeight] = useState(typeof window !== 'undefined' ? window.innerHeight : 1080);
+
+  // Fit-to-container sizing + zoom for the live board. Reserves vertical space for
+  // the clocks/captured rows so the board fits without pushing the page.
+  const boardVpHook = useBoardViewport({
+    boardWidth: gameState?.gameType?.board_width,
+    boardHeight: gameState?.gameType?.board_height,
+    fitMaxSquare: windowWidth > 1200 ? 140 : 76,
+    maxSquare: windowWidth > 1200 ? 220 : 140,
+    maxHeight: () => Math.max(300, windowHeight - 172),
+    insetW: showBoardNotation ? 30 : 8,
+    insetH: showBoardNotation ? 26 : 8,
+  });
   const [displayTimes, setDisplayTimes] = useState({}); // Locally interpolated clock times for sub-second display
   const displayTimesRef = useRef({}); // Mirror of displayTimes for use inside effects/handlers without a re-render dep
   const lastServerTickRef = useRef(null); // Timestamp of last server timeUpdate
@@ -2507,7 +2522,9 @@ const LiveGame = () => {
     });
 
     const unsubscribeVetoRejected = onGameEvent("vetoRejected", ({ message }) => {
-      setVetoError(message || "Veto submission rejected.");
+      const msg = message || "Veto submission rejected.";
+      setVetoError(msg);
+      showIllegalMoveWarning(msg, 3500);
     });
 
     // Reactive: the mover retracted their under-review held move. Clear it on the
@@ -6684,25 +6701,7 @@ const LiveGame = () => {
     }
 
     // Calculate square size dynamically so the board always fits on screen
-    let squareSize;
-    if (windowWidth > 1200) {
-      // 3-column layout: sidebars (~280px each), gaps (24px each), container padding (40px), coord labels (~24px)
-      const containerWidth = Math.min(windowWidth, 1800);
-      const sidebarWidth = containerWidth <= 1400 ? 240 : 280;
-      const availableWidth = containerWidth - sidebarWidth * 2 - 24 * 2 - 40 - 24;
-      // Leave room for header (~120px), padding, and some breathing room
-      const availableHeight = windowHeight - 180;
-      const maxByWidth = Math.floor(availableWidth / boardWidth);
-      const maxByHeight = Math.floor(availableHeight / boardHeight);
-      squareSize = Math.max(20, Math.min(120, maxByWidth, maxByHeight));
-    } else {
-      // Single-column layout: board is centered, use most of viewport width
-      const availableWidth = windowWidth - 24 - 32 - 24; // viewport minus coord labels, wrapper padding, margin
-      const availableHeight = windowHeight - 200;
-      const maxByWidth = Math.floor(availableWidth / boardWidth);
-      const maxByHeight = Math.floor(availableHeight / boardHeight);
-      squareSize = Math.max(16, Math.min(65, maxByWidth, maxByHeight));
-    }
+    const squareSize = boardVpHook.squareSize || 32;
 
     const squares = [];
 
@@ -7397,6 +7396,7 @@ const LiveGame = () => {
               gridTemplateRows: `repeat(${boardHeight}, ${squareSize}px)`,
               position: 'relative',
               width: 'fit-content',
+              maxWidth: 'none',
               aspectRatio: 'unset'
             }}
           >
@@ -7835,9 +7835,6 @@ const LiveGame = () => {
                 )}
               </>
             )}
-            {moveError && (
-              <span className={styles["move-error"]}>❌ {moveError}</span>
-            )}
             {captureActionPieceId != null && isMyTurn && (
               <span className={styles["move-error"]} style={{ background: 'rgba(80, 220, 120, 0.18)', color: '#7fffb0', display: 'flex', alignItems: 'center', gap: 8 }}>
                 {captureActionData?.isRanged
@@ -8248,7 +8245,21 @@ const LiveGame = () => {
             )}
 
             <div className={styles["game-board-wrapper"]}>
-              {renderBoard()}
+              <div style={boardVpHook.frameStyle}>
+              {moveError && (
+                <div className={boardVp.boardToast}>{moveError}</div>
+              )}
+              <div
+                className={`${boardVp.viewport} ${boardVpHook.hideScrollbars ? boardVp.noScrollbars : ''}`}
+                ref={boardVpHook.viewportRef}
+                style={boardVpHook.viewportStyle}
+              >
+                <div style={boardVpHook.contentStyle}>
+                  {renderBoard()}
+                </div>
+              </div>
+              <BoardZoomControls {...boardVpHook.controlProps} />
+              </div>
             </div>
 
             {/* Turn Confirmation - below board. Always visible on all screen sizes for
@@ -8539,7 +8550,7 @@ const LiveGame = () => {
 
       {/* Veto Row — below the board/clock grid so it pushes the rows below it down
           without affecting the clock columns inside the grid. */}
-      {gameState?.gameType?.veto_enabled && !gameState?.gameType?.simultaneous_turns && (
+      {!!gameState?.gameType?.veto_enabled && !gameState?.gameType?.simultaneous_turns && (
         <div className={styles["layout-row-veto"]}>
           {vetoPerGameLimit != null && vetoBank && (
             <div className={styles["veto-bank"]}>

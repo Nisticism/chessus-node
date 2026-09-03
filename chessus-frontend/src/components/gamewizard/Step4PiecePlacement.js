@@ -22,6 +22,9 @@ import NumberInput from "../common/NumberInput";
 import BoardLegend from "../common/BoardLegend";
 import PieceBadges from "../common/PieceBadges";
 import SquareHighlightOverlay from "../common/SquareHighlightOverlay";
+import useBoardViewport from "../common/useBoardViewport";
+import BoardZoomControls from "../common/BoardZoomControls";
+import boardVp from "../common/boardViewport.module.scss";
 import { runUniquenessCheck } from "../../actions/games";
 
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";
@@ -48,7 +51,6 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
   const [hoveredPiecePosition, setHoveredPiecePosition] = useState(null);
   const [draggedPiecePosition, setDraggedPiecePosition] = useState(null);
   const [isMobile, setIsMobile] = useState(false);
-  const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1024);
   const [randomizationOpen, setRandomizationOpen] = useState(false);
   const [hpAdSectionOpen, setHpAdSectionOpen] = useState(false);
   const longPressTimeoutRef = useRef(null);
@@ -230,13 +232,6 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
   // Detect mobile
   useEffect(() => {
     setIsMobile(isTouchDevice());
-  }, []);
-
-  // Track window width for responsive board sizing
-  useEffect(() => {
-    const handleResize = () => setWindowWidth(window.innerWidth);
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
   }, []);
 
   // Load all pieces for image fallback and movement data
@@ -1094,14 +1089,17 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
   }, []);
 
   // Calculate board dimensions for legend width
+  const boardVpHook = useBoardViewport({
+    boardWidth: gameData.board_width,
+    boardHeight: gameData.board_height,
+    insetW: 24,
+    insetH: 24,
+  });
   const boardDimensions = useMemo(() => {
-    const boardPadding = 10 * 2; // 10px each side
-    const boardBorder = 1 * 2;   // 1px each side
-    const maxBoardPx = Math.min(850, windowWidth - 60 - boardPadding - boardBorder);
-    const squareSize = Math.min(100, maxBoardPx / Math.max(gameData.board_width, gameData.board_height));
+    const squareSize = boardVpHook.squareSize || 40;
     const boardWidth = squareSize * gameData.board_width;
     return { squareSize, boardWidth };
-  }, [gameData.board_width, gameData.board_height, windowWidth]);
+  }, [gameData.board_width, boardVpHook.squareSize]);
 
   const renderBoard = useMemo(() => {
     const board = [];
@@ -1746,6 +1744,13 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
           } : null}
           maxWidth={boardDimensions.boardWidth + 30}
         />
+        <div style={boardVpHook.frameStyle}>
+        <div
+          className={`${boardVp.viewport} ${boardVpHook.hideScrollbars ? boardVp.noScrollbars : ''}`}
+          ref={boardVpHook.viewportRef}
+          style={boardVpHook.viewportStyle}
+        >
+          <div style={boardVpHook.contentStyle}>
         <div 
           ref={boardRef}
           className={styles["placement-board"]}
@@ -1763,6 +1768,10 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
           }}
         >
           {renderBoard}
+        </div>
+          </div>
+        </div>
+        <BoardZoomControls {...boardVpHook.controlProps} />
         </div>
         {touchDragPiece && touchDragPos && (() => {
           const imgUrl = getPlacementImageUrl(touchDragPiece);

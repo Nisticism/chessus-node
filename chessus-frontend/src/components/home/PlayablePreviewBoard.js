@@ -6,6 +6,9 @@ import {
 } from "../../helpers/pieceMovementUtils";
 
 import { applySvgStretchBackground } from "../../helpers/svgStretchUtils";
+import useBoardViewport from "../common/useBoardViewport";
+import BoardZoomControls from "../common/BoardZoomControls";
+import boardVp from "../common/boardViewport.module.scss";
 
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";
 
@@ -30,29 +33,6 @@ const PlayablePreviewBoard = ({ gameData, lightSquareColor, darkSquareColor }) =
   const [hoveredPiece, setHoveredPiece] = useState(null);
   const [hoveredHighlights, setHoveredHighlights] = useState({});
   const [moveCounts, setMoveCounts] = useState({});
-  const containerRef = React.useRef(null);
-  const [containerSize, setContainerSize] = useState(0);
-
-  // Measure container size
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-
-    const updateSize = () => {
-      setContainerSize(el.offsetWidth);
-    };
-
-    updateSize();
-
-    if (typeof ResizeObserver !== 'undefined') {
-      const ro = new ResizeObserver(updateSize);
-      ro.observe(el);
-      return () => ro.disconnect();
-    } else {
-      window.addEventListener('resize', updateSize);
-      return () => window.removeEventListener('resize', updateSize);
-    }
-  }, []);
 
   // Initialize pieces from gameData
   useEffect(() => {
@@ -88,8 +68,16 @@ const PlayablePreviewBoard = ({ gameData, lightSquareColor, darkSquareColor }) =
 
   const boardWidth = gameData?.board_width || 8;
   const boardHeight = gameData?.board_height || 8;
-  const maxBoardDimension = Math.max(boardWidth, boardHeight);
-  const squareSize = containerSize > 0 ? Math.floor(containerSize / maxBoardDimension) : 50;
+  // Fit-to-container sizing + zoom for the small home preview (square region).
+  const boardVpHook = useBoardViewport({
+    boardWidth,
+    boardHeight,
+    maxHeight: 'square',
+    maxSquare: 76,
+    fitMaxSquare: 52,
+    step: 0.25,
+  });
+  const squareSize = boardVpHook.squareSize || 50;
 
   // Get piece at position (multi-tile aware)
   const getPieceAt = useCallback((row, col) => {
@@ -574,17 +562,28 @@ const PlayablePreviewBoard = ({ gameData, lightSquareColor, darkSquareColor }) =
   if (!gameData) return null;
 
   return (
-    <div className={styles["preview-board-wrapper"]} ref={containerRef}>
+    <div className={styles["preview-board-wrapper"]}>
+      <div style={boardVpHook.frameStyle}>
       <div
-        className={styles["preview-board-grid"]}
-        style={{
-          gridTemplateColumns: `repeat(${boardWidth}, ${squareSize}px)`,
-          gridTemplateRows: `repeat(${boardHeight}, ${squareSize}px)`,
-          width: `${boardWidth * squareSize}px`,
-          height: `${boardHeight * squareSize}px`
-        }}
+        className={`${boardVp.viewport} ${boardVpHook.hideScrollbars ? boardVp.noScrollbars : ''}`}
+        ref={boardVpHook.viewportRef}
+        style={boardVpHook.viewportStyle}
       >
-        {renderBoard()}
+        <div style={boardVpHook.contentStyle}>
+          <div
+            className={styles["preview-board-grid"]}
+            style={{
+              gridTemplateColumns: `repeat(${boardWidth}, ${squareSize}px)`,
+              gridTemplateRows: `repeat(${boardHeight}, ${squareSize}px)`,
+              width: `${boardWidth * squareSize}px`,
+              height: `${boardHeight * squareSize}px`
+            }}
+          >
+            {renderBoard()}
+          </div>
+        </div>
+      </div>
+      <BoardZoomControls {...boardVpHook.controlProps} />
       </div>
       <div className={styles["turn-indicator"]}>
         <span className={`${styles["turn-dot"]} ${currentTurn === 1 ? styles["turn-p1"] : styles["turn-p2"]}`} />

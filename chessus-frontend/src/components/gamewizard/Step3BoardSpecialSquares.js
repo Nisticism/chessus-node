@@ -3,6 +3,9 @@ import styles from "./gamewizard.module.scss";
 import SpecialSquareSelector from "./SpecialSquareSelector";
 import NumberInput from "../common/NumberInput";
 import useUndoStack from "../../hooks/useUndoStack";
+import useBoardViewport from "../common/useBoardViewport";
+import BoardZoomControls from "../common/BoardZoomControls";
+import boardVp from "../common/boardViewport.module.scss";
 
 const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
   const [rangeSquares, setRangeSquares] = useState({});
@@ -12,8 +15,16 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
   const [selectedSquare, setSelectedSquare] = useState(null);
   const [showSquareSelector, setShowSquareSelector] = useState(false);
   const [draggedSquare, setDraggedSquare] = useState(null);
-  const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1024);
   const boardRef = useRef(null);
+
+  // Fit-to-container sizing + zoom for the special-squares board.
+  const boardVpHook = useBoardViewport({
+    boardWidth: gameData.board_width,
+    boardHeight: gameData.board_height,
+    insetW: 34,
+    insetH: 34,
+  });
+  const squareSize = boardVpHook.squareSize || 40;
 
   // Undo stack for special-square actions: placing/removing squares, drag-and-drop moves,
   // mirror operations, and clear-all all snapshot the four square maps before mutating.
@@ -166,13 +177,6 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
       case 'custom': return '#ffd700'; // Gold
       default: return null;
     }
-  }, []);
-
-  // Track window width for responsive board sizing
-  useEffect(() => {
-    const handleResize = () => setWindowWidth(window.innerWidth);
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
   }, []);
 
   const handleSquareRightClick = useCallback((e, row, col) => {
@@ -612,7 +616,7 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
 
   const renderBoard = React.useMemo(() => {
     const board = [];
-    const squareSize = Math.min(100, 850 / Math.max(gameData.board_width, gameData.board_height));
+    const squareSize = boardVpHook.squareSize || 40;
 
     for (let row = 0; row < gameData.board_height; row++) {
       for (let col = 0; col < gameData.board_width; col++) {
@@ -695,7 +699,7 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
     }
 
     return board;
-  }, [gameData.board_width, gameData.board_height, lightSquareColor, darkSquareColor, getSquareType, getSquareColor, handleSquareClick, handleSquareRightClick, handleDragOver, handleDrop, handleDragStart, handleDragEnd, handleSquareTouchStart, handleSquareTouchMove, handleSquareTouchEnd, touchDragType]);
+  }, [gameData.board_width, gameData.board_height, lightSquareColor, darkSquareColor, getSquareType, getSquareColor, handleSquareClick, handleSquareRightClick, handleDragOver, handleDrop, handleDragStart, handleDragEnd, handleSquareTouchStart, handleSquareTouchMove, handleSquareTouchEnd, touchDragType, boardVpHook.squareSize]);
 
   const getCounts = () => {
     const customAsControl = Object.values(customSquares).filter(cfg => cfg?.asControl === true).length;
@@ -840,13 +844,20 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
       )}
 
       <div className={styles["board-placement-preview"]}>
+        <div style={boardVpHook.frameStyle}>
+        <div
+          className={`${boardVp.viewport} ${boardVpHook.hideScrollbars ? boardVp.noScrollbars : ''}`}
+          ref={boardVpHook.viewportRef}
+          style={boardVpHook.viewportStyle}
+        >
+          <div style={boardVpHook.contentStyle}>
         <div
           ref={boardRef}
           className={styles["placement-board"]}
           style={{
             display: 'grid',
-            gridTemplateRows: `repeat(${gameData.board_height}, ${Math.min(80, Math.min(600, windowWidth - 60 - 32) / Math.max(gameData.board_width, gameData.board_height))}px)`,
-            gridTemplateColumns: `repeat(${gameData.board_width}, ${Math.min(80, Math.min(600, windowWidth - 60 - 32) / Math.max(gameData.board_width, gameData.board_height))}px)`,
+            gridTemplateRows: `repeat(${gameData.board_height}, ${squareSize}px)`,
+            gridTemplateColumns: `repeat(${gameData.board_width}, ${squareSize}px)`,
             border: '1px solid var(--board-border, #333)',
             borderRadius: '5px',
             padding: '15px',
@@ -857,6 +868,10 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
           }}
         >
           {renderBoard}
+        </div>
+          </div>
+        </div>
+        <BoardZoomControls {...boardVpHook.controlProps} />
         </div>
         {touchDragType && touchDragPos && (() => {
           const td = touchDragRef.current;

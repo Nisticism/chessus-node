@@ -4,6 +4,22 @@ import styles from "./changelog.module.scss";
 
 const changelogData = [
   {
+    date: "September 2, 2026",
+    title: "Zoom & fit controls for every board",
+    items: [
+      "Boards now fit the page by default — even very tall or very wide ones. Previously a long, narrow board could stretch far down the page and force a lot of scrolling; now the whole board is sized to fit its area automatically.",
+      "You can zoom in on any board to see the pieces in more detail: use the on-board zoom widget (zoom in / out and a 'fit' button), hold Ctrl (or ⌘) and scroll the mouse wheel over the board, or pinch with two fingers on touch devices. When zoomed in, the board scrolls inside its own frame instead of moving the whole page, and a plain mouse wheel scrolls normally.",
+      "The zoom controls now sit below the board (or beside tall boards) so they never cover the pieces.",
+      "The live game board is now shown as large as possible while still fitting on screen without scrolling.",
+      "You can now drag a piece toward the edge of a zoomed-in board to auto-scroll the board, making it easy to move pieces across a board too big to see all at once.",
+      "Fixed scrollbars appearing on boards that already fit entirely on screen.",
+      "This applies across the site: the live game board, the game detail page, match replays, the sandbox, the game creation wizard previews, and the featured game on the home page — all optimized for phones, tablets, and desktop.",
+      "In-game error messages (including veto errors) now appear as a short toast above the board so they're easy to see.",
+      "Fixed a stray '0' that could appear below the board in non-veto games.",
+      "New preference under Board settings: 'Show board zoom controls'. Turn it off to hide the widget (you can still zoom with Ctrl + mouse wheel or a pinch).",
+    ],
+  },
+  {
     date: "September 1, 2026",
     title: "Veto fixes, admin portal width & multi-tile piece values",
     items: [

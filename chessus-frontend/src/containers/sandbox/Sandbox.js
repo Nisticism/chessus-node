@@ -16,6 +16,9 @@ import { applySvgStretchBackground } from "../../helpers/svgStretchUtils";
 import SquareHighlightOverlay from "../../components/common/SquareHighlightOverlay";
 import { handlePieceImageError } from "../../utils/pieceFallback";
 import { normalizePromotionOverride } from "../../helpers/promotionOverride";
+import useBoardViewport from "../../components/common/useBoardViewport";
+import BoardZoomControls from "../../components/common/BoardZoomControls";
+import boardVp from "../../components/common/boardViewport.module.scss";
 
 /* eslint-disable react-hooks/exhaustive-deps */
 
@@ -439,7 +442,6 @@ const Sandbox = () => {
   const [rightClickPosition, setRightClickPosition] = useState(null);
   const [rightClickMode, setRightClickMode] = useState('piece'); // 'piece' or 'special'
   const [isMobile, setIsMobile] = useState(false);
-  const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1024);
   const longPressTimeoutRef = useRef(null);
   
   // Ranged attack state
@@ -453,13 +455,6 @@ const Sandbox = () => {
   // Detect if on mobile device
   useEffect(() => {
     setIsMobile(isMobileDevice());
-  }, []);
-
-  // Track window width for responsive board sizing
-  useEffect(() => {
-    const handleResize = () => setWindowWidth(window.innerWidth);
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
   }, []);
 
   // Load from localStorage on mount
@@ -586,6 +581,16 @@ const Sandbox = () => {
   const activeSandbox = useMemo(() => {
     return sandboxes.find(s => s.id === activeSandboxId);
   }, [sandboxes, activeSandboxId]);
+
+  // Fit-to-container sizing + zoom for the sandbox board.
+  const boardVpHook = useBoardViewport({
+    boardWidth: activeSandbox?.gameType?.board_width,
+    boardHeight: activeSandbox?.gameType?.board_height,
+    maxHeight: () => Math.max(360, (typeof window !== 'undefined' ? window.innerHeight : 800) - 140),
+    fitMaxSquare: 92,
+    insetW: 28,
+    insetH: 28,
+  });
 
   // Keep gameSpecialSquaresRef current (synchronous render-time ref update)
   gameSpecialSquaresRef.current = activeSandbox?.gameSpecialSquares || { range: {}, promotion: {}, control: {}, special: {} };
@@ -3334,10 +3339,7 @@ const Sandbox = () => {
 
     const boardWidth = activeSandbox.gameType.board_width || 8;
     const boardHeight = activeSandbox.gameType.board_height || 8;
-    // Calculate square size to fit within max dimensions while keeping squares square
-    // Account for layout: stacked (≤900px) vs sidebar (>900px), plus board border/padding
-    const maxBoardSize = Math.min(windowWidth >= 1600 ? 900 : 750, windowWidth <= 1200 ? windowWidth - 90 : windowWidth - 660);
-    const squareSize = Math.min(windowWidth >= 1600 ? 90 : 75, maxBoardSize / Math.max(boardWidth, boardHeight));
+    const squareSize = boardVpHook.squareSize || 40;
     const pieces = activeSandbox.pieces;
     const specialSquares = activeSandbox.specialSquares || {};
 
@@ -3653,6 +3655,13 @@ const Sandbox = () => {
             )}
           </div>
         )}
+        <div style={boardVpHook.frameStyle}>
+        <div
+          className={`${boardVp.viewport} ${boardVpHook.hideScrollbars ? boardVp.noScrollbars : ''}`}
+          ref={boardVpHook.viewportRef}
+          style={boardVpHook.viewportStyle}
+        >
+          <div style={boardVpHook.contentStyle}>
         <div className={styles["board-with-notation"]}>
           {/* Rank labels (left side) */}
           <div className={styles["rank-labels"]} style={{ gridTemplateRows: `repeat(${boardHeight}, ${squareSize}px)` }}>
@@ -3755,6 +3764,10 @@ const Sandbox = () => {
               })}
             </div>
           </div>
+        </div>
+          </div>
+        </div>
+        <BoardZoomControls {...boardVpHook.controlProps} />
         </div>
         <div className={styles["board-controls"]}>
           <button
