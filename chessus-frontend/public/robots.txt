@@ -6,3 +6,7 @@ Disallow: /preferences
 Disallow: /notifications
 
 Sitemap: https://gridgrove.gg/sitemap.xml
+Sitemap: https://gridgrove.gg/api/sitemap/games.xml
+Sitemap: https://gridgrove.gg/api/sitemap/pieces.xml
+Sitemap: https://gridgrove.gg/api/sitemap/players.xml
+Sitemap: https://gridgrove.gg/api/sitemap/forums.xml

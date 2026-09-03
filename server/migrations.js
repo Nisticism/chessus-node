@@ -4126,6 +4126,36 @@ const runMigrations = async () => {
     console.error('Error creating analytics_pageviews table:', err.message);
   }
 
+  // Analytics: track user_agent + bot flag + (authenticated) user id so the admin
+  // traffic dashboard can filter out bot crawlers and the admin's own visits.
+  try {
+    if (await tableExists('analytics_pageviews')) {
+      if (!(await columnExists('analytics_pageviews', 'user_id'))) {
+        await runMigration(
+          `ALTER TABLE analytics_pageviews ADD COLUMN user_id INT NULL AFTER is_authenticated, ADD INDEX idx_ap_user (user_id)`,
+          'Add user_id to analytics_pageviews (filter own visits)'
+        );
+        migrationsRun++;
+      }
+      if (!(await columnExists('analytics_pageviews', 'user_agent'))) {
+        await runMigration(
+          `ALTER TABLE analytics_pageviews ADD COLUMN user_agent VARCHAR(400) NULL AFTER user_id`,
+          'Add user_agent to analytics_pageviews'
+        );
+        migrationsRun++;
+      }
+      if (!(await columnExists('analytics_pageviews', 'is_bot'))) {
+        await runMigration(
+          `ALTER TABLE analytics_pageviews ADD COLUMN is_bot TINYINT(1) NOT NULL DEFAULT 0 AFTER user_agent, ADD INDEX idx_ap_is_bot (is_bot)`,
+          'Add is_bot to analytics_pageviews (filter bot crawlers)'
+        );
+        migrationsRun++;
+      }
+    }
+  } catch (err) {
+    console.error('Error extending analytics_pageviews table:', err.message);
+  }
+
   // Add has_game_log column to ai_training_jobs so REMOTE_MODE servers can
   // determine whether a job's games.txt exists (without checking the remote
   // filesystem) and enable the Board Replay button accordingly.

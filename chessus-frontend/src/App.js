@@ -157,6 +157,19 @@ function App() {
     // Track page view for analytics
     trackPageView(location.pathname + location.search, document.title);
 
+    // Keep the canonical URL in sync with the current route (the static tag in
+    // index.html points at the homepage, which would otherwise tell crawlers that
+    // every page canonicalizes to "/" and suppress indexing of subpages).
+    try {
+      let canonical = document.querySelector('link[rel="canonical"]');
+      if (!canonical) {
+        canonical = document.createElement('link');
+        canonical.setAttribute('rel', 'canonical');
+        document.head.appendChild(canonical);
+      }
+      canonical.setAttribute('href', 'https://gridgrove.gg' + location.pathname);
+    } catch (_) { /* non-fatal */ }
+
     // Scroll to top on route change
     window.scrollTo(0, 0);
 

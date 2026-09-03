@@ -19,6 +19,7 @@ import ValidationWarningModal from "../common/ValidationWarningModal";
 import { renderContent } from "../../helpers/render-content";
 import { getErrorMessage } from "../../helpers/error-handler";
 import CommentEmoteBar from "./CommentEmoteBar";
+import useSeo from "../../hooks/useSeo";
 
 const COMMENT_MAX = 10000;
 
@@ -91,6 +92,32 @@ const Forum = () => {
   const navigate = useNavigate();
 
   const { forumId } = useParams();
+
+  // Per-page SEO for forum threads (unique title + description from the post).
+  const forumSnippet = currentForum
+    ? String(currentForum.content || '')
+        .replace(/<[^>]*>/g, ' ')
+        .replace(/[#*_>`~[\]()]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 160)
+    : '';
+  useSeo(currentForum && currentForum.title ? {
+    title: `${currentForum.title} \u2014 Forums | GridGrove`,
+    description: forumSnippet || `Join the discussion "${currentForum.title}" on the GridGrove community forums.`,
+    path: `/forums/${forumId}`,
+    type: 'article',
+    jsonLd: {
+      '@context': 'https://schema.org',
+      '@type': 'DiscussionForumPosting',
+      headline: currentForum.title,
+      url: `https://gridgrove.gg/forums/${forumId}`,
+      ...(currentForum.author_name || currentForum.username
+        ? { author: { '@type': 'Person', name: currentForum.author_name || currentForum.username } }
+        : {}),
+    },
+    ready: true,
+  } : { ready: false });
 
   /* eslint-disable react-hooks/exhaustive-deps */
   useEffect(() => {

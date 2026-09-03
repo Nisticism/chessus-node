@@ -4,6 +4,20 @@ import styles from "./changelog.module.scss";
 
 const changelogData = [
   {
+    date: "September 3, 2026",
+    title: "Search visibility, quick zoom toggle, traffic filters & admin polish",
+    items: [
+      "Board zoom controls can now be toggled from the settings gear in the navbar, not just the Preferences page.",
+      "A plain mouse wheel over a board now scrolls the page when the whole board already fits vertically (it only scrolls the board itself when the board is taller than its frame).",
+      "The mouse wheel now only scrolls a zoomed-in board when the cursor is directly over the board; scrolling in the empty space around it scrolls the page as expected, and the zoom widget now sits a consistent distance from the board.",
+      "Search engine visibility: game, piece, player profile, and forum-thread pages now have their own titles, descriptions, and share previews instead of the generic homepage ones, and each page tells search engines its correct address.",
+      "Search engines are now given complete, automatically-updated lists (sitemaps) of every public game, piece, player profile, and forum thread so they can be discovered and indexed.",
+      "Added an overview section to the home page describing what GridGrove is and what you can do with it.",
+      "Admin traffic tab: you can now filter out bot/crawler traffic and your own logged-in visits (both on by default), so the numbers better reflect real visitors.",
+      "Admin portal: fixed table text breaking in the middle of words (e.g. 'USER' splitting across two lines); long content now scrolls horizontally instead. Also aligned the admin portal's side margins with the rest of the site.",
+    ],
+  },
+  {
     date: "September 2, 2026",
     title: "Zoom & fit controls for every board",
     items: [

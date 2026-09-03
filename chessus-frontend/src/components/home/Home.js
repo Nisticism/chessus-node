@@ -711,6 +711,30 @@ const Home = () => {
         </div>
       </section>
 
+      {/* SEO / informational prose — crawlable overview of what GridGrove is. */}
+      <section className={styles["about-seo-section"]} aria-label="About GridGrove">
+        <h2>Create and play custom strategy games</h2>
+        <p>
+          GridGrove is a free online platform for building and playing custom strategy games and
+          chess variants. Instead of being limited to one fixed rulebook, you design your own game:
+          choose the board size, create pieces with their own movement and capture rules, add special
+          abilities and squares, and set the win conditions, from checkmate and captures to points,
+          control squares, and more.
+        </p>
+        <p>
+          Once your game is ready, play it online against friends in real time or challenge a
+          built-in computer opponent. Prefer to tinker first? Use the sandbox to test pieces and
+          positions freely, then publish your creation for the community to discover. Browse
+          thousands of custom games and pieces made by other creators, climb the leaderboard, and
+          keep a full history of your matches.
+        </p>
+        <p>
+          Whether you want to reinvent chess with brand-new pieces, invent an original grid-based
+          board game, or just play a fresh strategy game every day, GridGrove gives you the tools to
+          create, share, and play, all with no downloads required.
+        </p>
+      </section>
+
       {/* CTA Section */}
       <section className={styles["cta-section"]}>
         <h2>Ready to Reinvent Strategy Gaming?</h2>

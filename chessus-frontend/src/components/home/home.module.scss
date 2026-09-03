@@ -4,6 +4,24 @@
   padding: 0 var(--page-gutter) 20px;
 }
 
+.about-seo-section {
+  margin: 10px 0 40px;
+  padding: 0;
+  text-align: center;
+
+  h2 {
+    color: var(--text-heading);
+    margin-bottom: 14px;
+  }
+
+  p {
+    color: var(--text-dim);
+    line-height: 1.7;
+    margin: 0 auto 14px;
+    max-width: 820px;
+  }
+}
+
 // Banner
 .banner-wrapper {
   width: 100vw;

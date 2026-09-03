@@ -26,6 +26,7 @@ import InfoTooltip from "../piecewizard/InfoTooltip";
 import useBoardViewport from "../common/useBoardViewport";
 import BoardZoomControls from "../common/BoardZoomControls";
 import boardVp from "../common/boardViewport.module.scss";
+import useSeo from "../../hooks/useSeo";
 
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";
 
@@ -2630,6 +2631,26 @@ const GameTypeView = () => {
     insetH: showDetails ? 28 : 4,
   });
   const squareSize = boardVpHook.squareSize;
+
+  // Per-page SEO for this game type (unique title/description/canonical + schema).
+  useSeo(game ? {
+    title: `${game.game_name} \u2014 Custom Strategy Game | GridGrove`,
+    description: `Play ${game.game_name}, a custom ${game.board_width}\u00d7${game.board_height} strategy game for ${game.player_count || 2} players${game.creator_username && game.creator_username !== 'Anonymous' ? ` by ${game.creator_username}` : ''} on GridGrove. See the board, pieces, and rules, then play online or against the computer.`,
+    path: `/games/${gameId}`,
+    type: 'article',
+    jsonLd: {
+      '@context': 'https://schema.org',
+      '@type': 'Game',
+      name: game.game_name,
+      url: `https://gridgrove.gg/games/${gameId}`,
+      gamePlatform: 'Web browser',
+      numberOfPlayers: game.player_count || 2,
+      ...(game.creator_username && game.creator_username !== 'Anonymous'
+        ? { author: { '@type': 'Person', name: game.creator_username } }
+        : {}),
+    },
+    ready: true,
+  } : { ready: false });
 
   const renderBoard = () => {
     if (!game || squareSize === 0) return null;

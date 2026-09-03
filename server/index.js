@@ -12414,9 +12414,17 @@ app.get("/api/admin/user-growth", authenticateAdmin, async (req, res) => {
 // Offline IP->country lookup; require lazily so a missing module never crashes.
 const _geoip = (() => { try { return require('geoip-lite'); } catch (_) { return null; } })();
 
+// Heuristic bot/crawler detection from the User-Agent. Not exhaustive, but catches
+// the common search engine, social preview, monitoring, and scripting agents.
+const _BOT_UA_RE = /bot|crawl|spider|slurp|bingpreview|facebookexternal|facebot|embedly|quora|pinterest|whatsapp|telegram|discord|googlebot|bingbot|yandex|duckduckbot|baiduspider|sogou|exabot|semrush|ahrefs|mj12bot|dotbot|petalbot|bytespider|gptbot|oai-searchbot|chatgpt|claudebot|anthropic|perplexity|amazonbot|applebot|headless|phantom|puppeteer|playwright|lighthouse|pagespeed|gtmetrix|pingdom|uptimerobot|python-requests|python-urllib|go-http|java\/|okhttp|curl\/|wget\/|libwww|axios\/|node-fetch|scrapy|httpclient|monitor|preview/i;
+function isBotUA(ua) {
+  return !!(ua && _BOT_UA_RE.test(ua));
+}
+
 // Public page-view beacon. No auth, fire-and-forget. We store only a random
 // visitor id, path, referrer/UTM, a coarse country (derived from IP, which is
-// NOT stored), and whether the visitor was logged in.
+// NOT stored), whether the visitor was logged in (and their user id, used only
+// for the admin's own-visit filter), and a bot flag derived from the User-Agent.
 app.post("/api/analytics/pageview", async (req, res) => {
   try {
     const b = req.body || {};
@@ -12427,10 +12435,13 @@ app.post("/api/analytics/pageview", async (req, res) => {
       const ip = String(req.ip || '').replace('::ffff:', '');
       if (_geoip && ip) country = (_geoip.lookup(ip) || {}).country || null;
     } catch (_) { /* geo lookup is best-effort */ }
+    const ua = clip(req.headers['user-agent'], 400);
+    const isBot = isBotUA(ua) ? 1 : 0;
+    const userId = Number.isInteger(Number(b.userId)) && Number(b.userId) > 0 ? Number(b.userId) : null;
     await db_pool.query(
-      `INSERT INTO analytics_pageviews (visitor_id, path, referrer, utm_source, utm_medium, utm_campaign, country, is_authenticated)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [clip(b.visitorId, 64), path, clip(b.referrer, 300), clip(b.utmSource, 100), clip(b.utmMedium, 100), clip(b.utmCampaign, 100), country, b.isAuthenticated ? 1 : 0]
+      `INSERT INTO analytics_pageviews (visitor_id, path, referrer, utm_source, utm_medium, utm_campaign, country, is_authenticated, user_id, user_agent, is_bot)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [clip(b.visitorId, 64), path, clip(b.referrer, 300), clip(b.utmSource, 100), clip(b.utmMedium, 100), clip(b.utmCampaign, 100), country, b.isAuthenticated ? 1 : 0, userId, ua, isBot]
     );
     res.status(204).end();
   } catch (err) {
@@ -12452,11 +12463,29 @@ app.get("/api/admin/analytics", authenticateAdmin, async (req, res) => {
       tz = 'America/Chicago';
       dayFmt = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' });
     }
+    // Optional filters: exclude bot/crawler traffic (default ON) and specific
+    // user ids (e.g. the admin's own logged-in visits). ownIds are parsed to
+    // integers so they're safe to inline.
+    const excludeBots = req.query.excludeBots !== '0';
+    const ownIds = String(req.query.excludeUserIds || '')
+      .split(',').map(s => parseInt(s, 10)).filter(n => Number.isInteger(n) && n > 0).slice(0, 50);
+    let filter = '';
+    if (excludeBots) filter += ' AND is_bot = 0';
+    if (ownIds.length) filter += ` AND (user_id IS NULL OR user_id NOT IN (${ownIds.join(',')}))`;
+
     const [[totals]] = await db_pool.query(
       `SELECT COUNT(*) AS views,
               COUNT(DISTINCT visitor_id) AS visitors,
               SUM(CASE WHEN is_authenticated = 1 THEN 1 ELSE 0 END) AS authed_views,
               SUM(CASE WHEN is_authenticated = 0 THEN 1 ELSE 0 END) AS guest_views
+         FROM analytics_pageviews
+        WHERE created_at >= DATE_SUB(NOW(), INTERVAL ? DAY)${filter}`,
+      [days]
+    );
+    // How many views the current filters excluded, for the admin's awareness.
+    const [[excluded]] = await db_pool.query(
+      `SELECT SUM(is_bot = 1) AS bot_views,
+              ${ownIds.length ? `SUM(user_id IN (${ownIds.join(',')})) AS own_views` : '0 AS own_views'}
          FROM analytics_pageviews
         WHERE created_at >= DATE_SUB(NOW(), INTERVAL ? DAY)`,
       [days]
@@ -12464,13 +12493,13 @@ app.get("/api/admin/analytics", authenticateAdmin, async (req, res) => {
     const [byCountry] = await db_pool.query(
       `SELECT COALESCE(country, 'Unknown') AS country, COUNT(*) AS views, COUNT(DISTINCT visitor_id) AS visitors
          FROM analytics_pageviews
-        WHERE created_at >= DATE_SUB(NOW(), INTERVAL ? DAY)
+        WHERE created_at >= DATE_SUB(NOW(), INTERVAL ? DAY)${filter}
         GROUP BY country ORDER BY views DESC LIMIT 60`,
       [days]
     );
     const [topPages] = await db_pool.query(
       `SELECT path, COUNT(*) AS views FROM analytics_pageviews
-        WHERE created_at >= DATE_SUB(NOW(), INTERVAL ? DAY)
+        WHERE created_at >= DATE_SUB(NOW(), INTERVAL ? DAY)${filter}
         GROUP BY path ORDER BY views DESC LIMIT 25`,
       [days]
     );
@@ -12478,7 +12507,7 @@ app.get("/api/admin/analytics", authenticateAdmin, async (req, res) => {
       `SELECT COALESCE(NULLIF(utm_source, ''), NULLIF(referrer, ''), 'Direct') AS source,
               COUNT(*) AS views, COUNT(DISTINCT visitor_id) AS visitors
          FROM analytics_pageviews
-        WHERE created_at >= DATE_SUB(NOW(), INTERVAL ? DAY)
+        WHERE created_at >= DATE_SUB(NOW(), INTERVAL ? DAY)${filter}
         GROUP BY source ORDER BY views DESC LIMIT 25`,
       [days]
     );
@@ -12489,7 +12518,7 @@ app.get("/api/admin/analytics", authenticateAdmin, async (req, res) => {
     const [dailyRows] = await db_pool.query(
       `SELECT UNIX_TIMESTAMP(created_at) AS ts, visitor_id
          FROM analytics_pageviews
-        WHERE created_at >= DATE_SUB(NOW(), INTERVAL ? DAY)`,
+        WHERE created_at >= DATE_SUB(NOW(), INTERVAL ? DAY)${filter}`,
       [days]
     );
     const dayMap = new Map();
@@ -12508,6 +12537,11 @@ app.get("/api/admin/analytics", authenticateAdmin, async (req, res) => {
       days,
       timezone: tz,
       geoEnabled: !!_geoip,
+      filters: { excludeBots, excludeUserIds: ownIds },
+      excluded: {
+        botViews: Number(excluded.bot_views || 0),
+        ownViews: Number(excluded.own_views || 0),
+      },
       totals: {
         views: Number(totals.views || 0),
         visitors: Number(totals.visitors || 0),
@@ -12523,6 +12557,82 @@ app.get("/api/admin/analytics", authenticateAdmin, async (req, res) => {
     console.error("Error in /api/admin/analytics:", err);
     res.status(500).send({ message: "Failed to fetch analytics", err: err.message });
   }
+});
+
+// ── Dynamic sitemaps for user-generated content ────────────────────────────
+// Referenced from robots.txt so crawlers discover every public game, piece, and
+// player profile (the static sitemap.xml only lists top-level pages).
+const SITE_ORIGIN = 'https://gridgrove.gg';
+function xmlEscape(s) {
+  return String(s).replace(/[<>&'"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', "'": '&apos;', '"': '&quot;' }[c]));
+}
+function buildUrlset(urls) {
+  const body = urls.map(u =>
+    `  <url><loc>${xmlEscape(u.loc)}</loc>${u.changefreq ? `<changefreq>${u.changefreq}</changefreq>` : ''}${u.priority ? `<priority>${u.priority}</priority>` : ''}</url>`
+  ).join('\n');
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${body}\n</urlset>\n`;
+}
+async function sendSitemap(res, sql, mapRow) {
+  try {
+    const [rows] = await db_pool.query(sql);
+    const urls = rows.map(mapRow).filter(Boolean);
+    res.set('Content-Type', 'application/xml; charset=utf-8');
+    res.set('Cache-Control', 'public, max-age=21600'); // 6h
+    res.send(buildUrlset(urls));
+  } catch (err) {
+    console.error('Sitemap generation error:', err.message);
+    res.status(500).set('Content-Type', 'application/xml').send('<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"></urlset>');
+  }
+}
+
+app.get('/api/sitemap/games.xml', (req, res) =>
+  sendSitemap(
+    res,
+    `SELECT id FROM game_types WHERE COALESCE(is_draft, 0) = 0 ORDER BY id DESC LIMIT 45000`,
+    (r) => ({ loc: `${SITE_ORIGIN}/games/${r.id}`, changefreq: 'weekly', priority: '0.6' })
+  )
+);
+
+app.get('/api/sitemap/pieces.xml', (req, res) =>
+  sendSitemap(
+    res,
+    `SELECT id FROM pieces WHERE COALESCE(is_draft, 0) = 0 ORDER BY id DESC LIMIT 45000`,
+    (r) => ({ loc: `${SITE_ORIGIN}/pieces/${r.id}`, changefreq: 'weekly', priority: '0.5' })
+  )
+);
+
+app.get('/api/sitemap/players.xml', (req, res) =>
+  sendSitemap(
+    res,
+    `SELECT username FROM users WHERE username IS NOT NULL AND username <> '' AND COALESCE(banned, 0) = 0 ORDER BY id DESC LIMIT 45000`,
+    (r) => (r.username ? { loc: `${SITE_ORIGIN}/profile/${encodeURIComponent(r.username)}`, changefreq: 'weekly', priority: '0.4' } : null)
+  )
+);
+
+app.get('/api/sitemap/forums.xml', (req, res) =>
+  sendSitemap(
+    res,
+    `SELECT id FROM articles
+       WHERE (is_career IS NULL OR is_career = 0)
+         AND (is_news IS NULL OR is_news = 0)
+         AND (public IS NULL OR public = 1)
+       ORDER BY id DESC LIMIT 45000`,
+    (r) => ({ loc: `${SITE_ORIGIN}/forums/${r.id}`, changefreq: 'weekly', priority: '0.4' })
+  )
+);
+
+// Sitemap index tying the static + dynamic sitemaps together.
+app.get('/api/sitemap/index.xml', (req, res) => {
+  const maps = [
+    `${SITE_ORIGIN}/sitemap.xml`,
+    `${SITE_ORIGIN}/api/sitemap/games.xml`,
+    `${SITE_ORIGIN}/api/sitemap/pieces.xml`,
+    `${SITE_ORIGIN}/api/sitemap/players.xml`,
+    `${SITE_ORIGIN}/api/sitemap/forums.xml`,
+  ];
+  const body = maps.map(m => `  <sitemap><loc>${xmlEscape(m)}</loc></sitemap>`).join('\n');
+  res.set('Content-Type', 'application/xml; charset=utf-8');
+  res.send(`<?xml version="1.0" encoding="UTF-8"?>\n<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${body}\n</sitemapindex>\n`);
 });
 
 // Get anonymous live games for admin tracking

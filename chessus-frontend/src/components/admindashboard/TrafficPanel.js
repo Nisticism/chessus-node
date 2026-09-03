@@ -53,21 +53,32 @@ const TIMEZONE_OPTIONS = buildTimezoneOptions();
 function TrafficPanel() {
   const [days, setDays] = useState(30);
   const [tz, setTz] = useState('America/Chicago');
+  const [excludeBots, setExcludeBots] = useState(true);
+  const [excludeMine, setExcludeMine] = useState(true);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  const load = useCallback(async (d, z) => {
+  // Current admin's own user id, so "exclude my visits" can filter them out.
+  const myId = (() => {
+    try { const u = JSON.parse(localStorage.getItem('user') || 'null'); return u?.id || u?.user_id || null; } catch (_) { return null; }
+  })();
+
+  const load = useCallback(async (d, z, bots, mine) => {
     setLoading(true); setError(null);
     try {
-      const resp = await axios.get(`${API_URL}admin/analytics?days=${d}&tz=${encodeURIComponent(z)}`, { headers: authHeader() });
+      const own = mine && myId ? `&excludeUserIds=${encodeURIComponent(myId)}` : '';
+      const resp = await axios.get(
+        `${API_URL}admin/analytics?days=${d}&tz=${encodeURIComponent(z)}&excludeBots=${bots ? 1 : 0}${own}`,
+        { headers: authHeader() }
+      );
       setData(resp.data);
     } catch (e) {
       setError(e.response?.data?.message || e.message || 'Failed to load analytics');
     } finally { setLoading(false); }
-  }, []);
+  }, [myId]);
 
-  useEffect(() => { load(days, tz); }, [days, tz, load]);
+  useEffect(() => { load(days, tz, excludeBots, excludeMine); }, [days, tz, excludeBots, excludeMine, load]);
 
   const t = data?.totals;
   const maxDaily = Math.max(1, ...((data?.daily || []).map(d => d.views)));
@@ -99,6 +110,25 @@ function TrafficPanel() {
         </label>
         {data && !data.geoEnabled && (
           <span style={{ color: '#d4a64a', fontSize: 12 }}>Country lookup unavailable (geoip-lite not installed on server)</span>
+        )}
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 18, marginBottom: 16, flexWrap: 'wrap', fontSize: 13 }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+          <input type="checkbox" checked={excludeBots} onChange={(e) => setExcludeBots(e.target.checked)} />
+          <span>Exclude bots &amp; crawlers</span>
+        </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: myId ? 'pointer' : 'not-allowed', opacity: myId ? 1 : 0.5 }}>
+          <input type="checkbox" checked={excludeMine} disabled={!myId} onChange={(e) => setExcludeMine(e.target.checked)} />
+          <span>Exclude my own visits</span>
+        </label>
+        {data?.excluded && (excludeBots || (excludeMine && myId)) && (
+          <span style={{ opacity: 0.6 }}>
+            Filtered out
+            {excludeBots ? ` ${(data.excluded.botViews || 0).toLocaleString()} bot views` : ''}
+            {excludeBots && excludeMine && myId ? ' and' : ''}
+            {excludeMine && myId ? ` ${(data.excluded.ownViews || 0).toLocaleString()} of your views` : ''}.
+          </span>
         )}
       </div>
 

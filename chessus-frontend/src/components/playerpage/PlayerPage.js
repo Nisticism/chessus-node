@@ -18,6 +18,7 @@ import { addFriend, removeFriend, checkFriendshipStatus, acceptFriendRequest, ca
 import { useSocket } from "../../contexts/SocketContext";
 import DefaultAvatar from "../../assets/pieces/legacy/White-pawn.png";
 import ConfirmDeleteModal from "../common/ConfirmDeleteModal";
+import useSeo from "../../hooks/useSeo";
 // import NotFound from "../notfound/NotFound";
 
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "";
@@ -62,6 +63,21 @@ const PlayerPage = (props) => {
 
   const { username: routeUsername } = useParams();
   const username = routeUsername || (currentUser ? currentUser.username : "");
+
+  // Per-page SEO for public player profiles (only for a real, route-addressed user).
+  useSeo(routeUsername && playerPageUser && playerPageUser.username ? {
+    title: `${playerPageUser.username} \u2014 Player Profile | GridGrove`,
+    description: `${playerPageUser.username}'s GridGrove profile \u2014 ELO ${playerPageUser.elo ?? 1000}, plus the custom games and pieces they've created and their recent matches.`,
+    path: `/profile/${playerPageUser.username}`,
+    type: 'profile',
+    image: playerPageUser.profile_picture ? `${ASSET_URL}${playerPageUser.profile_picture}` : undefined,
+    jsonLd: {
+      '@context': 'https://schema.org',
+      '@type': 'ProfilePage',
+      mainEntity: { '@type': 'Person', name: playerPageUser.username },
+    },
+    ready: true,
+  } : { ready: false });
 
   // Navigate to play page with challenge modal open
   const handleChallenge = () => {

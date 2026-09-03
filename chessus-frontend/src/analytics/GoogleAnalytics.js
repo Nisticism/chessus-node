@@ -31,6 +31,11 @@ export const initGA = () => { getVisitorId(); };
 export const trackPageView = (path /*, title */) => {
   try {
     const params = new URLSearchParams(window.location.search || '');
+    let userId = null;
+    try {
+      const u = JSON.parse(localStorage.getItem('user') || 'null');
+      if (u && (u.id || u.user_id)) userId = u.id || u.user_id;
+    } catch (_) { /* ignore */ }
     const payload = {
       path: String(path || window.location.pathname || '/').split('?')[0].slice(0, 300),
       visitorId: getVisitorId(),
@@ -39,6 +44,7 @@ export const trackPageView = (path /*, title */) => {
       utmMedium: (params.get('utm_medium') || '').slice(0, 100),
       utmCampaign: (params.get('utm_campaign') || '').slice(0, 100),
       isAuthenticated: !!localStorage.getItem('user'),
+      userId,
     };
     _firstView = false;
     const url = `${API_URL}/api/analytics/pageview`;

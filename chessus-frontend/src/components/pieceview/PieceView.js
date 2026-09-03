@@ -12,6 +12,7 @@ import styles from "./pieceview.module.scss";
 import { parseServerDate } from "../../helpers/date-formatter";
 import authHeader from "../../services/auth-header";
 import { renderContent } from "../../helpers/render-content";
+import useSeo from "../../hooks/useSeo";
 
 const EMPTY_PIECE_VALUE_CACHE = {};
 
@@ -33,6 +34,25 @@ const PieceView = () => {
   const [gamesPage, setGamesPage] = useState(1);
   const [selectedPreviewImageUrl, setSelectedPreviewImageUrl] = useState(null);
   const GAMES_PER_PAGE = 10;
+
+  // Per-page SEO for this piece (unique title/description/canonical + schema).
+  useSeo(piece ? {
+    title: `${piece.piece_name} \u2014 Custom Game Piece | GridGrove`,
+    description: `${piece.piece_name} is a custom strategy-game piece${piece.creator_username && piece.creator_username !== 'Anonymous' ? ` by ${piece.creator_username}` : ''} on GridGrove. See how it moves, captures, and which games use it \u2014 or add it to your own custom game.`,
+    path: `/pieces/${pieceId}`,
+    type: 'article',
+    image: piece.image_location ? `${ASSET_URL}/${String(piece.image_location).replace(/^\/+/, '')}` : undefined,
+    jsonLd: {
+      '@context': 'https://schema.org',
+      '@type': 'CreativeWork',
+      name: piece.piece_name,
+      url: `https://gridgrove.gg/pieces/${pieceId}`,
+      ...(piece.creator_username && piece.creator_username !== 'Anonymous'
+        ? { author: { '@type': 'Person', name: piece.creator_username } }
+        : {}),
+    },
+    ready: true,
+  } : { ready: false });
 
   // Creator options menu
   const [creatorMenuOpen, setCreatorMenuOpen] = useState(false);

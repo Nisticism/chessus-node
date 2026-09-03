@@ -1,11 +1,25 @@
 .admin-dashboard {
   min-height: 100vh;
   background: linear-gradient(135deg, var(--bg-dark) 0%, var(--bg-dark) 100%);
-  padding: 40px 20px;
+  // Match the sitewide page gutter (home uses --page-gutter) so the side margins
+  // line up with the rest of the site instead of the smaller fixed padding.
+  padding: 40px var(--page-gutter);
   color: var(--text-heading);
 
   a {
     text-decoration: none;
+  }
+
+  // Never break within a word anywhere in the admin portal. The global
+  // `* { overflow-wrap: anywhere }` reset (index.css) otherwise breaks words
+  // (e.g. "USER" -> "USE/R") inside narrow cells and badges; here we opt every
+  // descendant out so its table's horizontal scrollbar handles overflow instead.
+  * {
+    overflow-wrap: normal;
+  }
+  td, th {
+    word-break: normal;
+    hyphens: none;
   }
 }
 
