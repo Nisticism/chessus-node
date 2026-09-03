@@ -2376,21 +2376,152 @@ function prettifyPieceField(col) {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
+// ---- Gated (conditional) piece fields ----
+// Many piece columns only do anything when another column switches them on.
+// "Hop stop at occupied" is inert unless the piece can actually hop; every
+// attack-range setting is inert unless the piece has a ranged attack; a
+// direction-change distance is inert unless direction change is enabled.
+// Comparing those raw makes two functionally identical pieces look different,
+// which is misleading in the piece comparer and skews the uniqueness score.
+//
+// Each entry answers "is this column live for this piece?". A column whose gate
+// is closed is read as its default (0 / null), so:
+//   - both pieces gated off -> equal, and treated as a shared default, so it is
+//     reported as neither a difference nor a similarity
+//   - one gated on -> still a real difference, and still reported
+const CMP_DIRS = ['up_left', 'up', 'up_right', 'right', 'down_right', 'down', 'down_left', 'left'];
+const dirCols = (suffix) => CMP_DIRS.map(d => `${d}${suffix}`);
+
+const gBool = (v) => (v === 1 || v === true || v === 'true' || v === '1');
+const gInt = (v) => (v === null || v === undefined || v === '' || v === 'null') ? 0 : (parseInt(v, 10) || 0);
+const gAny = (p, cols) => cols.some(c => gInt(p[c]) !== 0);
+
+const gHasDirectionalMovement = (p) => gAny(p, dirCols('_movement'));
+const gHasDirectionalCapture = (p) => gAny(p, dirCols('_capture'));
+const gHasDirectionalRanged = (p) => gAny(p, dirCols('_attack_range'));
+const gHasRatioMovement = (p) => gInt(p.ratio_one_movement) !== 0 && gInt(p.ratio_two_movement) !== 0;
+const gHasRatioCapture = (p) => gInt(p.ratio_one_capture) !== 0 && gInt(p.ratio_two_capture) !== 0;
+const gHasRatioRanged = (p) => gInt(p.ratio_one_attack_range) !== 0 && gInt(p.ratio_two_attack_range) !== 0;
+const gHasRanged = (p) => gBool(p.can_capture_enemy_via_range);
+const gHasAnyMovement = (p) => gHasDirectionalMovement(p) || gHasRatioMovement(p) ||
+  gInt(p.step_by_step_movement_value) !== 0 || !!p.custom_movement_squares || !!p.special_scenario_moves;
+const gHasAnyAttack = (p) => gHasDirectionalCapture(p) || gHasRatioCapture(p) ||
+  gInt(p.step_by_step_capture) !== 0 || gBool(p.can_capture_enemy_on_move) ||
+  !!p.custom_attack_squares || !!p.special_scenario_captures;
+// Movement hops come from the movement hop flags; chain hops feed both sides.
+const gHopsOnMove = (p) => gBool(p.can_hop_over_allies) || gBool(p.can_hop_over_enemies) ||
+  gBool(p.capture_on_hop) || gBool(p.chain_hop_allies);
+const gHopsOnAttack = (p) => gBool(p.can_hop_attack_over_allies) || gBool(p.can_hop_attack_over_enemies) ||
+  gBool(p.capture_on_hop) || gBool(p.chain_hop_allies);
+const gHasExactDirectionalMovement = (p) => dirCols('_movement_exact').some(c => gBool(p[c]));
+const gHasExactDirectionalCapture = (p) => dirCols('_capture_exact').some(c => gBool(p[c]));
+
+const CMP_FIELD_GATES = {};
+const addGate = (cols, predicate) => { for (const c of cols) CMP_FIELD_GATES[c] = predicate; };
+
+// A per-direction exact flag or "available for N moves" count means nothing
+// when that direction's distance is zero.
+for (const [suffix, extraGate] of [
+  ['_movement', null],
+  ['_capture', null],
+  ['_attack_range', gHasRanged],
+  ['_movement_change', (p) => gBool(p.directional_movement_change)],
+  ['_capture_change', (p) => gBool(p.directional_capture_change)],
+]) {
+  for (const d of CMP_DIRS) {
+    const base = `${d}${suffix}`;
+    const gate = extraGate
+      ? (p) => extraGate(p) && gInt(p[base]) !== 0
+      : (p) => gInt(p[base]) !== 0;
+    CMP_FIELD_GATES[`${base}_exact`] = gate;
+    CMP_FIELD_GATES[`${base}_available_for`] = gate;
+    if (extraGate) CMP_FIELD_GATES[base] = extraGate;
+  }
+}
+
+// Repeat counts and their iteration limits
+addGate(['repeating_movement'], gHasDirectionalMovement);
+addGate(['max_directional_movement_iterations', 'min_directional_movement_iterations'],
+  (p) => gHasDirectionalMovement(p) && gBool(p.repeating_movement));
+addGate(['repeating_capture'], gHasDirectionalCapture);
+addGate(['repeating_ratio'], gHasRatioMovement);
+addGate(['max_ratio_iterations', 'min_ratio_iterations'],
+  (p) => gHasRatioMovement(p) && gBool(p.repeating_ratio));
+addGate(['repeating_ratio_capture'], gHasRatioCapture);
+addGate(['max_ratio_capture_iterations'],
+  (p) => gHasRatioCapture(p) && gBool(p.repeating_ratio_capture));
+
+// Everything ranged is inert without a ranged attack
+addGate([
+  'can_fire_over_allies', 'can_fire_over_enemies',
+  'can_capture_ally_via_range', 'can_capture_ally_on_range', 'can_attack_on_iteration',
+  'ranged_capture_actions_per_turn',
+  'step_by_step_attack_style', 'step_by_step_attack_value',
+  'ratio_one_attack_range', 'ratio_two_attack_range',
+  ...dirCols('_attack_range'),
+], gHasRanged);
+addGate(['repeating_directional_ranged_attack'], (p) => gHasRanged(p) && gHasDirectionalRanged(p));
+addGate(['max_directional_ranged_attack_iterations', 'min_directional_ranged_attack_iterations'],
+  (p) => gHasRanged(p) && gHasDirectionalRanged(p) && gBool(p.repeating_directional_ranged_attack));
+addGate(['repeating_ratio_ranged_attack'], (p) => gHasRanged(p) && gHasRatioRanged(p));
+addGate(['max_ratio_ranged_attack_iterations', 'min_ratio_ranged_attack_iterations'],
+  (p) => gHasRanged(p) && gHasRatioRanged(p) && gBool(p.repeating_ratio_ranged_attack));
+
+// Hop modifiers only matter when the piece can hop, and only on the side
+// (movement or attack) they belong to.
+addGate(['can_hop_over_allies', 'can_hop_over_enemies'], gHasAnyMovement);
+addGate(['can_hop_attack_over_allies', 'can_hop_attack_over_enemies'], gHasAnyAttack);
+addGate(['directional_hop_disabled'], gHopsOnMove);
+addGate(['directional_hop_disabled_attack'], gHopsOnAttack);
+addGate(['directional_hop_only'], gHasDirectionalMovement);
+addGate(['directional_hop_only_attack'], gHasDirectionalCapture);
+addGate(['max_directional_hop_pieces'], (p) => gHasDirectionalMovement(p) && gHopsOnMove(p));
+addGate(['max_directional_hop_pieces_attack'], (p) => gHasDirectionalCapture(p) && gHopsOnAttack(p));
+addGate(['exact_ratio_hop_only'], (p) => gHasRatioMovement(p) || gHasExactDirectionalMovement(p));
+addGate(['exact_ratio_hop_only_attack'], (p) => gHasRatioCapture(p) || gHasExactDirectionalCapture(p));
+// hop_stop_at_occupied is only ever read while repeating: on a repeating
+// directional move that is actually hopping, or on repeating ratio multiples.
+addGate(['hop_stop_at_occupied'],
+  (p) => (gBool(p.repeating_movement) && gHopsOnMove(p)) || (gHasRatioMovement(p) && gBool(p.repeating_ratio)));
+addGate(['hop_stop_at_occupied_attack'],
+  (p) => (gBool(p.repeating_capture) && gHopsOnAttack(p)) || (gHasRatioCapture(p) && gBool(p.repeating_ratio_capture)));
+
+// Feature sub-settings
+addGate(['chain_hop_allies', 'max_chain_hops'], (p) => gBool(p.chain_capture_enabled));
+addGate(['promotion_pieces_ids', 'free_move_after_promotion'], (p) => gBool(p.can_promote));
+addGate(['must_move_uses_action'], (p) => gBool(p.must_move_if_able));
+addGate(['repeating_movement_change', 'require_empty_via_movement', 'require_direction_change'],
+  (p) => gBool(p.directional_movement_change));
+addGate(['repeating_capture_change', 'require_empty_via_capture', 'require_direction_change_capture'],
+  (p) => gBool(p.directional_capture_change));
+
+// Read a column as its default when its gate is closed.
+function cmpGatedValue(row, col) {
+  const gate = CMP_FIELD_GATES[col];
+  if (gate && !gate(row)) return null;
+  return row[col];
+}
+
 // Compare two full piece rows, bucketing every functional field into
 // differences (values differ) or similarities (both share the same non-default value).
 function comparePieceRows(a, b) {
   const differences = [];
   const similarities = [];
   const consider = (col, kind) => {
+    // Read through the gate table: a setting whose enabling ability is off has
+    // no effect on play, so it compares as its default rather than as a
+    // difference between two functionally identical pieces.
+    const va = cmpGatedValue(a, col);
+    const vb = cmpGatedValue(b, col);
     let na, nb, da, db;
     if (kind === 'bool') {
-      na = cmpNormBool(a[col]); nb = cmpNormBool(b[col]);
+      na = cmpNormBool(va); nb = cmpNormBool(vb);
       da = na ? 'Yes' : 'No'; db = nb ? 'Yes' : 'No';
     } else if (kind === 'int') {
-      na = cmpNormInt(a[col]); nb = cmpNormInt(b[col]);
+      na = cmpNormInt(va); nb = cmpNormInt(vb);
       da = String(na); db = String(nb);
     } else {
-      na = cmpNormJson(a[col]); nb = cmpNormJson(b[col]);
+      na = cmpNormJson(va); nb = cmpNormJson(vb);
       da = na ? 'Configured' : 'None'; db = nb ? 'Configured' : 'None';
     }
     const label = prettifyPieceField(col);
@@ -4728,11 +4859,15 @@ app.post("/api/games/:gameId/uniqueness-check", authenticateToken, async (req, r
     // Build a fingerprint for a piece that captures all gameplay-relevant settings
     const buildPieceFingerprint = (piece) => {
       const fp = {};
+      // Read through the same gate table the piece comparer uses, so a setting
+      // that can never fire (hop-stop with no hopping, attack range with no
+      // ranged attack) doesn't make two functionally identical pieces
+      // fingerprint differently and depress the uniqueness score.
       for (const col of pieceCompareColumns) {
-        fp[col] = piece[col] ?? null;
+        fp[col] = cmpGatedValue(piece, col) ?? null;
       }
       for (const col of junctionCompareColumns) {
-        fp[col] = piece[col] ?? null;
+        fp[col] = cmpGatedValue(piece, col) ?? null;
       }
       // Include position and player number
       fp.x = piece.x;
