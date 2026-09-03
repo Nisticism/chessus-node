@@ -23,7 +23,8 @@ const {
   isCheckmate,
   wouldMoveLeaveInCheck,
   findPieceAtSquare,
-  doesPieceOccupySquare
+  doesPieceOccupySquare,
+  loadGameMoves
 } = gameSocket;
 
 // ── Helpers ────────────────────────────────────────────────────────────
@@ -40,7 +41,10 @@ function printBoard(pieces, boardWidth, boardHeight) {
 
   for (const p of pieces) {
     const owner = p.team || p.player_id;
-    const label = (p.piece_name || '??').substring(0, 3);
+    // Use the LAST word so families like "Power King" / "Power Pawn" stay
+    // distinguishable instead of every piece rendering as "Pow".
+    const words = String(p.piece_name || '??').trim().split(/\s+/);
+    const label = (words[words.length - 1] || '??').substring(0, 3);
     const marker = owner === 1 ? `[${label}]` : `(${label})`;
     const pw = p.piece_width || 1;
     const ph = p.piece_height || 1;
@@ -122,12 +126,17 @@ function buildAttackerInfo(enemy) {
   };
 }
 
-function analyzePositionForCheckmate(pieces, gameType, turnPlayerPosition) {
-  // Build a gameState-like object the exported functions expect
+function analyzePositionForCheckmate(pieces, gameType, turnPlayerPosition, ctx = {}) {
+  // Build a gameState-like object the exported functions expect.
+  // otherGameData / totalHalfMoves matter: the first enables placement-move
+  // enumeration (Othello-style deploys count as check escapes), the second
+  // gates "available for the first N moves" abilities.
   suppressLogs();
   const gameState = {
     pieces: pieces.map(p => ({ ...p })),
-    gameType
+    gameType,
+    otherGameData: ctx.otherGameData || {},
+    totalHalfMoves: ctx.totalHalfMoves || 0
   };
 
   const checkResult = checkForCheck(gameState, turnPlayerPosition);
@@ -363,14 +372,14 @@ async function main() {
     let gameRow;
     if (gameId) {
       const [rows] = await db_pool.query(
-        'SELECT g.*, gt.board_width, gt.board_height, gt.mate_condition, gt.mate_piece, gt.game_name as game_type_name FROM games g INNER JOIN game_types gt ON g.game_type_id = gt.id WHERE g.id = ?',
+        'SELECT g.*, gt.game_name AS game_type_name, gt.id AS _gt_id FROM games g INNER JOIN game_types gt ON g.game_type_id = gt.id WHERE g.id = ?',
         [gameId]
       );
       gameRow = rows[0];
     } else {
       // Find most recent bot game
       const [rows] = await db_pool.query(
-        `SELECT g.*, gt.board_width, gt.board_height, gt.mate_condition, gt.mate_piece, gt.game_name as game_type_name
+        `SELECT g.*, gt.game_name AS game_type_name, gt.id AS _gt_id
          FROM games g
          INNER JOIN game_types gt ON g.game_type_id = gt.id
          WHERE g.other_data LIKE '%"isBotGame":true%'
@@ -384,9 +393,20 @@ async function main() {
       process.exit(1);
     }
 
+    // Use the REAL game_types row — special_squares_string, promotion squares,
+    // restriction/range/control zones etc. all change what counts as a legal
+    // escape, and a stubbed 4-field gameType silently drops them.
+    const [gtRows] = await db_pool.query('SELECT * FROM game_types WHERE id = ?', [gameRow.game_type_id]);
+    const gameType = gtRows[0] || {
+      board_width: 8, board_height: 8, mate_condition: true, mate_piece: null
+    };
+    gameType.board_width = gameType.board_width || 8;
+    gameType.board_height = gameType.board_height || 8;
+    gameType.mate_condition = !!gameType.mate_condition;
+
     console.log('═══════════════════════════════════════════════════════════════');
     console.log(`ANALYZING GAME #${gameRow.id} — "${gameRow.game_type_name}"`);
-    console.log(`Board: ${gameRow.board_width}x${gameRow.board_height}  |  Mate condition: ${gameRow.mate_condition ? 'YES' : 'NO'}`);
+    console.log(`Board: ${gameType.board_width}x${gameType.board_height}  |  Mate condition: ${gameType.mate_condition ? 'YES' : 'NO'}`);
     console.log(`Status: ${gameRow.status}  |  Winner: ${gameRow.winner_id || 'none'}`);
     console.log('═══════════════════════════════════════════════════════════════');
 
@@ -405,14 +425,14 @@ async function main() {
       console.error('Failed to parse other_data JSON:', e.message);
     }
 
-    const moveHistory = otherData.moves || [];
-    const initialPieces = otherData.initialPieces || null;
-    const gameType = {
-      board_width: gameRow.board_width || 8,
-      board_height: gameRow.board_height || 8,
-      mate_condition: !!gameRow.mate_condition,
-      mate_piece: gameRow.mate_piece
-    };
+    // Move history lives in game_moves now (other_data.moves was stripped by
+    // scripts/strip-other-data-moves.js). loadGameMoves falls back to the
+    // legacy other_data blob for games that predate the migration.
+    const gm = await loadGameMoves(gameRow.id, otherData);
+    const moveHistory = gm.moveHistory || [];
+    const initialPieces = gm.initialPieces || null;
+
+    const ctx = { otherGameData: otherData };
 
     console.log(`\nMove history: ${moveHistory.length} moves recorded`);
     console.log(`Initial pieces snapshot: ${initialPieces ? 'YES' : 'NO'}`);
@@ -425,7 +445,7 @@ async function main() {
       // Analyze each player
       for (const player of [1, 2]) {
         console.log(`\n─── Check/Checkmate analysis for Player ${player} ───`);
-        const result = analyzePositionForCheckmate(finalPieces, gameType, player);
+        const result = analyzePositionForCheckmate(finalPieces, gameType, player, { ...ctx, totalHalfMoves: moveHistory.length });
         printAnalysis(result, player);
       }
     } else {
@@ -449,7 +469,7 @@ async function main() {
         // After each move, check the OPPONENT for check/checkmate
         const opponent = moverOwner === 1 ? 2 : 1;
         suppressLogs();
-        const checkResult = checkForCheck({ pieces, gameType }, opponent);
+        const checkResult = checkForCheck({ pieces, gameType, otherGameData: otherData, totalHalfMoves: i + 1 }, opponent);
         restoreLogs();
 
         if (checkResult.inCheck) {
@@ -457,7 +477,7 @@ async function main() {
           console.log(`*** Player ${opponent} is in CHECK! ***`);
           printBoard(pieces, gameType.board_width, gameType.board_height);
 
-          const result = analyzePositionForCheckmate(pieces, gameType, opponent);
+          const result = analyzePositionForCheckmate(pieces, gameType, opponent, { ...ctx, totalHalfMoves: i + 1 });
           printAnalysis(result, opponent);
 
           if (result.isCheckmate) {
@@ -475,7 +495,7 @@ async function main() {
         console.log('\n─── FINAL POSITION (after all moves) ───');
         printBoard(pieces, gameType.board_width, gameType.board_height);
         for (const player of [1, 2]) {
-          const result = analyzePositionForCheckmate(pieces, gameType, player);
+          const result = analyzePositionForCheckmate(pieces, gameType, player, { ...ctx, totalHalfMoves: moveHistory.length });
           if (result.inCheck) {
             console.log(`\nPlayer ${player} is in CHECK at final position:`);
             printAnalysis(result, player);
