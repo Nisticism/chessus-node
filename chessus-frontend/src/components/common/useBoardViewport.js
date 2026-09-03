@@ -68,11 +68,14 @@ export default function useBoardViewport({
   const maxHeightRef = useRef(maxHeight);
   maxHeightRef.current = maxHeight;
 
-  // Measure the scroll container width + resolve the height budget.
+  // Measure the AVAILABLE space from the full-width frame (the viewport itself is
+  // sized to hug the board, so measuring it would give the board width, not the
+  // space available). Falls back to the node when there's no wrapping frame.
   useLayoutEffect(() => {
     if (!enabled || !node) return undefined;
+    const target = node.parentElement || node;
     const measure = () => {
-      const w = node.clientWidth || 0;
+      const w = target.clientWidth || 0;
       const mh = maxHeightRef.current;
       const h = mh === 'square' ? w : resolveNum(mh, defaultHeight());
       setAvailW((prev) => (Math.abs(prev - w) > 0.5 ? w : prev));
@@ -82,7 +85,7 @@ export default function useBoardViewport({
     let ro;
     if (typeof ResizeObserver !== 'undefined') {
       ro = new ResizeObserver(measure);
-      ro.observe(node);
+      ro.observe(target);
     }
     window.addEventListener('resize', measure);
     return () => {
@@ -114,14 +117,18 @@ export default function useBoardViewport({
   const atFit = !canZoom || t <= 0.0001;
   const atMax = !canZoom || t >= 0.9999;
 
-  // Measure ACTUAL overflow from the DOM (scroll vs client) so scrollbars only ever
-  // show when the board genuinely can't be seen in full — computed math can be off
-  // by a pixel from borders/rounding and leave spurious scrollbars on a fitting board.
-  const [hasOverflow, setHasOverflow] = useState(false);
+  // Measure ACTUAL overflow per-axis from the DOM (scroll vs client) so scrollbars
+  // only ever show when the board genuinely can't be seen in full, and so a plain
+  // wheel over a board with NO vertical overflow scrolls the page (the viewport is
+  // only made a vertical scroll container when it actually overflows vertically).
+  const [overflowXState, setOverflowXState] = useState(false);
+  const [overflowYState, setOverflowYState] = useState(false);
   useLayoutEffect(() => {
     if (!node) return;
-    setHasOverflow(node.scrollWidth > node.clientWidth + 2 || node.scrollHeight > node.clientHeight + 2);
+    setOverflowXState(node.scrollWidth > node.clientWidth + 2);
+    setOverflowYState(node.scrollHeight > node.clientHeight + 2);
   }, [node, squareSize, availW, availH]);
+  const hasOverflow = overflowXState || overflowYState;
 
   // Pointer-anchored zoom: remember where to keep fixed, apply after the size change.
   const anchorRef = useRef(null);
@@ -264,14 +271,28 @@ export default function useBoardViewport({
   }, [enabled, node]);
 
   const viewportStyle = useMemo(() => ({
+    // Size the scroll container to hug the board's actual content (capped at the
+    // available space) so the empty area around a small/narrow board is NOT part
+    // of the scroll container — a wheel there scrolls the page, only a wheel over
+    // the board scrolls the board. max-content avoids depending on inset estimates.
+    width: availW ? 'max-content' : undefined,
+    maxWidth: availW ? `${availW}px` : '100%',
     maxHeight: availH || undefined,
-    maxWidth: '100%',
-  }), [availH]);
+    // Only become a scroll container on an axis that actually overflows, so a
+    // plain wheel over an axis that fits scrolls the page instead of the board.
+    overflowX: overflowXState ? 'auto' : 'hidden',
+    overflowY: overflowYState ? 'auto' : 'hidden',
+    // Contain the scroll chain only on the axis that scrolls; letting the other
+    // axis chain to the page fixes wheel "sticking" when paused over the board.
+    overscrollBehaviorX: overflowXState ? 'contain' : 'auto',
+    overscrollBehaviorY: overflowYState ? 'contain' : 'auto',
+  }), [availW, availH, overflowXState, overflowYState]);
 
   const contentStyle = useMemo(() => ({
-    // margin:auto centers the board without clipping when it overflows the viewport.
-    flex: '0 0 auto',
-    margin: 'auto',
+    // Hug the board so the viewport's max-content width measures the real content.
+    width: 'max-content',
+    maxWidth: '100%',
+    margin: '0 auto',
   }), []);
 
   // Controls sit BELOW the board by default, or to the SIDE for tall/skinny boards
@@ -283,7 +304,7 @@ export default function useBoardViewport({
     flexDirection: placement === 'side' ? 'row' : 'column',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: '8px',
+    gap: '12px',
     width: '100%',
     minWidth: 0,
   }), [placement]);

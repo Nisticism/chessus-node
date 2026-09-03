@@ -2,11 +2,9 @@
 
 .viewport {
   position: relative;
-  width: 100%;
-  overflow: auto;
-  display: flex;               /* centers the board when it's smaller than the viewport */
+  max-width: 100%;
+  overflow: auto;                /* overridden per-axis inline by the hook */
   -webkit-overflow-scrolling: touch;
-  overscroll-behavior: contain; /* keep zoom scroll inside the container, not the page */
   scrollbar-width: thin;
 }
 
