@@ -56,7 +56,7 @@ const MatchView = () => {
   const [hoveredPiece, setHoveredPiece] = useState(null);
   const [hoveredMoves, setHoveredMoves] = useState([]);
   const [legendOpen, setLegendOpen] = useState(false);
-  const [hideSelfDefeating, setHideSelfDefeating] = useState(false);
+  const [hideIllegalMoves, setHideIllegalMoves] = useState(false);
 
   // Fit-to-container sizing + zoom for the replay board.
   const boardVpHook = useBoardViewport({
@@ -299,12 +299,12 @@ const MatchView = () => {
     ...(Array.isArray(match?.pieces) ? match.pieces : []),
   ]), [match?.initialPieces, match?.pieces]);
 
-  // The self-defeating filter only means something when a side actually has a
-  // piece whose loss ends the game — a checkmate piece under a mate condition,
-  // or any capture-loss piece. Games decided on points, control squares,
-  // elimination or piece count have nothing for it to hide, so it stays hidden.
-  const canHideSelfDefeating = useMemo(
-    () => [1, 2].some(pos => moveEngine.hasGameLosingPieces(displayedPieces, pos)),
+  // The filter is only offered when this board actually has rules that can make
+  // a reachable square illegal — a piece whose loss ends the game, a piece that
+  // can't be captured or must be checkmated, or impassable / restriction-zone
+  // squares. A plain points or elimination game has nothing for it to hide.
+  const canHideIllegalMoves = useMemo(
+    () => moveEngine.hasIllegalMoveRules(displayedPieces),
     [moveEngine, displayedPieces]
   );
 
@@ -317,6 +317,11 @@ const MatchView = () => {
   //                     empty (a pawn's diagonals), which is what makes this a
   //                     threat map rather than just a move list. Paths are still
   //                     checked, unlike premove display.
+  //   permissive      — on by default: dots describe the hovered piece itself,
+  //                     so a square stays lit even when something else makes it
+  //                     illegal (an uncapturable target, the enemy checkmate
+  //                     piece, a restriction zone). "Hide illegal moves" turns
+  //                     this off and applies the board's rules instead.
   const handlePieceHover = (piece) => {
     if (!piece) {
       setHoveredPiece(null);
@@ -330,19 +335,20 @@ const MatchView = () => {
       displayedPieces,
       boardWidth,
       boardHeight,
-      true,   // skipCheckFilter — raw reachability
-      false,  // forPremove
-      true,   // forHoverDisplay
-      true    // forFog
+      true,               // skipCheckFilter — the filter below handles legality
+      false,              // forPremove
+      true,               // forHoverDisplay
+      true,               // forFog
+      !hideIllegalMoves   // permissive
     );
-    if (hideSelfDefeating) {
-      // Only squares the piece would actually relocate to can be self-defeating.
-      // Ranged attacks and attack-coverage squares (ones the capture pattern
-      // reaches but the movement pattern doesn't) never move the piece, so they
-      // stay as threat information regardless of the filter.
+    if (hideIllegalMoves) {
       const team = piece.player_id || piece.team;
       moves = moves.filter(m => {
+        // Ranged attacks and attack-coverage squares (ones the capture pattern
+        // reaches but the movement pattern doesn't) never relocate the piece, so
+        // neither board-square rules nor self-loss can make them illegal.
         if (m.isRangedAttack || !m.reachedByMove) return true;
+        if (!moveEngine.isSquareLegalDestination(piece, m.x, m.y)) return false;
         return !moveEngine.wouldMoveLoseTheGame(
           piece, m.x, m.y, displayedPieces, team, boardWidth, boardHeight
         );
@@ -794,26 +800,28 @@ const MatchView = () => {
                       special: Object.keys(specialSquares.special).length > 0,
                     }}
                   />
-                  {canHideSelfDefeating && (
+                  {canHideIllegalMoves && (
                     <>
                       <div className={styles["legend-toggle-row"]}>
                         <label className={styles["legend-toggle"]}>
                           <input
                             type="checkbox"
-                            checked={hideSelfDefeating}
+                            checked={hideIllegalMoves}
                             onChange={(e) => {
-                              setHideSelfDefeating(e.target.checked);
+                              setHideIllegalMoves(e.target.checked);
                               handlePieceHover(null);
                             }}
                           />
-                          Hide self-defeating moves
+                          Hide illegal moves
                         </label>
                       </div>
                       <p className={styles["legend-toggle-note"]}>
-                        Off (default): every square the piece can reach, the same view a
-                        spectator gets in a live game. On: hides moves that would leave one
-                        of that side&apos;s game-losing pieces capturable — so a trapped piece
-                        shows nothing at all.
+                        Off (default): what the hovered piece itself can reach, so a square
+                        stays lit even if something else makes it illegal. On: applies the
+                        board&apos;s rules too — targets that can&apos;t be captured, pieces that
+                        must be checkmated rather than taken, impassable and restriction-zone
+                        squares, and moves that would leave that side&apos;s game-losing piece
+                        capturable.
                       </p>
                     </>
                   )}

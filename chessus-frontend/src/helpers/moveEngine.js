@@ -35,12 +35,17 @@ import {
  * half-red dot: the piece can move there OR attack it, as opposed to a piece
  * that merely captures with its movement pattern.
  */
+const DOT_MOVE = 'rgba(33,150,243,0.42)';
+const DOT_CAPTURE = 'rgba(220,60,60,0.55)';
+
 export const MOVE_DOT_BACKGROUNDS = {
-  move: 'rgba(33,150,243,0.55)',
-  capture: 'rgba(220,60,60,0.7)',
-  both: 'linear-gradient(90deg, rgba(33,150,243,0.55) 0 50%, rgba(220,60,60,0.7) 50% 100%)',
-  first: 'rgba(255,215,0,0.65)',
-  castle: 'rgba(255,200,60,0.85)',
+  move: DOT_MOVE,
+  capture: DOT_CAPTURE,
+  both: `linear-gradient(90deg, ${DOT_MOVE} 0 50%, ${DOT_CAPTURE} 50% 100%)`,
+  // --gold-muted is the site's muted gold (#9c884a); the literal is the fallback
+  // for any context that doesn't inherit the global palette.
+  first: 'rgba(var(--gold-muted-rgb, 156, 136, 74), 0.62)',
+  castle: 'rgba(var(--gold-rgb, 212, 175, 55), 0.7)',
 };
 
 /**
@@ -1052,6 +1057,37 @@ export const createMoveEngine = ({
   const hasGameLosingPieces = (pieces, playerPosition) =>
     getGameLosingPieces(pieces, playerPosition).length > 0;
 
+  // Board-level legality for a destination square, independent of the piece's
+  // movement pattern: impassable squares can never be landed on, and a piece
+  // confined to a restriction zone cannot step outside it. These are the rules
+  // permissive display deliberately ignores.
+  const isSquareLegalDestination = (piece, toX, toY) => {
+    const map = specialSquares?.special || {};
+    const cfg = map[`${toY},${toX}`];
+    if (cfg?.impassable) return false;
+    if (piece?.cannot_move_outside_zone) {
+      const zoneKeys = Object.entries(map)
+        .filter(([, c]) => c && c.asRestrictionZone)
+        .map(([key]) => key);
+      // Mirrors the ranged-attack rule above: the confinement only bites once
+      // the piece is standing on a zone square.
+      const pieceOnZone = zoneKeys.includes(`${piece.y},${piece.x}`);
+      if (pieceOnZone && !zoneKeys.includes(`${toY},${toX}`)) return false;
+    }
+    return true;
+  };
+
+  // Whether an "illegal moves" filter has anything to do on this board: a piece
+  // whose loss ends the game, a piece that cannot be captured or must be
+  // checkmated, or squares carrying impassable / restriction-zone rules.
+  const hasIllegalMoveRules = (pieces) => {
+    const list = Array.isArray(pieces) ? pieces : [];
+    if ([1, 2].some(pos => hasGameLosingPieces(list, pos))) return true;
+    if (list.some(p => p && (p.cannot_be_captured || p.ends_game_on_checkmate || p.cannot_move_outside_zone))) return true;
+    return Object.values(specialSquares?.special || {})
+      .some(cfg => cfg && (cfg.impassable || cfg.asRestrictionZone || cfg.restrictFirstMoveToCustom || cfg.disableFirstMoveHere));
+  };
+
   // Generalised replacement for the check-only filter: would this move leave one
   // of the mover's game-losing pieces capturable? Covers classic "moving into
   // check" and equally covers capture-loss (royal-piece) games that have no mate
@@ -1068,7 +1104,14 @@ export const createMoveEngine = ({
 
   // Calculate valid moves for a piece using actual piece movement data
   // forPremove: when true, includes potential capture squares even when empty (for premove highlighting)
-  const calculateValidMoves = (piece, pieces, boardWidth, boardHeight, skipCheckFilter = false, forPremove = false, forHoverDisplay = false, forFog = false) => {
+  // permissive: report what the piece's own patterns can reach "in normal
+  // circumstances", ignoring rules that make a specific square illegal for
+  // reasons outside the piece — an enemy piece that can't be captured or ends
+  // the game on checkmate, and board rules like restriction zones and
+  // first-move custom squares. Blocking by pieces in the way still applies,
+  // because that is physical reach rather than legality. Used by the replay
+  // board's default hover view; leave it off for anything that has to be legal.
+  const calculateValidMoves = (piece, pieces, boardWidth, boardHeight, skipCheckFilter = false, forPremove = false, forHoverDisplay = false, forFog = false, permissive = false) => {
     // Apply range square bonus
     piece = applyRangeSquareBonus(piece);
 
@@ -1102,6 +1145,8 @@ export const createMoveEngine = ({
         if (restrictExists && !onAllowed) blockFirstMove = true;
       }
     }
+    // A board rule, not a property of the piece, so permissive display ignores it.
+    if (permissive) blockFirstMove = false;
 
     for (let toY = 0; toY < boardHeight; toY++) {
       for (let toX = 0; toX < boardWidth; toX++) {
@@ -1133,7 +1178,7 @@ export const createMoveEngine = ({
                   // For premoves: allow targeting enemy checkmate pieces (they might move away)
                   // but still block invincible pieces
                   if (found.cannot_be_captured) blockedByInvincible = true;
-                } else if (found.cannot_be_captured || found.ends_game_on_checkmate) {
+                } else if ((found.cannot_be_captured || found.ends_game_on_checkmate) && !permissive) {
                   blockedByInvincible = true;
                 } else if ((foundTeam !== pieceTeam || piece.can_capture_allies) && !occupyingPiece) {
                   occupyingPiece = found; // Track first enemy for capture flag
@@ -1154,7 +1199,10 @@ export const createMoveEngine = ({
           const isFriendlyTarget = occupyingPiece && occupyingPiece.id !== piece.id && occupyingTeam === pieceTeam;
           // Skip if enemy piece cannot be captured or is a checkmate piece
           // For premoves: allow targeting enemy checkmate pieces (they might move away)
-          if (occupyingPiece && occupyingPiece.id !== piece.id && !isFriendlyTarget) {
+          // Target immunity is a rule about the target, not about what this
+          // piece's patterns reach, so permissive display keeps these squares —
+          // otherwise the piece delivering checkmate appears to attack nothing.
+          if (occupyingPiece && occupyingPiece.id !== piece.id && !isFriendlyTarget && !permissive) {
             if (occupyingPiece.cannot_be_captured) continue;
             if (occupyingPiece.ends_game_on_checkmate && !forPremove) continue;
           }
@@ -1360,7 +1408,7 @@ export const createMoveEngine = ({
                 if (hopPiece && hopPiece.id !== piece.id) {
                   const hopTeam = hopPiece.player_id || hopPiece.team;
                   if (hopTeam !== pieceTeam) {
-                    if (hopPiece.cannot_be_captured || hopPiece.ends_game_on_checkmate) {
+                    if ((hopPiece.cannot_be_captured || hopPiece.ends_game_on_checkmate) && !permissive) {
                       hopBlocked = true;
                     } else {
                       hopCapturedSet.add(hopPiece.id);
@@ -1687,14 +1735,14 @@ export const createMoveEngine = ({
         for (let toX = 0; toX < boardWidth; toX++) {
           if (toX === piece.x && toY === piece.y) continue;
           // Restriction zone: skip ranged attacks that exit the zone (unless exempted).
-          if (pieceIsOnZone && !rangedOutsideAllowed && !zoneSquares.includes(`${toY},${toX}`)) continue;
+          if (pieceIsOnZone && !rangedOutsideAllowed && !permissive && !zoneSquares.includes(`${toY},${toX}`)) continue;
           const targetPiece = findPieceAtSquare(pieces, toX, toY);
           const targetTeam = targetPiece?.player_id || targetPiece?.team;
           // Skip friendly pieces - in simul-turns games, self-sacrifice is allowed
           const isSimulGame = !!(gameState?.gameType?.simultaneous_turns);
           if (targetPiece && targetTeam === pieceTeam && !isSimulGame) continue;
           // Skip pieces that cannot be captured or are checkmate pieces
-          if (targetPiece && (targetPiece.cannot_be_captured || targetPiece.ends_game_on_checkmate)) continue;
+          if (targetPiece && (targetPiece.cannot_be_captured || targetPiece.ends_game_on_checkmate) && !permissive) continue;
           // Skip if a ranged entry already exists for this square (avoid duplicates).
           // Do NOT skip when only a regular move exists — a piece can both move to a square
           // and ranged-attack it, and both indicators should be shown simultaneously.
@@ -1804,6 +1852,8 @@ export const createMoveEngine = ({
     wouldMoveResolveCheck,
     getGameLosingPieces,
     hasGameLosingPieces,
+    isSquareLegalDestination,
+    hasIllegalMoveRules,
     wouldMoveLoseTheGame,
     calculateValidMoves,
   };
