@@ -15764,7 +15764,14 @@ function canPieceMoveToSquare(piece, targetX, targetY, allPieces, gameType = nul
   // Helper: can this piece hop over a given blocker?
   const pieceOwnerForHop = piece.team || piece.player_id;
   const canHopAlliesBase = piece.can_hop_over_allies === 1 || piece.can_hop_over_allies === true;
-  const canHopEnemiesBase = piece.can_hop_over_enemies === 1 || piece.can_hop_over_enemies === true;
+  // capture_on_hop is a checkers-style jump: the piece hops an enemy and captures
+  // it in passing, so the ability inherently grants hopping over enemies for
+  // movement pathing. Requiring can_hop_over_enemies as well meant the client
+  // offered the jump (moveEngine treats capture_on_hop as inherent) while the
+  // server refused it, so the square was clickable and the move then failed.
+  // Move application already captures every piece hopped over.
+  const canHopEnemiesBase = piece.can_hop_over_enemies === 1 || piece.can_hop_over_enemies === true ||
+    piece.capture_on_hop === 1 || piece.capture_on_hop === true;
   const dirHopDisabled = piece.directional_hop_disabled === 1 || piece.directional_hop_disabled === true;
   const exactRatioHopOnly = piece.exact_ratio_hop_only === 1 || piece.exact_ratio_hop_only === true;
   const hopStopAtOccupiedMove = piece.hop_stop_at_occupied === 1 || piece.hop_stop_at_occupied === true;
@@ -16574,7 +16581,14 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
   
   // Helper: hopping support for directional moves
   const canHopAlliesGen = piece.can_hop_over_allies === 1 || piece.can_hop_over_allies === true;
-  const canHopEnemiesGen = piece.can_hop_over_enemies === 1 || piece.can_hop_over_enemies === true;
+  // capture_on_hop is a checkers-style jump: the piece hops an enemy and captures
+  // it in passing, so the ability inherently grants hopping over enemies for
+  // movement pathing. Requiring can_hop_over_enemies as well meant the client
+  // offered the jump (moveEngine treats capture_on_hop as inherent) while the
+  // server refused it, so the square was clickable and the move then failed.
+  // Move application already captures every piece hopped over.
+  const canHopEnemiesGen = piece.can_hop_over_enemies === 1 || piece.can_hop_over_enemies === true ||
+    piece.capture_on_hop === 1 || piece.capture_on_hop === true;
   const dirHopDisabledGen = piece.directional_hop_disabled === 1 || piece.directional_hop_disabled === true;
   const hasGhostwalkGen = piece.ghostwalk === 1 || piece.ghostwalk === true;
   // Attack-hop flags (Step 3): allow landing on enemies after hopping; separate from movement hop
