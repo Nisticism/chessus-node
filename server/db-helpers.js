@@ -415,7 +415,12 @@ const getAllPiecesWithMovement = async () => {
       p.repeating_capture_change,
       p.require_empty_via_capture,
       p.require_direction_change,
-      p.require_direction_change_capture
+      p.require_direction_change_capture,
+      -- Never expose the hash itself, only whether the piece is locked. The
+      -- game wizard's piece picker reads this to show the lock badge and to
+      -- decide whether to prompt for a password.
+      (p.piece_password IS NOT NULL) AS has_password,
+      p.move_sound_url, p.capture_sound_url, p.hit_sound_url
     FROM chessusnode.pieces p
     LEFT JOIN chessusnode.users u ON p.creator_id = u.id
     WHERE (p.is_draft = 0 OR p.is_draft IS NULL)
@@ -615,7 +620,8 @@ const getPieceById = async (pieceId) => {
       p.repeating_capture_change, p.require_empty_via_capture,
       p.require_direction_change, p.require_direction_change_capture,
       -- Never expose the hash itself, only whether the piece is locked.
-      (p.piece_password IS NOT NULL) AS has_password
+      (p.piece_password IS NOT NULL) AS has_password,
+      p.move_sound_url, p.capture_sound_url, p.hit_sound_url
     FROM chessusnode.pieces p
     LEFT JOIN chessusnode.users u ON p.creator_id = u.id
     WHERE p.id = ?
