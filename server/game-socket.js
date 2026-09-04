@@ -16653,8 +16653,29 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
     
     // If piece has dedicated capture directions, only allow capture in directions
     // that have a capture value. E.g., pawns move forward but capture diagonally.
-    const canCaptureInDir = captureOnly || !hasAnyCaptureDirection || !directionName ||
-      !!piece[directionName.replace('_movement', '_capture')];
+    //
+    // The capture pattern also governs the DISTANCE, not just the direction. A
+    // piece whose forward capture is "exactly 2" must not capture a neighbour one
+    // square ahead merely because its movement can reach that square. Testing only
+    // whether the direction had any capture value let Power Pawn (up_capture 2,
+    // exact) capture straight ahead at range 1. Mirrors canPieceCaptureTo in the
+    // frontend move engine, which treats the capture pattern as authoritative once
+    // the piece defines any capture direction.
+    const captureFieldForDir = directionName ? directionName.replace('_movement', '_capture') : null;
+    const canCaptureInDirAt = (dist) => {
+      if (captureOnly) return true;              // already walking the capture pattern
+      if (!hasAnyCaptureDirection) return true;  // no dedicated captures: movement doubles as capture
+      if (!captureFieldForDir) return true;
+      const capVal = piece[captureFieldForDir];
+      if (!capVal) return false;                 // cannot capture this way at all
+      if (capVal === 99) return true;            // unlimited range
+      const v = Math.abs(capVal);
+      const capExact = !!piece[`${captureFieldForDir}_exact`];
+      if (!capExact) return dist <= v;
+      // Exact captures land only on the given distance, or on multiples of it
+      // when repeating_capture is set (same rule the frontend applies).
+      return piece.repeating_capture ? (dist % v === 0) : (dist === v);
+    };
     
     // Check direction-specific availableForMoves
     if (directionName && piece[`${directionName}_available_for`]) {
@@ -16700,7 +16721,7 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
         
         // Can capture enemy (or ally if can_capture_allies) on valid landing squares
         if (isLandingSquare && !targetPiece.cannot_be_captured) {
-          if (targetOwner !== pieceOwner && piece.can_capture_enemy_on_move && canCaptureInDir && !hasGlobalFirstMoveOnlyCaptureRestriction) {
+          if (targetOwner !== pieceOwner && piece.can_capture_enemy_on_move && canCaptureInDirAt(dist) && !hasGlobalFirstMoveOnlyCaptureRestriction) {
             // Movement-only hops cannot yield captures; attack hop flags or a clear path required
             if (!canHopDir || canHopDirAtk || isPathClear(piece.x, piece.y, targetX, targetY, false)) {
               // exact_ratio_hop_only_attack: exact capture requires a hop
@@ -16811,23 +16832,41 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
   // This handles pieces like pawns that capture diagonally but move forward
   if (hasAnyCaptureDirection) {
     const repC = piece.repeating_capture;
+    // Run a direction's dedicated capture walk when the movement walk cannot
+    // produce that direction's captures: either the piece doesn't move that way
+    // at all, or its capture pattern differs from its movement pattern (a
+    // different distance or exactness). Previously this required NO movement in
+    // the direction, so a piece that moves 1 forward but captures exactly 2
+    // forward (Power Chess's Power Pawn) never had its forward capture
+    // generated at all - the frontend offered it and the server rejected it.
+    // Requiring a *difference* keeps symmetric sliders (rook/queen, where
+    // capture == movement) on the movement walk alone, so no duplicate
+    // destinations are produced for them.
+    const needsOwnCaptureWalk = (dir) => {
+      const cap = piece[`${dir}_capture`];
+      if (!cap) return false;
+      const mov = piece[`${dir}_movement`];
+      if (!mov) return true;
+      return cap !== mov ||
+        (!!piece[`${dir}_capture_exact`] !== !!piece[`${dir}_movement_exact`]);
+    };
     if (isPlayer2) {
-      if (piece.up_capture && !piece.up_movement) checkDirectionalMoves(0, 1, piece.up_capture, null, false, piece.up_capture_exact, repC && piece.up_capture_exact, true);
-      if (piece.down_capture && !piece.down_movement) checkDirectionalMoves(0, -1, piece.down_capture, null, false, piece.down_capture_exact, repC && piece.down_capture_exact, true);
-      if (piece.up_left_capture && !piece.up_left_movement) checkDirectionalMoves(-1, 1, piece.up_left_capture, null, false, piece.up_left_capture_exact, repC && piece.up_left_capture_exact, true);
-      if (piece.up_right_capture && !piece.up_right_movement) checkDirectionalMoves(1, 1, piece.up_right_capture, null, false, piece.up_right_capture_exact, repC && piece.up_right_capture_exact, true);
-      if (piece.down_left_capture && !piece.down_left_movement) checkDirectionalMoves(-1, -1, piece.down_left_capture, null, false, piece.down_left_capture_exact, repC && piece.down_left_capture_exact, true);
-      if (piece.down_right_capture && !piece.down_right_movement) checkDirectionalMoves(1, -1, piece.down_right_capture, null, false, piece.down_right_capture_exact, repC && piece.down_right_capture_exact, true);
+      if (needsOwnCaptureWalk('up')) checkDirectionalMoves(0, 1, piece.up_capture, null, false, piece.up_capture_exact, repC && piece.up_capture_exact, true);
+      if (needsOwnCaptureWalk('down')) checkDirectionalMoves(0, -1, piece.down_capture, null, false, piece.down_capture_exact, repC && piece.down_capture_exact, true);
+      if (needsOwnCaptureWalk('up_left')) checkDirectionalMoves(-1, 1, piece.up_left_capture, null, false, piece.up_left_capture_exact, repC && piece.up_left_capture_exact, true);
+      if (needsOwnCaptureWalk('up_right')) checkDirectionalMoves(1, 1, piece.up_right_capture, null, false, piece.up_right_capture_exact, repC && piece.up_right_capture_exact, true);
+      if (needsOwnCaptureWalk('down_left')) checkDirectionalMoves(-1, -1, piece.down_left_capture, null, false, piece.down_left_capture_exact, repC && piece.down_left_capture_exact, true);
+      if (needsOwnCaptureWalk('down_right')) checkDirectionalMoves(1, -1, piece.down_right_capture, null, false, piece.down_right_capture_exact, repC && piece.down_right_capture_exact, true);
     } else {
-      if (piece.up_capture && !piece.up_movement) checkDirectionalMoves(0, -1, piece.up_capture, null, false, piece.up_capture_exact, repC && piece.up_capture_exact, true);
-      if (piece.down_capture && !piece.down_movement) checkDirectionalMoves(0, 1, piece.down_capture, null, false, piece.down_capture_exact, repC && piece.down_capture_exact, true);
-      if (piece.up_left_capture && !piece.up_left_movement) checkDirectionalMoves(-1, -1, piece.up_left_capture, null, false, piece.up_left_capture_exact, repC && piece.up_left_capture_exact, true);
-      if (piece.up_right_capture && !piece.up_right_movement) checkDirectionalMoves(1, -1, piece.up_right_capture, null, false, piece.up_right_capture_exact, repC && piece.up_right_capture_exact, true);
-      if (piece.down_left_capture && !piece.down_left_movement) checkDirectionalMoves(-1, 1, piece.down_left_capture, null, false, piece.down_left_capture_exact, repC && piece.down_left_capture_exact, true);
-      if (piece.down_right_capture && !piece.down_right_movement) checkDirectionalMoves(1, 1, piece.down_right_capture, null, false, piece.down_right_capture_exact, repC && piece.down_right_capture_exact, true);
+      if (needsOwnCaptureWalk('up')) checkDirectionalMoves(0, -1, piece.up_capture, null, false, piece.up_capture_exact, repC && piece.up_capture_exact, true);
+      if (needsOwnCaptureWalk('down')) checkDirectionalMoves(0, 1, piece.down_capture, null, false, piece.down_capture_exact, repC && piece.down_capture_exact, true);
+      if (needsOwnCaptureWalk('up_left')) checkDirectionalMoves(-1, -1, piece.up_left_capture, null, false, piece.up_left_capture_exact, repC && piece.up_left_capture_exact, true);
+      if (needsOwnCaptureWalk('up_right')) checkDirectionalMoves(1, -1, piece.up_right_capture, null, false, piece.up_right_capture_exact, repC && piece.up_right_capture_exact, true);
+      if (needsOwnCaptureWalk('down_left')) checkDirectionalMoves(-1, 1, piece.down_left_capture, null, false, piece.down_left_capture_exact, repC && piece.down_left_capture_exact, true);
+      if (needsOwnCaptureWalk('down_right')) checkDirectionalMoves(1, 1, piece.down_right_capture, null, false, piece.down_right_capture_exact, repC && piece.down_right_capture_exact, true);
     }
-    if (piece.left_capture && !piece.left_movement) checkDirectionalMoves(-1, 0, piece.left_capture, null, false, piece.left_capture_exact, repC && piece.left_capture_exact, true);
-    if (piece.right_capture && !piece.right_movement) checkDirectionalMoves(1, 0, piece.right_capture, null, false, piece.right_capture_exact, repC && piece.right_capture_exact, true);
+    if (needsOwnCaptureWalk('left')) checkDirectionalMoves(-1, 0, piece.left_capture, null, false, piece.left_capture_exact, repC && piece.left_capture_exact, true);
+    if (needsOwnCaptureWalk('right')) checkDirectionalMoves(1, 0, piece.right_capture, null, false, piece.right_capture_exact, repC && piece.right_capture_exact, true);
   }
 
   // --- Direction Change moves ---
@@ -16960,11 +16999,29 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
   // Ratio movements (knight-like)
   const ratio1 = piece.ratio_movement_1 || 0;
   const ratio2 = piece.ratio_movement_2 || 0;
-  if (ratio1 > 0 && ratio2 > 0) {
-    const ratioMoves = [
-      [ratio1, ratio2], [ratio1, -ratio2], [-ratio1, ratio2], [-ratio1, -ratio2],
-      [ratio2, ratio1], [ratio2, -ratio1], [-ratio2, ratio1], [-ratio2, -ratio1]
+  const ratio1cap = piece.ratio_capture_1 || 0;
+  const ratio2cap = piece.ratio_capture_2 || 0;
+  const hasRatioMovement = ratio1 > 0 && ratio2 > 0;
+  const hasRatioCapture = ratio1cap > 0 && ratio2cap > 0;
+  // A piece can have a ratio CAPTURE without a ratio MOVEMENT (Power Chess's
+  // Power Knight captures on a 1:2 jump but has no ratio movement). Gating the
+  // whole block on ratio movement meant those captures were never generated,
+  // while the frontend offered them. Capture-only offsets ride the same loop but
+  // may only land on an enemy, never on an empty square.
+  if (hasRatioMovement || hasRatioCapture) {
+    const ratioOffsets = (a, b) => [
+      [a, b], [a, -b], [-a, b], [-a, -b],
+      [b, a], [b, -a], [-b, a], [-b, -a]
     ];
+    const moveOffsets = hasRatioMovement ? ratioOffsets(ratio1, ratio2) : [];
+    const moveOffsetKeys = new Set(moveOffsets.map(([a, b]) => `${a},${b}`));
+    const captureOnlyOffsets = hasRatioCapture
+      ? ratioOffsets(ratio1cap, ratio2cap).filter(([a, b]) => !moveOffsetKeys.has(`${a},${b}`))
+      : [];
+    const ratioMoves = [...moveOffsets, ...captureOnlyOffsets];
+    // Repeating ratio is a movement setting, so multiples only follow movement offsets.
+    const ratioMovesRepeating = moveOffsets;
+    const isCaptureOnlyOffset = (dx, dy) => !moveOffsetKeys.has(`${dx},${dy}`);
     
     const canHopAllies = piece.can_hop_over_allies === 1 || piece.can_hop_over_allies === true;
     const canHopEnemies = piece.can_hop_over_enemies === 1 || piece.can_hop_over_enemies === true;
@@ -17163,7 +17220,7 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
             moves.push({ x: targetX, y: targetY });
           }
         }
-      } else {
+      } else if (!isCaptureOnlyOffset(dx, dy)) {
         // exact_ratio_hop_only: ratio movement requires a hop
         if (!exactRatioHopOnly || getRatioHasAnyPiece()) {
           moves.push({ x: targetX, y: targetY });
@@ -17179,7 +17236,7 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
       // NULL and 0 both mean "allow hopping past occupied intermediates".
       const hopStopAtOccupied = piece.hop_stop_at_occupied === 1 || piece.hop_stop_at_occupied === true;
       const hopStopAtOccupiedAtk = piece.hop_stop_at_occupied_attack === 1 || piece.hop_stop_at_occupied_attack === true;
-      for (const [dx, dy] of ratioMoves) {
+      for (const [dx, dy] of ratioMovesRepeating) {
         for (let k = 2; k <= maxK; k++) {
           const targetX = piece.x + dx * k;
           const targetY = piece.y + dy * k;
@@ -17510,6 +17567,32 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
       if (isEnemy && requireDCCap) return dcCapDests.has(`${m.x},${m.y}`);
       if (!isEnemy && requireDCMov) return dcMoveDests.has(`${m.x},${m.y}`);
       return true;
+    });
+  }
+
+  // A piece that ends the game on checkmate must be checkmated, not captured
+  // outright. The frontend move engine has always excluded these destinations
+  // (see calculateValidMoves: `if (occupyingPiece.ends_game_on_checkmate &&
+  // !forPremove) continue;`); the server generated them, so a bot or a crafted
+  // client request could take the enemy king directly. Nothing ended the game
+  // when that happened either, because the win-condition code keys off
+  // ends_game_on_capture, which such a piece typically does not set — play would
+  // simply continue with one side missing its king.
+  //
+  // Check detection is unaffected: it runs through canPieceAttackSquare, which
+  // does not consult this generator.
+  //
+  // Note this deliberately mirrors the frontend exactly, including for a piece
+  // that sets BOTH ends_game_on_checkmate and ends_game_on_capture — capturing
+  // that one arguably should be allowed, but the two sides agreeing matters more
+  // than changing the rule here unilaterally.
+  {
+    const attackerOwner = piece.team || piece.player_id;
+    moves = moves.filter(m => {
+      const target = findPieceAtSquare(allPieces, m.x, m.y);
+      if (!target || target.id === piece.id) return true;
+      if (!target.ends_game_on_checkmate) return true;
+      return (target.team || target.player_id) === attackerOwner;
     });
   }
 
