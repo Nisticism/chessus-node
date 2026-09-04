@@ -206,6 +206,67 @@
   margin: 0 0 12px;
 }
 
+/* The Uniqueness Checker holds two tools: a library-wide scan and a one-to-one
+   comparison. Each gets its own titled block inside the same modal. */
+.uniqueness-section {
+  padding: 14px 0;
+  border-top: 1px solid var(--panel-card-border);
+
+  &:first-of-type {
+    border-top: none;
+    padding-top: 4px;
+  }
+}
+
+.uniqueness-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+
+  strong {
+    color: var(--text-heading);
+  }
+}
+
+.uniqueness-run-btn {
+  padding: 6px 14px;
+  border-radius: 6px;
+  border: 1px solid rgba(var(--gold-rgb), 0.5);
+  background: rgba(var(--gold-rgb), 0.12);
+  color: var(--gold-header);
+  cursor: pointer;
+  font-size: 0.85rem;
+  white-space: nowrap;
+
+  &:hover:not(:disabled) {
+    background: rgba(var(--gold-rgb), 0.22);
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: default;
+  }
+}
+
+/* "compare" shortcut next to each identical-ruleset match */
+.uniqueness-compare-link {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 0.8em;
+  color: var(--accent-primary-text);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.uniqueness-identical {
+  margin: 0 0 10px;
+  color: #e5c07b;
+  font-size: 0.9rem;
+}
+
 .compare-search-input {
   width: 100%;
   padding: 10px 12px;

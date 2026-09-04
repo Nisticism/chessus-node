@@ -2157,9 +2157,10 @@ app.get("/api/pieces", async (req, res) => {
     const groupBy = joinClause ? 'GROUP BY p.id' : '';
     const dataQuery = `SELECT p.*${selectExtra} FROM pieces p ${joinClause} ${whereClause} ${groupBy} ${orderClause} LIMIT ? OFFSET ?`;
     const [pieces] = await db_pool.query(dataQuery, [...whereParams, limit, offset]);
-    
+
     res.json({
-      pieces,
+      // p.* includes piece_password; swap the hash for a has_password flag.
+      pieces: sanitizePieceRows(pieces),
       pagination: {
         page,
         limit,
@@ -2375,6 +2376,121 @@ function prettifyPieceField(col) {
   const s = col.replace(/_/g, ' ');
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
+
+// ---- Piece passwords ----
+// A creator can lock a piece so that only people who know its password may place
+// it in a game type. The hash never leaves the server; list endpoints expose a
+// has_password boolean instead. NULL means unprotected, which is the default and
+// what every pre-existing piece has.
+const PIECE_PASSWORD_MIN = 8;
+const PIECE_PASSWORD_MAX = 72; // bcrypt ignores bytes past 72
+
+// Multipart form fields can arrive as arrays; take the first value.
+const firstFormValue = (v) => (Array.isArray(v) ? v[0] : v);
+
+// Returns { action: 'none' } to leave the current setting alone,
+// { action: 'clear' } to remove protection, or { action: 'set', hash }.
+// Throws an Error with a user-facing message when the password is unusable.
+const resolvePiecePasswordUpdate = async (raw) => {
+  const value = firstFormValue(raw);
+  if (value === undefined || value === null) return { action: 'none' };
+  const str = String(value);
+  if (str === '') return { action: 'clear' };
+  if (str.length < PIECE_PASSWORD_MIN) {
+    throw new Error(`Piece password must be at least ${PIECE_PASSWORD_MIN} characters`);
+  }
+  if (str.length > PIECE_PASSWORD_MAX) {
+    throw new Error(`Piece password must be at most ${PIECE_PASSWORD_MAX} characters`);
+  }
+  return { action: 'set', hash: await bcrypt.hash(str, 10) };
+};
+
+const applyPiecePasswordUpdate = async (pieceId, update) => {
+  if (update.action === 'none') return;
+  await db_pool.query(
+    "UPDATE pieces SET piece_password = ? WHERE id = ?",
+    [update.action === 'set' ? update.hash : null, pieceId]
+  );
+};
+
+// Everyone who may use a locked piece without knowing its password.
+const canBypassPiecePassword = (user, pieceRow) => {
+  if (!user) return false;
+  if (user.role === 'admin' || user.role === 'owner') return true;
+  return pieceRow.creator_id != null && Number(pieceRow.creator_id) === Number(user.id);
+};
+
+// Verify the supplied passwords for every locked piece in `pieceIds`.
+// Returns { ok } or { ok: false, message, lockedPieces: [{id, piece_name}] }.
+const verifyPiecePasswordsForPieces = async (pieceIds, suppliedByPieceId, user) => {
+  const ids = [...new Set((pieceIds || []).map(Number).filter(Boolean))];
+  if (ids.length === 0) return { ok: true };
+  const [rows] = await db_pool.query(
+    `SELECT id, piece_name, creator_id, piece_password FROM pieces WHERE id IN (?) AND piece_password IS NOT NULL`,
+    [ids]
+  );
+  const blocked = [];
+  for (const row of rows) {
+    if (canBypassPiecePassword(user, row)) continue;
+    const supplied = suppliedByPieceId ? suppliedByPieceId[row.id] ?? suppliedByPieceId[String(row.id)] : null;
+    const matches = supplied ? await bcrypt.compare(String(supplied), row.piece_password) : false;
+    if (!matches) blocked.push({ id: row.id, piece_name: row.piece_name });
+  }
+  if (blocked.length === 0) return { ok: true };
+  const names = blocked.map(b => `"${b.piece_name}"`).join(', ');
+  return {
+    ok: false,
+    lockedPieces: blocked,
+    message: blocked.length === 1
+      ? `${names} is password-protected. Enter its password to use it in your game.`
+      : `These pieces are password-protected — enter their passwords to use them: ${names}.`,
+  };
+};
+
+// Collect the piece ids referenced by a game type's pieces_string payload.
+const pieceIdsFromPiecesString = (piecesString) => {
+  try {
+    const parsed = JSON.parse(piecesString || '{}');
+    const list = Array.isArray(parsed) ? parsed : Object.values(parsed || {});
+    return list
+      .filter(p => p && p.piece_id && !p._occupied && !p._anchorKey)
+      .map(p => Number(p.piece_id));
+  } catch {
+    return [];
+  }
+};
+
+// Replace the stored hash with a boolean before a piece row goes to a client.
+// Any endpoint that selects pieces with p.* must run rows through this.
+const sanitizePieceRow = (row) => {
+  if (!row || typeof row !== 'object') return row;
+  const { piece_password, ...rest } = row;
+  return { ...rest, has_password: !!piece_password };
+};
+const sanitizePieceRows = (rows) => (Array.isArray(rows) ? rows.map(sanitizePieceRow) : rows);
+
+// Check whether a piece is unlocked for the caller. Public: it only ever reports
+// success or failure, never the hash, and is used by the game wizard's prompt.
+app.post("/api/pieces/:pieceId/verify-password", optionalAuthenticate, async (req, res) => {
+  try {
+    const pieceId = Number(req.params.pieceId);
+    if (!pieceId) return res.status(400).json({ ok: false, message: 'Invalid piece id' });
+    const [[row]] = await db_pool.query(
+      "SELECT id, creator_id, piece_password FROM pieces WHERE id = ?", [pieceId]
+    );
+    if (!row) return res.status(404).json({ ok: false, message: 'Piece not found' });
+    if (!row.piece_password) return res.json({ ok: true, unlocked: true, protected: false });
+    if (canBypassPiecePassword(req.user, row)) {
+      return res.json({ ok: true, unlocked: true, protected: true, viaOwnership: true });
+    }
+    const supplied = req.body?.password;
+    const matches = supplied ? await bcrypt.compare(String(supplied), row.piece_password) : false;
+    return res.json({ ok: true, unlocked: matches, protected: true });
+  } catch (err) {
+    console.error('Error in /api/pieces/:pieceId/verify-password:', err);
+    res.status(500).json({ ok: false, message: 'Verification failed' });
+  }
+});
 
 // ---- Gated (conditional) piece fields ----
 // Many piece columns only do anything when another column switches them on.
@@ -3081,6 +3197,19 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
     const isDraft = gameData.is_draft ? 1 : 0;
     const draftSavedStep = gameData.draft_saved_step || null;
     const wasPublished = !existingGame.is_draft;
+
+    // Password-protected pieces: same gate as POST /api/games/create, so an
+    // existing game type can't be edited to smuggle in a locked piece.
+    if (!isDraft) {
+      const gate = await verifyPiecePasswordsForPieces(
+        pieceIdsFromPiecesString(gameData.pieces_string),
+        gameData.piece_passwords,
+        req.user
+      );
+      if (!gate.ok) {
+        return res.status(403).send({ message: gate.message, lockedPieces: gate.lockedPieces });
+      }
+    }
 
     // Initial-position validation: only enforce for published games (drafts
     // can be in any state). Mirrors the check in POST /api/games/create.
@@ -7830,8 +7959,24 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
     const sql       = `INSERT INTO game_types (${colList}) VALUES (${phList})`;
     const values    = Object.values(insertMap);
 
+    // Password-protected pieces may only be placed by someone who supplied the
+    // password (the wizard collects them as piece_passwords: { pieceId: "…" }).
+    // Enforced here as well as in the wizard, since the client-side gate alone
+    // would be trivial to bypass. Drafts are exempt so a half-finished layout can
+    // still be saved; publishing runs the check.
+    if (!isDraft) {
+      const gate = await verifyPiecePasswordsForPieces(
+        pieceIdsFromPiecesString(gameData.pieces_string),
+        gameData.piece_passwords,
+        req.user
+      );
+      if (!gate.ok) {
+        return res.status(403).send({ message: gate.message, lockedPieces: gate.lockedPieces });
+      }
+    }
+
     const [result] = await db_pool.query(sql, values);
-    
+
     const gameId = result.insertId;
 
     // Insert pieces into junction table if provided
@@ -8545,8 +8690,18 @@ app.post("/api/pieces/create", authenticateToken, multerWrap(pieceUpload.array('
       new Date().toISOString().slice(0, 19).replace('T', ' ')
     ];
 
+    // Validate the optional piece password before writing anything, so a bad
+    // password doesn't leave a half-created piece behind.
+    let piecePasswordUpdate;
+    try {
+      piecePasswordUpdate = await resolvePiecePasswordUpdate(pieceData.piece_password);
+    } catch (pwErr) {
+      return res.status(400).send({ message: pwErr.message });
+    }
+
     const [result] = await db_pool.query(pieceSql, pieceValues);
     const pieceId = result.insertId;
+    await applyPiecePasswordUpdate(pieceId, piecePasswordUpdate);
 
     // Draft support (mirrors game drafts): keep the piece private until published.
     const pieceIsDraft = parseBooleanField(pieceData.is_draft);
@@ -9242,7 +9397,21 @@ app.put("/api/pieces/:pieceId", authenticateToken, multerWrap(pieceUpload.array(
       pieceId
     ];
 
+    // Only the piece's own creator (or an admin) may change its password.
+    let piecePasswordUpdate = { action: 'none' };
+    if (pieceData.piece_password !== undefined) {
+      if (!canBypassPiecePassword(req.user, existingPiece)) {
+        return res.status(403).send({ message: "Only the piece's creator can change its password" });
+      }
+      try {
+        piecePasswordUpdate = await resolvePiecePasswordUpdate(pieceData.piece_password);
+      } catch (pwErr) {
+        return res.status(400).send({ message: pwErr.message });
+      }
+    }
+
     await db_pool.query(pieceSql, pieceValues);
+    await applyPiecePasswordUpdate(pieceId, piecePasswordUpdate);
 
     // Draft support: apply is_draft / draft_saved_step when the field is present
     // in the payload (publishing sets is_draft=0; saving a draft keeps it 1).
