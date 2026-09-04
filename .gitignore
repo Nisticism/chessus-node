@@ -13,6 +13,10 @@ uploads/
 
 # JWT secrets file (auto-generated, do not commit)
 server/.jwt-secrets.json
+
+# Git push token used by scripts/git-push.sh (never commit; template is
+# .git-credentials.env.example)
+.git-credentials.env
 sound-library-backup/
 node_modules
 
