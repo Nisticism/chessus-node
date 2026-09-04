@@ -1132,6 +1132,64 @@
   }
 }
 
+/* Lock badge on password-protected pieces in the piece picker */
+.piece-lock-badge {
+  position: absolute;
+  top: 3px;
+  right: 4px;
+  font-size: 0.9rem;
+  line-height: 1;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.8));
+  pointer-events: none;
+
+  &.unlocked {
+    opacity: 0.75;
+  }
+}
+
+/* Password prompt shown when a locked piece is clicked */
+.piece-unlock-panel {
+  margin: 12px 0;
+  padding: 14px 16px;
+  border: 1px solid rgba(var(--gold-rgb), 0.4);
+  border-radius: 8px;
+  background: rgba(var(--gold-rgb), 0.06);
+
+  h3 {
+    margin: 0 0 6px;
+    font-size: 1rem;
+  }
+}
+
+.piece-unlock-note {
+  margin: 0 0 10px;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+}
+
+.piece-unlock-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+
+  input {
+    flex: 1 1 200px;
+    min-width: 0;
+    padding: 8px 10px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: rgba(0, 0, 0, 0.25);
+    color: var(--text-heading);
+  }
+}
+
+.piece-unlock-error {
+  margin: 8px 0 0;
+  font-size: 0.85rem;
+  color: #e06c75;
+}
+
 .piece-item {
   border: 2px solid rgba(255, 255, 255, 0.1);
   border-radius: 8px;
@@ -1149,6 +1207,18 @@
     border-color: var(--accent-primary-text);
     background: rgba(var(--accent-rgb), 0.1);
   }
+
+  /* Password-protected and not yet unlocked: still visible and clickable
+     (clicking opens the password prompt), just visually held back. */
+  &.locked {
+    border-style: dashed;
+    border-color: rgba(var(--gold-rgb), 0.45);
+
+    .piece-thumbnail img,
+    .piece-thumbnail .no-image {
+      opacity: 0.55;
+    }
+  }
 }
 
 .piece-thumbnail {
@@ -1160,6 +1230,7 @@
   margin-bottom: 8px;
   background: rgba(0, 0, 0, 0.2);
   border-radius: 5px;
+  position: relative;
 
   img {
     max-width: 100%;

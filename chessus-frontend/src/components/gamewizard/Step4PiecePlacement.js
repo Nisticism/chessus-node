@@ -35,7 +35,7 @@ const getImageUrl = (imagePath) => {
   return `${ASSET_URL}${imagePath}`;
 };
 
-const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
+const Step5PiecePlacement = ({ gameData, updateGameData, editGameId, piecePasswords = {}, onPieceUnlocked }) => {
   const [piecePlacements, setPiecePlacements] = useState({});
   const [selectedSquare, setSelectedSquare] = useState(null);
   const [showPieceSelector, setShowPieceSelector] = useState(false);
@@ -2277,6 +2277,8 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId }) => {
 
       {showPieceSelector && (
         <PieceSelector
+          unlockedPieceIds={Object.keys(piecePasswords)}
+          onPieceUnlocked={onPieceUnlocked}
           onSelect={handlePieceSelected}
           onRemove={handleRemovePiece}
           onCancel={handleCancelSelector}

@@ -49,6 +49,8 @@ const PieceSelector = ({
   onRemoveRow,  // (row: number) => void — clears all pieces in this row
   excludePieceIds = null,  // Optional: piece_ids to hide from the list (e.g. already-added placeable pieces)
   allowAllPlayers = false,  // Optional: show an "All Players" ownership choice (used for placeable pieces)
+  unlockedPieceIds = null,  // Set/array of password-protected piece ids already unlocked this session
+  onPieceUnlocked,          // (pieceId, password) => void — remember an unlock for the save payload
 }) => {
   // Algebraic notation helpers
   const toFile = (col) => String.fromCharCode(97 + (col ?? 0));
@@ -301,8 +303,54 @@ const PieceSelector = ({
     }
   };
 
+  // ── Password-protected pieces ────────────────────────────────────────────
+  // A creator can lock a piece so it can't be placed in someone else's game
+  // without the password. Locked pieces still appear in the list (with a lock
+  // badge) so people can see they exist; selecting one opens a prompt.
+  const unlockedSet = useMemo(
+    () => new Set([...(unlockedPieceIds || [])].map(Number)),
+    [unlockedPieceIds]
+  );
+  const isLocked = (piece) => {
+    const id = Number(piece.id ?? piece.piece_id);
+    return !!piece.has_password && !unlockedSet.has(id);
+  };
+
+  const [unlockPrompt, setUnlockPrompt] = useState(null); // { piece }
+  const [unlockInput, setUnlockInput] = useState("");
+  const [unlockError, setUnlockError] = useState("");
+  const [unlockBusy, setUnlockBusy] = useState(false);
+
+  const submitUnlock = async () => {
+    if (!unlockPrompt || !unlockInput) return;
+    setUnlockBusy(true);
+    setUnlockError("");
+    const pieceId = Number(unlockPrompt.piece.id ?? unlockPrompt.piece.piece_id);
+    try {
+      const res = await PiecesService.verifyPiecePassword(pieceId, unlockInput);
+      if (res.data?.unlocked) {
+        onPieceUnlocked?.(pieceId, unlockInput);
+        setSelectedPieceId(pieceId);
+        setUnlockPrompt(null);
+        setUnlockInput("");
+      } else {
+        setUnlockError("That password doesn't match. Check with the piece's creator.");
+      }
+    } catch {
+      setUnlockError("Couldn't check the password. Please try again.");
+    } finally {
+      setUnlockBusy(false);
+    }
+  };
+
   const handlePieceClick = (piece) => {
     const pieceId = piece.id || piece.piece_id;
+    if (isLocked(piece)) {
+      setUnlockInput("");
+      setUnlockError("");
+      setUnlockPrompt({ piece });
+      return;
+    }
     setSelectedPieceId(pieceId);
   };
 
@@ -676,8 +724,13 @@ const PieceSelector = ({
                 return (
                   <div
                     key={pieceId}
-                    className={`${styles["piece-item"]} ${selectedPieceId === pieceId ? styles["selected"] : ""}`}
+                    className={`${styles["piece-item"]} ${selectedPieceId === pieceId ? styles["selected"] : ""} ${isLocked(piece) ? styles["locked"] : ""}`}
                     onClick={() => handlePieceClick(piece)}
+                    title={piece.has_password
+                      ? (isLocked(piece)
+                        ? `${piece.piece_name} is password-protected — click to enter its password`
+                        : `${piece.piece_name} is password-protected (unlocked)`)
+                      : undefined}
                   >
                     <div className={styles["piece-thumbnail"]}>
                       {thumbnail ? (
@@ -686,6 +739,14 @@ const PieceSelector = ({
                         <div className={styles["no-image"]}>
                           {piece.piece_name.charAt(0).toUpperCase()}
                         </div>
+                      )}
+                      {piece.has_password && (
+                        <span
+                          className={`${styles["piece-lock-badge"]} ${isLocked(piece) ? "" : styles["unlocked"]}`}
+                          aria-label={isLocked(piece) ? "Password protected" : "Password protected, unlocked"}
+                        >
+                          {isLocked(piece) ? "🔒" : "🔓"}
+                        </span>
                       )}
                     </div>
                     <div className={styles["piece-info"]}>
@@ -698,6 +759,41 @@ const PieceSelector = ({
             </div>
           )}
         </div>
+
+        {/* Password prompt for a locked piece */}
+        {unlockPrompt && (
+          <div className={styles["piece-unlock-panel"]}>
+            <h3>🔒 &ldquo;{unlockPrompt.piece.piece_name}&rdquo; is password-protected</h3>
+            <p className={styles["piece-unlock-note"]}>
+              Its creator set a password to control where this piece can be used.
+              Enter it to place the piece in your game.
+            </p>
+            <div className={styles["piece-unlock-row"]}>
+              <input
+                type="password"
+                autoFocus
+                autoComplete="off"
+                value={unlockInput}
+                onChange={(e) => { setUnlockInput(e.target.value); setUnlockError(""); }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') { e.preventDefault(); submitUnlock(); }
+                  if (e.key === 'Escape') { e.preventDefault(); setUnlockPrompt(null); }
+                }}
+                placeholder="Piece password"
+              />
+              <StandardButton
+                buttonText={unlockBusy ? "Checking..." : "Unlock"}
+                onClick={submitUnlock}
+                disabled={unlockBusy || !unlockInput}
+              />
+              <StandardButton
+                buttonText="Cancel"
+                onClick={() => { setUnlockPrompt(null); setUnlockInput(""); setUnlockError(""); }}
+              />
+            </div>
+            {unlockError && <p className={styles["piece-unlock-error"]}>{unlockError}</p>}
+          </div>
+        )}
 
         {/* Win Condition Checkboxes */}
         {selectedPieceId && (mateCondition || captureCondition || (squaresCondition && requireSpecificPieceControl)) && (

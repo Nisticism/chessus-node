@@ -269,6 +269,14 @@ const GameWizard = ({ editGameId }) => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, [currentStep]);
 
+  // Passwords the creator has entered for password-protected pieces, kept for
+  // the lifetime of the wizard so they only have to type each one once. Sent
+  // with the game on save; never persisted anywhere else.
+  const [piecePasswords, setPiecePasswords] = useState({});
+  const rememberPiecePassword = React.useCallback((pieceId, password) => {
+    setPiecePasswords(prev => ({ ...prev, [pieceId]: password }));
+  }, []);
+
   const updateGameData = (updates) => {
     setGameData(prev => {
       const next = { ...prev, ...updates };
@@ -533,6 +541,10 @@ const GameWizard = ({ editGameId }) => {
         starting_piece_count: pieceCount,
         is_draft: false,
         draft_saved_step: null,
+        // Passwords entered for any password-protected pieces on the board. The
+        // server re-checks each one before publishing, so the wizard's prompt is
+        // a convenience rather than the actual gate.
+        piece_passwords: piecePasswords,
       };
 
       if (isEditMode) {
@@ -668,7 +680,13 @@ const GameWizard = ({ editGameId }) => {
       case 3:
         return <Step3BoardSpecialSquares gameData={gameData} updateGameData={updateGameData} />;
       case 4:
-        return <Step4PiecePlacement gameData={gameData} updateGameData={updateGameData} editGameId={editGameId} />;
+        return <Step4PiecePlacement
+          gameData={gameData}
+          updateGameData={updateGameData}
+          editGameId={editGameId}
+          piecePasswords={piecePasswords}
+          onPieceUnlocked={rememberPiecePassword}
+        />;
       default:
         return null;
     }

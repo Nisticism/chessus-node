@@ -178,6 +178,54 @@ const PieceStep4Special = ({ pieceData, updatePieceData }) => {
       </div>
       )}
 
+      {/* Piece password */}
+      <div className={styles["condition-section"]}>
+        <h3>Piece Password (optional)</h3>
+        <p className={styles["field-hint"]}>
+          Set a password to control who can put this piece in their game. Anyone who
+          wants to use it will have to enter the password first — useful if you'd
+          rather your artwork or your piece's design didn't turn up in games you
+          haven't approved. You can always use your own pieces without it.
+          {pieceData.has_password && !pieceData.piece_password && (
+            <> <strong>This piece currently has a password.</strong> Leave the box
+            empty to keep it, or type a new one to replace it.</>
+          )}
+        </p>
+
+        <div className={styles["sub-field"]}>
+          <label htmlFor="piece-password">Password</label>
+          <input
+            id="piece-password"
+            type="password"
+            className={styles["form-input"]}
+            autoComplete="new-password"
+            value={pieceData.piece_password || ""}
+            onChange={(e) => handleChange("piece_password", e.target.value)}
+            placeholder={pieceData.has_password ? "Leave empty to keep the current password" : "At least 8 characters"}
+            maxLength={72}
+          />
+          {pieceData.piece_password && pieceData.piece_password.length < 8 && (
+            <p className={styles["field-hint"]} style={{ color: 'var(--error-text, #e06c75)' }}>
+              Password must be at least 8 characters.
+            </p>
+          )}
+        </div>
+
+        {pieceData.has_password && (
+          <label className={styles["checkbox-label"]}>
+            <input
+              type="checkbox"
+              checked={!!pieceData.remove_piece_password}
+              onChange={(e) => {
+                handleChange("remove_piece_password", e.target.checked);
+                if (e.target.checked) handleChange("piece_password", "");
+              }}
+            />
+            <span>Remove the password and let anyone use this piece</span>
+          </label>
+        )}
+      </div>
+
       {/* Summary Section */}
       <div className={styles["summary-section"]}>
         <h3>Summary</h3>
@@ -251,6 +299,17 @@ const PieceStep4Special = ({ pieceData, updatePieceData }) => {
             {pieceData.capture_on_hop && pieceData.chain_capture_enabled ? " + " : ""}
             {pieceData.chain_capture_enabled ? "Chain Capture" : ""}
             {!pieceData.capture_on_hop && !pieceData.chain_capture_enabled ? "No" : ""}
+          </div>
+          <div className={styles["summary-item"]}>
+            <span className={styles["summary-tooltip"]}>When set, other creators must enter this password before they can place your piece in their game.</span>
+            <strong>Password:</strong>{" "}
+            {pieceData.remove_piece_password
+              ? "Will be removed"
+              : pieceData.piece_password
+              ? "Will be set"
+              : pieceData.has_password
+              ? "Set"
+              : "None"}
           </div>
           <div className={styles["summary-item"]}>
             <span className={styles["summary-tooltip"]}>Castling, promotion, en passant, and other special rules.</span>

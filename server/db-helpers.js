@@ -613,7 +613,9 @@ const getPieceById = async (pieceId) => {
       p.up_left_capture_change_available_for, p.up_capture_change_available_for, p.up_right_capture_change_available_for, p.right_capture_change_available_for,
       p.down_right_capture_change_available_for, p.down_capture_change_available_for, p.down_left_capture_change_available_for, p.left_capture_change_available_for,
       p.repeating_capture_change, p.require_empty_via_capture,
-      p.require_direction_change, p.require_direction_change_capture
+      p.require_direction_change, p.require_direction_change_capture,
+      -- Never expose the hash itself, only whether the piece is locked.
+      (p.piece_password IS NOT NULL) AS has_password
     FROM chessusnode.pieces p
     LEFT JOIN chessusnode.users u ON p.creator_id = u.id
     WHERE p.id = ?

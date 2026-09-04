@@ -84,6 +84,15 @@ const comparePieces = async (pieceAId, pieceBId) => {
   return response;
 };
 
+// Check a password-protected piece's password. The server only ever answers
+// unlocked true/false — the stored hash never reaches the client.
+const verifyPiecePassword = async (pieceId, password) => {
+  const response = await axios.post(API_URL + `pieces/${pieceId}/verify-password`, { password }, {
+    headers: authHeader()
+  });
+  return response;
+};
+
 const getCommunityImages = async ({ page = 1, limit = 40, sort = 'newest', search = '' } = {}) => {
   const params = { page, limit, sort };
   if (search) params.search = search;
@@ -102,6 +111,7 @@ const PiecesService = {
   getGamesByPieceId,
   checkPieceDuplicates,
   comparePieces,
+  verifyPiecePassword,
   getCommunityImages,
 };
 

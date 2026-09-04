@@ -295,7 +295,13 @@ const PieceWizard = ({ editPieceId = null }) => {
             piece_image_previews: imagePreviews,
             piece_width: piece.piece_width || 1,
             piece_height: piece.piece_height || 1,
-            
+            // Whether a password is already set. The password itself is never
+            // sent to the client, so the field starts empty and only replaces
+            // the stored one when the creator types a new value.
+            has_password: !!piece.has_password,
+            piece_password: "",
+            remove_piece_password: false,
+
             // Movement fields
             directional_movement_style: !!piece.directional_movement_style,
             repeating_movement: !!piece.repeating_movement,
@@ -707,9 +713,13 @@ const PieceWizard = ({ editPieceId = null }) => {
       };
       
       // Skip database field names that should be mapped from form fields
-      const skipFields = ['special_scenario_captures', 'has_checkmate_rule', 
+      const skipFields = ['special_scenario_captures', 'has_checkmate_rule',
                           'has_check_rule', 'has_lose_on_capture_rule', 'min_turns_per_move',
-                          'step_by_step_attack_range', 'step_by_step_attack_style', 'step_by_step_attack_value'];
+                          'step_by_step_attack_range', 'step_by_step_attack_style', 'step_by_step_attack_value',
+                          // Password is sent explicitly below: the generic loop would
+                          // append an empty string for an untouched field, which the
+                          // server reads as "remove the password".
+                          'piece_password', 'has_password', 'remove_piece_password'];
 
       // Compute step-by-step ranged attack DB columns from the combined field
       const sarVal = pieceData.step_by_step_attack_range;
@@ -735,6 +745,15 @@ const PieceWizard = ({ editPieceId = null }) => {
         }
       });
       
+      // Piece password. Omitting the field entirely leaves the current setting
+      // alone; an empty string clears it. Only send it when the creator actually
+      // asked for a change, so saving an unrelated edit can't wipe the password.
+      if (pieceData.remove_piece_password) {
+        formData.append('piece_password', '');
+      } else if (pieceData.piece_password) {
+        formData.append('piece_password', pieceData.piece_password);
+      }
+
       formData.append('creator_id', currentUser ? currentUser.id : '');
       formData.append('user_role', currentUser ? currentUser.role : '');
       formData.append('is_anonymous_creator', !currentUser || pieceData.is_anonymous_creator ? 'true' : 'false');
