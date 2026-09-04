@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
 #
-# Push using a token from .git-credentials.env (untracked).
+# Push using the settings in .git-credentials.env (untracked).
 #
-# The token is passed to git through a transient credential helper on the
-# command line, so it is never written into .git/config, never stored in a
-# credential cache, and never echoed. See .git-credentials.env.example.
+# Prefers SSH, which doesn't expire. Falls back to a Personal Access Token if
+# one is configured and no SSH key is set. See .git-credentials.env.example.
 #
 # Usage: ./scripts/git-push.sh [branch]   (defaults to the current branch)
 
@@ -19,22 +18,49 @@ if [ ! -f "$env_file" ]; then
   exit 1
 fi
 
-# Load without tracing, so the token can't land in shell logs.
+# Load without tracing, so nothing sensitive can land in shell logs.
 set +x
 # shellcheck disable=SC1090
 set -a; . "$env_file"; set +a
 
-if [ -z "${GITHUB_USERNAME:-}" ] || [ -z "${GITHUB_TOKEN:-}" ] \
-   || [ "${GITHUB_TOKEN}" = "github_pat_replace_me" ]; then
-  echo "GITHUB_USERNAME and GITHUB_TOKEN must be set in .git-credentials.env." >&2
+branch="${1:-$(git -C "$repo_root" rev-parse --abbrev-ref HEAD)}"
+
+# Expand a leading ~ in the key path.
+key_path="${SSH_KEY_PATH:-}"
+case "$key_path" in
+  "~/"*) key_path="$HOME/${key_path#\~/}" ;;
+esac
+
+if [ -n "$key_path" ] && [ -f "$key_path" ]; then
+  # ── SSH ────────────────────────────────────────────────────────────────
+  if [ -n "${GIT_REMOTE_SSH_URL:-}" ]; then
+    current="$(git -C "$repo_root" remote get-url origin)"
+    if [ "$current" != "$GIT_REMOTE_SSH_URL" ]; then
+      echo "Switching origin to SSH: $GIT_REMOTE_SSH_URL"
+      git -C "$repo_root" remote set-url origin "$GIT_REMOTE_SSH_URL"
+    fi
+  fi
+
+  echo "Pushing $branch to origin over SSH (key: $key_path) ..."
+  # IdentitiesOnly stops ssh offering every other key in the agent first.
+  GIT_SSH_COMMAND="ssh -i '$key_path' -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new" \
+    git -C "$repo_root" push origin "$branch"
+  echo "Pushed $branch."
+  exit 0
+fi
+
+# ── Token fallback ───────────────────────────────────────────────────────
+if [ -z "${GITHUB_USERNAME:-}" ] || [ -z "${GITHUB_TOKEN:-}" ]; then
+  echo "No usable credentials." >&2
+  echo "Set SSH_KEY_PATH to an existing private key (recommended), or fill in" >&2
+  echo "GITHUB_USERNAME and GITHUB_TOKEN, in $env_file." >&2
+  [ -n "$key_path" ] && echo "(SSH_KEY_PATH is set to '$key_path' but no such file exists.)" >&2
   exit 1
 fi
 
-branch="${1:-$(git -C "$repo_root" rev-parse --abbrev-ref HEAD)}"
+echo "Pushing $branch to origin as $GITHUB_USERNAME (token) ..."
+echo "Note: a fine-grained token needs 'Contents: Read and write' on this repo." >&2
 
-echo "Pushing $branch to origin as $GITHUB_USERNAME ..."
-
-# The helper prints the credentials to git on stdin only; nothing is persisted.
 git -C "$repo_root" \
   -c credential.helper= \
   -c credential.helper='!f() { printf "username=%s\npassword=%s\n" "$GITHUB_USERNAME" "$GITHUB_TOKEN"; }; f' \
