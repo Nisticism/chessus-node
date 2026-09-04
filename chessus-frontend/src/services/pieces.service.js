@@ -93,6 +93,17 @@ const verifyPiecePassword = async (pieceId, password) => {
   return response;
 };
 
+// Upload one custom piece sound. The blob is always a short WAV prepared by
+// helpers/pieceSoundUtils; the server checks duration and the supporter tier.
+const uploadPieceSound = async (blob, filename = 'piece-sound.wav') => {
+  const form = new FormData();
+  form.append('sound', blob, filename);
+  const response = await axios.post(API_URL + "piece-sounds", form, {
+    headers: { ...authHeader(), 'Content-Type': 'multipart/form-data' }
+  });
+  return response;
+};
+
 const getCommunityImages = async ({ page = 1, limit = 40, sort = 'newest', search = '' } = {}) => {
   const params = { page, limit, sort };
   if (search) params.search = search;
@@ -112,6 +123,7 @@ const PiecesService = {
   checkPieceDuplicates,
   comparePieces,
   verifyPiecePassword,
+  uploadPieceSound,
   getCommunityImages,
 };
 

@@ -301,6 +301,9 @@ const PieceWizard = ({ editPieceId = null }) => {
             has_password: !!piece.has_password,
             piece_password: "",
             remove_piece_password: false,
+            move_sound_url: piece.move_sound_url || "",
+            capture_sound_url: piece.capture_sound_url || "",
+            hit_sound_url: piece.hit_sound_url || "",
 
             // Movement fields
             directional_movement_style: !!piece.directional_movement_style,
@@ -805,7 +808,7 @@ const PieceWizard = ({ editPieceId = null }) => {
       case 3:
         return <PieceStep3Attack pieceData={pieceData} updatePieceData={updatePieceData} />;
       case 4:
-        return <PieceStep4Special pieceData={pieceData} updatePieceData={updatePieceData} />;
+        return <PieceStep4Special pieceData={pieceData} updatePieceData={updatePieceData} currentUser={currentUser} />;
       default:
         return null;
     }

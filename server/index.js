@@ -427,6 +427,35 @@ const pieceUpload = multer({
   }
 });
 
+// Configure multer for custom piece sounds (silver supporters and above).
+// The client always re-encodes to WAV and crops to PIECE_SOUND_MAX_SECONDS
+// before uploading, so the server can read the duration straight out of the
+// WAV header without pulling in an audio-decoding dependency.
+const pieceSoundStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const uploadDir = path.join(UPLOADS_BASE, 'piece-sounds');
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    cb(null, uploadDir);
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, 'piece-sound-' + uniqueSuffix + '.wav');
+  }
+});
+
+const pieceSoundUpload = multer({
+  storage: pieceSoundStorage,
+  limits: { fileSize: 1.5 * 1024 * 1024 }, // ~1.5s of 44.1kHz stereo PCM, with headroom
+  fileFilter: function (req, file, cb) {
+    const isWav = path.extname(file.originalname).toLowerCase() === '.wav'
+      && /wav|wave|octet-stream/.test(file.mimetype);
+    if (isWav) return cb(null, true);
+    cb(new Error('Piece sounds must be uploaded as WAV.'));
+  }
+});
+
 // Configure multer for profile picture uploads
 const profilePictureStorage = multer.diskStorage({
   destination: function (req, file, cb) {
@@ -2382,7 +2411,7 @@ function prettifyPieceField(col) {
 // it in a game type. The hash never leaves the server; list endpoints expose a
 // has_password boolean instead. NULL means unprotected, which is the default and
 // what every pre-existing piece has.
-const PIECE_PASSWORD_MIN = 8;
+const PIECE_PASSWORD_MIN = 4;
 const PIECE_PASSWORD_MAX = 72; // bcrypt ignores bytes past 72
 
 // Multipart form fields can arrive as arrays; take the first value.
@@ -2458,6 +2487,147 @@ const pieceIdsFromPiecesString = (piecesString) => {
   } catch {
     return [];
   }
+};
+
+// ---- Custom piece sounds ----
+// Silver supporters ($5+) and above may replace the default sound a piece makes
+// for each of its actions. Check and checkmate stay as site sounds and are
+// layered on top of a custom sound rather than replacing it.
+const PIECE_SOUND_MAX_SECONDS = 1.5;
+const PIECE_SOUND_MIN_DONATION = 5;   // Silver
+const PIECE_SOUND_SLOTS = {
+  move: 'move_sound_url',
+  capture: 'capture_sound_url',
+  hit: 'hit_sound_url',
+};
+
+const isSupporter = async (userId) => {
+  if (!userId) return false;
+  const [[row]] = await db_pool.query(
+    'SELECT total_donations, role FROM users WHERE id = ?', [userId]
+  );
+  if (!row) return false;
+  if (row.role === 'admin' || row.role === 'owner') return true;
+  return parseFloat(row.total_donations || 0) >= PIECE_SOUND_MIN_DONATION;
+};
+
+// Duration of a PCM WAV, read from its header. Returns null if the file isn't a
+// WAV we recognise, which the caller treats as a rejection.
+const wavDurationSeconds = (filePath) => {
+  let fd;
+  try {
+    fd = fs.openSync(filePath, 'r');
+    const header = Buffer.alloc(4096);
+    const read = fs.readSync(fd, header, 0, 4096, 0);
+    if (read < 44) return null;
+    if (header.toString('ascii', 0, 4) !== 'RIFF' || header.toString('ascii', 8, 12) !== 'WAVE') return null;
+
+    let byteRate = 0;
+    let dataBytes = 0;
+    let offset = 12;
+    while (offset + 8 <= read) {
+      const chunkId = header.toString('ascii', offset, offset + 4);
+      const chunkSize = header.readUInt32LE(offset + 4);
+      if (chunkId === 'fmt ') {
+        byteRate = header.readUInt32LE(offset + 16);
+      } else if (chunkId === 'data') {
+        dataBytes = chunkSize;
+        break;
+      }
+      offset += 8 + chunkSize + (chunkSize % 2);
+    }
+    if (!byteRate || !dataBytes) return null;
+    return dataBytes / byteRate;
+  } catch {
+    return null;
+  } finally {
+    if (fd !== undefined) { try { fs.closeSync(fd); } catch {} }
+  }
+};
+
+// Upload one custom sound and get back its URL. The wizard stores that URL on
+// the piece like any other field, so this stays independent of piece create/save.
+app.post("/api/piece-sounds", authenticateToken, multerWrap(pieceSoundUpload.single('sound'), '1.5 MB'), async (req, res) => {
+  const cleanup = () => { if (req.file?.path) { try { fs.unlinkSync(req.file.path); } catch {} } };
+  try {
+    if (!req.file) return res.status(400).send({ message: "No sound file received" });
+
+    if (!(await isSupporter(req.user.id))) {
+      cleanup();
+      return res.status(403).send({
+        message: "Custom piece sounds are a Silver Supporter perk. Support the site to unlock them.",
+        requiresSupporter: true,
+      });
+    }
+
+    const duration = wavDurationSeconds(req.file.path);
+    if (duration === null) {
+      cleanup();
+      return res.status(400).send({ message: "That file couldn't be read as a WAV sound." });
+    }
+    // The client crops before uploading; allow a small tolerance for rounding.
+    if (duration > PIECE_SOUND_MAX_SECONDS + 0.1) {
+      cleanup();
+      return res.status(400).send({
+        message: `Piece sounds must be ${PIECE_SOUND_MAX_SECONDS} seconds or shorter (received ${duration.toFixed(2)}s).`,
+      });
+    }
+
+    res.json({ url: `/uploads/piece-sounds/${path.basename(req.file.path)}`, duration });
+  } catch (err) {
+    cleanup();
+    console.error("Error in /api/piece-sounds:", err);
+    res.status(500).send({ message: "Failed to upload sound" });
+  }
+});
+
+// Custom sounds for the pieces used by one game type, so a live game can look
+// them up once instead of threading sound URLs through every piece payload.
+app.get("/api/game-types/:gameTypeId/piece-sounds", async (req, res) => {
+  try {
+    const gameTypeId = Number(req.params.gameTypeId);
+    if (!gameTypeId) return res.json({});
+    const [rows] = await db_pool.query(`
+      SELECT DISTINCT p.id, p.move_sound_url, p.capture_sound_url, p.hit_sound_url
+      FROM chessusnode.pieces p
+      INNER JOIN chessusnode.game_type_pieces gtp ON gtp.piece_id = p.id
+      WHERE gtp.game_type_id = ?
+        AND (p.move_sound_url IS NOT NULL OR p.capture_sound_url IS NOT NULL OR p.hit_sound_url IS NOT NULL)
+    `, [gameTypeId]);
+    const map = {};
+    for (const r of rows) {
+      map[r.id] = { move: r.move_sound_url, capture: r.capture_sound_url, hit: r.hit_sound_url };
+    }
+    res.json(map);
+  } catch (err) {
+    console.error("Error in /api/game-types/:gameTypeId/piece-sounds:", err);
+    res.status(500).send({ err: err.message });
+  }
+});
+
+// Read the sound URLs off a piece payload, keeping only known slots. Returns
+// undefined for a slot the client didn't mention, so an unrelated save can't
+// clear a sound the creator set earlier.
+const resolvePieceSoundUpdates = (pieceData) => {
+  const updates = {};
+  for (const [slot, column] of Object.entries(PIECE_SOUND_SLOTS)) {
+    const raw = firstFormValue(pieceData[column]);
+    if (raw === undefined || raw === null) continue;
+    const str = String(raw).trim();
+    if (str === '') { updates[column] = null; continue; }       // explicit clear
+    if (!str.startsWith('/uploads/piece-sounds/')) continue;    // ignore anything else
+    updates[column] = str;
+  }
+  return updates;
+};
+
+const applyPieceSoundUpdates = async (pieceId, updates) => {
+  const cols = Object.keys(updates);
+  if (cols.length === 0) return;
+  await db_pool.query(
+    `UPDATE pieces SET ${cols.map(c => `${c} = ?`).join(', ')} WHERE id = ?`,
+    [...cols.map(c => updates[c]), pieceId]
+  );
 };
 
 // Replace the stored hash with a boolean before a piece row goes to a client.
@@ -8702,6 +8872,7 @@ app.post("/api/pieces/create", authenticateToken, multerWrap(pieceUpload.array('
     const [result] = await db_pool.query(pieceSql, pieceValues);
     const pieceId = result.insertId;
     await applyPiecePasswordUpdate(pieceId, piecePasswordUpdate);
+    await applyPieceSoundUpdates(pieceId, resolvePieceSoundUpdates(pieceData));
 
     // Draft support (mirrors game drafts): keep the piece private until published.
     const pieceIsDraft = parseBooleanField(pieceData.is_draft);
@@ -9412,6 +9583,7 @@ app.put("/api/pieces/:pieceId", authenticateToken, multerWrap(pieceUpload.array(
 
     await db_pool.query(pieceSql, pieceValues);
     await applyPiecePasswordUpdate(pieceId, piecePasswordUpdate);
+    await applyPieceSoundUpdates(pieceId, resolvePieceSoundUpdates(pieceData));
 
     // Draft support: apply is_draft / draft_saved_step when the field is present
     // in the payload (publishing sets is_draft=0; saving a draft keeps it 1).

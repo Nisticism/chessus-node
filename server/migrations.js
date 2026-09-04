@@ -881,7 +881,12 @@ const migrations = [
   // --- Piece passwords ---
   // Optional bcrypt hash. NULL (the default, and what every existing piece gets)
   // means the piece is unprotected and anyone may place it in their game.
-  { table: 'pieces', column: 'piece_password', sql: "ALTER TABLE pieces ADD COLUMN piece_password VARCHAR(255) DEFAULT NULL", description: "Optional bcrypt-hashed password. When set, only the creator (or someone who knows the password) may use this piece in a game type." }
+  { table: 'pieces', column: 'piece_password', sql: "ALTER TABLE pieces ADD COLUMN piece_password VARCHAR(255) DEFAULT NULL", description: "Optional bcrypt-hashed password. When set, only the creator (or someone who knows the password) may use this piece in a game type." },
+  // --- Custom piece sounds (silver supporters and above) ---
+  // Each holds a path under /uploads/piece-sounds, or NULL to use the site default.
+  { table: 'pieces', column: 'move_sound_url', sql: "ALTER TABLE pieces ADD COLUMN move_sound_url VARCHAR(255) DEFAULT NULL", description: "Optional custom sound played when this piece moves. NULL uses the default move sound." },
+  { table: 'pieces', column: 'capture_sound_url', sql: "ALTER TABLE pieces ADD COLUMN capture_sound_url VARCHAR(255) DEFAULT NULL", description: "Optional custom sound played when this piece captures. NULL uses the default capture sound." },
+  { table: 'pieces', column: 'hit_sound_url', sql: "ALTER TABLE pieces ADD COLUMN hit_sound_url VARCHAR(255) DEFAULT NULL", description: "Optional custom sound played when this piece damages without killing (HP/AD). NULL uses the default hit sound." }
 ];
 
 // Ensure physical_board_requests table exists (may have been created after tableMigrations ran)

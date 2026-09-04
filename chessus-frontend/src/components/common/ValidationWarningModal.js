@@ -50,7 +50,17 @@ const listItemStyle = {
   borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
 };
 
-const ValidationWarningModal = ({ warnings, onClose, title, description, nonDismissible }) => {
+/**
+ * Warning modal.
+ *
+ * By default it just reports problems with an OK button. Pass `onConfirm` to
+ * turn it into a two-choice prompt (e.g. "your clip is too long - re-upload, or
+ * proceed and we'll trim it"), with `confirmText` / `cancelText` for the labels.
+ */
+const ValidationWarningModal = ({
+  warnings, onClose, title, description, nonDismissible,
+  onConfirm, confirmText = "Proceed", cancelText = "Cancel", confirmNote,
+}) => {
   if (!warnings || warnings.length === 0) return null;
 
   // When `nonDismissible` is set, suppress overlay-click and OK-button dismiss.
@@ -73,9 +83,21 @@ const ValidationWarningModal = ({ warnings, onClose, title, description, nonDism
             </li>
           ))}
         </ul>
+        {confirmNote && (
+          <p style={{ ...descStyle, fontSize: "0.82rem", marginBottom: "16px", color: "#9ab0c4" }}>
+            {confirmNote}
+          </p>
+        )}
         {showOk && (
-          <div style={{ display: "flex", justifyContent: "center" }}>
-            <StandardButton buttonText="OK" onClick={onClose} />
+          <div style={{ display: "flex", justifyContent: "center", gap: "10px", flexWrap: "wrap" }}>
+            {onConfirm ? (
+              <>
+                <StandardButton buttonText={cancelText} onClick={onClose} />
+                <StandardButton buttonText={confirmText} onClick={onConfirm} />
+              </>
+            ) : (
+              <StandardButton buttonText="OK" onClick={onClose} />
+            )}
           </div>
         )}
         {nonDismissible && (

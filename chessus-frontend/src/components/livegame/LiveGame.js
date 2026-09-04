@@ -504,6 +504,9 @@ const LiveGame = () => {
   // until after the player confirms their promotion choice.
   const [prePromotionPieces, setPrePromotionPieces] = useState(null);
   const [specialSquares, setSpecialSquares] = useState({ range: {}, promotion: {}, control: {}, special: {} });
+  // Custom per-piece sounds, keyed by piece_id. Fetched once per game type
+  // rather than threaded through every piece payload from the server.
+  const pieceSoundsRef = useRef({});
   const [pendingDrawOffer, setPendingDrawOffer] = useState(null); // {from, fromUsername} when opponent offers draw
   const [drawOfferSent, setDrawOfferSent] = useState(false); // Track if current user sent a draw offer
   const [showCapturedPieces, setShowCapturedPieces] = useState(true); // Show/hide captured pieces section
@@ -1147,6 +1150,34 @@ const LiveGame = () => {
     loadGame();
   }, [gameId, connected, getGameState, clearOptimisticMoveSnapshot, currentUser, authenticateAnonCorresPlayer]);
 
+  // Load this game type's custom piece sounds (silver-supporter uploads).
+  useEffect(() => {
+    const gameTypeId = gameState?.gameType?.id;
+    if (!gameTypeId) return;
+    let cancelled = false;
+    axios.get(`${API_URL}game-types/${gameTypeId}/piece-sounds`)
+      .then(res => { if (!cancelled) pieceSoundsRef.current = res.data || {}; })
+      .catch(() => { /* custom sounds are optional - fall back to defaults */ });
+    return () => { cancelled = true; };
+  }, [gameState?.gameType?.id]);
+
+  // The custom sound a move should use, or null to fall back to the site default.
+  const customSoundFor = useCallback((move, action) => {
+    if (!move) return null;
+    const pieces = parsePieces(gameState?.pieces);
+    const moved = pieces.find(p => p.id === move.pieceId);
+    const entry = moved && pieceSoundsRef.current[moved.piece_id];
+    const url = entry && entry[action];
+    return url ? `${ASSET_URL}${url}` : null;
+  }, [gameState?.pieces]);
+
+  // Which built-in sound should layer over a custom one for this move.
+  const soundActionFor = (move) => {
+    if (move?.captured) return 'capture';
+    if (move?.damagedPieces && move.damagedPieces.length > 0) return 'hit';
+    return 'move';
+  };
+
   // When not a player, register as a spectator.
   // Also re-registers when game status changes to 'active' so that users who
   // were watching the lobby (before the game started) get added to the
@@ -1662,16 +1693,11 @@ const LiveGame = () => {
         
         // Play sound based on move type - prioritize check > capture > move
         if (soundEnabledRef.current) {
-          if (newState.inCheck || midTurnCheck) {
-            soundManager.playCheck();
-          } else if (move.captured) {
-            soundManager.playCapture();
-          } else if (move.damagedPieces && move.damagedPieces.length > 0) {
-            // HP/AD: play hit sound for damage that didn't kill
-            soundManager.playHit();
-          } else {
-            soundManager.playMove();
-          }
+          // A piece with its own sound keeps it, with check layered on top;
+          // otherwise check still replaces the action sound as it always did.
+          const action = soundActionFor(move);
+          const overlay = (newState.inCheck || midTurnCheck) ? 'check' : null;
+          soundManager.playPieceAction(action, customSoundFor(move, action), overlay);
         }
 
         // HP/AD: Show floating damage numbers for damaged pieces
@@ -1783,13 +1809,8 @@ const LiveGame = () => {
         if (soundEnabledRef.current) {
           // First play the move sound (capture/hit/move) for the last move
           if (move) {
-            if (move.captured) {
-              soundManager.playCapture();
-            } else if (move.damagedPieces && move.damagedPieces.length > 0) {
-              soundManager.playHit();
-            } else {
-              soundManager.playMove();
-            }
+            const action = soundActionFor(move);
+            soundManager.playPieceAction(action, customSoundFor(move, action), null);
           }
           // Then play the game-ending sound after a short delay so both are audible
           const endSoundDelay = move ? 300 : 0;
@@ -2076,15 +2097,8 @@ const LiveGame = () => {
         }
         // Play sound for premove execution - prioritize check > capture > hit > move
         if (soundEnabledRef.current) {
-          if (newState.inCheck) {
-            soundManager.playCheck();
-          } else if (move.captured) {
-            soundManager.playCapture();
-          } else if (move.damagedPieces && move.damagedPieces.length > 0) {
-            soundManager.playHit();
-          } else {
-            soundManager.playMove();
-          }
+          const action = soundActionFor(move);
+          soundManager.playPieceAction(action, customSoundFor(move, action), newState.inCheck ? 'check' : null);
         }
       }
     });

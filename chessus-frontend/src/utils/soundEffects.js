@@ -195,6 +195,55 @@ class SoundManager {
     this.play('hit');
   }
 
+  /**
+   * Play a custom per-piece sound from a URL. Audio elements are cached per URL
+   * so repeated moves don't refetch, and playback is cloned the same way the
+   * built-in sounds are so overlapping actions don't cut each other off.
+   */
+  playCustom(url) {
+    if (!this.enabled || !url) return false;
+    if (!this.customSounds) this.customSounds = {};
+    let base = this.customSounds[url];
+    if (!base) {
+      base = new Audio(url);
+      base.preload = 'auto';
+      base.volume = 0.5;
+      this.customSounds[url] = base;
+    }
+    try {
+      const clone = base.cloneNode();
+      clone.volume = base.volume;
+      clone.play().catch(() => {});
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Play one piece action, with the game-state sound layered on top.
+   *
+   * A piece with a custom sound keeps that sound even when the move gives check
+   * or checkmate — the check/checkmate sound plays over it rather than replacing
+   * it. Without a custom sound the original behaviour is preserved exactly:
+   * check/checkmate replaces the move or capture sound.
+   *
+   * @param {'move'|'capture'|'hit'} action
+   * @param {string|null} customUrl  the piece's custom sound for this action
+   * @param {'check'|'checkmate'|null} overlay
+   */
+  playPieceAction(action, customUrl, overlay = null) {
+    if (!this.enabled) return;
+    const playedCustom = customUrl ? this.playCustom(customUrl) : false;
+
+    if (playedCustom) {
+      if (overlay) this.play(overlay);
+      return;
+    }
+    // No custom sound: game state wins, as it always has.
+    this.play(overlay || action);
+  }
+
   setVolume(volume) {
     // volume should be between 0 and 1
     const clampedVolume = Math.max(0, Math.min(1, volume));
