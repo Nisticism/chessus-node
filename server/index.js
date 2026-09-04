@@ -2442,10 +2442,16 @@ const applyPiecePasswordUpdate = async (pieceId, update) => {
   );
 };
 
+// Case-insensitive admin/owner test, matching how the rest of the API checks it.
+const hasAdminRole = (role) => {
+  const r = (role || '').toLowerCase();
+  return r === 'admin' || r === 'owner';
+};
+
 // Everyone who may use a locked piece without knowing its password.
 const canBypassPiecePassword = (user, pieceRow) => {
   if (!user) return false;
-  if (user.role === 'admin' || user.role === 'owner') return true;
+  if (hasAdminRole(user.role)) return true;
   return pieceRow.creator_id != null && Number(pieceRow.creator_id) === Number(user.id);
 };
 
@@ -2501,13 +2507,17 @@ const PIECE_SOUND_SLOTS = {
   hit: 'hit_sound_url',
 };
 
-const isSupporter = async (userId) => {
+// Admins and owners always qualify; everyone else needs Silver ($5+).
+// Read from the database rather than the token so a donation (or a role change)
+// takes effect without the user having to log in again.
+const canUploadPieceSounds = async (userId) => {
   if (!userId) return false;
   const [[row]] = await db_pool.query(
     'SELECT total_donations, role FROM users WHERE id = ?', [userId]
   );
   if (!row) return false;
-  if (row.role === 'admin' || row.role === 'owner') return true;
+  if (hasAdminRole(row.role)) return true;
+  // DECIMAL comes back from mysql2 as a string, so parse before comparing.
   return parseFloat(row.total_donations || 0) >= PIECE_SOUND_MIN_DONATION;
 };
 
@@ -2552,7 +2562,7 @@ app.post("/api/piece-sounds", authenticateToken, multerWrap(pieceSoundUpload.sin
   try {
     if (!req.file) return res.status(400).send({ message: "No sound file received" });
 
-    if (!(await isSupporter(req.user.id))) {
+    if (!(await canUploadPieceSounds(req.user.id))) {
       cleanup();
       return res.status(403).send({
         message: "Custom piece sounds are a Silver Supporter perk. Support the site to unlock them.",
