@@ -16822,7 +16822,11 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
       // gating (e.g. pawns moving forward but capturing diagonally) still applies
       // to the extended-distance moves from special_scenario_moves.
       if (maxDist !== 0) {
-        const isExact = !!(movementOption.exact || movementOption.infinite);
+        // Only a genuinely exact option is an exact move. Treating `infinite` as
+        // exact too set exactDist to 99, so isLandingSquare (dist === 99) never
+        // matched on any normal board and infinite alternate movements generated
+        // nothing at all. Infinite means "any distance", i.e. not exact.
+        const isExact = !!movementOption.exact && !movementOption.infinite;
         checkDirectionalMoves(dx, dy, maxDist, `${direction}_movement`, movementOption.availableForMoves || movementOption.firstMoveOnly || false, isExact, false);
       }
     }
@@ -17568,6 +17572,22 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
       if (!isEnemy && requireDCMov) return dcMoveDests.has(`${m.x},${m.y}`);
       return true;
     });
+  }
+
+  // Alternate movements can re-derive a destination the base pattern already
+  // produced (an infinite alternate overlapping an exact directional walk), so
+  // collapse exact duplicates. Entries that differ in kind are kept apart; where
+  // the same square appears both as first-move-only and unrestricted, the
+  // unrestricted one wins so the move is not needlessly gated.
+  {
+    const byKey = new Map();
+    for (const m of moves) {
+      const k = `${m.x},${m.y}|${m.isDirectionChange ? 1 : 0}|${m.isRangedAttack ? 1 : 0}|${m.via ? `${m.via.x},${m.via.y}` : ''}`;
+      const prev = byKey.get(k);
+      if (!prev) { byKey.set(k, m); continue; }
+      if (prev.isFirstMoveOnly && !m.isFirstMoveOnly) byKey.set(k, m);
+    }
+    moves = [...byKey.values()];
   }
 
   // A piece that ends the game on checkmate must be checkmated, not captured
