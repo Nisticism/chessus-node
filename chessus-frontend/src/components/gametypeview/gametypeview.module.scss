@@ -445,7 +445,9 @@
 
 .board {
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
-  touch-action: none;
+  /* No touch-action: none here. This board is hover/click only - nothing is
+     draggable - so blocking touch gestures only stopped mobile users scrolling
+     the page over the board and panning it horizontally when zoomed. */
 }
 
 .board-square {

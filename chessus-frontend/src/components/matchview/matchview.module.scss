@@ -308,9 +308,16 @@
   margin: 0 auto;
   border: 3px solid rgba(255, 255, 255, 0.2);
   border-radius: 8px;
+  /* `clip` instead of `hidden`: both clip the board to its rounded corners, but
+     `hidden` makes the element a scroll container, which swallows a touch scroll
+     made over the board instead of letting it reach the page. `clip` does not.
+     `hidden` is kept first as a fallback for browsers without `overflow: clip`. */
   overflow: hidden;
+  overflow: clip;
   aspect-ratio: 1;
-  touch-action: none;
+  /* No touch-action: none here. This board is hover/click only - nothing is
+     draggable - so blocking touch gestures only stopped mobile users scrolling
+     the page over the board and panning it horizontally when zoomed. */
 }
 
 .board-square {
@@ -901,7 +908,13 @@
 
   .board-container {
     padding: 16px;
-    overflow-x: auto;
+    /* Deliberately NOT overflow-x: auto. Setting either axis to auto makes this
+       a scroll container, and per spec the other axis is then computed from
+       `visible` to `auto` as well - so it became a VERTICAL scroll container
+       with nothing to scroll vertically, silently swallowing page scrolls made
+       over the board on touch devices. The board has its own scroll viewport
+       (useBoardViewport) which only becomes a scroll container on an axis that
+       genuinely overflows, so horizontal panning is already handled there. */
   }
 
   .details-grid {

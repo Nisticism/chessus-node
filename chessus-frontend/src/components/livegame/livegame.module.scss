@@ -1115,8 +1115,19 @@
   gap: 0;
   border: 2px solid var(--panel-border);
   border-radius: 4px;
+  /* `clip` instead of `hidden`: both clip the board to its rounded corners, but
+     `hidden` makes the element a scroll container, which swallows a touch scroll
+     made over the board instead of letting it reach the page. `clip` does not.
+     `hidden` is kept first as a fallback for browsers without `overflow: clip`. */
   overflow: hidden;
-  touch-action: none; /* Prevent scroll during touch drag on mobile */
+  overflow: clip;
+  /* No touch-action here. It used to be `none`, meaning to stop the page
+     scrolling mid piece-drag, but it applied to the WHOLE board at ALL times:
+     on a touch device you could neither scroll the page vertically over the
+     board nor pan the board horizontally when it overflowed. The restriction
+     now lives on the draggable piece itself (see .piece below), which is the
+     only place a touch gesture must not turn into a scroll. Mirrors how the
+     wheel is handled: only take over the gesture where we genuinely need it. */
 }
 
 // Hover tooltip listing the specific vetoed move(s) on a square. No background,
@@ -1584,6 +1595,14 @@
   user-select: none;
   z-index: 1;
   cursor: grab;
+
+  /* Only a piece the player can actually pick up swallows the touch gesture.
+     Starting a drag on it must not scroll; everywhere else on the board -
+     empty squares, opponent pieces, pieces when it is not your turn - stays
+     scrollable, so the page and the board still pan on mobile. */
+  &[draggable="true"] {
+    touch-action: none;
+  }
 
   &:active {
     cursor: grabbing;

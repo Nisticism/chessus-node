@@ -280,13 +280,25 @@ export default function useBoardViewport({
     maxHeight: availH || undefined,
     // Only become a scroll container on an axis that actually overflows, so a
     // plain wheel over an axis that fits scrolls the page instead of the board.
-    overflowX: overflowXState ? 'auto' : 'hidden',
-    overflowY: overflowYState ? 'auto' : 'hidden',
+    //
+    // When NEITHER axis overflows, use `visible` rather than `hidden`. `hidden`
+    // still makes the element a scroll container: the browser then swallows a
+    // scroll gesture made over it instead of chaining to the page. That was
+    // invisible with a mouse (the wheel path has its own handling) but on touch
+    // it meant you could not scroll the page by dragging over a board that had
+    // no scrollbars at all. `visible` opts out of being a scroll container
+    // entirely, so the gesture reaches the page.
+    //
+    // Mixing `visible` with `auto` is not possible - the spec computes a
+    // `visible` axis to `auto` as soon as the other axis is auto/hidden/scroll -
+    // so once either axis overflows we keep the auto/hidden pair.
+    overflowX: hasOverflow ? (overflowXState ? 'auto' : 'hidden') : 'visible',
+    overflowY: hasOverflow ? (overflowYState ? 'auto' : 'hidden') : 'visible',
     // Contain the scroll chain only on the axis that scrolls; letting the other
     // axis chain to the page fixes wheel "sticking" when paused over the board.
     overscrollBehaviorX: overflowXState ? 'contain' : 'auto',
     overscrollBehaviorY: overflowYState ? 'contain' : 'auto',
-  }), [availW, availH, overflowXState, overflowYState]);
+  }), [availW, availH, overflowXState, overflowYState, hasOverflow]);
 
   const contentStyle = useMemo(() => ({
     // Hug the board so the viewport's max-content width measures the real content.
