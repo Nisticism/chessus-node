@@ -690,9 +690,27 @@
 
 .additional-movement-line {
   display: flex;
+  // These rows sit inside a narrow per-direction column. Without wrapping, a
+  // long control label ("First N moves only") is squeezed by the flex layout
+  // until it breaks one character per line. Wrap to a new row instead, and stop
+  // the text itself from being compressed — same treatment as
+  // .available-for-moves-group, which is the equivalent row for the primary
+  // direction inputs.
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem;
   min-height: 28px;
+
+  // index.css sets `overflow-wrap: anywhere` globally, which removes the
+  // min-content floor: once flex squeezes one of these, the text shatters one
+  // character per line instead of just wrapping. Restore normal word breaking
+  // for the text in these rows so they wrap between words at worst.
+  > label:not(.checkbox-label-inline),
+  > span,
+  [data-toggleswitch] {
+    overflow-wrap: normal;
+    word-break: normal;
+  }
 
   > label:not(.checkbox-label-inline) {
     color: var(--text-light-gray);
@@ -703,6 +721,15 @@
   > span {
     color: var(--text-light-gray);
     font-size: 0.9rem;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  // Let the toggle keep its intrinsic width and move to its own row rather than
+  // collapsing (ToggleSwitch's .labelBlock is flex: 0 1 auto, so it shrinks).
+  [data-toggleswitch] {
+    flex-shrink: 0;
+    max-width: 100%;
   }
 
   .checkbox-label-inline {
