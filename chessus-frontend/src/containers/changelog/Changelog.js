@@ -5,6 +5,19 @@ import styles from "./changelog.module.scss";
 const changelogData = [
   {
     date: "September 3, 2026",
+    title: "Custom piece sounds for supporters, plus piece-password and wizard fixes",
+    items: [
+      "Silver Supporters and above can now give a piece its own sounds. Upload a clip for when the piece moves, when it captures, and when it damages a piece that survives (in games using hit points). Set them on the last step of the piece wizard, with preview and remove buttons for each.",
+      "Custom sounds are capped at 1.5 seconds. If your clip is longer, you'll be asked whether to pick a different file or let us trim it — trimming keeps the first 1.5 seconds and discards the rest.",
+      "Check and checkmate keep their usual sounds and now play over the top of a custom sound rather than replacing it, so a capture that delivers checkmate still sounds like checkmate. Pieces without a custom sound behave exactly as before.",
+      "Fixed: a password set on a piece wasn't being enforced in the game wizard — the lock icon never appeared and you were never asked for the password. The password itself was saving correctly; the piece list the wizard uses just wasn't reporting which pieces were protected.",
+      "Piece passwords now only need 4 characters instead of 8.",
+      "The piece wizard's sections are all the same width now — a couple of them on the last step were narrower than the rest.",
+      "Removed the Fairy Stockfish compatibility box from the last step of the piece wizard: it listed settings from both wizards together, which was confusing. The parts that belong to the piece wizard are now noted in each setting's own tooltip instead.",
+    ],
+  },
+  {
+    date: "September 3, 2026",
     title: "Piece passwords & a combined Uniqueness Checker",
     items: [
       "You can now set a password on a piece you've made. Anyone who wants to place it in their own game has to enter that password first — useful if you'd rather your artwork or a piece's design didn't turn up in games you haven't approved. Set it on the last step of the piece wizard, and clear it there any time to make the piece open again.",
