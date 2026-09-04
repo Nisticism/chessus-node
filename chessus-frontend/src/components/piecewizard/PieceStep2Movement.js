@@ -42,10 +42,12 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
       const exactField = field + '_exact';
       updates[exactField] = false;
     } else if (field.endsWith('_movement_exact') && value === true) {
-      // Setting exact, so uncheck infinite
+      // Setting exact, so drop out of infinite. Fall back to 1 rather than 0:
+      // 0 disables the direction entirely, so ticking "exact" on an infinite
+      // direction used to silently delete that direction's movement.
       const movementField = field.replace('_exact', '');
       if (pieceData[movementField] === 99) {
-        updates[movementField] = 0;
+        updates[movementField] = 1;
       }
     }
     
