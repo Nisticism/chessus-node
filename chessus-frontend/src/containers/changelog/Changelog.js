@@ -5,6 +5,17 @@ import styles from "./changelog.module.scss";
 const changelogData = [
   {
     date: "September 3, 2026",
+    title: "Piece passwords & a combined Uniqueness Checker",
+    items: [
+      "You can now set a password on a piece you've made. Anyone who wants to place it in their own game has to enter that password first — useful if you'd rather your artwork or a piece's design didn't turn up in games you haven't approved. Set it on the last step of the piece wizard, and clear it there any time to make the piece open again.",
+      "Your own pieces never need the password. Existing pieces are all unprotected unless you choose to set one.",
+      "Password-protected pieces show a small lock in the game wizard's piece picker. Clicking one asks for the password, and once you've entered it the piece unlocks for the rest of that wizard session.",
+      "The 'Run Uniqueness Check' and 'Compare With Piece' options are now a single Uniqueness Checker. It has a button to scan every piece for an identical ruleset, and a search box to compare against any piece you pick — and you can jump straight from a scan result into a full comparison.",
+      "Fixed a contradiction between those two tools: a piece could be reported as unique while the comparer showed it had no functional differences from an existing piece (Power Queen vs Queen, for instance). The scan and the comparison now run exactly the same check, so they always agree.",
+    ],
+  },
+  {
+    date: "September 3, 2026",
     title: "Movement helpers in match replays, clearer move dots & fairer piece comparisons",
     items: [
       "Match replays now have movement helpers: hover any piece on a finished game's board to see everywhere it can move and attack. Works at every step of the replay, so you can walk through a game and check exactly what each side could do.",
