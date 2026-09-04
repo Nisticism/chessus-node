@@ -45,3 +45,9 @@ scripts/dev-db/
 
 # Local MCP config
 .vscode/mcp.json
+
+# Claude Code local config. .mcp.json mirrors .vscode/mcp.json but in Claude
+# Code's schema; kept untracked because it names a local DB user and an AWS
+# profile, and is the kind of file a real password gets pasted into.
+.claude/
+.mcp.json
