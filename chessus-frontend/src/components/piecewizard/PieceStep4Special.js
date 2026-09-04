@@ -2,10 +2,10 @@ import React, { useEffect } from "react";
 import styles from "./piecewizard.module.scss";
 import NumberInput from "../common/NumberInput";
 import InfoTooltip from "./InfoTooltip";
-import FairyStockfishInfoNote from "../common/FairyStockfishInfoNote";
 import ToggleSwitch from "../common/ToggleSwitch";
+import PieceSoundUploader from "./PieceSoundUploader";
 
-const PieceStep4Special = ({ pieceData, updatePieceData }) => {
+const PieceStep4Special = ({ pieceData, updatePieceData, currentUser }) => {
   const handleChange = (field, value) => {
     updatePieceData({ [field]: value });
   };
@@ -53,13 +53,12 @@ const PieceStep4Special = ({ pieceData, updatePieceData }) => {
   return (
     <div className={styles["step-container"]}>
       <h2>Special Rules & Review</h2>
-      <FairyStockfishInfoNote kind="pieceSpecial" />
       <p className={styles["step-description"]}>
         Configure special movement restrictions and review all settings.
       </p>
 
       {/* Movement Restrictions */}
-      <div className={`${styles["condition-section"]} ${styles["narrow-section"]}`}>
+      <div className={styles["condition-section"]}>
         <h3>Movement Restrictions</h3>
         <div className={styles["sub-field"]}>
           <label>Minimum Turns Before Move</label>
@@ -75,7 +74,7 @@ const PieceStep4Special = ({ pieceData, updatePieceData }) => {
       </div>
 
       {/* Special Scenarios */}
-      <div className={`${styles["condition-section"]} ${styles["narrow-section"]}`}>
+      <div className={styles["condition-section"]}>
         <h3>Special Abilities</h3>
         
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingLeft: '12px' }}>
@@ -83,7 +82,7 @@ const PieceStep4Special = ({ pieceData, updatePieceData }) => {
             checked={pieceData.can_promote || false}
             onChange={(v) => handleChange("can_promote", v)}
             label="Can Promote"
-            tooltip={<InfoTooltip text="Allows this piece to promote (transform into a different piece) when it reaches a promotion square. Promotion squares and which target pieces are available are configured per-game in the game wizard (Step 4 → Promotion Options)." />}
+            tooltip={<InfoTooltip text="Allows this piece to promote (transform into a different piece) when it reaches a promotion square. Promotion squares and which target pieces are available are configured per-game in the game wizard (Step 4 → Promotion Options). Fairy Stockfish supports this." />}
           />
 
           {pieceData.can_promote && (
@@ -101,7 +100,7 @@ const PieceStep4Special = ({ pieceData, updatePieceData }) => {
             checked={pieceData.can_castle || false}
             onChange={(v) => handleChange("can_castle", v)}
             label="Can Castle"
-            tooltip={<InfoTooltip text="Allows this piece to castle with a partner piece. The furthest allied piece to the left and right on the same row become castling partners. The castling distance (how many squares the piece moves) is configured per-placement in the game wizard. The partner moves to the opposite side. Both pieces must not have moved, and all squares between must be unoccupied. If this piece has check/checkmate rules, it cannot castle through enemy-controlled squares." />}
+            tooltip={<InfoTooltip text="Allows this piece to castle with a partner piece. The furthest allied piece to the left and right on the same row become castling partners. The castling distance (how many squares the piece moves) is configured per-placement in the game wizard. The partner moves to the opposite side. Both pieces must not have moved, and all squares between must be unoccupied. If this piece has check/checkmate rules, it cannot castle through enemy-controlled squares. Fairy Stockfish supports this." />}
           />
 
           {canShowEnPassant && (
@@ -109,7 +108,7 @@ const PieceStep4Special = ({ pieceData, updatePieceData }) => {
               checked={pieceData.can_en_passant || false}
               onChange={(v) => handleChange("can_en_passant", v)}
               label="Can En Passant"
-              tooltip={<InfoTooltip text="Allows this piece to capture an enemy piece of the same type that has just used a first-move-only movement to land horizontally adjacent. For example, a Pawn can only en passant capture another Pawn. The capture must be made immediately after the enemy's qualifying move. Only available for pieces with no backward movement (pawn-like pieces)." />}
+              tooltip={<InfoTooltip text="Allows this piece to capture an enemy piece of the same type that has just used a first-move-only movement to land horizontally adjacent. For example, a Pawn can only en passant capture another Pawn. The capture must be made immediately after the enemy's qualifying move. Only available for pieces with no backward movement (pawn-like pieces). Fairy Stockfish supports this." />}
             />
           )}
 
@@ -117,7 +116,7 @@ const PieceStep4Special = ({ pieceData, updatePieceData }) => {
             checked={pieceData.can_capture_allies || false}
             onChange={(v) => handleChange("can_capture_allies", v)}
             label="Can Capture Allied Pieces"
-            tooltip={<InfoTooltip text="When enabled, this piece can capture friendly pieces using any of its attack methods (directional, ratio, or ranged). Useful for sacrifice-based mechanics." />}
+            tooltip={<InfoTooltip text="When enabled, this piece can capture friendly pieces using any of its attack methods (directional, ratio, or ranged). Useful for sacrifice-based mechanics. Note: enabling this turns off the Fairy Stockfish computer opponent for any game using this piece." />}
           />
 
           <ToggleSwitch
@@ -130,7 +129,7 @@ const PieceStep4Special = ({ pieceData, updatePieceData }) => {
               }
             }}
             label="Must Move If Able"
-            tooltip={<InfoTooltip text="On its owner's turn, this piece is forced to move if it has any legal move available. Useful for pieces like the duck in Duck Chess. By default, this forced move does NOT consume one of the player's actions per turn." />}
+            tooltip={<InfoTooltip text="On its owner's turn, this piece is forced to move if it has any legal move available. Useful for pieces like the duck in Duck Chess. By default, this forced move does NOT consume one of the player's actions per turn. Note: enabling this turns off the Fairy Stockfish computer opponent for any game using this piece." />}
           />
 
           {pieceData.must_move_if_able && (
@@ -178,6 +177,12 @@ const PieceStep4Special = ({ pieceData, updatePieceData }) => {
       </div>
       )}
 
+      <PieceSoundUploader
+        pieceData={pieceData}
+        updatePieceData={updatePieceData}
+        currentUser={currentUser}
+      />
+
       {/* Piece password */}
       <div className={styles["condition-section"]}>
         <h3>Piece Password (optional)</h3>
@@ -201,12 +206,12 @@ const PieceStep4Special = ({ pieceData, updatePieceData }) => {
             autoComplete="new-password"
             value={pieceData.piece_password || ""}
             onChange={(e) => handleChange("piece_password", e.target.value)}
-            placeholder={pieceData.has_password ? "Leave empty to keep the current password" : "At least 8 characters"}
+            placeholder={pieceData.has_password ? "Leave empty to keep the current password" : "At least 4 characters"}
             maxLength={72}
           />
-          {pieceData.piece_password && pieceData.piece_password.length < 8 && (
+          {pieceData.piece_password && pieceData.piece_password.length < 4 && (
             <p className={styles["field-hint"]} style={{ color: 'var(--error-text, #e06c75)' }}>
-              Password must be at least 8 characters.
+              Password must be at least 4 characters.
             </p>
           )}
         </div>

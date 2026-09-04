@@ -446,12 +446,6 @@
   }
 }
 
-.narrow-section {
-  max-width: 700px;
-  margin-left: auto;
-  margin-right: auto;
-}
-
 .sub-fields {
   margin-top: 1rem;
   padding-left: 1rem;
@@ -2125,4 +2119,38 @@
 .step-ref {
   color: #8899aa;
   font-size: 0.85rem;
+}
+
+// ── Custom piece sounds ──────────────────────────────────────────────────
+.piece-sound-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.piece-sound-btn {
+  padding: 6px 14px;
+  border-radius: 6px;
+  border: 1px solid rgba(var(--gold-rgb), 0.45);
+  background: rgba(var(--gold-rgb), 0.10);
+  color: var(--gold-header);
+  cursor: pointer;
+  font-size: 0.85rem;
+  white-space: nowrap;
+
+  &:hover:not(:disabled) {
+    background: rgba(var(--gold-rgb), 0.2);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+.piece-sound-status {
+  font-size: 0.82rem;
+  color: var(--text-dim);
 }
