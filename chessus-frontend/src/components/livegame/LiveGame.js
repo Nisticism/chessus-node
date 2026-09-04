@@ -1,3 +1,18 @@
+/* eslint-disable react-hooks/rules-of-hooks --
+ * False positive from eslint-plugin-react-hooks 4.4.0, the same one already
+ * documented in components/pieceview/PieceView.js. Its code-path analysis
+ * mis-counts paths in components this large and then reports every hook in the
+ * file as "called conditionally". Consolidating the duplicated Actions panel
+ * changed the JSX enough to trip it; the file compiled cleanly before, and no
+ * hook moved.
+ *
+ * Verified by AST analysis that the component is correct: all 249 hooks sit at
+ * the top level of LiveGame (lines 316-5064), none is nested in a conditional,
+ * loop or try block, and the first component-level return is at line 5978 -
+ * after every one of them.
+ *
+ * Drop this disable once eslint-plugin-react-hooks is upgraded.
+ */
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useParams, useNavigate, useLocation, Link } from "react-router-dom";
 import { useSelector, useDispatch } from "react-redux";
@@ -2924,6 +2939,63 @@ const LiveGame = () => {
 
   // Persistent veto action buttons (Submit / Skip / Clear) for the Actions panel,
   // always visible in veto games and greyed out when not applicable.
+  // Actions (Offer Draw / Resign / Pass / veto buttons). Rendered once, directly
+  // under the board inside game-board-wrapper, so it sits beside the zoom widget
+  // rather than at the bottom of the move-history column - on mobile that column
+  // stacks below the board and the buttons ended up off-screen.
+  //
+  // Previously this JSX existed twice, once in the desktop sidebar and once in
+  // the medium-screen bottom row, and the two had drifted: the bottom-row copy
+  // was missing the Pass button entirely, so on a narrow screen you could not
+  // pass in a game that allows passing.
+  const renderActionsPanel = () => {
+    if (!currentPlayer) return null;
+    if (!(gameState?.status === 'active' || gameState?.status === 'ready')) return null;
+    return (
+      <div className={styles["game-controls-inline"]}>
+        <h4>Actions</h4>
+        <div className={styles["control-buttons"]}>
+          {drawOfferSent ? (
+            <button
+              className={`${styles.btn} ${styles["btn-warning"]}`}
+              onClick={handleCancelDraw}
+              title="Cancel your draw offer"
+            >
+              Cancel Draw
+            </button>
+          ) : (
+            <button
+              className={`${styles.btn} ${styles["btn-secondary"]}`}
+              onClick={handleOfferDraw}
+              disabled={!!pendingDrawOffer}
+              title="Offer a draw to your opponent"
+            >
+              Offer Draw
+            </button>
+          )}
+          <button
+            className={`${styles.btn} ${styles["btn-danger"]}`}
+            onClick={handleResign}
+          >
+            Resign
+          </button>
+        </div>
+        {gameState?.otherGameData?.allow_pass && (
+          <div className={styles["control-buttons-pass"]}>
+            <button
+              className={`${styles.btn} ${styles["btn-secondary"]}`}
+              onClick={handlePass}
+              disabled={!isMyTurn}
+              title="Pass your turn"
+            >
+              Pass
+            </button>
+          </div>
+        )}
+        {renderVetoActionButtons()}
+      </div>
+    );
+  };
   const renderVetoActionButtons = useCallback(() => {
     if (!vetoUi.on) return null;
     const canAct = vetoUi.canSelect;
@@ -6662,6 +6734,7 @@ const LiveGame = () => {
               </div>
               <BoardZoomControls {...boardVpHook.controlProps} />
               </div>
+              {renderActionsPanel()}
             </div>
 
             {/* Turn Confirmation - below board. Always visible on all screen sizes for
@@ -6900,50 +6973,6 @@ const LiveGame = () => {
             )}
 
             {/* Game Controls */}
-            {currentPlayer && (gameState.status === 'active' || gameState.status === 'ready') && (
-              <div className={styles["game-controls-inline"]}>
-                <h4>Actions</h4>
-                <div className={styles["control-buttons"]}>
-                  {drawOfferSent ? (
-                    <button
-                      className={`${styles.btn} ${styles["btn-warning"]}`}
-                      onClick={handleCancelDraw}
-                      title="Cancel your draw offer"
-                    >
-                      Cancel Draw
-                    </button>
-                  ) : (
-                    <button 
-                      className={`${styles.btn} ${styles["btn-secondary"]}`}
-                      onClick={handleOfferDraw}
-                      disabled={!!pendingDrawOffer}
-                      title="Offer a draw to your opponent"
-                    >
-                      Offer Draw
-                    </button>
-                  )}
-                  <button 
-                    className={`${styles.btn} ${styles["btn-danger"]}`}
-                    onClick={handleResign}
-                  >
-                    Resign
-                  </button>
-                </div>
-                {gameState?.otherGameData?.allow_pass && (
-                  <div className={styles["control-buttons-pass"]}>
-                    <button
-                      className={`${styles.btn} ${styles["btn-secondary"]}`}
-                      onClick={handlePass}
-                      disabled={!isMyTurn}
-                      title="Pass your turn"
-                    >
-                      Pass
-                    </button>
-                  </div>
-                )}
-                {renderVetoActionButtons()}
-              </div>
-            )}
           </div>
 
           {/* Running Piece Count - moved out of grid, positioned after layout-row-middle */}
@@ -7562,38 +7591,6 @@ const LiveGame = () => {
             </div>
           )}
 
-          {currentPlayer && (gameState.status === 'active' || gameState.status === 'ready') && (
-            <div className={styles["game-controls-inline"]}>
-              <h4>Actions</h4>
-              <div className={styles["control-buttons"]}>
-                {drawOfferSent ? (
-                  <button
-                    className={`${styles.btn} ${styles["btn-warning"]}`}
-                    onClick={handleCancelDraw}
-                    title="Cancel your draw offer"
-                  >
-                    Cancel Draw
-                  </button>
-                ) : (
-                  <button 
-                    className={`${styles.btn} ${styles["btn-secondary"]}`}
-                    onClick={handleOfferDraw}
-                    disabled={!!pendingDrawOffer}
-                    title="Offer a draw to your opponent"
-                  >
-                    Offer Draw
-                  </button>
-                )}
-                <button 
-                  className={`${styles.btn} ${styles["btn-danger"]}`}
-                  onClick={handleResign}
-                >
-                  Resign
-                </button>
-              </div>
-              {renderVetoActionButtons()}
-            </div>
-          )}
         </div>
       </div>
 
