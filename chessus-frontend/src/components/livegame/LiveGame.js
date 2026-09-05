@@ -556,19 +556,26 @@ const LiveGame = () => {
   // not do: in beside mode the wrapper shrinks to hug the board, so the answer
   // would immediately un-make itself and the layout would oscillate.
   const [boardColWidth, setBoardColWidth] = useState(0);
+  // Width of the whole middle row. The difference between the two is the sidebar
+  // plus its gap, which is exactly how far the board column's centre sits to the
+  // right of the page's - measured rather than hard-coded so it tracks the grid.
+  const [boardRowWidth, setBoardRowWidth] = useState(0);
   const [boardColNode, setBoardColNode] = useState(null);
   const boardColRef = useCallback((el) => setBoardColNode(el), []);
   useLayoutEffect(() => {
     if (!boardColNode) return undefined;
-    const measure = () => setBoardColWidth((prev) => {
+    const measure = () => {
       const w = boardColNode.clientWidth || 0;
-      return Math.abs(prev - w) > 0.5 ? w : prev;
-    });
+      const rowW = boardColNode.parentElement ? (boardColNode.parentElement.clientWidth || w) : w;
+      setBoardColWidth((prev) => (Math.abs(prev - w) > 0.5 ? w : prev));
+      setBoardRowWidth((prev) => (Math.abs(prev - rowW) > 0.5 ? rowW : prev));
+    };
     measure();
     let ro;
     if (typeof ResizeObserver !== 'undefined') {
       ro = new ResizeObserver(measure);
       ro.observe(boardColNode);
+      if (boardColNode.parentElement) ro.observe(boardColNode.parentElement);
     }
     window.addEventListener('resize', measure);
     return () => {
@@ -606,6 +613,47 @@ const LiveGame = () => {
     if (boardFitHeightSquare * bh < 200) return false; // too short to stack buttons against
     return boardColWidth - BOARD_WRAP_PAD - BESIDE_PANEL_PX >= besideBoardPx;
   }, [gameState?.gameType?.board_width, gameState?.gameType?.board_height, boardColWidth, boardFitHeightSquare, besideBoardPx]);
+
+  // Width of the hugging wrapper itself, used only to work out how far it can be
+  // shifted. Measured, never fed back into anything that decides its size, so
+  // there is no loop: margins do not change a max-content width. It re-measures
+  // when the layout mode or the board's size changes, because a ResizeObserver
+  // alone missed the wrapper collapsing from full-width to hugging.
+  const [besideWrapWidth, setBesideWrapWidth] = useState(0);
+  const [besideWrapNode, setBesideWrapNode] = useState(null);
+  const besideWrapRef = useCallback((el) => setBesideWrapNode(el), []);
+  useLayoutEffect(() => {
+    if (!besideWrapNode) return undefined;
+    const measure = () => setBesideWrapWidth((prev) => {
+      const w = besideWrapNode.offsetWidth || 0;
+      return Math.abs(prev - w) > 0.5 ? w : prev;
+    });
+    measure();
+    const raf = requestAnimationFrame(measure);
+    let ro;
+    if (typeof ResizeObserver !== 'undefined') {
+      ro = new ResizeObserver(measure);
+      ro.observe(besideWrapNode);
+    }
+    window.addEventListener('resize', measure);
+    return () => {
+      cancelAnimationFrame(raf);
+      if (ro) ro.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  }, [besideWrapNode, actionsBeside, besideBoardPx, boardColWidth]);
+
+  // Centred in the board column, the hugging wrapper sits half a sidebar to the
+  // right of everything below the grid (Game Settings, captured pieces, the veto
+  // panel), which centre on the page. Trading the auto right margin for a fixed
+  // one slides it back onto that shared centre line, clamped so it can never
+  // travel far enough to sit under the sidebar.
+  const besideMarginRight = useMemo(() => {
+    if (!boardColWidth || !besideWrapWidth) return null;
+    const free = Math.max(0, boardColWidth - besideWrapWidth);
+    const pageShift = Math.max(0, (boardRowWidth - boardColWidth) / 2);
+    return Math.round(Math.max(0, Math.min(free, free / 2 + pageShift)));
+  }, [boardColWidth, besideWrapWidth, boardRowWidth]);
 
   const [displayTimes, setDisplayTimes] = useState({}); // Locally interpolated clock times for sub-second display
   const displayTimesRef = useRef({}); // Mirror of displayTimes for use inside effects/handlers without a re-render dep
@@ -6975,6 +7023,7 @@ const LiveGame = () => {
                 the board rather than the column, so the buttons spread out to the
                 board's width instead of the full column width. */}
             <div
+              ref={besideWrapRef}
               className={`${styles["game-board-wrapper"]}${actionsBeside ? ` ${styles["actions-beside"]}` : ''}`}
               style={{
                 '--board-px': `${(boardVpHook.squareSize || 0) * (gameState?.gameType?.board_width || 8)}px`,
@@ -6989,6 +7038,9 @@ const LiveGame = () => {
                     besideBoardPx + 16,
                     boardColWidth - BOARD_WRAP_PAD - BESIDE_PANEL_PX
                   ))}px`,
+                  ...(besideMarginRight != null
+                    ? { marginLeft: 'auto', marginRight: `${besideMarginRight}px` }
+                    : {}),
                 } : {}),
               }}
             >

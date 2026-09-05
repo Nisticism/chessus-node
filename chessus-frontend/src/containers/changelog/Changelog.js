@@ -24,7 +24,7 @@ const changelogData = [
       "The zoom widget is laid out horizontally everywhere now, matching the action buttons it sits beside.",
       "Fixed the move history column and the board starting at different heights while a game waits for an opponent: the 'waiting for opponent' and draw-offer banners now sit above both columns instead of pushing only the board down.",
       "The game's name now sits above the move history column, aligned with it on the left, and wraps onto a second line instead of being cut short.",
-      "On tall, narrow boards the board panel no longer stretches across the page. It now sizes to the board — never narrower than the Game Settings card below it — with the board and its clocks and buttons centred inside, and the clocks and buttons centred vertically alongside the board.",
+      "On tall, narrow boards the board panel no longer stretches across the page. It now sizes to the board — never narrower than the Game Settings card below it, and lined up squarely above it — with the board and its clocks and buttons centred inside, and the clocks and buttons centred vertically alongside the board.",
     ],
   },
   {
