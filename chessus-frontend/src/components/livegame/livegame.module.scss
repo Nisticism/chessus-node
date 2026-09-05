@@ -195,6 +195,26 @@
   }
 }
 
+// Waiting / draw-offer banners. These used to live at the top of the board
+// column, where they pushed the board down but not the sidebar beside it, so the
+// two columns started at different heights. As their own row above the grid they
+// push both equally and the sidebar always starts level with the board.
+.layout-row-banners {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 0 24px;
+
+  &:empty { display: none; }
+
+  > * { width: 100%; max-width: 900px; }
+
+  @media (max-width: 1000px) {
+    padding: 0 12px;
+  }
+}
+
 // Captured pieces row - appears between board and move history on all screens
 .layout-row-captured {
   display: flex;
@@ -3826,16 +3846,24 @@
   }
 }
 
-// Board wrapper laid out as a row: Actions in a column to the left of a tall,
-// narrow board (see actionsBeside in LiveGame.js), board stack to the right.
+// Board wrapper laid out as a row: on a tall, narrow board the clocks and the
+// Actions share the empty column to its left (see actionsBeside in LiveGame.js).
+// flex-end aligns that column with the BOTTOM of the board, so on a very tall
+// board it sits by the player rather than floating halfway up.
 .game-board-wrapper.actions-beside {
   flex-direction: row;
-  align-items: center;
-  gap: 12px;
+  align-items: flex-end;
+  gap: 16px;
 
-  > .game-controls-inline {
+  > .board-side-panel {
     flex: 0 0 auto;
-    width: 164px;
+    width: 180px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .game-controls-inline {
     flex-direction: column;
     align-items: stretch;
     padding-left: 0;
@@ -3850,10 +3878,23 @@
     .actions-zoom { align-self: center; }
   }
 
+  // Out of the board stack, the clocks are no longer measuring themselves
+  // against the board — a 3-file board would squeeze them to nothing.
+  .board-clock {
+    width: 100%;
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+
+  // The stack still takes the remaining width - the board's fit calculation
+  // measures it, and shrink-wrapping it would feed the board's own width back
+  // into that calculation. Aligning the board to the START of it keeps the two
+  // next to each other instead of leaving a gulf between panel and board.
   > .board-stack {
     width: auto;
     flex: 1 1 auto;
     min-width: 0;
+    align-items: flex-start;
   }
 }
 
