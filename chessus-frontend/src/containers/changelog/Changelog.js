@@ -23,6 +23,8 @@ const changelogData = [
       "On tall, narrow boards the clocks now move into the column beside the board along with the Actions, sitting above and below the buttons and lining up with the bottom of the board. They are no longer squeezed to the board's width, which on something like kalimba chess (3 files wide) left them unreadable — and the board gets the full height of the page to itself.",
       "The zoom widget is laid out horizontally everywhere now, matching the action buttons it sits beside.",
       "Fixed the move history column and the board starting at different heights while a game waits for an opponent: the 'waiting for opponent' and draw-offer banners now sit above both columns instead of pushing only the board down.",
+      "The game's name now sits above the move history column, aligned with it on the left, and wraps onto a second line instead of being cut short.",
+      "On tall, narrow boards the board panel now shrinks to fit the board and centres itself, with the clocks and buttons centred vertically alongside — rather than a near-empty panel stretching across the page.",
     ],
   },
   {

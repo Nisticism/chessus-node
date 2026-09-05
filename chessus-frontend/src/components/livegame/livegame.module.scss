@@ -21,20 +21,35 @@
 
 .game-header {
   display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  // The title sits over the sidebar column and shares its width and gap, so the
+  // two line up on the left; the turn indicator then centres over the board.
+  grid-template-columns: minmax(0, 300px) minmax(0, 1fr) auto;
   align-items: center;
   margin-bottom: 20px;
-  gap: 16px;
+  gap: 24px;
+
+  @media (max-width: 1400px) {
+    grid-template-columns: minmax(0, 260px) minmax(0, 1fr) auto;
+    gap: 16px;
+  }
+
+  // No sidebar below 1200px, so nothing to line up with.
+  @media (max-width: 1200px) {
+    grid-template-columns: 1fr auto 1fr;
+    gap: 16px;
+  }
 
   .game-title {
     min-width: 0;
+    text-align: left;
     h1 {
       color: var(--text-heading);
       font-size: 1.5rem;
       margin: 0;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
+      // Wraps rather than truncating: the title column is only as wide as the
+      // sidebar now, and a clipped game name is worse than a two-line one.
+      overflow-wrap: anywhere;
+      line-height: 1.2;
     }
 
     .game-type-link {
@@ -3852,8 +3867,15 @@
 // board it sits by the player rather than floating halfway up.
 .game-board-wrapper.actions-beside {
   flex-direction: row;
-  align-items: flex-end;
+  align-items: center;
   gap: 16px;
+  // Hug the board instead of stretching across the whole column, and centre the
+  // result on the page. --beside-stack-px (set inline) gives the stack a
+  // definite width so this is possible at all - see LiveGame.js.
+  width: max-content;
+  max-width: 100%;
+  align-self: center;
+  margin: 0 auto;
 
   > .board-side-panel {
     flex: 0 0 auto;
@@ -3886,15 +3908,10 @@
     padding-right: 8px;
   }
 
-  // The stack still takes the remaining width - the board's fit calculation
-  // measures it, and shrink-wrapping it would feed the board's own width back
-  // into that calculation. Aligning the board to the START of it keeps the two
-  // next to each other instead of leaving a gulf between panel and board.
   > .board-stack {
-    width: auto;
-    flex: 1 1 auto;
+    flex: 0 0 auto;
+    width: var(--beside-stack-px, auto);
     min-width: 0;
-    align-items: flex-start;
   }
 }
 

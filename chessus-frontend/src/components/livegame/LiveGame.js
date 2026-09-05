@@ -551,47 +551,61 @@ const LiveGame = () => {
     insetW: showBoardNotation ? 30 : 8,
     insetH: showBoardNotation ? 26 : 8,
   });
-  // Width of the board wrapper, so the Actions can sit in a column to the LEFT of
-  // a tall/skinny board when there is room for them beside it.
-  const [boardWrapWidth, setBoardWrapWidth] = useState(0);
-  const [boardWrapNode, setBoardWrapNode] = useState(null);
-  const boardWrapRef = useCallback((el) => setBoardWrapNode(el), []);
+  // Width of the board COLUMN (a fixed grid track), which is what decides whether
+  // the Actions and clocks fit beside a tall board. Measuring the wrapper would
+  // not do: in beside mode the wrapper shrinks to hug the board, so the answer
+  // would immediately un-make itself and the layout would oscillate.
+  const [boardColWidth, setBoardColWidth] = useState(0);
+  const [boardColNode, setBoardColNode] = useState(null);
+  const boardColRef = useCallback((el) => setBoardColNode(el), []);
   useLayoutEffect(() => {
-    if (!boardWrapNode) return undefined;
-    const measure = () => setBoardWrapWidth((prev) => {
-      const w = boardWrapNode.clientWidth || 0;
+    if (!boardColNode) return undefined;
+    const measure = () => setBoardColWidth((prev) => {
+      const w = boardColNode.clientWidth || 0;
       return Math.abs(prev - w) > 0.5 ? w : prev;
     });
     measure();
     let ro;
     if (typeof ResizeObserver !== 'undefined') {
       ro = new ResizeObserver(measure);
-      ro.observe(boardWrapNode);
+      ro.observe(boardColNode);
     }
     window.addEventListener('resize', measure);
     return () => {
       if (ro) ro.disconnect();
       window.removeEventListener('resize', measure);
     };
-  }, [boardWrapNode]);
+  }, [boardColNode]);
 
-  // Put the Actions beside the board only when the board is taller than it is
-  // wide AND the space left over next to it is genuinely free.
-  //
-  // The test uses fitSquare, not squareSize, deliberately. fitSquare is the
-  // board's size at default zoom; a board that fits by HEIGHT does not get any
-  // wider when we take 176px off its frame, so the answer stays the same before
-  // and after the switch. A board that fits by WIDTH already fills the wrapper,
-  // so the test fails and it stays below - no flip-flopping either way. Using
-  // the zoomed size instead would kick the buttons downward mid-zoom.
+  // The square size a HEIGHT-limited board settles at - the same arithmetic
+  // useBoardViewport does, but from the window alone, with no reference to the
+  // width available. That independence is the point: the beside-mode layout sets
+  // the board's width budget, so deriving it from the board's current width
+  // would feed the result back into its own input and shrink on every pass.
+  const boardFitHeightSquare = useMemo(() => {
+    const bh = gameState?.gameType?.board_height || 0;
+    if (!bh) return 0;
+    const budget = Math.max(300, windowHeight - 172) - (showBoardNotation ? 26 : 8);
+    const cap = windowWidth > 1200 ? 140 : 76;
+    return Math.max(6, Math.min(cap, Math.floor(budget / bh)));
+  }, [gameState?.gameType?.board_height, windowHeight, windowWidth, showBoardNotation]);
+
+  // Actions + clocks go in a column beside the board when it is taller than it
+  // is wide and the column has room for both. Everything here comes from the
+  // window and the grid track, so the test cannot flip its own answer.
+  const BESIDE_PANEL_PX = 196; // 180px side column + 16px gap
+  const BOARD_WRAP_PAD = 32;   // game-board-wrapper's own left+right padding
+  const besideBoardPx = useMemo(() => {
+    const bw = gameState?.gameType?.board_width || 0;
+    return boardFitHeightSquare * bw + (showBoardNotation ? 20 : 0);
+  }, [gameState?.gameType?.board_width, boardFitHeightSquare, showBoardNotation]);
   const actionsBeside = useMemo(() => {
     const bw = gameState?.gameType?.board_width || 0;
     const bh = gameState?.gameType?.board_height || 0;
-    const fit = boardVpHook.fitSquare || 0;
-    if (!bw || !bh || !fit || bh <= bw) return false;
-    if (fit * bh < 200) return false;              // too short to stack buttons against
-    return boardWrapWidth - (fit * bw) - 24 >= 196; // 196 = side column (180) + gap
-  }, [gameState?.gameType?.board_width, gameState?.gameType?.board_height, boardVpHook.fitSquare, boardWrapWidth]);
+    if (!bw || !bh || bh <= bw || !boardColWidth) return false;
+    if (boardFitHeightSquare * bh < 200) return false; // too short to stack buttons against
+    return boardColWidth - BOARD_WRAP_PAD - BESIDE_PANEL_PX >= besideBoardPx;
+  }, [gameState?.gameType?.board_width, gameState?.gameType?.board_height, boardColWidth, boardFitHeightSquare, besideBoardPx]);
 
   const [displayTimes, setDisplayTimes] = useState({}); // Locally interpolated clock times for sub-second display
   const displayTimesRef = useRef({}); // Mirror of displayTimes for use inside effects/handlers without a re-render dep
@@ -6956,16 +6970,26 @@ const LiveGame = () => {
           </div>
 
           {/* Board Column */}
-          <div className={styles["board-column"]}>
+          <div className={styles["board-column"]} ref={boardColRef}>
             {/* --board-px lets the clocks and the actions row size themselves to
                 the board rather than the column, so the buttons spread out to the
                 board's width instead of the full column width. */}
             <div
-              ref={boardWrapRef}
               className={`${styles["game-board-wrapper"]}${actionsBeside ? ` ${styles["actions-beside"]}` : ''}`}
               style={{
                 '--board-px': `${(boardVpHook.squareSize || 0) * (gameState?.gameType?.board_width || 8)}px`,
                 '--coord-gutter': showBoardNotation ? '20px' : '0px',
+                // Beside mode gives the board stack a definite width so the
+                // wrapper can hug it and centre on the page. 16px of slack keeps
+                // the width test inside useBoardViewport from rounding the board
+                // down a square; it is capped so a board that would rather be
+                // wider than the column allows still fits beside the panel.
+                ...(actionsBeside ? {
+                  '--beside-stack-px': `${Math.max(80, Math.min(
+                    besideBoardPx + 16,
+                    boardColWidth - BOARD_WRAP_PAD - BESIDE_PANEL_PX
+                  ))}px`,
+                } : {}),
               }}
             >
               {/* Tall board: clocks and buttons share the empty column beside it.
@@ -6980,10 +7004,7 @@ const LiveGame = () => {
               )}
               <div className={styles["board-stack"]}>
               {!actionsBeside && renderPlayerClock(topPlayer, { isTop: true })}
-              {/* Beside mode: pin the board to the start of its (flexible) stack
-                  so it sits next to the side panel instead of being centred in
-                  all the leftover space, half a screen away from its clocks. */}
-              <div style={actionsBeside ? { ...boardVpHook.frameStyle, justifyContent: 'flex-start' } : boardVpHook.frameStyle}>
+              <div style={boardVpHook.frameStyle}>
               {moveError && (
                 <div className={boardVp.boardToast}>{moveError}</div>
               )}
