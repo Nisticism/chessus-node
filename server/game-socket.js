@@ -321,6 +321,15 @@ function emitToSocket(sock, gameState, event, payload) {
 // unexplained drop can be given a longer benefit of the doubt.
 const socketClosingIntent = new Set();
 
+// Test-only socket hooks (clock nudging, state inspection). Two gates, both of
+// which must pass: an explicit opt-in, and not running in production. Enabled
+// by `ENABLE_TEST_HOOKS=1 npm run backend` for the e2e suites under scripts/.
+const TEST_HOOKS_ENABLED =
+  process.env.ENABLE_TEST_HOOKS === '1' && process.env.NODE_ENV !== 'production';
+if (TEST_HOOKS_ENABLED) {
+  console.warn('[game-socket] TEST HOOKS ARE ENABLED - clocks can be set remotely. Never do this in production.');
+}
+
 // How long a player may be gone before the opponent is even told. A deliberate
 // close is believed straight away; anything else is assumed to be a phone
 // locking, an app switch or a tunnel until proven otherwise.
@@ -11408,6 +11417,59 @@ function initializeSocket(server) {
     socket.on("clientClosing", () => {
       socketClosingIntent.add(socket.id);
     });
+
+    // ---- Test-only hooks -------------------------------------------------
+    // Behind two independent gates so neither one alone can expose them: an
+    // explicit opt-in AND not being in production. Without these a clock test
+    // has to burn real wall-clock time to reach a flag-fall, which makes the
+    // whole time-control matrix impractical to cover.
+    if (TEST_HOOKS_ENABLED) {
+      // Move a player's clock. Nothing here reimplements the flag rules - it
+      // just changes the number the normal tick decrements, so the real timeout
+      // path runs exactly as it would after a long game.
+      socket.on("__test:setClock", ({ gameId, userId, seconds, subtract } = {}, ack) => {
+        const gameState = activeGames.get(String(gameId));
+        if (!gameState || !gameState.playerTimes || gameState.playerTimes[userId] == null) {
+          if (typeof ack === 'function') ack({ ok: false, error: 'no such game/player clock' });
+          return;
+        }
+        const before = gameState.playerTimes[userId];
+        const next = Number.isFinite(seconds)
+          ? Number(seconds)
+          : before - Number(subtract || 0);
+        gameState.playerTimes[userId] = Math.max(0, next);
+        console.log(`[test-hook] clock ${gameId}/${userId}: ${before.toFixed(2)}s -> ${gameState.playerTimes[userId].toFixed(2)}s`);
+        if (typeof ack === 'function') ack({ ok: true, before, after: gameState.playerTimes[userId] });
+      });
+
+      // Read back server-side game state a test cannot otherwise observe.
+      socket.on("__test:inspect", ({ gameId } = {}, ack) => {
+        if (typeof ack !== 'function') return;
+        const gameState = activeGames.get(String(gameId));
+        if (!gameState) return ack({ ok: false, error: 'no such active game' });
+        const timers = [];
+        for (const [, entry] of gameDisconnectTimers) {
+          if (entry.gameId === String(gameId)) {
+            timers.push({
+              userId: entry.userId,
+              gracePending: entry.gracePending,
+              paused: entry.paused,
+              msUntilForfeit: Math.max(0, entry.expiresAt - Date.now()),
+            });
+          }
+        }
+        ack({
+          ok: true,
+          status: gameState.status,
+          currentTurn: gameState.currentTurn ?? null,
+          winner: gameState.winner ?? null,
+          winReason: gameState.winReason ?? null,
+          playerTimes: gameState.playerTimes || null,
+          disconnectTimers: timers,
+        });
+      });
+    }
+    // ---- end test-only hooks ---------------------------------------------
 
     socket.on("disconnect", () => {
       console.log(`Socket disconnected: ${socket.id}`);
