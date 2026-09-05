@@ -2939,6 +2939,74 @@ const LiveGame = () => {
 
   // Persistent veto action buttons (Submit / Skip / Clear) for the Actions panel,
   // always visible in veto games and greyed out when not applicable.
+  // One condensed clock line, rendered above and below the board.
+  //
+  // Replaces four near-identical copies - a mobile top row, a mobile bottom row
+  // and two in the desktop clocks column - that all drew the same thing at
+  // different breakpoints. The player's side is now a small piece glyph beside
+  // the name instead of a whole tinted panel, so each clock is a single line and
+  // the board can sit closer to everything around it.
+  const renderPlayerClock = (player, { isTop }) => {
+    if (!player && !(isTop && gameState?.status === 'waiting')) return null;
+    const isTheirTurn = !!player && gameState.currentTurn === player.position
+      && gameState.status === 'active';
+    const time = getDisplayTime(player?.id);
+    const low = !!gameState.timeControl && (time ?? 999) < 60;
+    const multiplier = gameState.clockMultipliers?.[player?.id];
+    const showMultiplier = multiplier && Math.abs(multiplier - 1) >= 0.1;
+    return (
+      <div className={[
+        styles["board-clock"],
+        isTheirTurn ? styles["current-turn"] : '',
+        gameState.winner === player?.id ? styles.winner : '',
+      ].filter(Boolean).join(' ')}>
+        <span
+          className={`${styles["board-clock-side"]} ${player?.position === 1 ? styles["side-p1"] : styles["side-p2"]}`}
+          title={player?.position === 1 ? 'Player 1' : 'Player 2'}
+        >
+          {player?.position === 1 ? '♔' : '♚'}
+        </span>
+        <span className={styles["board-clock-name"]}>
+          {!player && gameState.status === 'waiting' ? (
+            <span className={styles["waiting-for-opponent"]}>Waiting for opponent…</span>
+          ) : player?.id === 'bot' ? (
+            <>
+              {player?.username}
+              {gameState.botPlayer?.difficulty === 'stockfish' && gameState.botPlayer?.stockfishLevel != null && (
+                <span className={styles["board-clock-sub"]}>
+                  {({ 1: 'Beginner', 2: 'Casual', 3: 'Skilled', 4: 'Expert', 5: 'Maximum' })[gameState.botPlayer.stockfishLevel] || `Level ${gameState.botPlayer.stockfishLevel}`}
+                </span>
+              )}
+            </>
+          ) : (
+            <Link to={`/profile/${player?.username}`} className={styles["player-name-link"]} onClick={(e) => e.stopPropagation()}>
+              {player?.username}
+            </Link>
+          )}
+          {player && player.id === currentPlayer?.id && (
+            <span className={styles["board-clock-you"]}> (You)</span>
+          )}
+        </span>
+        <span className={`${styles["player-indicator"]} ${isTheirTurn ? styles.active : ''}`} />
+        {gameState.timeControl && (
+          <span className={`${styles["board-clock-time"]} ${low ? styles["low-time"] : ''}`}>
+            {formatTime(time)}
+            {showMultiplier && (
+              <span className={styles["clock-multiplier"]}>
+                {' '}{multiplier > 1 ? multiplier.toFixed(1) + '×' : (1 / multiplier).toFixed(1) + '× slower'}
+              </span>
+            )}
+          </span>
+        )}
+        {!gameState.timeControl && gameState.isCorrespondence && (
+          <span className={styles["board-clock-time"]}>
+            {formatCorrespondenceTime(isTheirTurn)}
+          </span>
+        )}
+      </div>
+    );
+  };
+
   // Actions (Offer Draw / Resign / Pass / veto buttons). Rendered once, directly
   // under the board inside game-board-wrapper, so it sits beside the zoom widget
   // rather than at the bottom of the move-history column - on mobile that column
@@ -2953,7 +3021,9 @@ const LiveGame = () => {
     if (!(gameState?.status === 'active' || gameState?.status === 'ready')) return null;
     return (
       <div className={styles["game-controls-inline"]}>
-        <h4>Actions</h4>
+        <div className={styles["actions-zoom"]}>
+          <BoardZoomControls {...boardVpHook.controlProps} />
+        </div>
         <div className={styles["control-buttons"]}>
           {drawOfferSent ? (
             <button
@@ -6447,101 +6517,13 @@ const LiveGame = () => {
 
       <div className={styles["game-layout"]}>
         {/* Top Clock Row - Only visible on small screens */}
-        <div className={styles["layout-row-top-clock"]}>
-          <div className={`
-            ${styles["player-clock"]} 
-            ${topPlayer?.position === 1 ? styles["player-1-color"] : styles["player-2-color"]}
-            ${topPlayer && gameState.currentTurn === topPlayer.position && gameState.status === 'active' ? styles["current-turn"] : ''}
-            ${gameState.winner === topPlayer?.id ? styles.winner : ''}
-          `}>
-            <div className={styles["player-info"]}>
-              <div className={styles["player-header"]}>
-                <span className={styles["player-name"]}>
-                  {!topPlayer && gameState.status === 'waiting' ? (
-                    <span className={styles["waiting-for-opponent"]}>Waiting for opponent…</span>
-                  ) : topPlayer?.id === 'bot' ? (
-                    topPlayer?.username
-                  ) : (
-                    <Link to={`/profile/${topPlayer?.username}`} className={styles["player-name-link"]} onClick={(e) => e.stopPropagation()}>
-                      {topPlayer?.username}
-                    </Link>
-                  )}
-                  {topPlayer && topPlayer.id === currentPlayer?.id && ' (You)'}
-                </span>
-                <span className={`${styles["player-indicator"]} ${topPlayer && gameState.currentTurn === topPlayer.position && gameState.status === 'active' ? styles.active : ''}`}></span>
-              </div>
-              {gameState.timeControl && (
-                <div className={styles["player-time"]}>
-                  <div className={`${styles["time-value"]} ${(getDisplayTime(topPlayer?.id) ?? 999) < 60 ? styles["low-time"] : ''}`}>
-                    {formatTime(getDisplayTime(topPlayer?.id))}
-                    {(() => { const m = gameState.clockMultipliers?.[topPlayer?.id]; if (!m || Math.abs(m - 1) < 0.1) return null; return <span className={styles["clock-multiplier"]}> {m > 1 ? m.toFixed(1) + '×' : (1/m).toFixed(1) + '× slower'}</span>; })()} 
-                  </div>
-                </div>
-              )}
-              {!gameState.timeControl && gameState.isCorrespondence && (
-                <div className={styles["player-time"]}>
-                  <div className={styles["time-value"]}>
-                    {formatCorrespondenceTime(topPlayer && gameState.currentTurn === topPlayer.position)}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
 
         {/* Middle Row: Clocks | Board | Move History */}
         <div className={styles["layout-row-middle"]}>
           {/* Clocks Column */}
+          {/* Clocks moved into game-board-wrapper (see renderPlayerClock), so this
+              column now carries only chat and the spectator list. */}
           <div className={styles["clocks-column"]}>
-            {/* Opponent Clock */}
-            <div className={`
-              ${styles["player-clock"]} 
-              ${styles["top-clock"]}
-              ${topPlayer?.position === 1 ? styles["player-1-color"] : styles["player-2-color"]}
-              ${topPlayer && gameState.currentTurn === topPlayer.position && gameState.status === 'active' ? styles["current-turn"] : ''}
-              ${gameState.winner === topPlayer?.id ? styles.winner : ''}
-            `}>
-              <div className={styles["player-info"]}>
-                <div className={styles["player-header"]}>
-                  <span className={styles["player-name"]}>
-                    {!topPlayer && gameState.status === 'waiting' ? (
-                      <span className={styles["waiting-for-opponent"]}>Waiting for opponent…</span>
-                    ) : topPlayer?.id === 'bot' ? (
-                      <>
-                        {topPlayer?.username}
-                        {gameState.botPlayer?.difficulty === 'stockfish' && gameState.botPlayer?.stockfishLevel != null && (
-                          <span style={{ display: 'block', fontSize: '0.75em', opacity: 0.7, fontWeight: 400 }}>
-                            {({ 1: 'Beginner', 2: 'Casual', 3: 'Skilled', 4: 'Expert', 5: 'Maximum' })[gameState.botPlayer.stockfishLevel] || `Level ${gameState.botPlayer.stockfishLevel}`}
-                          </span>
-                        )}
-                      </>
-                    ) : (
-                      <Link to={`/profile/${topPlayer?.username}`} className={styles["player-name-link"]} onClick={(e) => e.stopPropagation()}>
-                        {topPlayer?.username}
-                      </Link>
-                    )}
-                    {topPlayer && topPlayer.id === currentPlayer?.id && ' (You)'}
-                  </span>
-                  <span className={`${styles["player-indicator"]} ${topPlayer && gameState.currentTurn === topPlayer.position && gameState.status === 'active' ? styles.active : ''}`}></span>
-                </div>
-                {gameState.timeControl && (
-                  <div className={styles["player-time"]}>
-                    <div className={`${styles["time-value"]} ${(getDisplayTime(topPlayer?.id) ?? 999) < 60 ? styles["low-time"] : ''}`}>
-                      {formatTime(getDisplayTime(topPlayer?.id))}
-                      {(() => { const m = gameState.clockMultipliers?.[topPlayer?.id]; if (!m || Math.abs(m - 1) < 0.1) return null; return <span className={styles["clock-multiplier"]}> {m > 1 ? m.toFixed(1) + '×' : (1/m).toFixed(1) + '× slower'}</span>; })()}
-                    </div>
-                  </div>
-                )}
-                {!gameState.timeControl && gameState.isCorrespondence && (
-                  <div className={styles["player-time"]}>
-                    <div className={styles["time-value"]}>
-                      {formatCorrespondenceTime(topPlayer && gameState.currentTurn === topPlayer.position)}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-
             {/* In-Game Chat */}
             <GameChat gameId={gameId} currentUser={currentUser} gameState={gameState} isPlayer={isPlayer} onUpdatePreference={updateUserPreference} />
 
@@ -6566,51 +6548,6 @@ const LiveGame = () => {
             )}
 
             {/* Your Clock */}
-            <div className={`
-              ${styles["player-clock"]} 
-              ${styles["bottom-clock"]}
-              ${bottomPlayer?.position === 1 ? styles["player-1-color"] : styles["player-2-color"]}
-              ${bottomPlayer && gameState.currentTurn === bottomPlayer.position && gameState.status === 'active' ? styles["current-turn"] : ''}
-              ${gameState.winner === bottomPlayer?.id ? styles.winner : ''}
-            `}>
-              <div className={styles["player-info"]}>
-                {gameState.timeControl && (
-                  <div className={styles["player-time"]}>
-                    <div className={`${styles["time-value"]} ${(getDisplayTime(bottomPlayer?.id) ?? 999) < 60 ? styles["low-time"] : ''}`}>
-                      {formatTime(getDisplayTime(bottomPlayer?.id))}
-                      {(() => { const m = gameState.clockMultipliers?.[bottomPlayer?.id]; if (!m || Math.abs(m - 1) < 0.1) return null; return <span className={styles["clock-multiplier"]}> {m > 1 ? m.toFixed(1) + '×' : (1/m).toFixed(1) + '× slower'}</span>; })()}
-                    </div>
-                  </div>
-                )}
-                {!gameState.timeControl && gameState.isCorrespondence && (
-                  <div className={styles["player-time"]}>
-                    <div className={styles["time-value"]}>
-                      {formatCorrespondenceTime(bottomPlayer && gameState.currentTurn === bottomPlayer.position)}
-                    </div>
-                  </div>
-                )}
-                <div className={styles["player-header"]}>
-                  <span className={styles["player-name"]}>
-                    {bottomPlayer?.id === 'bot' ? (
-                      <>
-                        {bottomPlayer?.username}
-                        {gameState.botPlayer?.difficulty === 'stockfish' && gameState.botPlayer?.stockfishLevel != null && (
-                          <span style={{ display: 'block', fontSize: '0.75em', opacity: 0.7, fontWeight: 400 }}>
-                            {({ 1: 'Beginner', 2: 'Casual', 3: 'Skilled', 4: 'Expert', 5: 'Maximum' })[gameState.botPlayer.stockfishLevel] || `Level ${gameState.botPlayer.stockfishLevel}`}
-                          </span>
-                        )}
-                      </>
-                    ) : (
-                      <Link to={`/profile/${bottomPlayer?.username}`} className={styles["player-name-link"]} onClick={(e) => e.stopPropagation()}>
-                        {bottomPlayer?.username}
-                      </Link>
-                    )}
-                    {currentPlayer && bottomPlayer?.id === currentPlayer?.id && ' (You)'}
-                  </span>
-                  <span className={`${styles["player-indicator"]} ${bottomPlayer && gameState.currentTurn === bottomPlayer.position && gameState.status === 'active' ? styles.active : ''}`}></span>
-                </div>
-              </div>
-            </div>
           </div>
 
           {/* Board Column */}
@@ -6718,7 +6655,14 @@ const LiveGame = () => {
               </div>
             )}
 
-            <div className={styles["game-board-wrapper"]}>
+            {/* --board-px lets the clocks and the actions row size themselves to
+                the board rather than the column, so the buttons spread out to the
+                board's width instead of the full column width. */}
+            <div
+              className={styles["game-board-wrapper"]}
+              style={{ '--board-px': `${(boardVpHook.squareSize || 0) * (gameState?.gameType?.board_width || 8)}px` }}
+            >
+              {renderPlayerClock(topPlayer, { isTop: true })}
               <div style={boardVpHook.frameStyle}>
               {moveError && (
                 <div className={boardVp.boardToast}>{moveError}</div>
@@ -6732,8 +6676,8 @@ const LiveGame = () => {
                   {renderBoard()}
                 </div>
               </div>
-              <BoardZoomControls {...boardVpHook.controlProps} />
               </div>
+              {renderPlayerClock(bottomPlayer, { isTop: false })}
               {renderActionsPanel()}
             </div>
 
@@ -7119,43 +7063,6 @@ const LiveGame = () => {
       )}
 
       {/* Bottom Clock Row - Only visible on small screens */}
-      <div className={styles["layout-row-bottom-clock"]}>
-        <div className={`
-          ${styles["player-clock"]} 
-          ${bottomPlayer && gameState.currentTurn === bottomPlayer.position && gameState.status === 'active' ? styles["current-turn"] : ''}
-          ${gameState.winner === bottomPlayer?.id ? styles.winner : ''}
-        `}>
-          <div className={styles["player-info"]}>
-            {gameState.timeControl && (
-              <div className={styles["player-time"]}>
-                <div className={`${styles["time-value"]} ${(getDisplayTime(bottomPlayer?.id) ?? 999) < 60 ? styles["low-time"] : ''}`}>
-                  {formatTime(getDisplayTime(bottomPlayer?.id))}
-                </div>
-              </div>
-            )}
-            {!gameState.timeControl && gameState.isCorrespondence && (
-              <div className={styles["player-time"]}>
-                <div className={styles["time-value"]}>
-                  {formatCorrespondenceTime(bottomPlayer && gameState.currentTurn === bottomPlayer.position)}
-                </div>
-              </div>
-            )}
-            <div className={styles["player-header"]}>
-              <span className={styles["player-name"]}>
-                {bottomPlayer?.id === 'bot' ? (
-                  bottomPlayer?.username
-                ) : (
-                  <Link to={`/profile/${bottomPlayer?.username}`} className={styles["player-name-link"]} onClick={(e) => e.stopPropagation()}>
-                    {bottomPlayer?.username}
-                  </Link>
-                )}
-                {currentPlayer && bottomPlayer?.id === currentPlayer?.id && ' (You)'}
-              </span>
-              <span className={`${styles["player-indicator"]} ${bottomPlayer && gameState.currentTurn === bottomPlayer.position && gameState.status === 'active' ? styles.active : ''}`}></span>
-            </div>
-          </div>
-        </div>
-      </div>
 
       {/* Mobile Chat - Only visible on small screens, below bottom clock */}
       <div className={styles["layout-row-mobile-chat"]}>

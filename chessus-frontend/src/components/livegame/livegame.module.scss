@@ -2007,9 +2007,16 @@
 }
 
 .game-controls-inline {
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border-subtle);
+  // Sits directly under the board inside game-board-wrapper now, so it needs no
+  // top margin, and the divider that separated it from the move-history sidebar
+  // is gone with it.
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+  width: min(100%, var(--board-px, 100%));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 
   h4 {
     color: var(--text-heading);
@@ -2017,7 +2024,23 @@
     margin: 0 0 8px 0;
   }
 
-  .control-buttons {
+  // Buttons share the row and grow to fill the board's width, so they stay on a
+  // single line whenever they fit and wrap to more rows only when they cannot.
+  .control-buttons,
+  .control-buttons-pass {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    width: 100%;
+
+    > button {
+      flex: 1 1 auto;
+      min-width: 0;
+      white-space: nowrap;
+    }
+  }
+
+  .control-buttons-legacy {
     display: flex;
     flex-wrap: wrap;
     gap: 12px;
@@ -3692,4 +3715,95 @@
     background: rgba(255, 255, 255, 0.1);
     border-radius: 3px;
   }
+}
+
+// ── Condensed clocks + actions stacked with the board ────────────────────────
+// The board wrapper is now a vertical stack: opponent clock, board (with its
+// algebraic labels), your clock, then the actions row. Previously the clocks
+// lived in a separate sidebar column and the actions at the bottom of the move
+// history column, which on mobile pushed both far below the board.
+// --board-px is set inline from the live square size so these rows line up with
+// the board rather than the (wider) column.
+.game-board-wrapper {
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+// One-line clock. No tinted panel: the side is shown by the glyph instead, so
+// the row stays compact and two of them cost far less vertical space.
+.board-clock {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: min(100%, var(--board-px, 100%));
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  font-size: 0.9rem;
+  line-height: 1.3;
+
+  &.current-turn {
+    border-color: rgba(var(--gold-rgb), 0.45);
+    background: rgba(var(--gold-rgb), 0.08);
+  }
+
+  &.winner {
+    border-color: rgba(74, 222, 128, 0.5);
+  }
+}
+
+// Small piece glyph standing in for the old full-width colour wrapper.
+.board-clock-side {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5em;
+  height: 1.5em;
+  border-radius: 50%;
+  font-size: 0.95rem;
+  line-height: 1;
+
+  &.side-p1 {
+    background: rgba(255, 255, 255, 0.9);
+    color: #111;
+  }
+
+  &.side-p2 {
+    background: rgba(20, 20, 28, 0.95);
+    color: rgba(255, 255, 255, 0.9);
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.25);
+  }
+}
+
+.board-clock-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+  color: var(--text-heading);
+
+  a { color: inherit; text-decoration: none; &:hover { text-decoration: underline; } }
+}
+
+.board-clock-you { font-weight: 400; color: var(--text-dim); }
+.board-clock-sub { margin-left: 6px; font-size: 0.75em; opacity: 0.7; font-weight: 400; }
+
+.board-clock-time {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  font-size: 1.05rem;
+  color: var(--text-heading);
+
+  &.low-time { color: #f87171; }
+}
+
+// The zoom widget now lives with the actions rather than floating under the board.
+.actions-zoom {
+  display: flex;
+  justify-content: center;
 }
