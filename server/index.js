@@ -2207,7 +2207,10 @@ app.get("/api/pieces", async (req, res) => {
 app.get("/api/pieces/full", async (req, res) => {
   try {
     const pieces = await dbHelpers.getAllPiecesWithMovement();
-    res.json(pieces);
+    // has_password comes out of MySQL as 0/1. Every other piece endpoint hands
+    // back a real boolean (see sanitizePieceRow), and the difference matters in
+    // JSX: `{piece.has_password && <lock/>}` renders a stray 0 for the number.
+    res.json(pieces.map((p) => ({ ...p, has_password: !!p.has_password })));
   } catch (err) {
     console.error("Error in /api/pieces/full:", err);
     res.status(500).send({ err: err.message });

@@ -740,7 +740,9 @@ const PieceSelector = ({
                           {piece.piece_name.charAt(0).toUpperCase()}
                         </div>
                       )}
-                      {piece.has_password && (
+                      {/* !! matters: has_password comes back as 0/1, and a bare
+                          `0 && ...` renders the number 0 next to the thumbnail. */}
+                      {!!piece.has_password && (
                         <span
                           className={`${styles["piece-lock-badge"]} ${isLocked(piece) ? "" : styles["unlocked"]}`}
                           aria-label={isLocked(piece) ? "Password protected" : "Password protected, unlocked"}

@@ -10,6 +10,7 @@ const changelogData = [
       "Mixing your own light and dark square colours is now a Silver Supporter perk (admins and owners included). The eight Quick Themes — Wood, Nature, Aqua, Charcoal, Royal, Sunset, Mint and Rose — stay available to everyone, so any account can still change how its board looks.",
       "If you already had custom colours set, they stay exactly as they are. Saving other preferences never overwrites them.",
       "Security fix: the preferences endpoint that stores your board colours accepted an account id without checking who was asking, so it was possible to change another player's colours and donation-badge setting. It now only ever writes to the signed-in account.",
+      "Fixed a stray '0' appearing beside every unprotected piece in the game wizard's piece picker, where the password padlock belongs.",
     ],
   },
   {
