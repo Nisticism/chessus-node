@@ -125,7 +125,21 @@ export const SocketProvider = ({ children }) => {
 
     setSocket(newSocket);
 
+    // Tell the server when the page is genuinely going away, so it can tell a
+    // real close apart from a tab being backgrounded. `pagehide` with
+    // persisted === false means the page is being discarded (tab closed,
+    // browser quit, navigated off the site); persisted === true means it is
+    // going into the back/forward cache, which is what backgrounding a tab on
+    // mobile looks like - the page is still alive and will come back, so we say
+    // nothing and let the server treat the dropped socket as provisional.
+    const onPageHide = (e) => {
+      if (e.persisted) return;
+      try { newSocket.emit('clientClosing'); } catch (_) { /* best effort */ }
+    };
+    window.addEventListener('pagehide', onPageHide);
+
     return () => {
+      window.removeEventListener('pagehide', onPageHide);
       newSocket.close();
     };
   }, []);

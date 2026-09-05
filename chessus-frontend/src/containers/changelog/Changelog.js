@@ -11,6 +11,8 @@ const changelogData = [
       "If you already had custom colours set, they stay exactly as they are. Saving other preferences never overwrites them.",
       "Security fix: the preferences endpoint that stores your board colours accepted an account id without checking who was asking, so it was possible to change another player's colours and donation-badge setting. It now only ever writes to the signed-in account.",
       "Fixed a stray '0' appearing beside every unprotected piece in the game wizard's piece picker, where the password padlock belongs.",
+      "The disconnect timer no longer starts just because you switched away. Minimising the window, opening another app on your phone, or clicking through to another page on the site all leave you connected — and if you have the site open in a second tab or on another device, closing one of them changes nothing. The countdown only begins once every window you have open is gone.",
+      "A dropped connection that wasn't a deliberate close (a phone locking, a tunnel, patchy signal) now gets 45 seconds to come back before your opponent is shown the disconnect banner, instead of 5.",
     ],
   },
   {

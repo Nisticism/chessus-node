@@ -20,8 +20,53 @@ let ioInstance = null;
 const activeGames = new Map();
 const gameTimers = new Map(); // Maps gameId to timer interval
 const playerSockets = new Map(); // Maps socket.id to userId
-const userSockets = new Map(); // Maps userId to socket.id
+const userSockets = new Map(); // Maps userId to their most recent socket.id
+// Maps userId to the Set of ALL its live socket ids. userSockets alone cannot
+// answer "is this user still here?" - one entry per user means a second tab
+// overwrites the first, and closing either one looks identical to closing both.
+// The disconnect-forfeit timer keys off this: a player is only absent once every
+// socket they own has gone.
+const userSocketIds = new Map();
 const onlineUsers = new Set(); // Set of online user IDs
+
+/** Record a socket as belonging to a user (or anon id). Safe to call repeatedly. */
+function registerUserSocket(userId, socketId) {
+  const key = String(userId);
+  userSockets.set(key, socketId);
+  let set = userSocketIds.get(key);
+  if (!set) { set = new Set(); userSocketIds.set(key, set); }
+  set.add(socketId);
+}
+
+/**
+ * Forget one of a user's sockets. Returns true when that was their LAST one -
+ * i.e. every tab, window and device of theirs is now gone.
+ *
+ * userSockets is re-pointed at a surviving socket rather than deleted, so a
+ * background tab closing cannot cut the live tab off from server-sent events.
+ */
+function unregisterUserSocket(userId, socketId) {
+  const key = String(userId);
+  const set = userSocketIds.get(key);
+  if (set) {
+    set.delete(socketId);
+    if (set.size > 0) {
+      if (userSockets.get(key) === socketId) {
+        userSockets.set(key, set.values().next().value);
+      }
+      return false;
+    }
+    userSocketIds.delete(key);
+  }
+  if (userSockets.get(key) === socketId) userSockets.delete(key);
+  return true;
+}
+
+/** Whether the user still has at least one socket open anywhere. */
+function userHasLiveSocket(userId) {
+  const set = userSocketIds.get(String(userId));
+  return !!set && set.size > 0;
+}
 const disconnectTimeouts = new Map(); // Maps userId to disconnect timeout (grace period)
 // Re-entry guard for processBotTurn: prevents overlapping bot-turn executions
 // for the same game when the client repeatedly submits Fairy-Stockfish moves
@@ -270,6 +315,17 @@ function emitToSocket(sock, gameState, event, payload) {
   const filtered = fogFilterPayload(payload, gameState, viewerPos);
   sock.emit(event, filtered);
 }
+
+// Sockets that told us they are closing for real (the page is being discarded,
+// not just hidden). Backgrounding a tab does not put a socket in here, so an
+// unexplained drop can be given a longer benefit of the doubt.
+const socketClosingIntent = new Set();
+
+// How long a player may be gone before the opponent is even told. A deliberate
+// close is believed straight away; anything else is assumed to be a phone
+// locking, an app switch or a tunnel until proven otherwise.
+const EXPLICIT_CLOSE_GRACE_MS = 5000;
+const UNEXPLAINED_DROP_GRACE_MS = 45000;
 
 // Game-disconnect (forfeit) timers. Keyed by `${gameId}:${userId}`.
 // Value: { timeoutId, expiresAt, durationMs, paused, remainingMs, gameId, userId }
@@ -1626,7 +1682,7 @@ function getDisconnectGraceMs(timeControlMinutes) {
  * After the grace period, the opponent sees the disconnect banner and the
  * real forfeit countdown starts.
  */
-function startDisconnectForfeitTimer(io, gameId, userId, durationMs) {
+function startDisconnectForfeitTimer(io, gameId, userId, durationMs, { graceMs } = {}) {
   const gameIdStr = String(gameId);
   const key = gdtKey(gameIdStr, userId);
   // Don't double-arm
@@ -1644,7 +1700,7 @@ function startDisconnectForfeitTimer(io, gameId, userId, durationMs) {
   // is no reason to forfeit on disconnect.
   if (!gameState.timeControl) return;
 
-  const GRACE_MS = 5000;
+  const GRACE_MS = Number.isFinite(graceMs) ? graceMs : EXPLICIT_CLOSE_GRACE_MS;
 
   // Preliminary entry — visible to clearDisconnectForfeitTimer but not yet
   // announced to the client (gracePending = true).
@@ -3691,7 +3747,7 @@ function initializeSocket(server) {
           }
           
           playerSockets.set(socket.id, { id: userId, username });
-          userSockets.set(userId.toString(), socket.id);
+          registerUserSocket(userId, socket.id);
           onlineUsers.add(userId);
           socket.userId = userId;
           socket.username = username;
@@ -4961,7 +5017,7 @@ function initializeSocket(server) {
         socket.join(`game-${gameId}`);
 
         // Map this socket to the temp ID for game communications
-        userSockets.set(tempHostId, socket.id);
+        registerUserSocket(tempHostId, socket.id);
 
         // --- Guest vs Computer (Fairy-Stockfish only) ---
         // Guests may only play the browser-side Fairy-Stockfish engine, so a bot
@@ -5214,7 +5270,7 @@ function initializeSocket(server) {
         }
 
         // Map socket
-        userSockets.set(playerId, socket.id);
+        registerUserSocket(playerId, socket.id);
 
         // Initialize timers
         if (gameState.timeControl) {
@@ -5405,7 +5461,7 @@ function initializeSocket(server) {
         }
 
         // Map socket for anonymous joiner
-        userSockets.set(playerId, socket.id);
+        registerUserSocket(playerId, socket.id);
 
         // Initialize timers
         if (gameState.timeControl) {
@@ -5513,7 +5569,7 @@ function initializeSocket(server) {
           return socket.emit("error", { message: "Invalid or expired token" });
         }
         // Re-register the socket under the stable playerId
-        userSockets.set(foundPlayerId, socket.id);
+        registerUserSocket(foundPlayerId, socket.id);
         socket.join(`game-${gameId}`);
         // Cancel any pending disconnect-forfeit timer for this returning player.
         try { clearDisconnectForfeitTimer(gameId, foundPlayerId, { broadcast: true, io, reason: 'reconnected' }); } catch (_) {}
@@ -10008,39 +10064,11 @@ function initializeSocket(server) {
             gameState.spectators = gameState.spectators.filter(s => s.socketId !== socket.id);
             io.to(`game-${gameId}`).emit("spectatorUpdate", { spectators: gameState.spectators.map(s => ({ id: s.id, username: s.username })) });
           }
-          // If the leaving user is a player in an active human-vs-human game,
-          // arm the disconnect-forfeit timer just like a real socket disconnect.
-          // The user still has a socket open (they're just on a different page),
-          // but they're no longer present in the game so opponents shouldn't be
-          // forced to wait indefinitely. Reopening the game cancels it.
-          try {
-            const userId = socket.userId;
-            // Treat simul games in 'ready' state as in-progress for disconnect purposes.
-            // Until both players press Ready, the game is functionally started and the
-            // opponent shouldn't wait indefinitely if someone navigates away.
-            const isInProgress = gameState.status === 'active' ||
-              (gameState.status === 'ready' && isSimulTurns(gameState));
-            if (
-              userId &&
-              isInProgress &&
-              !gameState.botPlayer &&
-              gameState.players?.some(p => p.id === userId)
-            ) {
-              const durationMs = getDisconnectGraceMs(gameState.timeControl);
-              startDisconnectForfeitTimer(io, gameIdStr, userId, durationMs);
-            } else if (!userId && !socket.userId && isInProgress && !gameState.botPlayer) {
-              // Anonymous player leaving — find their slot by socket mapping
-              const anonPlayer = gameState.players?.find(
-                p => typeof p.id === 'string' && p.id.startsWith('anon_') && userSockets.get(p.id) === socket.id
-              );
-              if (anonPlayer) {
-                const durationMs = getDisconnectGraceMs(gameState.timeControl);
-                startDisconnectForfeitTimer(io, gameIdStr, anonPlayer.id, durationMs);
-              }
-            }
-          } catch (err) {
-            console.error('leaveGame: failed to arm disconnect timer:', err.message);
-          }
+          // Deliberately does NOT arm the disconnect-forfeit timer. This fires
+          // whenever the LiveGame component unmounts, which includes simply
+          // clicking through to another page on the site - the player's socket
+          // is still open and they are one click from being back. Only losing
+          // every socket counts as being gone; see the disconnect handler.
         }
       }
     });
@@ -11372,6 +11400,15 @@ function initializeSocket(server) {
     });
 
     // Handle disconnection
+    // The client fires this from `pagehide` when the page is genuinely being
+    // discarded (tab closed, browser quit, navigated off the site) rather than
+    // merely hidden. It is best-effort - it will not survive a crash, a killed
+    // app or a dead network - so its absence only means "assume they might come
+    // back", never "they are still here".
+    socket.on("clientClosing", () => {
+      socketClosingIntent.add(socket.id);
+    });
+
     socket.on("disconnect", () => {
       console.log(`Socket disconnected: ${socket.id}`);
 
@@ -11396,32 +11433,44 @@ function initializeSocket(server) {
         const userId = userData.id;
         const username = userData.username;
         
-        // Clear socket mappings immediately
-        userSockets.delete(userId.toString());
+        // Clear socket mappings immediately. `lastSocket` is false while any
+        // of this user's other tabs or devices are still connected.
+        const lastSocket = unregisterUserSocket(userId, socket.id);
         playerSockets.delete(socket.id);
 
         // Start a disconnect-forfeit timer for every active human-vs-human game
         // this user is participating in. Skip bot games. Reconnecting (auth) cancels it.
         // Also covers simul games in 'ready' state — functionally in-progress.
+        //
+        // Only once their LAST socket has gone: with the site open in another
+        // tab, on another device, or simply backgrounded on a phone (which drops
+        // the websocket while the page itself stays alive), the player is still
+        // there and must not be put on a forfeit clock.
         try {
-          for (const [gameIdStr, gameState] of activeGames) {
-            const isInProgress = gameState.status === 'active' ||
-              (gameState.status === 'ready' && isSimulTurns(gameState));
-            if (!gameState || !isInProgress) continue;
-            if (gameState.botPlayer) continue;
-            const isPlayer = gameState.players?.some(p => p.id === userId);
-            if (!isPlayer) continue;
-            const durationMs = getDisconnectGraceMs(gameState.timeControl);
-            startDisconnectForfeitTimer(io, gameIdStr, userId, durationMs);
+          if (lastSocket) {
+            const graceMs = socketClosingIntent.has(socket.id)
+              ? EXPLICIT_CLOSE_GRACE_MS
+              : UNEXPLAINED_DROP_GRACE_MS;
+            for (const [gameIdStr, gameState] of activeGames) {
+              const isInProgress = gameState.status === 'active' ||
+                (gameState.status === 'ready' && isSimulTurns(gameState));
+              if (!gameState || !isInProgress) continue;
+              if (gameState.botPlayer) continue;
+              const isPlayer = gameState.players?.some(p => p.id === userId);
+              if (!isPlayer) continue;
+              const durationMs = getDisconnectGraceMs(gameState.timeControl);
+              startDisconnectForfeitTimer(io, gameIdStr, userId, durationMs, { graceMs });
+            }
           }
         } catch (err) {
           console.error('Error arming disconnect-forfeit timers:', err.message);
         }
+        socketClosingIntent.delete(socket.id);
         
         // Set a timeout before removing from onlineUsers (5 second grace period)
         const disconnectTimeout = setTimeout(() => {
           // Only remove if they haven't reconnected
-          if (!userSockets.has(userId.toString())) {
+          if (!userHasLiveSocket(userId)) {
             onlineUsers.delete(userId);
             console.log(`User ${username} (ID: ${userId}) removed from online users after grace period`);
             
@@ -11440,14 +11489,16 @@ function initializeSocket(server) {
       if (!userData) {
         try {
           let anonId = null;
-          for (const [pid, sid] of userSockets) {
-            if (sid === socket.id && typeof pid === 'string' && pid.startsWith('anon_')) {
+          for (const [pid, sids] of userSocketIds) {
+            if (typeof pid === 'string' && pid.startsWith('anon_') && sids.has(socket.id)) {
               anonId = pid;
               break;
             }
           }
-          if (anonId) {
-            userSockets.delete(anonId);
+          if (anonId && unregisterUserSocket(anonId, socket.id)) {
+            const graceMs = socketClosingIntent.has(socket.id)
+              ? EXPLICIT_CLOSE_GRACE_MS
+              : UNEXPLAINED_DROP_GRACE_MS;
             for (const [gameIdStr, gameState] of activeGames) {
               const isInProgress = gameState.status === 'active' ||
                 (gameState.status === 'ready' && isSimulTurns(gameState));
@@ -11455,9 +11506,10 @@ function initializeSocket(server) {
               if (gameState.botPlayer) continue;
               if (!gameState.players?.some(p => p.id === anonId)) continue;
               const durationMs = getDisconnectGraceMs(gameState.timeControl);
-              startDisconnectForfeitTimer(io, gameIdStr, anonId, durationMs);
+              startDisconnectForfeitTimer(io, gameIdStr, anonId, durationMs, { graceMs });
             }
           }
+          socketClosingIntent.delete(socket.id);
         } catch (err) {
           console.error('Error handling anonymous player disconnect:', err.message);
         }
