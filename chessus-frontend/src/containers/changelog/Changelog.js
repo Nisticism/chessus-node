@@ -4,6 +4,19 @@ import styles from "./changelog.module.scss";
 
 const changelogData = [
   {
+    date: "September 5, 2026",
+    title: "Clocks and Actions moved under the board, plus mobile scrolling fixes",
+    items: [
+      "The clocks now sit directly above and below the board as single centred lines, instead of in a side column (or, on a phone, in tall panels that pushed everything down). Each shows a small piece icon for the side, the player's name, and the time.",
+      "The Actions buttons (Offer Draw, Resign, Pass and the veto buttons) now sit just under your clock rather than at the bottom of the move-history column, where on a phone they ended up far below the board. They keep their normal width and fit on one row wherever there's room, wrapping only when there isn't.",
+      "The board zoom widget is now part of the Actions row rather than floating on its own line, and the divider above the Actions heading is gone.",
+      "Fixed: on a narrow screen the Actions row was missing the Pass button entirely, so you couldn't pass in a game that allows passing.",
+      "In reactive veto games that allow a single veto per turn, 'Veto this move' and 'Submit Veto' are now one button, 'Veto Move'. With only one veto to spend there was never a reason to ban a move your opponent hadn't played, so vetoing and submitting are a single click. Games that allow more than one veto per turn are unchanged.",
+      "Fixed touch scrolling over a game board on mobile: dragging up or down over the board scrolled nothing at all. The page now scrolls normally, and dragging a piece still works.",
+      "Fixed game boards causing sideways scrolling on mobile.",
+    ],
+  },
+  {
     date: "September 3, 2026",
     title: "Custom piece sounds for supporters, plus piece-password and wizard fixes",
     items: [

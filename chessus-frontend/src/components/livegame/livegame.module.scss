@@ -1,3 +1,15 @@
+// Rows that must line up with the board squares. The board frame is the rank
+// labels plus the board, and the whole frame is centred - so a row centred on
+// the wrapper sits half a gutter to the left of the squares. Reserving the
+// gutter as padding on the left and matching it in the width puts this row's
+// content box exactly over the squares, notation on or off.
+@mixin board-aligned-row {
+  box-sizing: border-box;
+  width: min(100%, calc(var(--board-px, 100%) + var(--coord-gutter, 0px)));
+  padding-left: calc(10px + var(--coord-gutter, 0px));
+  padding-right: 10px;
+}
+
 .live-game-container {
   display: flex;
   flex-direction: column;
@@ -2013,9 +2025,11 @@
   margin-top: 0;
   padding-top: 0;
   border-top: none;
-  width: min(100%, var(--board-px, 100%));
+  @include board-aligned-row;
   display: flex;
-  flex-direction: column;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
   gap: 8px;
 
   h4 {
@@ -2024,20 +2038,28 @@
     margin: 0 0 8px 0;
   }
 
-  // Buttons share the row and grow to fill the board's width, so they stay on a
-  // single line whenever they fit and wrap to more rows only when they cannot.
+  // The groups exist only to keep related buttons together in the JSX. Each one
+  // used to lay out as its own block, which is why draw/resign, pass and the
+  // veto buttons stacked into three rows however much space was free; handing
+  // their children straight to this flex row puts everything on one line and
+  // wraps only when it genuinely does not fit.
   .control-buttons,
   .control-buttons-pass {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    width: 100%;
+    display: contents;
+  }
 
-    > button {
-      flex: 1 1 auto;
-      min-width: 0;
-      white-space: nowrap;
-    }
+  // Buttons keep their natural, text-driven width rather than stretching to
+  // fill the board, with a cap so one long label cannot force a wrap on its own.
+  .control-buttons > button,
+  .control-buttons-pass > button {
+    flex: 0 1 auto;
+    width: auto;
+    min-width: 0;
+    max-width: 150px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding: 9px 14px;
   }
 
   .control-buttons-legacy {
@@ -2049,23 +2071,6 @@
     button {
       flex: 1;
       min-width: 0;
-    }
-  }
-
-  // Pass / veto actions wrap to additional rows rather than clipping when the
-  // sidebar is too narrow to fit them all on one line.
-  .control-buttons-pass {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    margin-top: 12px;
-
-    button {
-      flex: 1 1 auto;
-      min-width: fit-content;
-      white-space: nowrap;
-      padding-left: 14px;
-      padding-right: 14px;
     }
   }
 }
@@ -3735,9 +3740,13 @@
 .board-clock {
   display: flex;
   align-items: center;
-  gap: 8px;
-  width: min(100%, var(--board-px, 100%));
-  padding: 4px 10px;
+  // Glyph, name and clock stay together as one centred group instead of being
+  // pushed to opposite ends of the board's width.
+  justify-content: center;
+  gap: 6px;
+  @include board-aligned-row;
+  padding-top: 4px;
+  padding-bottom: 4px;
   border-radius: 6px;
   border: 1px solid transparent;
   font-size: 0.9rem;
@@ -3778,7 +3787,7 @@
 }
 
 .board-clock-name {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -3802,8 +3811,11 @@
   &.low-time { color: #f87171; }
 }
 
-// The zoom widget now lives with the actions rather than floating under the board.
+// The zoom widget is the last item in the actions row, sized like a button but
+// never stretched or clipped.
 .actions-zoom {
+  flex: 0 0 auto;
   display: flex;
+  align-items: center;
   justify-content: center;
 }

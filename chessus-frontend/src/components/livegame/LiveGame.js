@@ -2923,6 +2923,18 @@ const LiveGame = () => {
     setVetoSelectedPiece(null);
     setVetoPieceMoves([]);
   }, []);
+  // Reactive games that allow a single veto per turn collapse "veto this move"
+  // and "submit" into one button: with one veto to spend there is never a reason
+  // to ban a move the opponent did not just play - skipping is strictly better -
+  // so selecting the revealed move and submitting it are the same action.
+  // Falls back to whatever is selected if the player picked moves off the board.
+  const submitSingleVeto = useCallback((revealDesc) => {
+    if (!vetoUi.canSelect) return;
+    const picks = vetoSelection.length > 0 ? vetoSelection : (revealDesc ? [revealDesc] : []);
+    if (!picks.length) return;
+    persistPendingVeto(picks);
+    submitVetoes(parseInt(gameId), picks);
+  }, [vetoUi.canSelect, vetoSelection, persistPendingVeto, submitVetoes, gameId]);
 
   // Enter submits the current veto selection during a veto phase.
   useEffect(() => {
@@ -3021,9 +3033,6 @@ const LiveGame = () => {
     if (!(gameState?.status === 'active' || gameState?.status === 'ready')) return null;
     return (
       <div className={styles["game-controls-inline"]}>
-        <div className={styles["actions-zoom"]}>
-          <BoardZoomControls {...boardVpHook.controlProps} />
-        </div>
         <div className={styles["control-buttons"]}>
           {drawOfferSent ? (
             <button
@@ -3063,6 +3072,9 @@ const LiveGame = () => {
           </div>
         )}
         {renderVetoActionButtons()}
+        <div className={styles["actions-zoom"]}>
+          <BoardZoomControls {...boardVpHook.controlProps} />
+        </div>
       </div>
     );
   };
@@ -3081,6 +3093,25 @@ const LiveGame = () => {
     } : null;
     const revealSelected = !!revealDesc && vetoSelection.some(d => vetoSignatureClient(d) === vetoSignatureClient(revealDesc));
     const canVetoMove = canAct && isReactive && !!revealDesc && !revealSelected;
+    // One veto per turn in a reactive game means the revealed move is the only
+    // thing worth banning, so Veto and Submit become a single button.
+    const perTurnLimit = Math.max(1, Math.min(5, Number(gameState?.gameType?.veto_per_turn_limit) || 1));
+    const singleShot = isReactive && perTurnLimit === 1;
+    if (singleShot) {
+      return (
+        <div className={styles["control-buttons-pass"]}>
+          <button
+            className={`${styles.btn} ${styles["btn-danger"]}`}
+            disabled={!canAct || (!revealDesc && vetoSelection.length === 0)}
+            onClick={() => submitSingleVeto(revealDesc)}
+            title="Veto the opponent's revealed move - they must play something else"
+          >
+            Veto Move
+          </button>
+          <button className={`${styles.btn} ${styles["btn-secondary"]}`} disabled={!canAct} onClick={skipVetoSelection} title="Decline to veto this turn">Skip Veto</button>
+        </div>
+      );
+    }
     return (
       <>
         {isReactive && (
@@ -3104,7 +3135,7 @@ const LiveGame = () => {
         </div>
       </>
     );
-  }, [vetoUi.on, vetoUi.canSelect, gameState?.gameType?.veto_style, vetoRevealMove, vetoSelection, addVetoDescriptor, submitVetoSelection, skipVetoSelection, clearVetoSelection]);
+  }, [vetoUi.on, vetoUi.canSelect, gameState?.gameType?.veto_style, gameState?.gameType?.veto_per_turn_limit, vetoRevealMove, vetoSelection, addVetoDescriptor, submitVetoSelection, submitSingleVeto, skipVetoSelection, clearVetoSelection]);
 
   // Board-overlay square counts for veto: candidate targets (vetoer), selected
   // bans (vetoer), and server-confirmed bans (mover). Multiple vetoes can stack
@@ -6660,7 +6691,10 @@ const LiveGame = () => {
                 board's width instead of the full column width. */}
             <div
               className={styles["game-board-wrapper"]}
-              style={{ '--board-px': `${(boardVpHook.squareSize || 0) * (gameState?.gameType?.board_width || 8)}px` }}
+              style={{
+                '--board-px': `${(boardVpHook.squareSize || 0) * (gameState?.gameType?.board_width || 8)}px`,
+                '--coord-gutter': showBoardNotation ? '20px' : '0px',
+              }}
             >
               {renderPlayerClock(topPlayer, { isTop: true })}
               <div style={boardVpHook.frameStyle}>
@@ -6951,7 +6985,9 @@ const LiveGame = () => {
                   {vStyle === 'reactive' && vetoRevealMove ? (
                     <>
                       <div className={styles["veto-hint"]}>
-                        Your opponent played <strong>{sq(vetoRevealMove.from)}→{sq(vetoRevealMove.to)}{vetoRevealMove.isRangedAttack ? ' (ranged)' : ''}</strong> (highlighted in blue). Use "Veto this move" in the Actions panel to force a different move, and/or ban other potential moves, then Submit (or press Enter).
+                        Your opponent played <strong>{sq(vetoRevealMove.from)}→{sq(vetoRevealMove.to)}{vetoRevealMove.isRangedAttack ? ' (ranged)' : ''}</strong> (highlighted in blue). {(Math.max(1, Math.min(5, Number(gt.veto_per_turn_limit) || 1)) === 1)
+                          ? 'Use "Veto Move" in the Actions panel to force them to play something else, or Skip Veto to let it stand.'
+                          : 'Use "Veto this move" in the Actions panel to force a different move, and/or ban other potential moves, then Submit (or press Enter).'}
                       </div>
                     </>
                   ) : (
