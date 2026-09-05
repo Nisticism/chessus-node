@@ -1,3 +1,5 @@
+import { isSilverSupporter } from './supporterTiers';
+
 /**
  * Client-side audio prep for custom piece sounds.
  *
@@ -141,9 +143,4 @@ export const preparePieceSound = async (file, { allowCrop = false } = {}) => {
 };
 
 /** Whether this user may use custom piece sounds (Silver supporter and above). */
-export const canUseCustomSounds = (user) => {
-  if (!user) return false;
-  const role = (user.role || '').toLowerCase();
-  if (role === 'admin' || role === 'owner') return true;
-  return parseFloat(user.total_donations || 0) >= 5;
-};
+export const canUseCustomSounds = (user) => isSilverSupporter(user);

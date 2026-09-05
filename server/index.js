@@ -2500,6 +2500,53 @@ const pieceIdsFromPiecesString = (piecesString) => {
 // for each of its actions. Check and checkmate stay as site sounds and are
 // layered on top of a custom sound rather than replacing it.
 const PIECE_SOUND_MAX_SECONDS = 1.5;
+// Board-colour customisation: Silver Supporter and above (plus staff). Everyone
+// else is held to the built-in Quick Themes, whose exact hex values are mirrored
+// here from Preferences.js (COLOR_PRESETS at SATURATION 40) so the server can
+// tell a theme apart from a hand-mixed colour.
+const BOARD_COLOR_MIN_DONATION = 5;   // Silver
+const BOARD_THEME_SATURATION = 40;
+const BOARD_THEME_HSL = [
+  { light: [35, 82], dark: [30, 28] },    // Wood (also the signup default)
+  { light: [100, 82], dark: [130, 22] },  // Nature
+  { light: [185, 85], dark: [200, 22] },  // Aqua
+  { light: [220, 88], dark: [220, 18] },  // Charcoal
+  { light: [270, 82], dark: [265, 22] },  // Royal
+  { light: [25, 85], dark: [10, 30] },    // Sunset
+  { light: [155, 85], dark: [160, 25] },  // Mint
+  { light: [340, 85], dark: [330, 25] },  // Rose
+];
+// Same arithmetic as hslToHex in Preferences.js.
+const hslToHex = (h, s, l) => {
+  s /= 100;
+  l /= 100;
+  const a = s * Math.min(l, 1 - l);
+  const f = (n) => {
+    const k = (n + h / 30) % 12;
+    const color = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
+    return Math.round(255 * color).toString(16).padStart(2, '0');
+  };
+  return `#${f(0)}${f(8)}${f(4)}`;
+};
+const BOARD_THEME_COLORS = new Set(
+  BOARD_THEME_HSL.flatMap(({ light, dark }) => [
+    hslToHex(light[0], BOARD_THEME_SATURATION, light[1]),
+    hslToHex(dark[0], BOARD_THEME_SATURATION, dark[1]),
+  ])
+);
+const isThemeColor = (hex) =>
+  typeof hex === 'string' && BOARD_THEME_COLORS.has(hex.trim().toLowerCase());
+
+const canUseCustomBoardColors = async (userId) => {
+  if (!userId) return false;
+  const [[row]] = await db_pool.query(
+    'SELECT total_donations, role FROM users WHERE id = ?', [userId]
+  );
+  if (!row) return false;
+  if (hasAdminRole(row.role)) return true;
+  return parseFloat(row.total_donations || 0) >= BOARD_COLOR_MIN_DONATION;
+};
+
 const PIECE_SOUND_MIN_DONATION = 5;   // Silver
 const PIECE_SOUND_SLOTS = {
   move: 'move_sound_url',
@@ -6763,14 +6810,39 @@ app.post("/api/admin/users/:userId/demote", authenticateToken, async (req, res) 
   }
 });
 
-app.post("/api/preferences/colors", async (req, res) => {
+app.post("/api/preferences/colors", authenticateToken, async (req, res) => {
   try {
-    const { user_id, light_square_color, dark_square_color, hide_donation_badge } = req.body;
-    
+    const { light_square_color, dark_square_color, hide_donation_badge } = req.body;
+    // The caller's own id, never the body's: this route used to take user_id on
+    // trust with no auth at all, which let anyone rewrite anyone's preferences.
+    const user_id = req.user?.id;
+
     if (!user_id) {
-      return res.status(400).send({ message: "User ID is required" });
+      return res.status(401).send({ message: "Not signed in" });
     }
-    
+
+    // Below Silver, only the built-in Quick Themes may be set. An unchanged
+    // colour always passes, so an account that already has a custom colour is
+    // never forced off it just for saving some other preference.
+    const wantsLight = light_square_color !== undefined;
+    const wantsDark = dark_square_color !== undefined;
+    if (wantsLight || wantsDark) {
+      if (!(await canUseCustomBoardColors(user_id))) {
+        const [[current]] = await db_pool.query(
+          'SELECT light_square_color, dark_square_color FROM users WHERE id = ?', [user_id]
+        );
+        const allowed = (hex, stored) =>
+          isThemeColor(hex) || (stored != null && hex === stored);
+        if ((wantsLight && !allowed(light_square_color, current?.light_square_color)) ||
+            (wantsDark && !allowed(dark_square_color, current?.dark_square_color))) {
+          return res.status(403).send({
+            message: "Choosing your own square colours is a Silver Supporter perk. Quick Themes are available to everyone.",
+            requiresSupporter: true,
+          });
+        }
+      }
+    }
+
     const fields = [];
     const values = [];
     

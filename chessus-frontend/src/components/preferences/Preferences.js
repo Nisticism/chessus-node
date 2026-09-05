@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { Navigate } from 'react-router-dom';
+import { Navigate, Link } from 'react-router-dom';
 import { useSelector, useDispatch } from "react-redux";
 import styles from "./preferences.module.scss";
 import Divider from "../Divider/Divider";
@@ -9,6 +9,7 @@ import ToggleSwitch from "../common/ToggleSwitch";
 import axios from "axios";
 import API_URL from "../../global/global";
 import authHeader from "../../services/auth-header";
+import { canUseCustomBoardColors } from "../../helpers/supporterTiers";
 
 // Helper: Convert HSL to Hex
 const hslToHex = (h, s, l) => {
@@ -231,6 +232,12 @@ const Preferences = () => {
   // Fixed saturation for good-looking colors
   const SATURATION = 40;
 
+  // Picking your own hue/brightness is a Silver Supporter perk (admins and
+  // owners included). The Quick Themes above stay open to everyone, so a
+  // regular account can still change how the board looks - just not to an
+  // arbitrary colour. The server enforces the same rule on save.
+  const canCustomizeColors = canUseCustomBoardColors(currentUser);
+
   // Compute hex colors from HSL values
   const lightSquareColor = useMemo(() => 
     hslToHex(lightHue, SATURATION, lightLightness), 
@@ -351,7 +358,9 @@ const Preferences = () => {
       setTimeout(() => setSaved(false), 2000);
     } catch (error) {
       console.error("Error saving preferences:", error);
-      alert("Failed to save preferences. Please try again.");
+      // The server enforces the supporter-only perks too, so show what it said
+      // rather than a generic failure the user cannot act on.
+      alert(error?.response?.data?.message || "Failed to save preferences. Please try again.");
     } finally {
       setSaving(false);
     }
@@ -477,7 +486,19 @@ const Preferences = () => {
             </div>
           </div>
 
-          {/* Color Selectors */}
+          {/* Color Selectors - Silver Supporter and above */}
+          {!canCustomizeColors && (
+            <div className={styles["supporter-locked-note"]}>
+              <span className={styles["supporter-locked-title"]}>
+                ✦ Choosing your own square colours is a Silver Supporter perk
+              </span>
+              <span className={styles["supporter-locked-body"]}>
+                Every Quick Theme above is yours to use. To mix your own colours,
+                <Link to="/donate"> support the site</Link>.
+              </span>
+            </div>
+          )}
+          {canCustomizeColors && (
           <div className={styles["color-selector-container"]}>
             {/* Light Square Controls */}
             <div className={styles["color-control-group"]}>
@@ -583,6 +604,7 @@ const Preferences = () => {
               </div>
             </div>
           </div>
+          )}
 
           {/* Animations Section */}
           <div className={styles["animations-section"]}>

@@ -102,6 +102,37 @@
   letter-spacing: 0.5px;
 }
 
+// Shown in place of the hue/brightness sliders for accounts below Silver.
+.supporter-locked-note {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 30px 0;
+  padding: 18px 20px;
+  border-radius: 6px;
+  background: rgba(var(--gold-rgb, 212, 175, 55), 0.07);
+  border: 1px solid rgba(var(--gold-rgb, 212, 175, 55), 0.32);
+}
+
+.supporter-locked-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--gold-header);
+}
+
+.supporter-locked-body {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-dim);
+
+  a {
+    color: var(--gold-header);
+    font-weight: 600;
+
+    &:hover { text-decoration: underline; }
+  }
+}
+
 .presets-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);

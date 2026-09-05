@@ -5,6 +5,15 @@ import styles from "./changelog.module.scss";
 const changelogData = [
   {
     date: "September 5, 2026",
+    title: "Custom square colours become a Silver Supporter perk",
+    items: [
+      "Mixing your own light and dark square colours is now a Silver Supporter perk (admins and owners included). The eight Quick Themes — Wood, Nature, Aqua, Charcoal, Royal, Sunset, Mint and Rose — stay available to everyone, so any account can still change how its board looks.",
+      "If you already had custom colours set, they stay exactly as they are. Saving other preferences never overwrites them.",
+      "Security fix: the preferences endpoint that stores your board colours accepted an account id without checking who was asking, so it was possible to change another player's colours and donation-badge setting. It now only ever writes to the signed-in account.",
+    ],
+  },
+  {
+    date: "September 5, 2026",
     title: "Clocks and Actions moved under the board, plus mobile scrolling fixes",
     items: [
       "The clocks now sit directly above and below the board as single centred lines, instead of in a side column (or, on a phone, in tall panels that pushed everything down). Each shows a small piece icon for the side, the player's name, and the time.",
