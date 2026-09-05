@@ -3872,7 +3872,12 @@
   // Hug the board instead of stretching across the whole column, and centre the
   // result on the page. --beside-stack-px (set inline) gives the stack a
   // definite width so this is possible at all - see LiveGame.js.
+  //
+  // The floor matches .game-settings (700px) so the panel does not read as a
+  // narrow sliver above a much wider settings card; inside it, justify-content
+  // from the base rule centres the board and its side column together.
   width: max-content;
+  min-width: min(700px, 100%);
   max-width: 100%;
   align-self: center;
   margin: 0 auto;
