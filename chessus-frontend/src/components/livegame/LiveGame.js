@@ -614,6 +614,26 @@ const LiveGame = () => {
     return boardColWidth - BOARD_WRAP_PAD - BESIDE_PANEL_PX >= besideBoardPx;
   }, [gameState?.gameType?.board_width, gameState?.gameType?.board_height, boardColWidth, boardFitHeightSquare, besideBoardPx]);
 
+  // How wide the board stack is in beside mode. It follows the board's CURRENT
+  // size, not its fit size, so zooming in widens the stack (and with it the
+  // wrapper, which is max-content over a min-width) instead of clipping the
+  // board against a frame fixed at the unzoomed width.
+  //
+  // The floor is what keeps this from feeding back on itself. useBoardViewport
+  // measures this stack to decide how wide the board may be; at the floor the
+  // width test always clears the height-limited size, so fitSquare stays pinned
+  // to the height whatever the stack does, and a stack derived from the board
+  // can never walk the board downwards. The cap is the room left in the column -
+  // past that the board scrolls inside its viewport, as it does anywhere else.
+  const besideStackPx = useMemo(() => {
+    const bw = gameState?.gameType?.board_width || 0;
+    const gutter = showBoardNotation ? 20 : 0;
+    const zoomedPx = (boardVpHook.squareSize || 0) * bw + gutter;
+    const floor = besideBoardPx + 16;
+    const cap = boardColWidth - BOARD_WRAP_PAD - BESIDE_PANEL_PX;
+    return Math.max(floor, Math.min(Math.max(besideBoardPx, zoomedPx) + 16, cap));
+  }, [gameState?.gameType?.board_width, showBoardNotation, boardVpHook.squareSize, besideBoardPx, boardColWidth]);
+
   // Width of the hugging wrapper itself, used only to work out how far it can be
   // shifted. Measured, never fed back into anything that decides its size, so
   // there is no loop: margins do not change a max-content width. It re-measures
@@ -641,7 +661,7 @@ const LiveGame = () => {
       if (ro) ro.disconnect();
       window.removeEventListener('resize', measure);
     };
-  }, [besideWrapNode, actionsBeside, besideBoardPx, boardColWidth]);
+  }, [besideWrapNode, actionsBeside, besideStackPx, boardColWidth]);
 
   // Centred in the board column, the hugging wrapper sits half a sidebar to the
   // right of everything below the grid (Game Settings, captured pieces, the veto
@@ -7034,10 +7054,7 @@ const LiveGame = () => {
                 // down a square; it is capped so a board that would rather be
                 // wider than the column allows still fits beside the panel.
                 ...(actionsBeside ? {
-                  '--beside-stack-px': `${Math.max(80, Math.min(
-                    besideBoardPx + 16,
-                    boardColWidth - BOARD_WRAP_PAD - BESIDE_PANEL_PX
-                  ))}px`,
+                  '--beside-stack-px': `${besideStackPx}px`,
                   ...(besideMarginRight != null
                     ? { marginLeft: 'auto', marginRight: `${besideMarginRight}px` }
                     : {}),
