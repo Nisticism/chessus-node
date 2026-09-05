@@ -14,6 +14,12 @@ const changelogData = [
       "In reactive veto games that allow a single veto per turn, 'Veto this move' and 'Submit Veto' are now one button, 'Veto Move'. With only one veto to spend there was never a reason to ban a move your opponent hadn't played, so vetoing and submitting are a single click. Games that allow more than one veto per turn are unchanged.",
       "Fixed touch scrolling over a game board on mobile: dragging up or down over the board scrolled nothing at all. The page now scrolls normally, and dragging a piece still works.",
       "Fixed game boards causing sideways scrolling on mobile.",
+      "The board is now much bigger on desktop. With the clocks moved in beside it, the old clocks column was empty space, so the move history, chat and options have moved into it and the board expands across everything to its right. As always the board opens at a size that fits the page, and you can zoom in for a closer look.",
+      "Chat now sits between the move history and the options panel.",
+      "On tall, narrow boards the Actions buttons now stack in a column beside the board, where there is room going spare, instead of below it.",
+      "When the Actions are below the board they now spread across the full width available rather than being squeezed into the board's own width.",
+      "The zoom widget no longer grows on phones now that it sits in the Actions row — it matches the buttons next to it.",
+      "The 'Back to Lobby' button now disappears once both players have joined, and links across the site are no longer underlined.",
     ],
   },
   {

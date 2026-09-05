@@ -172,15 +172,19 @@
 // Row-based layout
 .layout-row-middle {
   display: grid;
-  // minmax(0, ...) on every track lets columns shrink instead of forcing the
-  // page to scroll horizontally when their content (board / move list) is wide.
-  grid-template-columns: minmax(0, 280px) minmax(0, 1fr) minmax(0, 280px);
+  // Two columns now: the sidebar (move history, chat, options, spectators) takes
+  // the slot the clocks column used to hold, and the board gets everything to
+  // its right. The clocks moved in with the board, so a third column would just
+  // be empty space the board could be using.
+  // minmax(0, ...) on both tracks lets them shrink instead of forcing the page
+  // to scroll horizontally when their content (board / move list) is wide.
+  grid-template-columns: minmax(0, 300px) minmax(0, 1fr);
   gap: 24px;
   align-items: stretch; // Stretch columns to match tallest (board)
   max-width: 100%;
 
   @media (max-width: 1400px) {
-    grid-template-columns: minmax(0, 240px) minmax(0, 1fr) minmax(0, 240px);
+    grid-template-columns: minmax(0, 260px) minmax(0, 1fr);
     gap: 16px;
   }
 
@@ -426,23 +430,6 @@
   font-size: 0.75rem;
   color: var(--text-dim);
   white-space: nowrap;
-}
-
-// Clocks column (left side) - hidden on small screens
-.clocks-column {
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  gap: 16px;
-  grid-row: 1;
-  min-width: 0;
-  // Align clocks with inner board (exclude coordinate labels)
-  padding-top: 16px;
-  padding-bottom: 36px;
-
-  @media (max-width: 1200px) {
-    display: none;
-  }
 }
 
 // Board column (center)
@@ -2025,7 +2012,13 @@
   margin-top: 0;
   padding-top: 0;
   border-top: none;
-  @include board-aligned-row;
+  // Spans the WRAPPER, not the board: on a narrow board the buttons would
+  // otherwise be crammed into the board's width with empty wrapper either side.
+  // The padding is the minimum gap to the wrapper's edge.
+  box-sizing: border-box;
+  width: 100%;
+  padding-left: 12px;
+  padding-right: 12px;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -3818,4 +3811,59 @@
   display: flex;
   align-items: center;
   justify-content: center;
+
+  // The widget's own <=768px rule grows its buttons to 38px for touch targets.
+  // That made sense when it floated under the board on its own; sitting in the
+  // actions row it just reads as an oversized button, so keep it button-height.
+  button {
+    width: 30px;
+    height: 30px;
+  }
+
+  button svg {
+    width: 16px;
+    height: 16px;
+  }
+}
+
+// Board wrapper laid out as a row: Actions in a column to the left of a tall,
+// narrow board (see actionsBeside in LiveGame.js), board stack to the right.
+.game-board-wrapper.actions-beside {
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+
+  > .game-controls-inline {
+    flex: 0 0 auto;
+    width: 164px;
+    flex-direction: column;
+    align-items: stretch;
+    padding-left: 0;
+    padding-right: 0;
+
+    .control-buttons > button,
+    .control-buttons-pass > button {
+      max-width: none;
+      width: 100%;
+    }
+
+    .actions-zoom { align-self: center; }
+  }
+
+  > .board-stack {
+    width: auto;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+}
+
+// Clocks + board + (usually) the actions, stacked vertically. Exists so the
+// actions can be pulled out and placed beside this whole stack.
+.board-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
 }

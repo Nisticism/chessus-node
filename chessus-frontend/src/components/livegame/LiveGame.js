@@ -13,7 +13,7 @@
  *
  * Drop this disable once eslint-plugin-react-hooks is upgraded.
  */
-import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import React, { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from "react";
 import { useParams, useNavigate, useLocation, Link } from "react-router-dom";
 import { useSelector, useDispatch } from "react-redux";
 import axios from "axios";
@@ -551,6 +551,48 @@ const LiveGame = () => {
     insetW: showBoardNotation ? 30 : 8,
     insetH: showBoardNotation ? 26 : 8,
   });
+  // Width of the board wrapper, so the Actions can sit in a column to the LEFT of
+  // a tall/skinny board when there is room for them beside it.
+  const [boardWrapWidth, setBoardWrapWidth] = useState(0);
+  const [boardWrapNode, setBoardWrapNode] = useState(null);
+  const boardWrapRef = useCallback((el) => setBoardWrapNode(el), []);
+  useLayoutEffect(() => {
+    if (!boardWrapNode) return undefined;
+    const measure = () => setBoardWrapWidth((prev) => {
+      const w = boardWrapNode.clientWidth || 0;
+      return Math.abs(prev - w) > 0.5 ? w : prev;
+    });
+    measure();
+    let ro;
+    if (typeof ResizeObserver !== 'undefined') {
+      ro = new ResizeObserver(measure);
+      ro.observe(boardWrapNode);
+    }
+    window.addEventListener('resize', measure);
+    return () => {
+      if (ro) ro.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  }, [boardWrapNode]);
+
+  // Put the Actions beside the board only when the board is taller than it is
+  // wide AND the space left over next to it is genuinely free.
+  //
+  // The test uses fitSquare, not squareSize, deliberately. fitSquare is the
+  // board's size at default zoom; a board that fits by HEIGHT does not get any
+  // wider when we take 176px off its frame, so the answer stays the same before
+  // and after the switch. A board that fits by WIDTH already fills the wrapper,
+  // so the test fails and it stays below - no flip-flopping either way. Using
+  // the zoomed size instead would kick the buttons downward mid-zoom.
+  const actionsBeside = useMemo(() => {
+    const bw = gameState?.gameType?.board_width || 0;
+    const bh = gameState?.gameType?.board_height || 0;
+    const fit = boardVpHook.fitSquare || 0;
+    if (!bw || !bh || !fit || bh <= bw) return false;
+    if (fit * bh < 200) return false;              // too short to stack buttons against
+    return boardWrapWidth - (fit * bw) - 24 >= 176; // 176 = actions column + gap
+  }, [gameState?.gameType?.board_width, gameState?.gameType?.board_height, boardVpHook.fitSquare, boardWrapWidth]);
+
   const [displayTimes, setDisplayTimes] = useState({}); // Locally interpolated clock times for sub-second display
   const displayTimesRef = useRef({}); // Mirror of displayTimes for use inside effects/handlers without a re-render dep
   const lastServerTickRef = useRef(null); // Timestamp of last server timeUpdate
@@ -6485,11 +6527,15 @@ const LiveGame = () => {
           </div>
         )}
         
-        <div className={styles["header-actions"]}>
-          <Link to="/play/games" className={`${styles.btn} ${styles["btn-secondary"]} ${styles["btn-small"]}`}>
-            Back to Lobby
-          </Link>
-        </div>
+        {/* Back to Lobby is only useful while the game is still short a player;
+            once both have joined it is just a way to lose your place. */}
+        {(gameState?.players?.length || 0) < 2 && (
+          <div className={styles["header-actions"]}>
+            <Link to="/play/games" className={`${styles.btn} ${styles["btn-secondary"]} ${styles["btn-small"]}`}>
+              Back to Lobby
+            </Link>
+          </div>
+        )}
       </div>
 
       {/* Disconnect-forfeit banner — placed at the top so it's always visible */}
@@ -6551,189 +6597,10 @@ const LiveGame = () => {
 
         {/* Middle Row: Clocks | Board | Move History */}
         <div className={styles["layout-row-middle"]}>
-          {/* Clocks Column */}
-          {/* Clocks moved into game-board-wrapper (see renderPlayerClock), so this
-              column now carries only chat and the spectator list. */}
-          <div className={styles["clocks-column"]}>
-            {/* In-Game Chat */}
-            <GameChat gameId={gameId} currentUser={currentUser} gameState={gameState} isPlayer={isPlayer} onUpdatePreference={updateUserPreference} />
-
-            {/* Spectator List - Desktop */}
-            {gameState.allowSpectators && spectators.length > 0 && (
-              <div className={styles["spectator-section"]}>
-                <div 
-                  className={styles["spectator-header"]}
-                  onClick={() => setShowSpectators(!showSpectators)}
-                >
-                  <span className={styles["spectator-title"]}>👁 Spectators ({spectators.length})</span>
-                  <span className={`${styles["spectator-toggle"]} ${showSpectators ? styles.expanded : ''}`}>{`\u25BC`}</span>
-                </div>
-                {showSpectators && (
-                  <div className={styles["spectator-list"]}>
-                    {spectators.map((spec, i) => (
-                      <span key={spec.id || i} className={styles["spectator-name"]}>{spec.username}</span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Your Clock */}
-          </div>
-
-          {/* Board Column */}
-          <div className={styles["board-column"]}>
-            {/* Waiting Banner */}
-            {gameState.status === 'waiting' && (
-              <div className={styles["waiting-banner"]}>
-                <div className={styles["waiting-content"]}>
-                  {isHost ? (
-                    <>
-                      <div className={styles["waiting-spinner-small"]}></div>
-                      <span>Waiting for opponent to join...</span>
-                      {gameState.isAnonymous && gameState.inviteCode && (
-                        <div style={{ margin: '8px 0', textAlign: 'center' }}>
-                          <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '4px' }}>Share this invite code:</div>
-                          <div style={{ fontSize: '1.8rem', fontWeight: 700, letterSpacing: '4px', color: 'var(--accent-primary)', fontFamily: 'monospace' }}>
-                            {gameState.inviteCode}
-                          </div>
-                        </div>
-                      )}
-                      <div className={styles["share-link-inline"]}>
-                        <input 
-                          type="text" 
-                          value={gameUrl} 
-                          readOnly 
-                          onClick={(e) => e.target.select()}
-                        />
-                        <button 
-                          className={`${styles.btn} ${styles["btn-small"]}`}
-                          onClick={() => {
-                            if (navigator.clipboard && navigator.clipboard.writeText) {
-                              navigator.clipboard.writeText(gameUrl).catch(() => {});
-                            } else {
-                              // Fallback for Safari <13.1 and other browsers without Clipboard API
-                              const el = document.createElement('textarea');
-                              el.value = gameUrl;
-                              el.style.position = 'fixed';
-                              el.style.opacity = '0';
-                              document.body.appendChild(el);
-                              el.select();
-                              try { document.execCommand('copy'); } catch (_) {}
-                              document.body.removeChild(el);
-                            }
-                          }}
-                        >
-                          Copy
-                        </button>
-                      </div>
-                      <button 
-                        className={`${styles.btn} ${styles["btn-danger"]} ${styles["btn-small"]}`}
-                        onClick={() => {
-                          cancelGame(parseInt(gameId));
-                          navigate('/play/games');
-                        }}
-                      >
-                        Cancel Game
-                      </button>
-                    </>
-                  ) : canJoin ? (
-                    <>
-                      <span><strong>{gameState.hostUsername || 'A player'}</strong> is hosting this game</span>
-                      <button 
-                        className={`${styles.btn} ${styles["btn-primary"]}`}
-                        onClick={handleJoinGame}
-                      >
-                        {currentUser ? 'Join Game' : 'Join as Guest'}
-                      </button>
-                    </>
-                  ) : !currentUser ? (
-                    <>
-                      <span><strong>{gameState.hostUsername || 'A player'}</strong> is hosting this game</span>
-                      <button
-                        className={`${styles.btn} ${styles["btn-primary"]}`}
-                        onClick={() => navigate('/login', { state: { message: "Please log in to join this game." } })}
-                      >
-                        Login to Join
-                      </button>
-                    </>
-                  ) : (
-                    <span>Waiting for another player to join...</span>
-                  )}
-                </div>
-                <p className={styles["preview-hint"]}>Click on pieces to preview their moves</p>
-              </div>
-            )}
-
-            {/* Draw Offer Notification */}
-            {pendingDrawOffer && (
-              <div className={styles["draw-offer-notification"]}>
-                <span>{pendingDrawOffer.fromUsername} offers a draw</span>
-                <div className={styles["draw-offer-buttons"]}>
-                  <button 
-                    className={`${styles.btn} ${styles["btn-success"]}`}
-                    onClick={handleAcceptDraw}
-                  >
-                    Accept
-                  </button>
-                  <button 
-                    className={`${styles.btn} ${styles["btn-danger"]}`}
-                    onClick={handleDeclineDraw}
-                  >
-                    Decline
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* --board-px lets the clocks and the actions row size themselves to
-                the board rather than the column, so the buttons spread out to the
-                board's width instead of the full column width. */}
-            <div
-              className={styles["game-board-wrapper"]}
-              style={{
-                '--board-px': `${(boardVpHook.squareSize || 0) * (gameState?.gameType?.board_width || 8)}px`,
-                '--coord-gutter': showBoardNotation ? '20px' : '0px',
-              }}
-            >
-              {renderPlayerClock(topPlayer, { isTop: true })}
-              <div style={boardVpHook.frameStyle}>
-              {moveError && (
-                <div className={boardVp.boardToast}>{moveError}</div>
-              )}
-              <div
-                className={`${boardVp.viewport} ${boardVpHook.hideScrollbars ? boardVp.noScrollbars : ''}`}
-                ref={boardVpHook.viewportRef}
-                style={boardVpHook.viewportStyle}
-              >
-                <div style={boardVpHook.contentStyle}>
-                  {renderBoard()}
-                </div>
-              </div>
-              </div>
-              {renderPlayerClock(bottomPlayer, { isTop: false })}
-              {renderActionsPanel()}
-            </div>
-
-            {/* Turn Confirmation - below board. Always visible on all screen sizes for
-                correspondence games; on smaller screens for all other game types. Lives inside
-                board-column so it is naturally centered under the board and capped to
-                the board column's width. */}
-            {pendingMove && (
-              <div
-                className={styles["layout-row-move-confirm"]}
-                style={(gameState?.isCorrespondence && !gameState?.timeControl) ? { display: 'flex' } : undefined}
-              >
-                <span className={styles["move-confirm-label"]}>Confirm your move?</span>
-                <div className={styles["move-confirm-buttons"]}>
-                  <button className={`${styles.btn} ${styles["btn-confirm"]}`} onClick={confirmPendingMove}>Confirm</button>
-                  <button className={`${styles.btn} ${styles["btn-cancel"]}`} onClick={cancelPendingMove}>Cancel</button>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Move History Column */}
+          {/* Sidebar: move history, options, chat and spectators. This used to
+              be a third column on the right, with the clocks on the left; the
+              clocks now sit with the board, so this takes the (narrower) left
+              column and the board gets everything to its right. */}
           <div className={styles["move-history-column"]}>
             <div className={styles["move-history"]}>
               <h3>Move History</h3>
@@ -6801,6 +6668,9 @@ const LiveGame = () => {
               )}
               </>)}
             </div>
+
+            {/* In-Game Chat */}
+            <GameChat gameId={gameId} currentUser={currentUser} gameState={gameState} isPlayer={isPlayer} onUpdatePreference={updateUserPreference} />
 
             {/* Game Options */}
             <div className={styles["game-options"]}>
@@ -6951,10 +6821,187 @@ const LiveGame = () => {
             )}
 
             {/* Game Controls */}
+
+            {/* Spectator List - Desktop */}
+            {gameState.allowSpectators && spectators.length > 0 && (
+              <div className={styles["spectator-section"]}>
+                <div 
+                  className={styles["spectator-header"]}
+                  onClick={() => setShowSpectators(!showSpectators)}
+                >
+                  <span className={styles["spectator-title"]}>👁 Spectators ({spectators.length})</span>
+                  <span className={`${styles["spectator-toggle"]} ${showSpectators ? styles.expanded : ''}`}>{`\u25BC`}</span>
+                </div>
+                {showSpectators && (
+                  <div className={styles["spectator-list"]}>
+                    {spectators.map((spec, i) => (
+                      <span key={spec.id || i} className={styles["spectator-name"]}>{spec.username}</span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
           </div>
 
+          {/* Board Column */}
+          <div className={styles["board-column"]}>
+            {/* Waiting Banner */}
+            {gameState.status === 'waiting' && (
+              <div className={styles["waiting-banner"]}>
+                <div className={styles["waiting-content"]}>
+                  {isHost ? (
+                    <>
+                      <div className={styles["waiting-spinner-small"]}></div>
+                      <span>Waiting for opponent to join...</span>
+                      {gameState.isAnonymous && gameState.inviteCode && (
+                        <div style={{ margin: '8px 0', textAlign: 'center' }}>
+                          <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '4px' }}>Share this invite code:</div>
+                          <div style={{ fontSize: '1.8rem', fontWeight: 700, letterSpacing: '4px', color: 'var(--accent-primary)', fontFamily: 'monospace' }}>
+                            {gameState.inviteCode}
+                          </div>
+                        </div>
+                      )}
+                      <div className={styles["share-link-inline"]}>
+                        <input 
+                          type="text" 
+                          value={gameUrl} 
+                          readOnly 
+                          onClick={(e) => e.target.select()}
+                        />
+                        <button 
+                          className={`${styles.btn} ${styles["btn-small"]}`}
+                          onClick={() => {
+                            if (navigator.clipboard && navigator.clipboard.writeText) {
+                              navigator.clipboard.writeText(gameUrl).catch(() => {});
+                            } else {
+                              // Fallback for Safari <13.1 and other browsers without Clipboard API
+                              const el = document.createElement('textarea');
+                              el.value = gameUrl;
+                              el.style.position = 'fixed';
+                              el.style.opacity = '0';
+                              document.body.appendChild(el);
+                              el.select();
+                              try { document.execCommand('copy'); } catch (_) {}
+                              document.body.removeChild(el);
+                            }
+                          }}
+                        >
+                          Copy
+                        </button>
+                      </div>
+                      <button 
+                        className={`${styles.btn} ${styles["btn-danger"]} ${styles["btn-small"]}`}
+                        onClick={() => {
+                          cancelGame(parseInt(gameId));
+                          navigate('/play/games');
+                        }}
+                      >
+                        Cancel Game
+                      </button>
+                    </>
+                  ) : canJoin ? (
+                    <>
+                      <span><strong>{gameState.hostUsername || 'A player'}</strong> is hosting this game</span>
+                      <button 
+                        className={`${styles.btn} ${styles["btn-primary"]}`}
+                        onClick={handleJoinGame}
+                      >
+                        {currentUser ? 'Join Game' : 'Join as Guest'}
+                      </button>
+                    </>
+                  ) : !currentUser ? (
+                    <>
+                      <span><strong>{gameState.hostUsername || 'A player'}</strong> is hosting this game</span>
+                      <button
+                        className={`${styles.btn} ${styles["btn-primary"]}`}
+                        onClick={() => navigate('/login', { state: { message: "Please log in to join this game." } })}
+                      >
+                        Login to Join
+                      </button>
+                    </>
+                  ) : (
+                    <span>Waiting for another player to join...</span>
+                  )}
+                </div>
+                <p className={styles["preview-hint"]}>Click on pieces to preview their moves</p>
+              </div>
+            )}
+
+            {/* Draw Offer Notification */}
+            {pendingDrawOffer && (
+              <div className={styles["draw-offer-notification"]}>
+                <span>{pendingDrawOffer.fromUsername} offers a draw</span>
+                <div className={styles["draw-offer-buttons"]}>
+                  <button 
+                    className={`${styles.btn} ${styles["btn-success"]}`}
+                    onClick={handleAcceptDraw}
+                  >
+                    Accept
+                  </button>
+                  <button 
+                    className={`${styles.btn} ${styles["btn-danger"]}`}
+                    onClick={handleDeclineDraw}
+                  >
+                    Decline
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* --board-px lets the clocks and the actions row size themselves to
+                the board rather than the column, so the buttons spread out to the
+                board's width instead of the full column width. */}
+            <div
+              ref={boardWrapRef}
+              className={`${styles["game-board-wrapper"]}${actionsBeside ? ` ${styles["actions-beside"]}` : ''}`}
+              style={{
+                '--board-px': `${(boardVpHook.squareSize || 0) * (gameState?.gameType?.board_width || 8)}px`,
+                '--coord-gutter': showBoardNotation ? '20px' : '0px',
+              }}
+            >
+              {actionsBeside && renderActionsPanel()}
+              <div className={styles["board-stack"]}>
+              {renderPlayerClock(topPlayer, { isTop: true })}
+              <div style={boardVpHook.frameStyle}>
+              {moveError && (
+                <div className={boardVp.boardToast}>{moveError}</div>
+              )}
+              <div
+                className={`${boardVp.viewport} ${boardVpHook.hideScrollbars ? boardVp.noScrollbars : ''}`}
+                ref={boardVpHook.viewportRef}
+                style={boardVpHook.viewportStyle}
+              >
+                <div style={boardVpHook.contentStyle}>
+                  {renderBoard()}
+                </div>
+              </div>
+              </div>
+              {renderPlayerClock(bottomPlayer, { isTop: false })}
+              {!actionsBeside && renderActionsPanel()}
+              </div>
+            </div>
+
+            {/* Turn Confirmation - below board. Always visible on all screen sizes for
+                correspondence games; on smaller screens for all other game types. Lives inside
+                board-column so it is naturally centered under the board and capped to
+                the board column's width. */}
+            {pendingMove && (
+              <div
+                className={styles["layout-row-move-confirm"]}
+                style={(gameState?.isCorrespondence && !gameState?.timeControl) ? { display: 'flex' } : undefined}
+              >
+                <span className={styles["move-confirm-label"]}>Confirm your move?</span>
+                <div className={styles["move-confirm-buttons"]}>
+                  <button className={`${styles.btn} ${styles["btn-confirm"]}`} onClick={confirmPendingMove}>Confirm</button>
+                  <button className={`${styles.btn} ${styles["btn-cancel"]}`} onClick={cancelPendingMove}>Cancel</button>
+                </div>
+              </div>
+            )}
+          </div>
+
+
           {/* Running Piece Count - moved out of grid, positioned after layout-row-middle */}
-        </div>
       </div>
 
       {/* Veto Row — below the board/clock grid so it pushes the rows below it down
