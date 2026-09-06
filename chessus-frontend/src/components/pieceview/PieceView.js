@@ -1105,7 +1105,9 @@ const PieceView = () => {
                 Can move up to <span className={styles["step-value"]}>{Math.abs(pieceToDisplay.step_by_step_movement_value || 0)}</span> squares,
                 {(pieceToDisplay.step_by_step_movement_value || 0) < 0
                   ? ' counting only horizontal and vertical steps (Manhattan distance — diagonals excluded)'
-                  : ' in any direction including diagonals (Chebyshev distance)'}, changing direction within a single move
+                  : (pieceToDisplay.step_by_step_movement_no_orthogonal
+                    ? ' counting only diagonal steps (orthogonal steps excluded), which keeps it on squares of one colour'
+                    : ' in any direction including diagonals (Chebyshev distance)')}, changing direction within a single move
               </div>
             </div>
           )}

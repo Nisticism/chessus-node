@@ -92,6 +92,9 @@ const PieceWizard = ({ editPieceId = null }) => {
     
     step_by_step_movement_style: false,
     step_by_step_movement_value: null,
+    step_by_step_movement_no_orthogonal: false,
+    step_by_step_capture_no_orthogonal: false,
+    step_by_step_attack_no_orthogonal: false,
     
     can_hop_over_allies: false,
     can_hop_over_enemies: false,
@@ -348,6 +351,7 @@ const PieceWizard = ({ editPieceId = null }) => {
             
             step_by_step_movement_style: !!piece.step_by_step_movement_style,
             step_by_step_movement_value: piece.step_by_step_movement_value,
+            step_by_step_movement_no_orthogonal: !!piece.step_by_step_movement_no_orthogonal,
             
             can_hop_over_allies: !!piece.can_hop_over_allies,
             can_hop_over_enemies: !!piece.can_hop_over_enemies,
@@ -407,6 +411,7 @@ const PieceWizard = ({ editPieceId = null }) => {
             repeating_ratio_capture: !!piece.repeating_ratio_capture,
             max_ratio_capture_iterations: piece.max_ratio_capture_iterations ?? null,
             step_by_step_capture: piece.step_by_step_capture,
+            step_by_step_capture_no_orthogonal: !!piece.step_by_step_capture_no_orthogonal,
             
             // Ranged attack ranges
             up_left_attack_range: piece.up_left_attack_range || 0,
@@ -449,6 +454,7 @@ const PieceWizard = ({ editPieceId = null }) => {
             min_ratio_ranged_attack_iterations: piece.min_ratio_ranged_attack_iterations,
             
             step_by_step_attack_style: !!piece.step_by_step_attack_style,
+            step_by_step_attack_no_orthogonal: !!piece.step_by_step_attack_no_orthogonal,
             step_by_step_attack_value: piece.step_by_step_attack_value,
             step_by_step_attack_range: (piece.step_by_step_attack_value != null && piece.step_by_step_attack_value !== 0)
               ? (piece.step_by_step_attack_style ? -Math.abs(piece.step_by_step_attack_value) : piece.step_by_step_attack_value)

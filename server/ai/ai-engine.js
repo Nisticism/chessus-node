@@ -15,6 +15,22 @@ function getGameSocket() {
   return _gameSocket;
 }
 
+/*
+ * Step-by-step geometry comes from the move engine rather than being reimplemented
+ * here. The bot has its own faster move generator, but it has to agree with the
+ * real rules or it plays moves the server then rejects - which is exactly what a
+ * second copy of "which squares count as a step" would eventually cause.
+ */
+const stepGeometry = () => {
+  const gs = getGameSocket();
+  return {
+    dirs: gs.stepDirections,
+    inRange: gs.stepInRange,
+    moveNoOrthogonal: gs.stepMoveNoOrthogonal,
+    captureNoOrthogonal: gs.stepCaptureNoOrthogonal,
+  };
+};
+
 // =============================================
 // Constants
 // =============================================
@@ -1030,7 +1046,8 @@ function getPieceValue(piece, boardSize) {
     const stepVal = Number(piece.step_by_step_movement_value ?? piece.step_movement_value ?? 0);
     if (!isNaN(stepVal) && stepVal !== 0) {
       const maxS   = Math.abs(stepVal);
-      const mDirs  = stepVal < 0 ? [[1,0],[-1,0],[0,1],[0,-1]] : [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
+      const geo    = stepGeometry();
+      const mDirs  = geo.dirs(stepVal < 0, geo.moveNoOrthogonal(piece));
       const vis    = new Set([`${cx},${cy}`]);
       const q      = [{ x: cx, y: cy, steps: 0 }];
       while (q.length) {
@@ -1596,10 +1613,10 @@ function getAttackersTo(state, tx, ty, player, bs) {
         if (!isNaN(stepVal) && stepVal !== 0) {
           const maxS = Math.abs(stepVal);
           const ddxS = tx - piece.x, ddyS = ty - piece.y;
-          const dist = stepVal < 0
-            ? Math.abs(ddxS) + Math.abs(ddyS)
-            : Math.max(Math.abs(ddxS), Math.abs(ddyS));
-          if (dist > 0 && dist <= maxS) canAttack = true;
+          const geo = stepGeometry();
+          const hasExplicitCapture = piece.step_capture_value != null && piece.step_capture_value !== 0;
+          if (geo.inRange(ddxS, ddyS, maxS, stepVal < 0,
+            geo.captureNoOrthogonal(piece, hasExplicitCapture))) canAttack = true;
         }
       }
     }

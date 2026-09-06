@@ -1156,7 +1156,10 @@ async function enrichPlaceablePieces(otherGameData) {
         ratio_capture_2: fullData.ratio_two_capture,
         step_movement_style: fullData.step_by_step_movement_style,
         step_movement_value: fullData.step_by_step_movement_value,
+        step_movement_no_orthogonal: fullData.step_by_step_movement_no_orthogonal,
         step_capture_value: fullData.step_by_step_capture,
+        step_capture_no_orthogonal: fullData.step_by_step_capture_no_orthogonal,
+        step_by_step_attack_no_orthogonal: fullData.step_by_step_attack_no_orthogonal,
         step_by_step_attack_range: (fullData.step_by_step_attack_value != null && fullData.step_by_step_attack_value !== 0)
           ? (fullData.step_by_step_attack_style ? -Math.abs(fullData.step_by_step_attack_value) : fullData.step_by_step_attack_value)
           : null,
@@ -4204,6 +4207,7 @@ function initializeSocket(server) {
               max_ratio_capture_iterations: fullPieceData.max_ratio_capture_iterations,
               step_movement_style: fullPieceData.step_by_step_movement_style,
               step_movement_value: fullPieceData.step_by_step_movement_value,
+              step_movement_no_orthogonal: fullPieceData.step_by_step_movement_no_orthogonal,
               can_hop_over_allies: fullPieceData.can_hop_over_allies,
               can_hop_over_enemies: fullPieceData.can_hop_over_enemies,
               hop_stop_at_occupied: fullPieceData.hop_stop_at_occupied,
@@ -4240,6 +4244,7 @@ function initializeSocket(server) {
               ratio_capture_1: fullPieceData.ratio_one_capture,
               ratio_capture_2: fullPieceData.ratio_two_capture,
               step_capture_value: fullPieceData.step_by_step_capture,
+              step_capture_no_orthogonal: fullPieceData.step_by_step_capture_no_orthogonal,
               // Special attributes from pieces table
               piece_value: fullPieceData.piece_value,
               is_royal: fullPieceData.is_royal,
@@ -4268,6 +4273,7 @@ function initializeSocket(server) {
               down_right_attack_range_exact: fullPieceData.down_right_attack_range_exact,
               ratio_one_attack_range: fullPieceData.ratio_one_attack_range,
               ratio_two_attack_range: fullPieceData.ratio_two_attack_range,
+              step_by_step_attack_no_orthogonal: fullPieceData.step_by_step_attack_no_orthogonal,
               step_by_step_attack_range: (fullPieceData.step_by_step_attack_value != null && fullPieceData.step_by_step_attack_value !== 0) ? (fullPieceData.step_by_step_attack_style ? -Math.abs(fullPieceData.step_by_step_attack_value) : fullPieceData.step_by_step_attack_value) : null,
               capture_actions_per_turn: fullPieceData.capture_actions_per_turn,
               ranged_capture_actions_per_turn: fullPieceData.ranged_capture_actions_per_turn,
@@ -4852,6 +4858,7 @@ function initializeSocket(server) {
               max_ratio_capture_iterations: fullPieceData.max_ratio_capture_iterations,
               step_movement_style: fullPieceData.step_by_step_movement_style,
               step_movement_value: fullPieceData.step_by_step_movement_value,
+              step_movement_no_orthogonal: fullPieceData.step_by_step_movement_no_orthogonal,
               can_hop_over_allies: fullPieceData.can_hop_over_allies,
               can_hop_over_enemies: fullPieceData.can_hop_over_enemies,
               hop_stop_at_occupied: fullPieceData.hop_stop_at_occupied,
@@ -4887,6 +4894,7 @@ function initializeSocket(server) {
               ratio_capture_1: fullPieceData.ratio_one_capture,
               ratio_capture_2: fullPieceData.ratio_two_capture,
               step_capture_value: fullPieceData.step_by_step_capture,
+              step_capture_no_orthogonal: fullPieceData.step_by_step_capture_no_orthogonal,
               piece_value: fullPieceData.piece_value,
               is_royal: fullPieceData.is_royal,
               can_promote: fullPieceData.can_promote,
@@ -4913,6 +4921,7 @@ function initializeSocket(server) {
               down_right_attack_range_exact: fullPieceData.down_right_attack_range_exact,
               ratio_one_attack_range: fullPieceData.ratio_one_attack_range,
               ratio_two_attack_range: fullPieceData.ratio_two_attack_range,
+              step_by_step_attack_no_orthogonal: fullPieceData.step_by_step_attack_no_orthogonal,
               step_by_step_attack_range: (fullPieceData.step_by_step_attack_value != null && fullPieceData.step_by_step_attack_value !== 0) ? (fullPieceData.step_by_step_attack_style ? -Math.abs(fullPieceData.step_by_step_attack_value) : fullPieceData.step_by_step_attack_value) : null,
               capture_actions_per_turn: fullPieceData.capture_actions_per_turn,
               ranged_capture_actions_per_turn: fullPieceData.ranged_capture_actions_per_turn,
@@ -5802,6 +5811,7 @@ function initializeSocket(server) {
                   ratio_movement_2: fullPieceData.ratio_two_movement,
                   step_movement_style: fullPieceData.step_by_step_movement_style,
                   step_movement_value: fullPieceData.step_by_step_movement_value,
+                  step_movement_no_orthogonal: fullPieceData.step_by_step_movement_no_orthogonal,
                   can_hop_over_allies: fullPieceData.can_hop_over_allies,
                   can_hop_over_enemies: fullPieceData.can_hop_over_enemies,
                   hop_stop_at_occupied: fullPieceData.hop_stop_at_occupied,
@@ -5829,6 +5839,7 @@ function initializeSocket(server) {
                   ratio_capture_1: fullPieceData.ratio_one_capture,
                   ratio_capture_2: fullPieceData.ratio_two_capture,
                   step_capture_value: fullPieceData.step_by_step_capture,
+                  step_capture_no_orthogonal: fullPieceData.step_by_step_capture_no_orthogonal,
                   // Special attributes from pieces table
                   piece_value: fullPieceData.piece_value,
                   is_royal: fullPieceData.is_royal,
@@ -5857,6 +5868,7 @@ function initializeSocket(server) {
                   down_right_attack_range_exact: fullPieceData.down_right_attack_range_exact,
                   ratio_one_attack_range: fullPieceData.ratio_one_attack_range,
                   ratio_two_attack_range: fullPieceData.ratio_two_attack_range,
+                  step_by_step_attack_no_orthogonal: fullPieceData.step_by_step_attack_no_orthogonal,
                   step_by_step_attack_range: (fullPieceData.step_by_step_attack_value != null && fullPieceData.step_by_step_attack_value !== 0) ? (fullPieceData.step_by_step_attack_style ? -Math.abs(fullPieceData.step_by_step_attack_value) : fullPieceData.step_by_step_attack_value) : null,
                   capture_actions_per_turn: fullPieceData.capture_actions_per_turn,
                   ranged_capture_actions_per_turn: fullPieceData.ranged_capture_actions_per_turn,
@@ -10510,6 +10522,7 @@ function initializeSocket(server) {
                     ratio_movement_2: fullPieceData.ratio_two_movement,
                     step_movement_style: fullPieceData.step_by_step_movement_style,
                     step_movement_value: fullPieceData.step_by_step_movement_value,
+                    step_movement_no_orthogonal: fullPieceData.step_by_step_movement_no_orthogonal,
                     can_hop_over_allies: fullPieceData.can_hop_over_allies,
                     can_hop_over_enemies: fullPieceData.can_hop_over_enemies,
                     hop_stop_at_occupied: fullPieceData.hop_stop_at_occupied,
@@ -10546,6 +10559,7 @@ function initializeSocket(server) {
                     ratio_capture_1: fullPieceData.ratio_one_capture,
                     ratio_capture_2: fullPieceData.ratio_two_capture,
                     step_capture_value: fullPieceData.step_by_step_capture,
+                    step_capture_no_orthogonal: fullPieceData.step_by_step_capture_no_orthogonal,
                     // Special attributes from pieces table
                     piece_value: fullPieceData.piece_value,
                     is_royal: fullPieceData.is_royal,
@@ -10574,6 +10588,7 @@ function initializeSocket(server) {
                     down_right_attack_range_exact: fullPieceData.down_right_attack_range_exact,
                     ratio_one_attack_range: fullPieceData.ratio_one_attack_range,
                     ratio_two_attack_range: fullPieceData.ratio_two_attack_range,
+                    step_by_step_attack_no_orthogonal: fullPieceData.step_by_step_attack_no_orthogonal,
                     step_by_step_attack_range: (fullPieceData.step_by_step_attack_value != null && fullPieceData.step_by_step_attack_value !== 0) ? (fullPieceData.step_by_step_attack_style ? -Math.abs(fullPieceData.step_by_step_attack_value) : fullPieceData.step_by_step_attack_value) : null,
                     capture_actions_per_turn: fullPieceData.capture_actions_per_turn,
                     ranged_capture_actions_per_turn: fullPieceData.ranged_capture_actions_per_turn,
@@ -11966,6 +11981,69 @@ async function getMyBotGames(userId) {
  * @param {number} bh     - Board height
  * @returns {number}      - User-facing piece value (e.g. 5.1 for a rook on 8×8)
  */
+/*
+ * Step-by-step geometry, in one place.
+ *
+ * A step piece walks one square at a time, and which squares count as a step is
+ * a three-way choice:
+ *   - all eight neighbours (the default)
+ *   - orthogonal only, historically encoded as a NEGATIVE step value
+ *   - diagonal only, the *_no_orthogonal flag
+ *
+ * The last two are mutually exclusive by construction, and have to be: a piece
+ * that excluded both would have no legal first step at all - each square has
+ * four orthogonal and four diagonal neighbours and nothing else. The wizard
+ * offers them as a pair of tick boxes that turn each other off.
+ *
+ * The sign keeps its old meaning so existing pieces are untouched; there is no
+ * second sign to spend, which is why the new one is a column of its own.
+ */
+const STEP_DIRS_ALL = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
+const STEP_DIRS_ORTHOGONAL = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+const STEP_DIRS_DIAGONAL = [[1, 1], [1, -1], [-1, 1], [-1, -1]];
+
+function stepDirections(noDiagonal, noOrthogonal) {
+  if (noDiagonal) return STEP_DIRS_ORTHOGONAL;
+  if (noOrthogonal) return STEP_DIRS_DIAGONAL;
+  return STEP_DIRS_ALL;
+}
+
+/**
+ * Could `maxSteps` steps cover (dx, dy) on an EMPTY board? A cheap gate in front
+ * of the BFS, never a substitute for it.
+ *
+ *   orthogonal only -> Manhattan distance
+ *   diagonal only   -> Chebyshev distance AND dx+dy even: a diagonal step moves
+ *                      x and y together, so half the board is unreachable at any
+ *                      range, however many steps the piece has
+ *   all directions  -> Chebyshev distance
+ */
+function stepInRange(dx, dy, maxSteps, noDiagonal, noOrthogonal) {
+  const adx = Math.abs(dx);
+  const ady = Math.abs(dy);
+  if (adx === 0 && ady === 0) return false;
+  if (noDiagonal) return adx + ady <= maxSteps;
+  if (noOrthogonal) return ((adx + ady) % 2 === 0) && Math.max(adx, ady) <= maxSteps;
+  return Math.max(adx, ady) <= maxSteps;
+}
+
+/** True when this piece's step MOVEMENT is diagonal-only. */
+const stepMoveNoOrthogonal = (piece) => !!(
+  piece?.step_by_step_movement_no_orthogonal ?? piece?.step_movement_no_orthogonal
+);
+
+/**
+ * True when this piece's step CAPTURE is diagonal-only. Capture falls back to
+ * the movement setting exactly where its range does - a piece with no explicit
+ * step capture range captures the way it moves.
+ */
+const stepCaptureNoOrthogonal = (piece, hasExplicitCapture) => (hasExplicitCapture
+  ? !!(piece?.step_by_step_capture_no_orthogonal ?? piece?.step_capture_no_orthogonal)
+  : stepMoveNoOrthogonal(piece));
+
+/** True when this piece's step RANGED ATTACK is diagonal-only. */
+const stepAttackNoOrthogonal = (piece) => !!(piece?.step_by_step_attack_no_orthogonal);
+
 function computePieceValue(piece, bw, bh) {
   if (!piece) return 0;
   if (piece.is_neutral || piece.player_id === 0) return 0;
@@ -12092,9 +12170,7 @@ function computePieceValue(piece, bw, bh) {
     if (sar != null && sar !== 0) {
       const sarSteps = Math.abs(sar);
       const noDiagSAR = sar < 0;
-      const sarDirs   = noDiagSAR
-        ? [[1,0],[-1,0],[0,1],[0,-1]]
-        : [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
+      const sarDirs   = stepDirections(noDiagSAR, stepAttackNoOrthogonal(piece));
       const sarVisited = new Set([`${cx},${cy}`]);
       const sarQueue   = [{ x: cx, y: cy, steps: 0 }];
       while (sarQueue.length) {
@@ -12183,9 +12259,7 @@ function computePieceValue(piece, bw, bh) {
     if (!isNaN(stepVal) && stepVal !== 0) {
       const maxMoveSteps = Math.abs(stepVal);
       const noDiagMove   = stepVal < 0;
-      const moveDirs8    = noDiagMove
-        ? [[1,0],[-1,0],[0,1],[0,-1]]
-        : [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
+      const moveDirs8    = stepDirections(noDiagMove, stepMoveNoOrthogonal(piece));
 
       // BFS: collect all squares reachable within maxMoveSteps on an empty board
       const stepVisited = new Set([`${cx},${cy}`]);
@@ -12211,9 +12285,7 @@ function computePieceValue(piece, bw, bh) {
       const hasStepCap   = capValRaw != null && capValRaw !== 0 && !isNaN(capVal);
       const capSteps     = hasStepCap ? Math.abs(capVal) : 0;
       const noDiagCap    = hasStepCap ? capVal < 0 : noDiagMove;
-      const capDirs8     = noDiagCap
-        ? [[1,0],[-1,0],[0,1],[0,-1]]
-        : [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
+      const capDirs8     = stepDirections(noDiagCap, stepCaptureNoOrthogonal(piece, hasStepCap));
 
       if (hasStepCap) {
         // Re-BFS: from every move position, mark adjacent squares as attackable
@@ -14341,6 +14413,7 @@ async function applyPromotionToPiece(gameState, pieceId, promoteToPieceId, promo
     max_ratio_capture_iterations: fullPieceData.max_ratio_capture_iterations,
     step_movement_style: fullPieceData.step_by_step_movement_style,
     step_movement_value: fullPieceData.step_by_step_movement_value,
+    step_movement_no_orthogonal: fullPieceData.step_by_step_movement_no_orthogonal,
     can_hop_over_allies: fullPieceData.can_hop_over_allies,
     can_hop_over_enemies: fullPieceData.can_hop_over_enemies,
     hop_stop_at_occupied: fullPieceData.hop_stop_at_occupied,
@@ -14376,6 +14449,7 @@ async function applyPromotionToPiece(gameState, pieceId, promoteToPieceId, promo
     ratio_capture_1: fullPieceData.ratio_one_capture,
     ratio_capture_2: fullPieceData.ratio_two_capture,
     step_capture_value: fullPieceData.step_by_step_capture,
+    step_capture_no_orthogonal: fullPieceData.step_by_step_capture_no_orthogonal,
     piece_value: fullPieceData.piece_value,
     is_royal: fullPieceData.is_royal,
     can_promote: fullPieceData.can_promote,
@@ -14403,6 +14477,7 @@ async function applyPromotionToPiece(gameState, pieceId, promoteToPieceId, promo
     down_right_attack_range_exact: fullPieceData.down_right_attack_range_exact,
     ratio_one_attack_range: fullPieceData.ratio_one_attack_range,
     ratio_two_attack_range: fullPieceData.ratio_two_attack_range,
+    step_by_step_attack_no_orthogonal: fullPieceData.step_by_step_attack_no_orthogonal,
     step_by_step_attack_range: (fullPieceData.step_by_step_attack_value != null && fullPieceData.step_by_step_attack_value !== 0) ? (fullPieceData.step_by_step_attack_style ? -Math.abs(fullPieceData.step_by_step_attack_value) : fullPieceData.step_by_step_attack_value) : null,
     capture_actions_per_turn: fullPieceData.capture_actions_per_turn,
     ranged_capture_actions_per_turn: fullPieceData.ranged_capture_actions_per_turn,
@@ -14779,6 +14854,7 @@ async function getPromotionOptions(gameState, promotingPiece) {
               ratio_movement_1: pieceData.ratio_one_movement,
               ratio_movement_2: pieceData.ratio_two_movement,
               step_movement_value: pieceData.step_by_step_movement_value,
+              step_movement_no_orthogonal: pieceData.step_by_step_movement_no_orthogonal,
               // ends_game_on_checkmate / ends_game_on_capture live on game_type_pieces,
               // not on the pieces table — off-board promotion targets default to false.
               ends_game_on_checkmate: false,
@@ -15075,12 +15151,11 @@ function canReachStepByStepRanged(piece, targetX, targetY, allPieces, boardWidth
   if (!stepAttackValue) return false;
   const maxSteps = Math.abs(stepAttackValue);
   const noDiagonal = stepAttackValue < 0;
+  const noOrthogonal = stepAttackNoOrthogonal(piece);
   const canFireOverAllies = piece.can_fire_over_allies === 1 || piece.can_fire_over_allies === true;
   const canFireOverEnemies = piece.can_fire_over_enemies === 1 || piece.can_fire_over_enemies === true;
   const pieceTeam = piece.team || piece.player_id;
-  const directions = noDiagonal
-    ? [[1, 0], [-1, 0], [0, 1], [0, -1]]
-    : [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
+  const directions = stepDirections(noDiagonal, noOrthogonal);
   const queue = [{ x: piece.x, y: piece.y, steps: 0 }];
   const visited = new Set([`${piece.x},${piece.y}`]);
   while (queue.length > 0) {
@@ -15223,11 +15298,8 @@ function canRangedAttackTo(fromRow, fromCol, toRow, toCol, pieceData, playerPosi
   const stepAttackValue = pieceData.step_by_step_attack_range;
   if (stepAttackValue) {
     const maxSteps = Math.abs(stepAttackValue);
-    const noDiagonal = stepAttackValue < 0;
-    if (noDiagonal) {
-      if (Math.abs(rowDiff) + Math.abs(colDiff) <= maxSteps) return true;
-    } else {
-      if (Math.max(Math.abs(rowDiff), Math.abs(colDiff)) <= maxSteps) return true;
+    if (stepInRange(colDiff, rowDiff, maxSteps, stepAttackValue < 0, stepAttackNoOrthogonal(pieceData))) {
+      return true;
     }
   }
 
@@ -15802,12 +15874,11 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces, gameType) {
   if (!Number.isNaN(stepCaptureValue) && stepCaptureValue !== 0) {
     const maxSteps = Math.abs(stepCaptureValue);
     const noDiagonal = stepCaptureValue < 0;
-
-    const manhattanDistance = absDx + absDy;
-    const chebyshevDistance = Math.max(absDx, absDy);
-    const inRange = noDiagonal
-      ? (manhattanDistance > 0 && manhattanDistance <= maxSteps)
-      : (chebyshevDistance > 0 && chebyshevDistance <= maxSteps);
+    // An explicit step capture range brings its own exclusion; without one the
+    // piece captures the way it moves, so it inherits the movement setting.
+    const hasExplicitStepCapture = piece.step_capture_value != null && piece.step_capture_value !== 0;
+    const noOrthogonal = stepCaptureNoOrthogonal(piece, hasExplicitStepCapture);
+    const inRange = stepInRange(dx, dy, maxSteps, noDiagonal, noOrthogonal);
 
     if (inRange) {
       // Use BFS traversal to check if target is reachable
@@ -15828,9 +15899,7 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces, gameType) {
 
       const queue = [{ x: piece.x, y: piece.y, steps: 0 }];
       const visited = new Set([`${piece.x},${piece.y}`]);
-      const directions = noDiagonal
-        ? [[1, 0], [-1, 0], [0, 1], [0, -1]]
-        : [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
+      const directions = stepDirections(noDiagonal, noOrthogonal);
 
       while (queue.length > 0) {
         const current = queue.shift();
@@ -16091,7 +16160,7 @@ function canPieceMoveToSquare(piece, targetX, targetY, allPieces, gameType = nul
     return false;
   };
 
-  const canReachStepByStep = (fromX, fromY, toX, toY, maxSteps, noDiagonal) => {
+  const canReachStepByStep = (fromX, fromY, toX, toY, maxSteps, noDiagonal, noOrthogonal = false) => {
     if (maxSteps <= 0) return false;
 
     const occupied = new Set();
@@ -16121,9 +16190,7 @@ function canPieceMoveToSquare(piece, targetX, targetY, allPieces, gameType = nul
 
     const queue = [{ x: fromX, y: fromY, steps: 0 }];
     const visited = new Set([`${fromX},${fromY}`]);
-    const directions = noDiagonal
-      ? [[1, 0], [-1, 0], [0, 1], [0, -1]]
-      : [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
+    const directions = stepDirections(noDiagonal, noOrthogonal);
 
     while (queue.length > 0) {
       const current = queue.shift();
@@ -16351,14 +16418,10 @@ function canPieceMoveToSquare(piece, targetX, targetY, allPieces, gameType = nul
   if (!Number.isNaN(stepValue) && stepValue !== 0) {
     const maxSteps = Math.abs(stepValue);
     const noDiagonal = stepValue < 0;
+    const noOrthogonal = stepMoveNoOrthogonal(piece);
+    const inRange = stepInRange(dx, dy, maxSteps, noDiagonal, noOrthogonal);
 
-    const manhattanDistance = Math.abs(dx) + Math.abs(dy);
-    const chebyshevDistance = Math.max(Math.abs(dx), Math.abs(dy));
-    const inRange = noDiagonal
-      ? (manhattanDistance > 0 && manhattanDistance <= maxSteps)
-      : (chebyshevDistance > 0 && chebyshevDistance <= maxSteps);
-
-    if (inRange && canReachStepByStep(piece.x, piece.y, targetX, targetY, maxSteps, noDiagonal)) {
+    if (inRange && canReachStepByStep(piece.x, piece.y, targetX, targetY, maxSteps, noDiagonal, noOrthogonal)) {
       return true;
     }
   }
@@ -17695,9 +17758,7 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
     if (!Number.isNaN(stepVal) && stepVal !== 0) {
       const maxMoveSteps = Math.abs(stepVal);
       const noDiagMove = stepVal < 0;
-      const moveDirs = noDiagMove
-        ? [[1,0],[-1,0],[0,1],[0,-1]]
-        : [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
+      const moveDirs = stepDirections(noDiagMove, stepMoveNoOrthogonal(piece));
 
       // Separate capture range (step_capture_value).
       // No fallback to movement range — piece must have an explicit step_capture_value
@@ -17707,9 +17768,7 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
       const hasExplicitStepCapture = capValRaw != null && capValRaw !== 0 && !Number.isNaN(capVal);
       const maxCapSteps = hasExplicitStepCapture ? Math.abs(capVal) : 0;
       const noDiagCap = hasExplicitStepCapture ? capVal < 0 : noDiagMove;
-      const capDirs = noDiagCap
-        ? [[1,0],[-1,0],[0,1],[0,-1]]
-        : [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
+      const capDirs = stepDirections(noDiagCap, stepCaptureNoOrthogonal(piece, hasExplicitStepCapture));
 
       // Track already-added squares to avoid duplicates
       const addedMoves = new Set(moves.map(m => `${m.x},${m.y}`));
@@ -21801,6 +21860,12 @@ module.exports = {
   saveGameMoves,
   // Pure game logic functions (used by AI engine)
   getPossibleMovesForPiece,
+  // Step-by-step geometry, so the AI's own move generator uses the same rule
+  // rather than a second copy that can drift.
+  stepDirections,
+  stepInRange,
+  stepMoveNoOrthogonal,
+  stepCaptureNoOrthogonal,
   getAllLegalMovesForPlayer,
   checkForCheck,
   isCheckmate,

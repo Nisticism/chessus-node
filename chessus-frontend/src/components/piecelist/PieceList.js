@@ -184,7 +184,10 @@ const PieceList = () => {
     if (r1 > 0 && r2 > 0) parts.push(`L-shape ${r1}+${r2}`);
     // Step
     const stepVal = piece.step_by_step_movement_value || piece.step_movement_value || 0;
-    if (stepVal) parts.push(`Step ${descRange(stepVal)}`);
+    if (stepVal) {
+      const diagonalOnly = piece.step_by_step_movement_no_orthogonal ?? piece.step_movement_no_orthogonal;
+      parts.push(`Step ${descRange(stepVal)}${diagonalOnly ? ' (diagonal)' : ''}`);
+    }
     return parts.length > 0 ? parts : null;
   };
 

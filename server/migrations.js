@@ -614,6 +614,30 @@ const migrations = [
     sql: "ALTER TABLE puzzles ADD COLUMN rating_sample_count INT UNSIGNED NOT NULL DEFAULT 0",
     description: "Add rating_sample_count to puzzles"
   },
+  /*
+   * Step-by-step pieces already exclude diagonal steps by storing a NEGATIVE
+   * step value. There is no second sign to spend on excluding orthogonal steps,
+   * so it gets a column of its own. The two are mutually exclusive: a piece with
+   * neither kind of step has no legal first step at all.
+   */
+  {
+    table: 'pieces',
+    column: 'step_by_step_movement_no_orthogonal',
+    sql: "ALTER TABLE pieces ADD COLUMN step_by_step_movement_no_orthogonal TINYINT(1) NOT NULL DEFAULT 0",
+    description: "Add step_by_step_movement_no_orthogonal to pieces (diagonal-only step movement)"
+  },
+  {
+    table: 'pieces',
+    column: 'step_by_step_capture_no_orthogonal',
+    sql: "ALTER TABLE pieces ADD COLUMN step_by_step_capture_no_orthogonal TINYINT(1) NOT NULL DEFAULT 0",
+    description: "Add step_by_step_capture_no_orthogonal to pieces (diagonal-only step capture)"
+  },
+  {
+    table: 'pieces',
+    column: 'step_by_step_attack_no_orthogonal',
+    sql: "ALTER TABLE pieces ADD COLUMN step_by_step_attack_no_orthogonal TINYINT(1) NOT NULL DEFAULT 0",
+    description: "Add step_by_step_attack_no_orthogonal to pieces (diagonal-only step ranged attack)"
+  },
   {
     table: 'puzzle_attempts',
     column: 'score',

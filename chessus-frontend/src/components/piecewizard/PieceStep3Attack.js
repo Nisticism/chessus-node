@@ -246,7 +246,7 @@ const PieceStep3Attack = ({ pieceData, updatePieceData }) => {
       down_left_capture_available_for: null, left_capture_available_for: null,
       ratio_one_capture: null, ratio_two_capture: null,
       repeating_ratio_capture: false, max_ratio_capture_iterations: null,
-      step_by_step_capture: null,
+      step_by_step_capture: null, step_by_step_capture_no_orthogonal: false,
       can_capture_enemy_via_range: false,
       can_capture_ally_via_range: false,
       can_capture_ally_on_range: false,
@@ -266,6 +266,7 @@ const PieceStep3Attack = ({ pieceData, updatePieceData }) => {
       repeating_ratio_ranged_attack: false,
       max_ratio_ranged_attack_iterations: null, min_ratio_ranged_attack_iterations: null,
       step_by_step_attack_style: false, step_by_step_attack_value: null, step_by_step_attack_range: null,
+      step_by_step_attack_no_orthogonal: false,
       capture_actions_per_turn: 1, ranged_capture_actions_per_turn: 1,
       can_fire_over_allies: false, can_fire_over_enemies: false,
       can_hop_attack_over_allies: false, can_hop_attack_over_enemies: false,
@@ -312,6 +313,7 @@ const PieceStep3Attack = ({ pieceData, updatePieceData }) => {
       ratio_two_capture: (pieceData.ratio_one_movement > 0 && pieceData.ratio_two_movement > 0) ? pieceData.ratio_two_movement : 0,
       // Copy step-by-step
       step_by_step_capture: pieceData.step_by_step_movement_value,
+      step_by_step_capture_no_orthogonal: pieceData.step_by_step_movement_no_orthogonal,
       // Copy repeating movement setting
       repeating_capture: pieceData.repeating_movement,
       // Copy ratio repeating settings
@@ -947,7 +949,7 @@ const PieceStep3Attack = ({ pieceData, updatePieceData }) => {
             {/* Step-by-Step Capture */}
             {!pieceData.attacks_like_movement && (
               <div className={styles["sub-field"]}>
-                <h4>Step-by-Step Capture <InfoTooltip text="A step budget for capturing. The piece moves one square at a time in any direction, changing direction each step, to reach and capture an enemy. Maximum 8 steps. The checkbox restricts steps to orthogonal directions only (no diagonal). Leave empty to disable. Values of 7 or higher disable additional custom-square attacks." /></h4>
+                <h4>Step-by-Step Capture <InfoTooltip text="A step budget for capturing. The piece moves one square at a time in any direction, changing direction each step, to reach and capture an enemy. Maximum 8 steps. One checkbox restricts steps to orthogonal directions, the other to diagonal ones — never both at once, since together they are every square a step can reach. Leave empty to disable. Values of 7 or higher disable additional custom-square attacks." /></h4>
                 <label>Total Capture Steps (0–{MAX_STEP_BY_STEP})</label>
                 <NumberInput
                   value={pieceData.step_by_step_capture ? Math.abs(pieceData.step_by_step_capture) : ""}
@@ -958,14 +960,27 @@ const PieceStep3Attack = ({ pieceData, updatePieceData }) => {
                   }}
                   options={{ min: 0, max: MAX_STEP_BY_STEP, placeholder: `Leave empty to disable (max ${MAX_STEP_BY_STEP})`, className: styles["form-input-small"] }}
                 />
+                {/* Mutually exclusive: excluding both would leave the piece
+                    with no step to take at all. */}
                 <ToggleSwitch inline size="small"
                   checked={pieceData.step_by_step_capture < 0}
                   onChange={(v) => {
                     const val = Math.abs(pieceData.step_by_step_capture || 0);
                     handleChange("step_by_step_capture", v ? -val : val);
+                    if (v) handleChange("step_by_step_capture_no_orthogonal", false);
                   }}
                   disabled={!pieceData.step_by_step_capture}
                   label="Exclude diagonal movement"
+                />
+                <ToggleSwitch inline size="small"
+                  checked={!!pieceData.step_by_step_capture_no_orthogonal}
+                  onChange={(v) => {
+                    handleChange("step_by_step_capture_no_orthogonal", v);
+                    // The diagonal exclusion lives in the sign, so clear it there.
+                    if (v) handleChange("step_by_step_capture", Math.abs(pieceData.step_by_step_capture || 0));
+                  }}
+                  disabled={!pieceData.step_by_step_capture}
+                  label="Exclude orthogonal movement"
                 />
               </div>
             )}
@@ -1350,7 +1365,7 @@ const PieceStep3Attack = ({ pieceData, updatePieceData }) => {
 
             {/* Step-by-Step Ranged Attack */}
             <div className={styles["sub-field"]}>
-              <h4>Step-by-Step Ranged Attack <InfoTooltip text="A step budget for ranged attacks. The piece projects an attack one square at a time in any direction, changing direction each step. Maximum 8 steps. The checkbox restricts steps to orthogonal directions only (no diagonal). Leave empty to disable. Values of 7 or higher disable additional custom-square attacks." /></h4>
+              <h4>Step-by-Step Ranged Attack <InfoTooltip text="A step budget for ranged attacks. The piece projects an attack one square at a time in any direction, changing direction each step. Maximum 8 steps. One checkbox restricts steps to orthogonal directions, the other to diagonal ones — never both at once, since together they are every square a step can reach. Leave empty to disable. Values of 7 or higher disable additional custom-square attacks." /></h4>
               <label>Total Attack Steps (0–{MAX_STEP_BY_STEP})</label>
               <NumberInput
                 value={pieceData.step_by_step_attack_range ? Math.abs(pieceData.step_by_step_attack_range) : ""}
@@ -1366,12 +1381,23 @@ const PieceStep3Attack = ({ pieceData, updatePieceData }) => {
                 onChange={(v) => {
                   const val = Math.abs(pieceData.step_by_step_attack_range || 0);
                   handleChange("step_by_step_attack_range", v ? -val : val);
+                  if (v) handleChange("step_by_step_attack_no_orthogonal", false);
                 }}
                 disabled={!pieceData.step_by_step_attack_range}
                 label="Exclude diagonal movement"
               />
+              <ToggleSwitch inline size="small"
+                checked={!!pieceData.step_by_step_attack_no_orthogonal}
+                onChange={(v) => {
+                  handleChange("step_by_step_attack_no_orthogonal", v);
+                  if (v) handleChange("step_by_step_attack_range", Math.abs(pieceData.step_by_step_attack_range || 0));
+                }}
+                disabled={!pieceData.step_by_step_attack_range}
+                label="Exclude orthogonal movement"
+              />
               <p className={styles["field-hint"]}>
-                Total squares piece can attack from range in any combination of directions (checked = orthogonal only)
+                Total squares piece can attack from range in any combination of directions.
+                Exclude diagonal for orthogonal steps only, or exclude orthogonal for diagonal steps only.
               </p>
             </div>
           </>

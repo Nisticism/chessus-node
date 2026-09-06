@@ -53,6 +53,54 @@ export const MOVE_DOT_BACKGROUNDS = {
  * forHoverDisplay carry no move/attack split, so they fall back to plain
  * move/capture exactly as before.
  */
+/*
+ * Step-by-step geometry, matching server/game-socket.js exactly.
+ *
+ * Which squares count as a step is a three-way choice: all eight neighbours,
+ * orthogonal only (a NEGATIVE step value, kept from before this had a name), or
+ * diagonal only (the *_no_orthogonal flag). The last two are mutually exclusive
+ * and have to be - a piece excluding both would have no legal first step, since
+ * a square's eight neighbours are four of each and nothing else.
+ */
+const STEP_DIRS_ALL = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
+const STEP_DIRS_ORTHOGONAL = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+const STEP_DIRS_DIAGONAL = [[1, 1], [1, -1], [-1, 1], [-1, -1]];
+
+export const stepDirections = (noDiagonal, noOrthogonal) => {
+  if (noDiagonal) return STEP_DIRS_ORTHOGONAL;
+  if (noOrthogonal) return STEP_DIRS_DIAGONAL;
+  return STEP_DIRS_ALL;
+};
+
+/**
+ * Could `maxSteps` steps cover (dx, dy) on an empty board?
+ *   orthogonal only -> Manhattan distance
+ *   diagonal only   -> Chebyshev distance AND dx+dy even, because a diagonal
+ *                      step moves x and y together: half the board is out of
+ *                      reach at any range
+ *   all directions  -> Chebyshev distance
+ */
+export const stepInRange = (dx, dy, maxSteps, noDiagonal, noOrthogonal) => {
+  const adx = Math.abs(dx);
+  const ady = Math.abs(dy);
+  if (adx === 0 && ady === 0) return false;
+  if (noDiagonal) return adx + ady <= maxSteps;
+  if (noOrthogonal) return ((adx + ady) % 2 === 0) && Math.max(adx, ady) <= maxSteps;
+  return Math.max(adx, ady) <= maxSteps;
+};
+
+export const stepMoveNoOrthogonal = (piece) => !!(
+  piece?.step_by_step_movement_no_orthogonal ?? piece?.step_movement_no_orthogonal
+);
+
+/* Without an explicit step capture range a piece captures the way it moves, so
+   it inherits the movement setting there too. */
+export const stepCaptureNoOrthogonal = (piece, hasExplicitCapture) => (hasExplicitCapture
+  ? !!(piece?.step_by_step_capture_no_orthogonal ?? piece?.step_capture_no_orthogonal)
+  : stepMoveNoOrthogonal(piece));
+
+export const stepAttackNoOrthogonal = (piece) => !!(piece?.step_by_step_attack_no_orthogonal);
+
 export const getMoveDotType = (move) => {
   if (!move) return null;
   if (move.isCastling) return 'castle';
@@ -297,15 +345,7 @@ export const createMoveEngine = ({
     const stepValue = Number(rawStepValue);
     if (!Number.isNaN(stepValue) && stepValue !== 0) {
       const maxSteps = Math.abs(stepValue);
-      const noDiagonal = stepValue < 0;
-
-      if (noDiagonal) {
-        const manhattanDistance = Math.abs(rowDiff) + Math.abs(colDiff);
-        return manhattanDistance > 0 && manhattanDistance <= maxSteps;
-      }
-
-      const chebyshevDistance = Math.max(Math.abs(rowDiff), Math.abs(colDiff));
-      return chebyshevDistance > 0 && chebyshevDistance <= maxSteps;
+      return stepInRange(colDiff, rowDiff, maxSteps, stepValue < 0, stepMoveNoOrthogonal(pieceData));
     }
 
     // Check additional movements from special_scenario_moves
@@ -455,15 +495,11 @@ export const createMoveEngine = ({
     const stepCaptureValue = Number(rawStepCaptureValue);
     if (!Number.isNaN(stepCaptureValue) && stepCaptureValue !== 0) {
       const maxSteps = Math.abs(stepCaptureValue);
-      const noDiagonal = stepCaptureValue < 0;
-
-      if (noDiagonal) {
-        const manhattanDistance = Math.abs(rowDiff) + Math.abs(colDiff);
-        return manhattanDistance > 0 && manhattanDistance <= maxSteps;
-      }
-
-      const chebyshevDistance = Math.max(Math.abs(rowDiff), Math.abs(colDiff));
-      return chebyshevDistance > 0 && chebyshevDistance <= maxSteps;
+      // An explicit step capture range carries its own exclusion; without one
+      // the piece captures the way it moves.
+      const hasExplicitCapture = pieceData.step_capture_value != null && pieceData.step_capture_value !== 0;
+      return stepInRange(colDiff, rowDiff, maxSteps, stepCaptureValue < 0,
+        stepCaptureNoOrthogonal(pieceData, hasExplicitCapture));
     }
 
     // Check additional captures from special_scenario_captures
@@ -681,7 +717,8 @@ export const createMoveEngine = ({
 
     return {
       maxSteps: Math.abs(stepValue),
-      noDiagonal: stepValue < 0
+      noDiagonal: stepValue < 0,
+      noOrthogonal: stepMoveNoOrthogonal(piece),
     };
   };
 
@@ -697,11 +734,7 @@ export const createMoveEngine = ({
       return false;
     }
 
-    if (config.noDiagonal) {
-      return dx + dy <= config.maxSteps;
-    }
-
-    return Math.max(dx, dy) <= config.maxSteps;
+    return stepInRange(dx, dy, config.maxSteps, config.noDiagonal, config.noOrthogonal);
   };
 
   const canReachStepByStep = (piece, targetX, targetY, pieces, boardWidth, boardHeight, allowOccupiedTarget = false) => {
@@ -727,9 +760,7 @@ export const createMoveEngine = ({
 
     const queue = [{ x: piece.x, y: piece.y, steps: 0 }];
     const visited = new Set([`${piece.x},${piece.y}`]);
-    const directions = config.noDiagonal
-      ? [[1, 0], [-1, 0], [0, 1], [0, -1]]
-      : [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
+    const directions = stepDirections(config.noDiagonal, config.noOrthogonal);
 
     while (queue.length > 0) {
       const current = queue.shift();
@@ -777,12 +808,11 @@ export const createMoveEngine = ({
     if (!stepAttackValue) return false;
     const maxSteps = Math.abs(stepAttackValue);
     const noDiagonal = stepAttackValue < 0;
+    const noOrthogonal = stepAttackNoOrthogonal(piece);
     const canFireOverAllies = piece.can_fire_over_allies === 1 || piece.can_fire_over_allies === true;
     const canFireOverEnemies = piece.can_fire_over_enemies === 1 || piece.can_fire_over_enemies === true;
     const pieceTeam = piece.player_id || piece.team;
-    const directions = noDiagonal
-      ? [[1, 0], [-1, 0], [0, 1], [0, -1]]
-      : [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
+    const directions = stepDirections(noDiagonal, noOrthogonal);
     const queue = [{ x: piece.x, y: piece.y, steps: 0 }];
     const visited = new Set([`${piece.x},${piece.y}`]);
     while (queue.length > 0) {

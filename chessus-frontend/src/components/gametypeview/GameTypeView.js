@@ -134,12 +134,17 @@ const describePieceMovement = (pieceData) => {
   const stepValue = pieceData.step_movement_value || pieceData.step_by_step_movement_value;
   
   if (stepValue) {
-    // Negative stepValue = manhattan (diagonals excluded), positive = chebyshev (includes diagonals)
+    // Negative stepValue = manhattan (diagonals excluded); the no_orthogonal flag
+    // is the mirror image of that (diagonal steps only); otherwise chebyshev.
     const isManhattan = stepValue < 0;
+    const isDiagonalOnly = !!(pieceData.step_movement_no_orthogonal
+      ?? pieceData.step_by_step_movement_no_orthogonal);
     const range = describeMovementRange(stepValue);
     if (range) {
       if (isManhattan) {
         movements.push(`${range} counting horizontal and vertical steps`);
+      } else if (isDiagonalOnly) {
+        movements.push(`${range} counting diagonal steps only`);
       } else {
         movements.push(`${range} in any direction (including diagonals)`);
       }

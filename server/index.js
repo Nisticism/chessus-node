@@ -2343,6 +2343,10 @@ const CMP_BOOL_COLS = [
   'require_direction_change','require_direction_change_capture',
   'up_left_capture_change_exact','up_capture_change_exact','up_right_capture_change_exact','right_capture_change_exact',
   'down_right_capture_change_exact','down_capture_change_exact','down_left_capture_change_exact','left_capture_change_exact',
+  // Two pieces that differ only in which kind of step they exclude are not the
+  // same piece.
+  'step_by_step_movement_no_orthogonal', 'step_by_step_capture_no_orthogonal',
+  'step_by_step_attack_no_orthogonal',
 ];
 const CMP_INT_COLS = [
   'piece_width','piece_height',
@@ -8607,6 +8611,9 @@ app.post("/api/pieces/create", authenticateToken, multerWrap(pieceUpload.array('
         'down_left_capture_available_for', 'left_capture_available_for',
         'ratio_one_capture', 'ratio_two_capture', 'repeating_capture', 'repeating_ratio_capture',
         'max_ratio_capture_iterations', 'step_by_step_capture',
+        // Clear the exclusion with the value it qualifies, so a piece that stops
+        // capturing on move cannot keep a stale diagonal-only flag.
+        'step_by_step_capture_no_orthogonal',
         'first_move_only_capture', 'available_for_captures',
       ];
       for (const f of captureOnMoveFields) pieceData[f] = null;
@@ -8678,7 +8685,7 @@ app.post("/api/pieces/create", authenticateToken, multerWrap(pieceUpload.array('
         up_left_movement_available_for, up_movement_available_for, up_right_movement_available_for, right_movement_available_for,
         down_right_movement_available_for, down_movement_available_for, down_left_movement_available_for, left_movement_available_for,
         ratio_movement_style, ratio_one_movement, ratio_two_movement, repeating_ratio, max_ratio_iterations,
-        step_by_step_movement_style, step_by_step_movement_value,
+        step_by_step_movement_style, step_by_step_movement_value, step_by_step_movement_no_orthogonal,
         can_hop_over_allies, can_hop_over_enemies, exact_ratio_hop_only, directional_hop_disabled, hop_stop_at_occupied, min_turns_per_move, max_turns_per_move,
         first_move_only, available_for_moves, special_scenario_moves,
         can_capture_enemy_via_range, can_capture_enemy_on_move,
@@ -8688,14 +8695,14 @@ app.post("/api/pieces/create", authenticateToken, multerWrap(pieceUpload.array('
         down_right_capture_exact, down_capture_exact, down_left_capture_exact, left_capture_exact,
         up_left_capture_available_for, up_capture_available_for, up_right_capture_available_for, right_capture_available_for,
         down_right_capture_available_for, down_capture_available_for, down_left_capture_available_for, left_capture_available_for,
-        ratio_one_capture, ratio_two_capture, repeating_capture, repeating_ratio_capture, max_ratio_capture_iterations, step_by_step_capture,
+        ratio_one_capture, ratio_two_capture, repeating_capture, repeating_ratio_capture, max_ratio_capture_iterations, step_by_step_capture, step_by_step_capture_no_orthogonal,
         up_left_attack_range, up_attack_range, up_right_attack_range, right_attack_range, down_right_attack_range, down_attack_range, down_left_attack_range, left_attack_range,
         up_left_attack_range_exact, up_attack_range_exact, up_right_attack_range_exact, right_attack_range_exact,
         down_right_attack_range_exact, down_attack_range_exact, down_left_attack_range_exact, left_attack_range_exact,
         up_left_attack_range_available_for, up_attack_range_available_for, up_right_attack_range_available_for, right_attack_range_available_for,
         down_right_attack_range_available_for, down_attack_range_available_for, down_left_attack_range_available_for, left_attack_range_available_for,
         ratio_one_attack_range, ratio_two_attack_range,
-        step_by_step_attack_style, step_by_step_attack_value,
+        step_by_step_attack_style, step_by_step_attack_value, step_by_step_attack_no_orthogonal,
         capture_actions_per_turn, ranged_capture_actions_per_turn,
         special_scenario_captures,
         can_fire_over_allies, can_fire_over_enemies, can_en_passant,
@@ -8725,7 +8732,7 @@ app.post("/api/pieces/create", authenticateToken, multerWrap(pieceUpload.array('
         require_direction_change, require_direction_change_capture,
         image_sources_json,
         created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const pieceWidth = Math.min(4, Math.max(1, parseInt(pieceData.piece_width) || 1));
@@ -8782,6 +8789,7 @@ app.post("/api/pieces/create", authenticateToken, multerWrap(pieceUpload.array('
       parseInt(pieceData.max_ratio_iterations) || null,
       parseBooleanField(pieceData.step_by_step_movement_style),
       parseInt(pieceData.step_by_step_movement_value) || null,
+      parseBooleanField(pieceData.step_by_step_movement_no_orthogonal),
       parseBooleanField(pieceData.can_hop_over_allies),
       parseBooleanField(pieceData.can_hop_over_enemies),
       parseBooleanField(pieceData.exact_ratio_hop_only),
@@ -8834,6 +8842,7 @@ app.post("/api/pieces/create", authenticateToken, multerWrap(pieceUpload.array('
       parseBooleanField(pieceData.repeating_ratio_capture),
       parseInt(pieceData.max_ratio_capture_iterations) || null,
       parseInt(pieceData.step_by_step_capture) || null,
+      parseBooleanField(pieceData.step_by_step_capture_no_orthogonal),
       // Attack range values
       parseInt(pieceData.up_left_attack_range) || 0,
       parseInt(pieceData.up_attack_range) || 0,
@@ -8865,6 +8874,7 @@ app.post("/api/pieces/create", authenticateToken, multerWrap(pieceUpload.array('
       parseInt(pieceData.ratio_two_attack_range) || null,
       pieceData.step_by_step_attack_style === 'true',
       parseInt(pieceData.step_by_step_attack_value) || null,
+      parseBooleanField(pieceData.step_by_step_attack_no_orthogonal),
       (() => { const v = parseInt(pieceData.capture_actions_per_turn); return v === -1 ? -1 : Math.min(16, Math.max(1, v || 1)); })(),
       hasRangedAttack ? (() => { const v = parseInt(pieceData.ranged_capture_actions_per_turn); return v === -1 ? -1 : Math.min(16, Math.max(1, v || 1)); })() : null,
       pieceData.special_scenario_captures || null,
@@ -9249,6 +9259,9 @@ app.put("/api/pieces/:pieceId", authenticateToken, multerWrap(pieceUpload.array(
         'down_left_capture_available_for', 'left_capture_available_for',
         'ratio_one_capture', 'ratio_two_capture', 'repeating_capture', 'repeating_ratio_capture',
         'max_ratio_capture_iterations', 'step_by_step_capture',
+        // Clear the exclusion with the value it qualifies, so a piece that stops
+        // capturing on move cannot keep a stale diagonal-only flag.
+        'step_by_step_capture_no_orthogonal',
         'first_move_only_capture', 'available_for_captures',
       ];
       for (const f of captureOnMoveFields) pieceData[f] = null;
@@ -9320,6 +9333,7 @@ app.put("/api/pieces/:pieceId", authenticateToken, multerWrap(pieceUpload.array(
         max_ratio_iterations = ?,
         step_by_step_movement_style = ?,
         step_by_step_movement_value = ?,
+        step_by_step_movement_no_orthogonal = ?,
         can_hop_over_allies = ?,
         can_hop_over_enemies = ?,
         exact_ratio_hop_only = ?,
@@ -9364,6 +9378,7 @@ app.put("/api/pieces/:pieceId", authenticateToken, multerWrap(pieceUpload.array(
         repeating_ratio_capture = ?,
         max_ratio_capture_iterations = ?,
         step_by_step_capture = ?,
+        step_by_step_capture_no_orthogonal = ?,
         up_left_attack_range = ?,
         up_attack_range = ?,
         up_right_attack_range = ?,
@@ -9392,6 +9407,7 @@ app.put("/api/pieces/:pieceId", authenticateToken, multerWrap(pieceUpload.array(
         ratio_two_attack_range = ?,
         step_by_step_attack_style = ?,
         step_by_step_attack_value = ?,
+        step_by_step_attack_no_orthogonal = ?,
         capture_actions_per_turn = ?,
         ranged_capture_actions_per_turn = ?,
         special_scenario_captures = ?,
@@ -9491,6 +9507,7 @@ app.put("/api/pieces/:pieceId", authenticateToken, multerWrap(pieceUpload.array(
       parseInt(pieceData.max_ratio_iterations) || null,
       parseBooleanField(pieceData.step_by_step_movement_style),
       parseInt(pieceData.step_by_step_movement_value) || null,
+      parseBooleanField(pieceData.step_by_step_movement_no_orthogonal),
       parseBooleanField(pieceData.can_hop_over_allies),
       parseBooleanField(pieceData.can_hop_over_enemies),
       parseBooleanField(pieceData.exact_ratio_hop_only),
@@ -9543,6 +9560,7 @@ app.put("/api/pieces/:pieceId", authenticateToken, multerWrap(pieceUpload.array(
       parseBooleanField(pieceData.repeating_ratio_capture),
       parseInt(pieceData.max_ratio_capture_iterations) || null,
       parseInt(pieceData.step_by_step_capture) || null,
+      parseBooleanField(pieceData.step_by_step_capture_no_orthogonal),
       // Attack range values
       parseInt(pieceData.up_left_attack_range) || 0,
       parseInt(pieceData.up_attack_range) || 0,
@@ -9574,6 +9592,7 @@ app.put("/api/pieces/:pieceId", authenticateToken, multerWrap(pieceUpload.array(
       parseInt(pieceData.ratio_two_attack_range) || null,
       pieceData.step_by_step_attack_style === 'true',
       parseInt(pieceData.step_by_step_attack_value) || null,
+      parseBooleanField(pieceData.step_by_step_attack_no_orthogonal),
       (() => { const v = parseInt(pieceData.capture_actions_per_turn); return v === -1 ? -1 : Math.min(16, Math.max(1, v || 1)); })(),
       hasRangedAttack ? (() => { const v = parseInt(pieceData.ranged_capture_actions_per_turn); return v === -1 ? -1 : Math.min(16, Math.max(1, v || 1)); })() : null,
       pieceData.special_scenario_captures || null,

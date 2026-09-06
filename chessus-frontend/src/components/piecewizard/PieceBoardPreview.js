@@ -2,6 +2,8 @@ import React, { useState, useMemo, useRef, useCallback, useEffect } from "react"
 import styles from "./piecewizard.module.scss";
 import { applySvgStretchBackground } from "../../helpers/svgStretchUtils";
 import { getSquareHighlightStyle, getDirectionChangeMoves } from "../../helpers/pieceMovementUtils";
+// Same step geometry the move engine uses, so the preview and the real board agree.
+import { stepInRange } from "../../helpers/moveEngine";
 import BoardLegend from "../common/BoardLegend";
 import SquareHighlightOverlay from "../common/SquareHighlightOverlay";
 
@@ -479,24 +481,14 @@ const PieceBoardPreview = ({ pieceData, showAttack = true, showLegend = true }) 
     // Step-by-step movement (takes precedence when directional is 0 or disabled)
     if (pieceData.step_by_step_movement_value) {
       const maxSteps = Math.abs(pieceData.step_by_step_movement_value);
-      const noDiagonal = pieceData.step_by_step_movement_value < 0;
-      
-      if (noDiagonal) {
-        // Only orthogonal movement (no diagonal) - can turn corners
-        // Manhattan distance: can move N steps in cardinal directions
-        const manhattanDistance = Math.abs(rowDiff) + Math.abs(colDiff);
-        if (manhattanDistance <= maxSteps) {
-          const isFirstMoveOnly = isStepMovementFirstMoveOnly();
-          return { allowed: true, isFirstMoveOnly };
-        }
-      } else {
-        // Includes diagonal movement - can move like a king for N steps
-        // Chebyshev distance: max of row/col differences
-        const chebyshevDistance = Math.max(Math.abs(rowDiff), Math.abs(colDiff));
-        if (chebyshevDistance <= maxSteps) {
-          const isFirstMoveOnly = isStepMovementFirstMoveOnly();
-          return { allowed: true, isFirstMoveOnly };
-        }
+      // Orthogonal only (a negative value), diagonal only (the no_orthogonal
+      // flag) or every neighbour. stepInRange is the rule the move engine uses,
+      // so the preview cannot drift away from the real board.
+      if (stepInRange(colDiff, rowDiff, maxSteps,
+        pieceData.step_by_step_movement_value < 0,
+        !!pieceData.step_by_step_movement_no_orthogonal)) {
+        const isFirstMoveOnly = isStepMovementFirstMoveOnly();
+        return { allowed: true, isFirstMoveOnly };
       }
     }
 
@@ -692,21 +684,11 @@ const PieceBoardPreview = ({ pieceData, showAttack = true, showLegend = true }) 
     if (pieceData.step_by_step_capture) {
       const maxSteps = Math.abs(pieceData.step_by_step_capture);
       const noDiagonal = pieceData.step_by_step_capture < 0;
+      const noOrthogonal = !!pieceData.step_by_step_capture_no_orthogonal;
       
-      if (noDiagonal) {
-        // Manhattan distance: orthogonal only
-        const manhattanDistance = Math.abs(rowDiff) + Math.abs(colDiff);
-        if (manhattanDistance <= maxSteps) {
-          const isFirstMoveOnly = isStepCaptureFirstMoveOnly();
-          return { allowed: true, isFirstMoveOnly };
-        }
-      } else {
-        // Chebyshev distance: includes diagonal
-        const chebyshevDistance = Math.max(Math.abs(rowDiff), Math.abs(colDiff));
-        if (chebyshevDistance <= maxSteps) {
-          const isFirstMoveOnly = isStepCaptureFirstMoveOnly();
-          return { allowed: true, isFirstMoveOnly };
-        }
+      if (stepInRange(colDiff, rowDiff, maxSteps, noDiagonal, noOrthogonal)) {
+        const isFirstMoveOnly = isStepCaptureFirstMoveOnly();
+        return { allowed: true, isFirstMoveOnly };
       }
     }
     
@@ -804,19 +786,10 @@ const PieceBoardPreview = ({ pieceData, showAttack = true, showLegend = true }) 
     if (pieceData.step_by_step_attack_range) {
       const maxSteps = Math.abs(pieceData.step_by_step_attack_range);
       const noDiagonal = pieceData.step_by_step_attack_range < 0;
+      const noOrthogonal = !!pieceData.step_by_step_attack_no_orthogonal;
       
-      if (noDiagonal) {
-        // Manhattan distance: orthogonal only
-        const manhattanDistance = Math.abs(rowDiff) + Math.abs(colDiff);
-        if (manhattanDistance <= maxSteps) {
-          return true;
-        }
-      } else {
-        // Chebyshev distance: includes diagonal
-        const chebyshevDistance = Math.max(Math.abs(rowDiff), Math.abs(colDiff));
-        if (chebyshevDistance <= maxSteps) {
-          return true;
-        }
+      if (stepInRange(colDiff, rowDiff, maxSteps, noDiagonal, noOrthogonal)) {
+        return true;
       }
     }
 
@@ -1367,3 +1340,4 @@ const PieceBoardPreview = ({ pieceData, showAttack = true, showLegend = true }) 
 };
 
 export default PieceBoardPreview;
+

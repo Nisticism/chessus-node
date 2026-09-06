@@ -26,6 +26,7 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
       ratio_one_movement: null, ratio_two_movement: null,
       repeating_ratio: false, max_ratio_iterations: null, min_ratio_iterations: null,
       step_by_step_movement_style: false, step_by_step_movement_value: null,
+      step_by_step_movement_no_orthogonal: false,
       can_hop_over_allies: false, can_hop_over_enemies: false,
       exact_ratio_hop_only: false, directional_hop_disabled: false, hop_stop_at_occupied: true,
       special_scenario_moves: "",
@@ -758,7 +759,7 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
 
       {/* Step by Step Movement */}
       <div className={styles["condition-section"]}>
-        <h3>Step-by-Step Movement <InfoTooltip text="The piece gets a budget of steps and can move one square at a time in any direction, changing direction with each step. Like a king that can take multiple steps per turn. Set the max steps (1–8) and optionally exclude diagonal steps. Values of 7 or higher will disable additional custom-square movement because the step area already covers the entire 15×15 custom-square grid." /></h3>
+        <h3>Step-by-Step Movement <InfoTooltip text="The piece gets a budget of steps and can move one square at a time in any direction, changing direction with each step. Like a king that can take multiple steps per turn. Set the max steps (1–8) and optionally exclude either diagonal or orthogonal steps — not both, since between them they are every square a step can reach. Values of 7 or higher will disable additional custom-square movement because the step area already covers the entire 15×15 custom-square grid." /></h3>
           <div className={styles["sub-field"]}>
             <label>Maximum Steps (0–{MAX_STEP_BY_STEP})</label>
             <NumberInput
@@ -770,14 +771,32 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
               }}
               options={{ min: 0, max: MAX_STEP_BY_STEP, placeholder: `Total squares piece can move (max ${MAX_STEP_BY_STEP})`, className: styles["form-input-small"] }}
             />
+            {/* The two exclusions are mutually exclusive: a step piece with
+                neither diagonal nor orthogonal steps has no legal first step at
+                all, so turning one on turns the other off. */}
             <div className={styles["checkbox-row"]}>
               <ToggleSwitch
                 checked={pieceData.step_by_step_movement_value < 0}
                 onChange={(v) => {
                   const absValue = Math.abs(pieceData.step_by_step_movement_value || 0);
                   handleNumberChange("step_by_step_movement_value", v ? -absValue : absValue);
+                  if (v) handleChange("step_by_step_movement_no_orthogonal", false);
                 }}
                 label="Exclude diagonal movement"
+              />
+            </div>
+            <div className={styles["checkbox-row"]}>
+              <ToggleSwitch
+                checked={!!pieceData.step_by_step_movement_no_orthogonal}
+                onChange={(v) => {
+                  handleChange("step_by_step_movement_no_orthogonal", v);
+                  if (v) {
+                    // Drop the diagonal exclusion, which lives in the sign.
+                    const absValue = Math.abs(pieceData.step_by_step_movement_value || 0);
+                    handleNumberChange("step_by_step_movement_value", absValue);
+                  }
+                }}
+                label="Exclude orthogonal movement"
               />
             </div>
 

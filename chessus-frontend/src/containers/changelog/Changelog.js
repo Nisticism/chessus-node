@@ -5,6 +5,16 @@ import styles from "./changelog.module.scss";
 const changelogData = [
   {
     date: "September 6, 2026",
+    title: "Diagonal-only step-by-step pieces",
+    items: [
+      "Step-by-step movement can now exclude ORTHOGONAL steps, the mirror of the existing option to exclude diagonal ones. A piece set this way moves only on diagonals — one square at a time, turning corners as it goes — which also means it stays on squares of a single colour, the way a bishop does.",
+      "The same option is on both attack settings: step-by-step capture and step-by-step ranged attack.",
+      "The two exclusions turn each other off, because a piece with neither has no move at all: a square's eight neighbours are four orthogonal and four diagonal, and nothing else.",
+      "Existing pieces are untouched, including every piece already set to exclude diagonals.",
+    ],
+  },
+  {
+    date: "September 6, 2026",
     title: "Puzzle builder (early)",
     items: [
       "Silver and Gold Supporters (and admins) can now build puzzles for any game type. Open the Puzzle Builder from Creator Options on a game's page: arrange a position, say who moves and what they're aiming for, record the answer, then save it as a draft or publish it.",
