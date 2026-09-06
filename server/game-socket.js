@@ -349,12 +349,15 @@ const UNEXPLAINED_DROP_GRACE_MS = 45000;
 /**
  * How many games at once this account may have going, by tier.
  *
- * The owner is uncapped. Admins and supporters (Silver and above - Gold gets the
- * same allowance) share one raised tier. Everyone else gets the free tier, which
- * is what the plain `game_limit_*` settings now mean.
+ * owner  uncapped
+ * admin  game_limit_*_admin
+ * gold   game_limit_*_gold
+ * silver game_limit_*_silver
+ * free   game_limit_live / game_limit_correspondence
  *
  * Every number stays admin-configurable, so the tiers can be retuned from the
- * dashboard without a deploy.
+ * dashboard without a deploy. Role beats donations: an admin who has also
+ * donated is charged the admin tier, not the gold one.
  */
 async function getGameLimitsForUser(userId) {
   const id = parseInt(userId, 10);
@@ -374,11 +377,25 @@ async function getGameLimitsForUser(userId) {
   if (role === 'owner') {
     return { tier: 'owner', live: Infinity, correspondence: Infinity };
   }
-  if (role === 'admin' || donations >= SUPPORTER_MIN_DONATION) {
+  if (role === 'admin') {
     return {
-      tier: role === 'admin' ? 'admin' : 'supporter',
-      live: await getSiteSettingInt('game_limit_live_supporter', 10),
-      correspondence: await getSiteSettingInt('game_limit_correspondence_supporter', 40),
+      tier: 'admin',
+      live: await getSiteSettingInt('game_limit_live_admin', 10),
+      correspondence: await getSiteSettingInt('game_limit_correspondence_admin', 40),
+    };
+  }
+  if (donations >= GOLD_MIN_DONATION) {
+    return {
+      tier: 'gold',
+      live: await getSiteSettingInt('game_limit_live_gold', 10),
+      correspondence: await getSiteSettingInt('game_limit_correspondence_gold', 40),
+    };
+  }
+  if (donations >= SILVER_MIN_DONATION) {
+    return {
+      tier: 'silver',
+      live: await getSiteSettingInt('game_limit_live_silver', 10),
+      correspondence: await getSiteSettingInt('game_limit_correspondence_silver', 40),
     };
   }
   return {
@@ -388,8 +405,11 @@ async function getGameLimitsForUser(userId) {
   };
 }
 
-// Silver is the entry point for the raised allowance; Gold inherits it.
-const SUPPORTER_MIN_DONATION = 5;
+// Donation thresholds for the supporter tiers. Silver and Gold get their own
+// limits even though they are seeded to the same numbers, so either can be moved
+// from the dashboard without touching the other.
+const SILVER_MIN_DONATION = 5;
+const GOLD_MIN_DONATION = 50;
 
 async function getSiteSettingInt(key, defaultVal) {
   try {

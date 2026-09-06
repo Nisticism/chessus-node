@@ -4611,6 +4611,51 @@ const runMigrations = async () => {
   } catch (err) {
     console.error('Error seeding tiered game limits:', err.message);
   }
+
+  // Split the single supporter allowance into per-tier settings. Silver, Gold
+  // and admin are seeded to the same numbers, so behaviour is unchanged - the
+  // point is that each can now be moved on its own.
+  try {
+    const [[marker]] = await db_pool.query(
+      "SELECT setting_value FROM site_settings WHERE setting_key = 'game_limit_tiers_v2' LIMIT 1"
+    );
+    if (!marker) {
+      // Carry across whatever the combined keys were set to, so a retuned value
+      // is inherited by all three rather than reset to the seed.
+      const [[liveOld]] = await db_pool.query(
+        "SELECT setting_value FROM site_settings WHERE setting_key = 'game_limit_live_supporter' LIMIT 1"
+      );
+      const [[corrOld]] = await db_pool.query(
+        "SELECT setting_value FROM site_settings WHERE setting_key = 'game_limit_correspondence_supporter' LIMIT 1"
+      );
+      const live = liveOld?.setting_value || '10';
+      const corr = corrOld?.setting_value || '40';
+      const seed = [
+        ['game_limit_live_silver', live], ['game_limit_correspondence_silver', corr],
+        ['game_limit_live_gold', live], ['game_limit_correspondence_gold', corr],
+        ['game_limit_live_admin', live], ['game_limit_correspondence_admin', corr],
+      ];
+      for (const [key, value] of seed) {
+        await db_pool.query(
+          'INSERT INTO site_settings (setting_key, setting_value) VALUES (?, ?) ' +
+          'ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)',
+          [key, value]
+        );
+      }
+      // The combined keys are no longer read; drop them so the table does not
+      // carry a stale value that looks like it still governs something.
+      await db_pool.query(
+        "DELETE FROM site_settings WHERE setting_key IN ('game_limit_live_supporter','game_limit_correspondence_supporter')"
+      );
+      await db_pool.query(
+        "INSERT INTO site_settings (setting_key, setting_value) VALUES ('game_limit_tiers_v2', '1')"
+      );
+      console.log(`[DB] Split supporter game limits into silver/gold/admin (${live}/${corr} each)`);
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error splitting supporter game limits:', err.message);
+  }
 };
 
 module.exports = { runMigrations };

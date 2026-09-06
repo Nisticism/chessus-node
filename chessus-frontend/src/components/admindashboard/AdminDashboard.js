@@ -85,6 +85,11 @@ const AdminDashboard = () => {
   const [twitchClientIdDraft, setTwitchClientIdDraft] = useState('');
   const [twitchClientSecretDraft, setTwitchClientSecretDraft] = useState('');
   const [savingTwitchCreds, setSavingTwitchCreds] = useState(false);
+  // Game-session limits are edited as a draft and saved together. Saving on
+  // every increment meant a dozen requests and a dozen toasts just to nudge a
+  // few numbers.
+  const [gameLimitDrafts, setGameLimitDrafts] = useState({});
+  const [savingGameLimits, setSavingGameLimits] = useState(false);
   const [twitchCredsSaved, setTwitchCredsSaved] = useState(false);
   const [twitchCredsError, setTwitchCredsError] = useState('');
   // About Us editor state — drafts are local until "Save" is clicked.
@@ -600,6 +605,42 @@ const AdminDashboard = () => {
       setAlertMessage("Failed to reject name");
       setAlertType("error");
       setShowAlert(true);
+    }
+  };
+
+  // Persist every game-limit value the admin actually changed, in one go.
+  const saveGameLimits = async () => {
+    const changed = Object.entries(gameLimitDrafts).filter(
+      ([key, value]) => String(value) !== String(siteSettings[key] ?? '')
+    );
+    if (!changed.length) return;
+    setSavingGameLimits(true);
+    const previousSettings = { ...siteSettings };
+    try {
+      for (const [key, value] of changed) {
+        await axios.put(
+          `${API_URL}admin/site-settings/${key}`,
+          { value: String(value) },
+          { headers: authHeader() }
+        );
+      }
+      setSiteSettings(prev => {
+        const next = { ...prev };
+        for (const [key, value] of changed) next[key] = String(value);
+        return next;
+      });
+      setGameLimitDrafts({});
+      setAlertMessage(`Saved ${changed.length} game limit${changed.length === 1 ? '' : 's'}`);
+      setAlertType('success');
+      setShowAlert(true);
+    } catch (error) {
+      console.error("Error saving game limits:", error);
+      setSiteSettings(previousSettings);
+      setAlertMessage("Failed to save game limits");
+      setAlertType('error');
+      setShowAlert(true);
+    } finally {
+      setSavingGameLimits(false);
     }
   };
 
@@ -4114,30 +4155,63 @@ const AdminDashboard = () => {
                 <h3 style={{ marginTop: '2rem' }}>Game Session Limits</h3>
                 <p style={{ color: 'var(--text-secondary)', marginBottom: '1rem', fontSize: '0.9rem' }}>
                   Maximum simultaneous games per user. Users already over the limit when it is lowered can finish their existing games.
-                  Admins and supporters (Silver and above) get the raised allowance; the owner account is never capped.
+                  Each tier is set separately and the owner account is never capped. Change as many as you like, then press
+                  Save Game Session Limits.
                 </p>
                 {[
                   { key: 'game_limit_live', label: 'Live games (free users)', desc: 'Max active/ready live games a free logged-in user may be in at once', defaultVal: 4 },
                   { key: 'game_limit_correspondence', label: 'Correspondence games (free users)', desc: 'Max waiting/active correspondence games a free logged-in user may be in at once', defaultVal: 12 },
-                  { key: 'game_limit_live_supporter', label: 'Live games (admins & supporters)', desc: 'Max active/ready live games an admin, Silver or Gold supporter may be in at once', defaultVal: 10 },
-                  { key: 'game_limit_correspondence_supporter', label: 'Correspondence games (admins & supporters)', desc: 'Max waiting/active correspondence games an admin, Silver or Gold supporter may be in at once', defaultVal: 40 },
-                  { key: 'game_limit_open', label: 'Open matches (logged-in users)', desc: 'Max open (waiting for opponent) matches a logged-in user may have at once', defaultVal: 8 },
+                  { key: 'game_limit_live_silver', label: 'Live games (Silver Supporters)', desc: 'Max active/ready live games a Silver Supporter may be in at once', defaultVal: 10 },
+                  { key: 'game_limit_correspondence_silver', label: 'Correspondence games (Silver Supporters)', desc: 'Max waiting/active correspondence games a Silver Supporter may be in at once', defaultVal: 40 },
+                  { key: 'game_limit_live_gold', label: 'Live games (Gold Supporters)', desc: 'Max active/ready live games a Gold Supporter may be in at once', defaultVal: 10 },
+                  { key: 'game_limit_correspondence_gold', label: 'Correspondence games (Gold Supporters)', desc: 'Max waiting/active correspondence games a Gold Supporter may be in at once', defaultVal: 40 },
+                  { key: 'game_limit_live_admin', label: 'Live games (admins)', desc: 'Max active/ready live games an admin may be in at once. Role wins over donations, so a donating admin uses this.', defaultVal: 10 },
+                  { key: 'game_limit_correspondence_admin', label: 'Correspondence games (admins)', desc: 'Max waiting/active correspondence games an admin may be in at once', defaultVal: 40 },
+                  { key: 'game_limit_open', label: 'Open matches (logged-in users)', desc: 'Max open (waiting for opponent) matches a logged-in user may have at once. Not tiered.', defaultVal: 8 },
                   { key: 'game_limit_live_anon', label: 'Live games (anonymous users)', desc: 'Max live games an anonymous (not logged-in) user may be in per browser session', defaultVal: 4 },
                   { key: 'game_limit_correspondence_anon', label: 'Correspondence games (anonymous users)', desc: 'Not currently enforced (anonymous users cannot create correspondence games)', defaultVal: 12 },
                   { key: 'game_limit_open_anon', label: 'Open matches (anonymous users)', desc: 'Max open anonymous games a guest may have waiting per browser session', defaultVal: 4 },
-                ].map(({ key, label, desc, defaultVal }) => (
-                  <div key={key} className={styles["setting-row"]}>
-                    <div className={styles["setting-info"]}>
-                      <span className={styles["setting-label"]}>{label}</span>
-                      <span className={styles["setting-desc"]}>{desc}</span>
+                ].map(({ key, label, desc, defaultVal }) => {
+                  const saved = String(siteSettings[key] ?? defaultVal);
+                  const current = gameLimitDrafts[key] !== undefined ? String(gameLimitDrafts[key]) : saved;
+                  const dirty = current !== saved;
+                  return (
+                    <div key={key} className={styles["setting-row"]}>
+                      <div className={styles["setting-info"]}>
+                        <span className={styles["setting-label"]}>
+                          {label}
+                          {dirty && <span style={{ color: 'var(--gold-header)', marginLeft: 8 }} title={`Unsaved (was ${saved})`}>•</span>}
+                        </span>
+                        <span className={styles["setting-desc"]}>{desc}</span>
+                      </div>
+                      <NumberInput
+                        value={Number(current)}
+                        onChange={(val) => setGameLimitDrafts(prev => ({ ...prev, [key]: val }))}
+                        options={{ min: 1, max: 200 }}
+                      />
                     </div>
-                    <NumberInput
-                      value={Number(siteSettings[key] ?? defaultVal)}
-                      onChange={(val) => updateSiteSetting(key, val)}
-                      options={{ min: 1, max: 200 }}
-                    />
-                  </div>
-                ))}
+                  );
+                })}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: '1rem' }}>
+                  <button
+                    className={styles["setting-save-button"]}
+                    onClick={saveGameLimits}
+                    disabled={savingGameLimits || !Object.entries(gameLimitDrafts).some(
+                      ([k, v]) => String(v) !== String(siteSettings[k] ?? '')
+                    )}
+                  >
+                    {savingGameLimits ? 'Saving...' : 'Save Game Session Limits'}
+                  </button>
+                  {Object.entries(gameLimitDrafts).some(([k, v]) => String(v) !== String(siteSettings[k] ?? '')) && (
+                    <button
+                      className={styles["setting-save-button"]}
+                      onClick={() => setGameLimitDrafts({})}
+                      disabled={savingGameLimits}
+                    >
+                      Discard changes
+                    </button>
+                  )}
+                </div>
 
                 <h3 style={{ marginTop: '2rem' }}>About Us Page</h3>
                 <p style={{ color: 'var(--text-secondary)', marginBottom: '1rem', fontSize: '0.9rem' }}>

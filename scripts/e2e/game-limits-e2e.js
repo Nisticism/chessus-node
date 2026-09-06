@@ -34,12 +34,14 @@ const ask = (sock, event, payload, ms = 8000) =>
 // Resolved by username so the suite does not care what ids the fixtures got.
 const FIXTURES = ['e2e_free', 'e2e_silver', 'e2e_gold', 'e2e_admin', 'e2e_owner'];
 
+// Silver, Gold and admin are seeded to the same numbers but resolve through
+// their own settings keys, so a change to one must not move the others.
 const EXPECTED = {
-  e2e_free:   { tier: 'free',      live: 4,           correspondence: 12 },
-  e2e_silver: { tier: 'supporter', live: 10,          correspondence: 40 },
-  e2e_gold:   { tier: 'supporter', live: 10,          correspondence: 40 },
-  e2e_admin:  { tier: 'admin',     live: 10,          correspondence: 40 },
-  e2e_owner:  { tier: 'owner',     live: 'unlimited', correspondence: 'unlimited' },
+  e2e_free:   { tier: 'free',   live: 4,           correspondence: 12 },
+  e2e_silver: { tier: 'silver', live: 10,          correspondence: 40 },
+  e2e_gold:   { tier: 'gold',   live: 10,          correspondence: 40 },
+  e2e_admin:  { tier: 'admin',  live: 10,          correspondence: 40 },
+  e2e_owner:  { tier: 'owner',  live: 'unlimited', correspondence: 'unlimited' },
 };
 
 let fixtureIds = null;

@@ -13,7 +13,7 @@ const changelogData = [
       "Fixed a stray '0' appearing beside every unprotected piece in the game wizard's piece picker, where the password padlock belongs.",
       "The disconnect timer no longer starts just because you switched away. Minimising the window, opening another app on your phone, or clicking through to another page on the site all leave you connected — and if you have the site open in a second tab or on another device, closing one of them changes nothing. The countdown only begins once every window you have open is gone.",
       "A dropped connection that wasn't a deliberate close (a phone locking, a tunnel, patchy signal) now gets 45 seconds to come back before your opponent is shown the disconnect banner, instead of 5.",
-      "Simultaneous game limits now depend on your account. Free accounts can have 4 live games and 12 correspondence games going at once; Silver and Gold Supporters, and admins, get 10 and 40. Games already in progress when the limits changed can always be finished.",
+      "Simultaneous game limits now depend on your account. Free accounts can have 4 live games and 12 correspondence games going at once; Silver Supporters, Gold Supporters and admins each get 10 and 40, set separately so any one of them can be adjusted on its own. The owner account is never capped. Games already in progress when the limits changed can always be finished.",
       "The limit is now checked when you join someone else's game too, not only when you host one — previously a player at their cap could still be added to any number of games started by other people. Hitting it shows the same message rather than failing silently, and on a game page it appears as a notice over the board instead of an error screen.",
     ],
   },
