@@ -467,7 +467,139 @@ const tableMigrations = [
   }
 ];
 
+// ---------------------------------------------------------------------------
+// Puzzles. A puzzle is a child record of a game type (many puzzles -> one game
+// type), never a game: it has no clock, no opponent and no seat, so it stays out
+// of the games table and out of match history entirely.
+// ---------------------------------------------------------------------------
+tableMigrations.push(
+  {
+    table: 'puzzles',
+    sql: `CREATE TABLE IF NOT EXISTS puzzles (
+      id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      game_type_id INT UNSIGNED NOT NULL,
+      creator_id INT UNSIGNED NULL,
+      title VARCHAR(120) NULL,
+      description TEXT NULL,
+
+      -- The position the solver is shown. Same JSON shape as games.pieces, so
+      -- the board renderer and the move engine both take it as-is.
+      position MEDIUMTEXT NOT NULL,
+      side_to_move TINYINT NOT NULL DEFAULT 1,
+      -- The move that led into the position, replayed as the opening animation
+      -- the way lichess/chess.com do. Presentation only; not part of the answer.
+      setup_move TEXT NULL,
+
+      -- What counts as solved. Kept as an enum rather than free text because the
+      -- validator has to be able to decide it mechanically.
+      goal ENUM('checkmate_in_1','specific_move') NOT NULL DEFAULT 'checkmate_in_1',
+      solution_line MEDIUMTEXT NOT NULL,
+      solution_depth TINYINT UNSIGNED NOT NULL DEFAULT 1,
+
+      is_draft TINYINT(1) NOT NULL DEFAULT 1,
+      published_at DATETIME NULL,
+
+      -- Set by the validator, not by the creator. A puzzle with more than one
+      -- winning move is 'ambiguous' and cannot be published.
+      validation_status ENUM('unvalidated','valid','ambiguous','unsolvable') NOT NULL DEFAULT 'unvalidated',
+      validation_detail TEXT NULL,
+      validated_at DATETIME NULL,
+
+      moderation_status ENUM('approved','pending_review','rejected') NOT NULL DEFAULT 'approved',
+      report_count INT UNSIGNED NOT NULL DEFAULT 0,
+
+      -- The puzzle carries its own rating; a solver's rating cannot move without
+      -- something to move against.
+      rating INT NOT NULL DEFAULT 1200,
+      rating_deviation INT NOT NULL DEFAULT 350,
+      attempt_count INT UNSIGNED NOT NULL DEFAULT 0,
+      solve_count INT UNSIGNED NOT NULL DEFAULT 0,
+
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+      FOREIGN KEY (game_type_id) REFERENCES game_types(id) ON DELETE CASCADE,
+      FOREIGN KEY (creator_id) REFERENCES users(id) ON DELETE SET NULL,
+      INDEX idx_puzzles_browse (game_type_id, is_draft, moderation_status, published_at),
+      INDEX idx_puzzles_creator (creator_id, is_draft),
+      INDEX idx_puzzles_rating (rating)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+    description: "Create puzzles table (child records of a game type)"
+  },
+  {
+    table: 'puzzle_attempts',
+    sql: `CREATE TABLE IF NOT EXISTS puzzle_attempts (
+      id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      puzzle_id INT UNSIGNED NOT NULL,
+      user_id INT UNSIGNED NULL,
+      moves MEDIUMTEXT NULL,
+      solved TINYINT(1) NOT NULL DEFAULT 0,
+      duration_ms INT UNSIGNED NULL,
+
+      -- Only a user's FIRST attempt at a puzzle moves ratings, otherwise a
+      -- solver could retry until they pass and farm the difference. 1 on that
+      -- attempt and NULL on every later one, so the unique index below enforces
+      -- "at most one rated attempt per user per puzzle" in the database rather
+      -- than trusting the application to remember.
+      rated_attempt TINYINT UNSIGNED NULL,
+      rating_before INT NULL,
+      rating_after INT NULL,
+
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+      FOREIGN KEY (puzzle_id) REFERENCES puzzles(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      UNIQUE KEY uniq_rated_attempt (puzzle_id, user_id, rated_attempt),
+      INDEX idx_attempts_user (user_id, created_at),
+      INDEX idx_attempts_puzzle (puzzle_id, created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+    description: "Create puzzle_attempts table (solver history, separate from match history)"
+  },
+  {
+    table: 'puzzle_reports',
+    sql: `CREATE TABLE IF NOT EXISTS puzzle_reports (
+      id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      puzzle_id INT UNSIGNED NOT NULL,
+      reporter_user_id INT UNSIGNED NULL,
+      reason ENUM('multiple_solutions','no_solution','wrong_side_to_move','offensive','other') NOT NULL DEFAULT 'other',
+      details TEXT NULL,
+      -- The line the reporter believes also works, so the creator can check the
+      -- claim instead of taking their word for it.
+      alternate_solution TEXT NULL,
+      status ENUM('open','accepted','rejected') NOT NULL DEFAULT 'open',
+      handled_by INT UNSIGNED NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      resolved_at DATETIME NULL,
+
+      FOREIGN KEY (puzzle_id) REFERENCES puzzles(id) ON DELETE CASCADE,
+      FOREIGN KEY (reporter_user_id) REFERENCES users(id) ON DELETE SET NULL,
+      FOREIGN KEY (handled_by) REFERENCES users(id) ON DELETE SET NULL,
+      INDEX idx_reports_puzzle (puzzle_id, status),
+      INDEX idx_reports_open (status, created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+    description: "Create puzzle_reports table (creator-facing review queue)"
+  }
+);
+
 const migrations = [
+  {
+    table: 'users',
+    column: 'puzzle_elo',
+    sql: "ALTER TABLE users ADD COLUMN puzzle_elo INT NOT NULL DEFAULT 1200",
+    description: "Add puzzle_elo to users (kept separate from match elo)"
+  },
+  {
+    table: 'users',
+    column: 'puzzle_rating_deviation',
+    sql: "ALTER TABLE users ADD COLUMN puzzle_rating_deviation INT NOT NULL DEFAULT 350",
+    description: "Add puzzle_rating_deviation to users"
+  },
+  {
+    table: 'users',
+    column: 'puzzles_solved',
+    sql: "ALTER TABLE users ADD COLUMN puzzles_solved INT UNSIGNED NOT NULL DEFAULT 0",
+    description: "Add puzzles_solved counter to users"
+  },
   {
     table: 'users',
     column: 'username',
