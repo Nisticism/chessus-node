@@ -69,7 +69,7 @@ const About = lazy(() => import("./containers/about/About"));
 const Tutorial = lazy(() => import("./containers/tutorial/Tutorial"));
 const InfoHub = lazy(() => import("./containers/infohub/InfoHub"));
 const Announcements = lazy(() => import("./containers/announcements/Announcements"));
-const AnnouncementDetail = lazy(() => import("./containers/announcements/AnnouncementDetail"));const PhysicalBoardRequest = lazy(() => import('./components/physicalboard/PhysicalBoardRequest'));const PuzzleBuilder = lazy(() => import('./components/puzzles/PuzzleBuilder'));const AiAnalysis = lazy(() => import("./containers/ai-analysis/AiAnalysis"));const Changelog = lazy(() => import("./containers/changelog/Changelog"));
+const AnnouncementDetail = lazy(() => import("./containers/announcements/AnnouncementDetail"));const PhysicalBoardRequest = lazy(() => import('./components/physicalboard/PhysicalBoardRequest'));const PuzzleBuilder = lazy(() => import('./components/puzzles/PuzzleBuilder'));const PuzzleSolver = lazy(() => import('./components/puzzles/PuzzleSolver'));const AiAnalysis = lazy(() => import("./containers/ai-analysis/AiAnalysis"));const Changelog = lazy(() => import("./containers/changelog/Changelog"));
 
 function App() {
 
@@ -208,6 +208,8 @@ function App() {
                 page is linkable and explains why it is locked. */}
             <Route exact path="/games/:gameId/puzzles/new" element={<PuzzleBuilder />} />
             <Route exact path="/games/:gameId/puzzles/:puzzleId/edit" element={<PuzzleBuilder />} />
+            {/* Solving is open to everyone, signed in or not. */}
+            <Route exact path="/games/:gameId/puzzles/:puzzleId" element={<PuzzleSolver />} />
             <Route exact path="/pieces/:pieceId" element={<PieceView />} />
             <Route exact path="/community" element={<CommunityHub />} />
             <Route exact path="/community/players" element={<PlayerList />} />

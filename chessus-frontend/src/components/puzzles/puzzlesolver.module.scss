@@ -1,0 +1,223 @@
+@import '../../index.css';
+
+/* Same page shell and type scale as the builder and the game detail page. */
+.solver-page {
+  text-align: left;
+  max-width: 1200px;
+  margin: 40px auto;
+  padding: 30px;
+  background: linear-gradient(135deg, var(--panel-bg-start) 0%, var(--panel-bg-end) 100%);
+  border: 2px solid var(--panel-card-border);
+  border-radius: 8px;
+  box-shadow: var(--shadow-card);
+
+  h1 {
+    color: var(--gold-header);
+    font-size: 24px;
+    margin: 0 0 4px;
+    text-align: center;
+  }
+
+  @media (max-width: 900px) {
+    margin: 20px auto;
+    padding: 16px;
+  }
+}
+
+.subtitle {
+  text-align: center;
+  font-size: 15px;
+  color: var(--text-secondary);
+  margin: 0 0 20px;
+
+  a { color: var(--accent-highlight, #7fdfff); }
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, auto) minmax(300px, 360px);
+  gap: 16px;
+  align-items: start;
+  justify-content: start;
+
+  @media (max-width: 1000px) {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* A board much taller than it is wide leaves the pair stranded to the left. */
+.skinny .layout { justify-content: center; }
+
+.board-side {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.board {
+  display: grid;
+  gap: 0;
+  border: 2px solid var(--panel-border);
+  border-radius: 4px;
+  overflow: clip;
+}
+
+.square {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+
+  img {
+    width: 88%;
+    height: 88%;
+    object-fit: contain;
+    pointer-events: none;
+  }
+
+  /* The move that led into the position, shown so the solver knows what just
+     happened - the same cue chess sites give before a puzzle starts. */
+  &.setup    { box-shadow: inset 0 0 0 3px rgba(120, 170, 255, 0.55); }
+  &.selected { box-shadow: inset 0 0 0 3px rgba(var(--gold-rgb, 212, 175, 55), 0.95); }
+  &.wrong    { box-shadow: inset 0 0 0 3px rgba(248, 113, 113, 0.9); }
+  &.sol-from { box-shadow: inset 0 0 0 3px rgba(80, 170, 255, 0.9); }
+  &.sol-to   { box-shadow: inset 0 0 0 3px rgba(80, 220, 130, 0.9); }
+}
+
+.piece-fallback {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-heading);
+  opacity: 0.75;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  background: var(--bg-dark);
+  border: 1px solid var(--panel-card-border);
+  border-radius: 8px;
+  padding: 20px;
+  min-width: 0;
+}
+
+.goal {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px;
+  border-radius: 8px;
+  background: rgba(var(--gold-rgb, 212, 175, 55), 0.08);
+  border: 1px solid rgba(var(--gold-rgb, 212, 175, 55), 0.3);
+}
+
+.goal-label {
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-secondary);
+}
+
+.goal-text {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--gold-header);
+}
+
+.goal-side {
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.description {
+  font-size: 15px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin: 0;
+}
+
+.hint {
+  font-size: 15px;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.notice {
+  padding: 12px 14px;
+  border-radius: 6px;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.notice-ok    { background: rgba(74, 222, 128, 0.12);  border: 1px solid rgba(74, 222, 128, 0.4); }
+.notice-warn  { background: rgba(255, 170, 0, 0.12);   border: 1px solid rgba(255, 170, 0, 0.4); }
+.notice-error { background: rgba(248, 113, 113, 0.12); border: 1px solid rgba(248, 113, 113, 0.45); }
+.notice-info  { background: rgba(120, 170, 255, 0.12); border: 1px solid rgba(120, 170, 255, 0.4); }
+
+.actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.btn,
+.btn-secondary {
+  padding: 11px 18px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: 500;
+
+  &:disabled { opacity: 0.55; cursor: not-allowed; }
+}
+
+.btn { background: var(--accent-primary, #4a7fd4); color: #fff; }
+.btn-secondary { background: var(--panel-bg-start, #24344f); color: var(--text-heading); }
+
+.link-btn {
+  background: none;
+  border: none;
+  color: var(--accent-highlight, #7fdfff);
+  cursor: pointer;
+  padding: 0;
+  font-size: 15px;
+  text-align: left;
+}
+
+.feedback {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 14px;
+  border-top: 1px solid var(--panel-card-border);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+
+  > span {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-heading);
+
+    em { font-weight: 400; color: var(--text-secondary); font-style: normal; }
+  }
+
+  select,
+  textarea {
+    background: var(--panel-bg-start, #16213a);
+    border: 1px solid var(--panel-card-border);
+    border-radius: 6px;
+    padding: 10px 12px;
+    color: var(--text-heading);
+    font-size: 16px;
+    font-family: inherit;
+    min-width: 0;
+  }
+}

@@ -10,7 +10,8 @@ const changelogData = [
       "Silver and Gold Supporters (and admins) can now build puzzles for any game type. Open the Puzzle Builder from Creator Options on a game's page: arrange a position, say who moves and what they're aiming for, record the answer, then save it as a draft or publish it.",
       "Puzzles don't have to end the game — 'win material' and free-form goals are first-class alongside checkmate.",
       "Checkmate-in-1 puzzles get checked automatically, including a warning when some other move also mates (easy to miss when the pieces are custom-made). It's advice, not a gate — you can publish either way, and other goals are judged by the people solving them.",
-      "Solving puzzles will be free for everyone; only building them is a supporter perk.",
+      "Solving puzzles is free for everyone, signed in or not — only building them is a supporter perk. Game pages now list that game's puzzles whenever it has any, and each one opens a solver: play the move you think works and the server tells you. Your attempts are kept separately from your match history.",
+      "You can send a puzzle's creator a note about it — another move works, the goal is unclear, or just that you liked it. It goes to them as feedback rather than acting as a report, so it needs an actual message and can't take a puzzle down.",
     ],
   },
   {
