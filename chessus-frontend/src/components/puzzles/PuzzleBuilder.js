@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { useSelector } from "react-redux";
 import axios from "../../services/axios-interceptor";
 import API_URL from "../../global/global";
@@ -65,6 +65,8 @@ const imageFor = (placement, pieceDataMap) => {
 const PuzzleBuilder = () => {
   const { gameId, puzzleId } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
+  const fromMatch = location.state?.fromMatch || null;
   const dispatch = useDispatch();
   const { user: currentUser } = useSelector((state) => state.authReducer);
 
@@ -79,12 +81,14 @@ const PuzzleBuilder = () => {
   const [mode, setMode] = useState('arrange');   // 'arrange' | 'solution'
   const [selected, setSelected] = useState(null); // "y,x" of the held piece
   const [solution, setSolution] = useState(null); // { from:{x,y}, to:{x,y}, pieceId }
+  const [setupMove, setSetupMove] = useState(null); // the move that led into the position
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [sideToMove, setSideToMove] = useState(1);
   const [goal, setGoal] = useState('checkmate_in_1');
   const [goalDescription, setGoalDescription] = useState('');
+  const [hideRating, setHideRating] = useState(false);
 
   const [pieceDataMap, setPieceDataMap] = useState({});
   const [checkResult, setCheckResult] = useState(null);
@@ -162,7 +166,37 @@ const PuzzleBuilder = () => {
         let parsed = {};
         try { parsed = data.pieces_string ? JSON.parse(data.pieces_string) : {}; } catch (_) { parsed = {}; }
         setStartingPlacements(parsed);
-        setPlacements(parsed);
+
+        // Arriving from a match replay: seed the board with that position
+        // instead of the game's opening setup. Engine pieces carry the flags
+        // that make a piece royal, so they are copied across rather than
+        // rebuilt - a position without them can never be checkmate.
+        if (fromMatch?.pieces?.length) {
+          const seeded = {};
+          for (const pc of fromMatch.pieces) {
+            const pieceId = pc.piece_id ?? parseInt(String(pc.id).split('_')[0], 10);
+            if (!Number.isFinite(pieceId)) continue;
+            seeded[keyOf(pc.x, pc.y)] = {
+              piece_id: pieceId,
+              player_id: Number(pc.player_id ?? pc.team ?? 1),
+              piece_name: pc.piece_name,
+              image_url: pc.image_url,
+              image_location: pc.image_location,
+              ends_game_on_checkmate: pc.ends_game_on_checkmate,
+              ends_game_on_capture: pc.ends_game_on_capture,
+            };
+          }
+          setPlacements(seeded);
+          if (fromMatch.setupMove?.from && fromMatch.setupMove?.to) {
+            setSetupMove({ from: fromMatch.setupMove.from, to: fromMatch.setupMove.to });
+          }
+          setCheckResult({
+            tone: 'info',
+            text: 'Loaded from the match. Rearrange anything you like, then set the solution.',
+          });
+        } else {
+          setPlacements(parsed);
+        }
       } catch (err) {
         if (!cancelled) setError(err?.message || 'Could not load this game');
       } finally {
@@ -189,6 +223,8 @@ const PuzzleBuilder = () => {
         setSideToMove(p.side_to_move || 1);
         setGoal(p.goal || 'checkmate_in_1');
         setGoalDescription(p.goal_description || '');
+        setHideRating(!!p.hide_rating);
+        if (p.setup_move) setSetupMove(p.setup_move);
         if (Array.isArray(p.solution_line) && p.solution_line[0]) setSolution(p.solution_line[0]);
       } catch (err) {
         if (!cancelled) setError('Could not load that puzzle');
@@ -278,6 +314,8 @@ const PuzzleBuilder = () => {
     side_to_move: sideToMove,
     goal,
     goal_description: goalDescription.trim() || null,
+    setup_move: setupMove,
+    hide_rating: hideRating,
     solution_line: solution ? [solution] : [],
   });
 
@@ -492,6 +530,14 @@ const PuzzleBuilder = () => {
               />
             </label>
           )}
+
+          <label className={styles["checkbox-field"]}>
+            <input type="checkbox" checked={hideRating} onChange={(e) => setHideRating(e.target.checked)} />
+            <span>
+              Hide this puzzle's rating
+              <InfoTooltip text="A puzzle's rating is the average rating of the people who have solved it. It is hidden from everyone until at least 10 people have solved it; tick this to keep it hidden after that too." />
+            </span>
+          </label>
 
           <div className={styles["solution-readout"]}>
             <strong>Solution:</strong>{' '}

@@ -3753,6 +3753,11 @@ const GameTypeView = () => {
                     {pz.attempt_count > 0 && (
                       <span>{pz.solve_count}/{pz.attempt_count} solved</span>
                     )}
+                    {/* Only shown once enough people have solved it for the
+                        number to mean anything; the server decides. */}
+                    {pz.rating_public && pz.rating != null && (
+                      <span>Rated {pz.rating}</span>
+                    )}
                   </div>
                 </Link>
               ))}

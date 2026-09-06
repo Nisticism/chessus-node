@@ -5,6 +5,7 @@ import axios from "axios";
 import styles from "./matchview.module.scss";
 import API_URL from "../../global/global";
 import { colToFile, rowToRank, formatMoveNotation, replayToMove, doesPieceOccupySquare } from "../../helpers/pieceMovementUtils";
+import { canCreatePuzzles } from "../../helpers/supporterTiers";
 import {
   createMoveEngine,
   getMoveDotType,
@@ -717,6 +718,31 @@ const MatchView = () => {
           >
             {match.gameTypeName || 'View Game Type'}
           </Link>
+        )}
+        {/* Finished games are where the good puzzles are, and the position is
+            already on screen - so hand it straight to the builder instead of
+            making someone rebuild it square by square. Only offered to accounts
+            that can actually build one. */}
+        {match.gameTypeId && canCreatePuzzles(currentUser) && (
+          <button
+            type="button"
+            className={styles["banner-game-type-link"]}
+            onClick={() => navigate(`/games/${match.gameTypeId}/puzzles/new`, {
+              state: {
+                fromMatch: {
+                  matchId: match.id ?? gameId,
+                  pieces: displayedPieces,
+                  // The move that produced this position, replayed in the
+                  // solver as the opening animation.
+                  setupMove: (reviewMoveIndex !== null && reviewMoveIndex >= 0)
+                    ? match.moveHistory?.[reviewMoveIndex]
+                    : (match.moveHistory?.length ? match.moveHistory[match.moveHistory.length - 1] : null),
+                },
+              },
+            })}
+          >
+            🧩 Create puzzle from this position
+          </button>
         )}
       </div>
 

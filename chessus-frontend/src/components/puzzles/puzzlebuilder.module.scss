@@ -219,6 +219,17 @@
   }
 }
 
+.checkbox-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  color: var(--text-heading);
+  cursor: pointer;
+
+  input { width: 16px; height: 16px; }
+}
+
 .solution-readout {
   font-size: 15px;
   color: var(--text-secondary);

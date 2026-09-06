@@ -73,6 +73,8 @@ const PuzzleSolver = () => {
   const [outcome, setOutcome] = useState(null);   // 'solved' | 'wrong' | 'revealed'
   const [attempts, setAttempts] = useState(0);
   const [solution, setSolution] = useState(null);
+  const [ratingChange, setRatingChange] = useState(null);
+  const [ratingNote, setRatingNote] = useState(null);
   const [busy, setBusy] = useState(false);
   const [startedAt] = useState(() => Date.now());
 
@@ -175,6 +177,8 @@ const PuzzleSolver = () => {
         { headers: authHeader() }
       );
       setAttempts((n) => n + 1);
+      if (data.rating) setRatingChange(data.rating);
+      else if (data.ratingNote) setRatingNote(data.ratingNote);
       if (data.solved) {
         setOutcome('solved');
         setSolution(data.solution || [move]);
@@ -309,7 +313,12 @@ const PuzzleSolver = () => {
           <div className={styles["goal"]}>
             <span className={styles["goal-label"]}>Your goal</span>
             <span className={styles["goal-text"]}>{goalText(puzzle)}</span>
-            <span className={styles["goal-side"]}>You are Player {puzzle.side_to_move}.</span>
+            <span className={styles["goal-side"]}>
+              You are Player {puzzle.side_to_move}.
+              {puzzle.rating_public && puzzle.rating != null && (
+                <> · Rated {puzzle.rating} by {puzzle.rating_sample_count} solvers</>
+              )}
+            </span>
           </div>
 
           {puzzle.description && <p className={styles["description"]}>{puzzle.description}</p>}
@@ -323,6 +332,17 @@ const PuzzleSolver = () => {
             <div className={`${styles["notice"]} ${styles["notice-warn"]}`}>
               Not that one. Try again — the position is unchanged.
             </div>
+          )}
+          {ratingChange && (
+            <div className={styles["rating-change"]}>
+              Puzzle rating {ratingChange.before} → <strong>{ratingChange.after}</strong>
+              <span className={ratingChange.delta >= 0 ? styles["delta-up"] : styles["delta-down"]}>
+                {ratingChange.delta >= 0 ? `+${ratingChange.delta}` : ratingChange.delta}
+              </span>
+            </div>
+          )}
+          {!ratingChange && ratingNote && (
+            <p className={styles["hint"]}>{ratingNote}</p>
           )}
           {outcome === 'revealed' && sol && (
             <div className={`${styles["notice"]} ${styles["notice-info"]}`}>

@@ -517,10 +517,13 @@ tableMigrations.push(
       moderation_status ENUM('approved','pending_review','rejected') NOT NULL DEFAULT 'approved',
       feedback_count INT UNSIGNED NOT NULL DEFAULT 0,
 
-      -- The puzzle carries its own rating; a solver's rating cannot move without
-      -- something to move against.
+      -- Emergent difficulty: the mean puzzle rating of the people who have
+      -- actually solved it, not a number the creator picks. Meaningless until
+      -- enough people have tried, so it stays hidden below a threshold, and the
+      -- creator can hide it outright.
       rating INT NOT NULL DEFAULT 1200,
-      rating_deviation INT NOT NULL DEFAULT 350,
+      rating_sample_count INT UNSIGNED NOT NULL DEFAULT 0,
+      hide_rating TINYINT(1) NOT NULL DEFAULT 0,
       attempt_count INT UNSIGNED NOT NULL DEFAULT 0,
       solve_count INT UNSIGNED NOT NULL DEFAULT 0,
 
@@ -606,10 +609,16 @@ const migrations = [
     description: "Add puzzle_elo to users (kept separate from match elo)"
   },
   {
-    table: 'users',
-    column: 'puzzle_rating_deviation',
-    sql: "ALTER TABLE users ADD COLUMN puzzle_rating_deviation INT NOT NULL DEFAULT 350",
-    description: "Add puzzle_rating_deviation to users"
+    table: 'puzzles',
+    column: 'rating_sample_count',
+    sql: "ALTER TABLE puzzles ADD COLUMN rating_sample_count INT UNSIGNED NOT NULL DEFAULT 0",
+    description: "Add rating_sample_count to puzzles"
+  },
+  {
+    table: 'puzzles',
+    column: 'hide_rating',
+    sql: "ALTER TABLE puzzles ADD COLUMN hide_rating TINYINT(1) NOT NULL DEFAULT 0",
+    description: "Add hide_rating to puzzles (creator can suppress the public rating)"
   },
   {
     table: 'users',

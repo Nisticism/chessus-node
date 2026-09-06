@@ -14,6 +14,10 @@
  *    or mark it invalid, and it requires a written message.
  */
 const { validatePuzzle, moveKey, GOALS, VALIDATION } = require('./puzzle-validation');
+const {
+  rateAttempt, foldSolverIntoPuzzleRating, isRatingPublic,
+  PUZZLE_ELO_DEFAULT, MIN_SOLVERS_FOR_PUBLIC_RATING,
+} = require('./puzzle-rating');
 
 const MAX_TITLE = 120;
 const MAX_DESCRIPTION = 2000;
@@ -23,10 +27,21 @@ const MIN_FEEDBACK = 10;
 function registerPuzzleRoutes(app, { db_pool, dbHelpers, authenticateToken, optionalAuthenticate, hasAdminRole, canCreatePuzzles }) {
   const isStaff = (user) => hasAdminRole(user?.role);
 
-  /** Rows go out without the answer unless the caller is entitled to it. */
-  const publicPuzzle = (row, { includeSolution = false } = {}) => {
+  /**
+   * Rows go out without the answer unless the caller is entitled to it, and
+   * without the rating until enough people have solved the puzzle for it to
+   * mean anything (or if the creator has chosen to hide it). The creator always
+   * sees their own.
+   */
+  const publicPuzzle = (row, { includeSolution = false, includeRating = false } = {}) => {
     const { solution_line, ...rest } = row;
-    return includeSolution ? { ...rest, solution_line: safeParse(solution_line) } : rest;
+    const out = includeSolution ? { ...rest, solution_line: safeParse(solution_line) } : rest;
+    out.rating_public = isRatingPublic(row);
+    if (!includeRating && !out.rating_public) {
+      delete out.rating;
+      delete out.rating_sample_count;
+    }
+    return out;
   };
 
   const safeParse = (v, fallback = null) => {
@@ -107,7 +122,8 @@ function registerPuzzleRoutes(app, { db_pool, dbHelpers, authenticateToken, opti
       const [rows] = await db_pool.query(
         `SELECT p.id, p.game_type_id, p.creator_id, u.username AS creator_username,
                 p.title, p.description, p.goal, p.goal_description, p.side_to_move,
-                p.rating, p.attempt_count, p.solve_count, p.published_at, p.validation_status
+                p.rating, p.rating_sample_count, p.hide_rating,
+                p.attempt_count, p.solve_count, p.published_at, p.validation_status
          FROM puzzles p
          LEFT JOIN users u ON u.id = p.creator_id
          WHERE p.game_type_id = ? AND p.is_draft = 0 AND p.moderation_status = 'approved'
@@ -120,7 +136,7 @@ function registerPuzzleRoutes(app, { db_pool, dbHelpers, authenticateToken, opti
          WHERE game_type_id = ? AND is_draft = 0 AND moderation_status = 'approved'`,
         [gameTypeId]
       );
-      res.json({ puzzles: rows, total, limit, offset });
+      res.json({ puzzles: rows.map((r) => publicPuzzle(r)), total, limit, offset });
     } catch (err) {
       console.error('GET /api/game-types/:gameTypeId/puzzles:', err);
       res.status(500).send({ message: 'Failed to load puzzles' });
@@ -136,7 +152,7 @@ function registerPuzzleRoutes(app, { db_pool, dbHelpers, authenticateToken, opti
          WHERE p.creator_id = ? ORDER BY p.updated_at DESC`,
         [req.user.id]
       );
-      res.json({ puzzles: rows.map((r) => publicPuzzle(r, { includeSolution: true })) });
+      res.json({ puzzles: rows.map((r) => publicPuzzle(r, { includeSolution: true, includeRating: true })) });
     } catch (err) {
       console.error('GET /api/puzzles/mine:', err);
       res.status(500).send({ message: 'Failed to load your puzzles' });
@@ -159,7 +175,7 @@ function registerPuzzleRoutes(app, { db_pool, dbHelpers, authenticateToken, opti
       }
 
       const includeSolution = canEdit(puzzle, viewer);
-      const out = publicPuzzle(puzzle, { includeSolution });
+      const out = publicPuzzle(puzzle, { includeSolution, includeRating: includeSolution });
       out.position = safeParse(puzzle.position, []);
       out.setup_move = safeParse(puzzle.setup_move);
       res.json({ puzzle: out });
@@ -248,6 +264,7 @@ function registerPuzzleRoutes(app, { db_pool, dbHelpers, authenticateToken, opti
       if (b.setup_move !== undefined) set('setup_move', b.setup_move ? JSON.stringify(b.setup_move) : null);
       if (b.goal !== undefined && Object.values(GOALS).includes(b.goal)) set('goal', b.goal);
       if (b.goal_description !== undefined) set('goal_description', (b.goal_description || '').slice(0, 255) || null);
+      if (b.hide_rating !== undefined) set('hide_rating', b.hide_rating ? 1 : 0);
       if (b.solution_line !== undefined) {
         const line = Array.isArray(b.solution_line) ? b.solution_line : [b.solution_line];
         set('solution_line', JSON.stringify(line));
@@ -388,10 +405,53 @@ function registerPuzzleRoutes(app, { db_pool, dbHelpers, authenticateToken, opti
         await db_pool.query('UPDATE users SET puzzles_solved = puzzles_solved + 1 WHERE id = ?', [userId]);
       }
 
+      // Ratings move on the first attempt only - see puzzle-rating.js for why
+      // the solver is scored against a fixed anchor rather than the puzzle's
+      // own (emergent, and at this point barely sampled) rating.
+      let ratingChange = null;
+      if (userId && ratedAttempt === 1) {
+        const [[u]] = await db_pool.query(
+          'SELECT puzzle_elo FROM users WHERE id = ? LIMIT 1', [userId]
+        );
+        const [[counts]] = await db_pool.query(
+          'SELECT COUNT(*) AS n FROM puzzle_attempts WHERE user_id = ? AND rated_attempt = 1', [userId]
+        );
+        const result = rateAttempt({
+          currentElo: u?.puzzle_elo ?? PUZZLE_ELO_DEFAULT,
+          // This attempt is already stored, so it is in the count.
+          ratedAttemptsSoFar: Math.max(0, (counts?.n || 1) - 1),
+          solved,
+        });
+        await db_pool.query('UPDATE users SET puzzle_elo = ? WHERE id = ?', [result.after, userId]);
+        await db_pool.query(
+          'UPDATE puzzle_attempts SET rating_before = ?, rating_after = ? WHERE puzzle_id = ? AND user_id = ? AND rated_attempt = 1',
+          [result.before, result.after, puzzle.id, userId]
+        );
+        ratingChange = { before: result.before, after: result.after, delta: result.delta };
+
+        // The puzzle's own rating is the mean of the people who SOLVED it, so
+        // only a success is folded in.
+        if (solved) {
+          const folded = foldSolverIntoPuzzleRating({
+            rating: puzzle.rating,
+            sampleCount: puzzle.rating_sample_count,
+            solverElo: result.before,
+          });
+          await db_pool.query(
+            'UPDATE puzzles SET rating = ?, rating_sample_count = ? WHERE id = ?',
+            [folded.rating, folded.sampleCount, puzzle.id]
+          );
+        }
+      }
+
       res.json({
         solved,
         // Only hand back the answer once they have it right (or gave up).
         solution: solved || req.body?.revealed === true ? line : undefined,
+        rating: ratingChange,
+        ratingNote: ratingChange
+          ? null
+          : (userId ? 'Only your first attempt at a puzzle affects your rating.' : null),
       });
     } catch (err) {
       console.error('POST /api/puzzles/:id/solve:', err);
