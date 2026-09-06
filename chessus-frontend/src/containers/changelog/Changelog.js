@@ -4,6 +4,16 @@ import styles from "./changelog.module.scss";
 
 const changelogData = [
   {
+    date: "September 6, 2026",
+    title: "Puzzle builder (early)",
+    items: [
+      "Silver and Gold Supporters (and admins) can now build puzzles for any game type. Open the Puzzle Builder from Creator Options on a game's page: arrange a position, say who moves and what they're aiming for, record the answer, then save it as a draft or publish it.",
+      "Puzzles don't have to end the game — 'win material' and free-form goals are first-class alongside checkmate.",
+      "Checkmate-in-1 puzzles get checked automatically, including a warning when some other move also mates (easy to miss when the pieces are custom-made). It's advice, not a gate — you can publish either way, and other goals are judged by the people solving them.",
+      "Solving puzzles will be free for everyone; only building them is a supporter perk.",
+    ],
+  },
+  {
     date: "September 5, 2026",
     title: "Custom square colours become a Silver Supporter perk",
     items: [

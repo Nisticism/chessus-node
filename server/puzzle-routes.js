@@ -20,7 +20,7 @@ const MAX_DESCRIPTION = 2000;
 const MAX_FEEDBACK = 2000;
 const MIN_FEEDBACK = 10;
 
-function registerPuzzleRoutes(app, { db_pool, dbHelpers, authenticateToken, optionalAuthenticate, hasAdminRole }) {
+function registerPuzzleRoutes(app, { db_pool, dbHelpers, authenticateToken, optionalAuthenticate, hasAdminRole, canCreatePuzzles }) {
   const isStaff = (user) => hasAdminRole(user?.role);
 
   /** Rows go out without the answer unless the caller is entitled to it. */
@@ -42,23 +42,53 @@ function registerPuzzleRoutes(app, { db_pool, dbHelpers, authenticateToken, opti
 
   const canEdit = (puzzle, user) => !!user && (puzzle.creator_id === user.id || isStaff(user));
 
-  /** Merge the junction flags into a stored position.
+  /**
+   * Turn a stored position into pieces the move engine understands.
    *
-   * ends_game_on_checkmate / ends_game_on_capture live on game_type_pieces, not
-   * on pieces - they are properties of a piece IN A GAME TYPE. Without them the
-   * engine sees no royal piece, so nothing is ever check and a mate puzzle
-   * silently looks unsolvable. Anything that feeds a position to the engine has
-   * to do this.
+   * A puzzle stores placements in the same compact shape as a game type's
+   * pieces_string - piece_id, player_id, x, y, plus the per-game-type flags -
+   * rather than sixty movement columns per square. The movement fields are
+   * merged in here from the pieces table.
+   *
+   * ends_game_on_checkmate is the one to be careful with: it is a property of a
+   * piece IN A GAME TYPE, so it rides on the placement, not on the piece row.
+   * Lose it and the engine sees no royal piece, nothing is ever check, and a
+   * mate puzzle silently reports as unsolvable rather than erroring.
    */
-  const hydratePosition = async (gameTypeId, position) => {
+  const hydratePosition = async (gameTypeId, placements) => {
+    const list = Array.isArray(placements) ? placements : [];
+    if (!list.length) return [];
+
+    const pieceIds = [...new Set(list.map((p) => Number(p.piece_id)).filter(Boolean))];
+    if (!pieceIds.length) return [];
     const [rows] = await db_pool.query(
-      `SELECT gtp.piece_id, gtp.ends_game_on_checkmate, gtp.ends_game_on_capture
-       FROM game_type_pieces gtp WHERE gtp.game_type_id = ?`, [gameTypeId]
+      `SELECT * FROM pieces WHERE id IN (${pieceIds.map(() => '?').join(',')})`, pieceIds
     );
-    const flags = new Map(rows.map((r) => [String(r.piece_id), r]));
-    return (position || []).map((p) => {
-      const f = flags.get(String(p.piece_type_id ?? p.piece_id));
-      return f ? { ...p, ends_game_on_checkmate: f.ends_game_on_checkmate, ends_game_on_capture: f.ends_game_on_capture } : p;
+    const byId = new Map(rows.map((r) => [Number(r.id), r]));
+
+    // Fall back to the junction flags when a placement did not carry them.
+    const [flagRows] = await db_pool.query(
+      `SELECT piece_id, ends_game_on_checkmate, ends_game_on_capture
+       FROM game_type_pieces WHERE game_type_id = ?`, [gameTypeId]
+    );
+    const flagById = new Map(flagRows.map((r) => [Number(r.piece_id), r]));
+
+    return list.map((p, i) => {
+      const def = byId.get(Number(p.piece_id)) || {};
+      const fallback = flagById.get(Number(p.piece_id)) || {};
+      const player = Number(p.player_id ?? p.team ?? 1);
+      return {
+        ...def,
+        // Board identity, not the piece-definition id.
+        id: p.id || `${p.piece_id}_${p.y}_${p.x}`,
+        piece_id: p.piece_id,
+        x: Number(p.x),
+        y: Number(p.y),
+        player_id: player,
+        team: player,
+        ends_game_on_checkmate: p.ends_game_on_checkmate ?? fallback.ends_game_on_checkmate ?? false,
+        ends_game_on_capture: p.ends_game_on_capture ?? fallback.ends_game_on_capture ?? false,
+      };
     });
   };
 
@@ -145,6 +175,14 @@ function registerPuzzleRoutes(app, { db_pool, dbHelpers, authenticateToken, opti
       const gameTypeId = parseInt(req.params.gameTypeId, 10);
       const [[gameType]] = await db_pool.query('SELECT * FROM game_types WHERE id = ? LIMIT 1', [gameTypeId]);
       if (!gameType) return res.status(404).send({ message: 'Game type not found' });
+
+      // Authoring is the Silver perk; solving stays open to everyone.
+      if (!(await canCreatePuzzles(req.user.id))) {
+        return res.status(403).send({
+          message: 'Building puzzles is a Silver Supporter perk. Solving them is free for everyone.',
+          requiresSupporter: true,
+        });
+      }
 
       const {
         title, description, position, side_to_move, setup_move,

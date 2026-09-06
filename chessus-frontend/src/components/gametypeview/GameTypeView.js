@@ -23,6 +23,7 @@ import { renderContent } from "../../helpers/render-content";
 import PieceBadges from "../common/PieceBadges";
 import SquareHighlightOverlay from "../common/SquareHighlightOverlay";
 import InfoTooltip from "../piecewizard/InfoTooltip";
+import { canCreatePuzzles } from "../../helpers/supporterTiers";
 import useBoardViewport from "../common/useBoardViewport";
 import BoardZoomControls from "../common/BoardZoomControls";
 import boardVp from "../common/boardViewport.module.scss";
@@ -2994,6 +2995,10 @@ const GameTypeView = () => {
     return board;
   };
 
+  // Authoring puzzles is Silver-and-above (staff included); solving is open to
+  // everyone, so this must not be used to gate the solver.
+  const puzzleBuilderAllowed = canCreatePuzzles(currentUser);
+
   const canEdit = () => {
     if (!currentUser || !game) return false;
     const role = (currentUser.role || "").toLowerCase();
@@ -3148,6 +3153,26 @@ const GameTypeView = () => {
                     onClick={() => { setCreatorMenuOpen(false); navigate(`/games/${gameId}/physical-board`); }}
                   >
                     🪵 Request Physical Board
+                  </button>
+                  {/* Building puzzles is a Silver perk. Shown to every creator
+                      rather than hidden, so they can see the option exists -
+                      greyed out with a tooltip explaining why when they cannot
+                      use it yet. Solving puzzles is free for everyone. */}
+                  <button
+                    type="button"
+                    className={styles["creator-menu-item"]}
+                    onClick={puzzleBuilderAllowed
+                      ? () => { setCreatorMenuOpen(false); navigate(`/games/${gameId}/puzzles/new`); }
+                      : undefined}
+                    disabled={!puzzleBuilderAllowed}
+                    title={puzzleBuilderAllowed
+                      ? undefined
+                      : 'Building puzzles is a Silver Supporter perk. Solving them is free for everyone.'}
+                  >
+                    🧩 Puzzle Builder
+                    {!puzzleBuilderAllowed && (
+                      <InfoTooltip text="Building puzzles is a Silver Supporter perk — support the site to unlock it. Solving puzzles is free for everyone." />
+                    )}
                   </button>
                 </div>
               )}

@@ -2550,6 +2550,19 @@ const canUseCustomBoardColors = async (userId) => {
   return parseFloat(row.total_donations || 0) >= BOARD_COLOR_MIN_DONATION;
 };
 
+// Building puzzles is a Silver Supporter perk (Gold and staff included).
+// SOLVING them is open to everyone - the gate is on authorship, not access.
+const PUZZLE_CREATE_MIN_DONATION = 5;   // Silver
+const canCreatePuzzles = async (userId) => {
+  if (!userId) return false;
+  const [[row]] = await db_pool.query(
+    'SELECT total_donations, role FROM users WHERE id = ?', [userId]
+  );
+  if (!row) return false;
+  if (hasAdminRole(row.role)) return true;
+  return parseFloat(row.total_donations || 0) >= PUZZLE_CREATE_MIN_DONATION;
+};
+
 const PIECE_SOUND_MIN_DONATION = 5;   // Silver
 const PIECE_SOUND_SLOTS = {
   move: 'move_sound_url',
@@ -6888,6 +6901,7 @@ require('./puzzle-routes').registerPuzzleRoutes(app, {
   authenticateToken,
   optionalAuthenticate,
   hasAdminRole,
+  canCreatePuzzles,
 });
 
 const posts = [{

@@ -31,3 +31,9 @@ export const isGoldSupporter = (user) => {
  * still use the built-in Quick Themes.
  */
 export const canUseCustomBoardColors = (user) => isSilverSupporter(user);
+
+/**
+ * Whether this user may BUILD puzzles. Solving them is open to everyone - the
+ * gate is on authorship, not access - so do not use this to hide the solver.
+ */
+export const canCreatePuzzles = (user) => isSilverSupporter(user);

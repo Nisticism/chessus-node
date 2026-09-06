@@ -69,7 +69,7 @@ const About = lazy(() => import("./containers/about/About"));
 const Tutorial = lazy(() => import("./containers/tutorial/Tutorial"));
 const InfoHub = lazy(() => import("./containers/infohub/InfoHub"));
 const Announcements = lazy(() => import("./containers/announcements/Announcements"));
-const AnnouncementDetail = lazy(() => import("./containers/announcements/AnnouncementDetail"));const PhysicalBoardRequest = lazy(() => import('./components/physicalboard/PhysicalBoardRequest'));const AiAnalysis = lazy(() => import("./containers/ai-analysis/AiAnalysis"));const Changelog = lazy(() => import("./containers/changelog/Changelog"));
+const AnnouncementDetail = lazy(() => import("./containers/announcements/AnnouncementDetail"));const PhysicalBoardRequest = lazy(() => import('./components/physicalboard/PhysicalBoardRequest'));const PuzzleBuilder = lazy(() => import('./components/puzzles/PuzzleBuilder'));const AiAnalysis = lazy(() => import("./containers/ai-analysis/AiAnalysis"));const Changelog = lazy(() => import("./containers/changelog/Changelog"));
 
 function App() {
 
@@ -203,6 +203,11 @@ function App() {
             <Route exact path="/create/games" element={<GameList />} />
             <Route exact path="/games/:gameId" element={<GameTypeView />} />
             <Route exact path="/games/:gameId/physical-board" element={<PhysicalBoardRequest />} />
+            {/* Puzzle builder. Authoring is Silver-and-above; the component
+                shows the perk notice itself rather than redirecting, so the
+                page is linkable and explains why it is locked. */}
+            <Route exact path="/games/:gameId/puzzles/new" element={<PuzzleBuilder />} />
+            <Route exact path="/games/:gameId/puzzles/:puzzleId/edit" element={<PuzzleBuilder />} />
             <Route exact path="/pieces/:pieceId" element={<PieceView />} />
             <Route exact path="/community" element={<CommunityHub />} />
             <Route exact path="/community/players" element={<PlayerList />} />
