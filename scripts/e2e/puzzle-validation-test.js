@@ -148,6 +148,41 @@ async function main() {
     `status ${r5.status}, ${r5.solutions.length} solution(s): ${r5.solutions.map(moveKey).join(' ')}`
   );
 
+  // --- 6. Non-mate goals are the creator's call ----------------------------
+  // A material-winning puzzle cannot be scored by the server, so it comes back
+  // not_checkable rather than being wrongly failed - but an answer that is not
+  // even a legal move is still caught.
+  const materialPuzzle = {
+    goal: GOALS.WIN_MATERIAL,
+    goal_description: 'Win the rook',
+    side_to_move: 1,
+    position: [
+      at(king, 'bk', 0, 0, 2),
+      at(king, 'wk', 0, 2, 1),
+      at(rook, 'wr', 9, 7, 1),
+    ],
+    solution_line: [{ from: { x: 9, y: 7 }, to: { x: 9, y: 4 }, pieceId: 'wr' }],
+  };
+  const r6 = await validatePuzzle(materialPuzzle, gameType);
+  console.log(`  [6] status=${r6.status} intendedWorks=${r6.intendedWorks}`);
+  check(
+    'a win-material puzzle is accepted as not_checkable, not failed',
+    r6.status === VALIDATION.NOT_CHECKABLE && r6.intendedWorks,
+    `status ${r6.status}: ${r6.detail}`
+  );
+
+  const materialIllegal = {
+    ...materialPuzzle,
+    solution_line: [{ from: { x: 9, y: 7 }, to: { x: 4, y: 4 }, pieceId: 'wr' }], // rooks do not move diagonally
+  };
+  const r7 = await validatePuzzle(materialIllegal, gameType);
+  console.log(`  [7] status=${r7.status} intendedWorks=${r7.intendedWorks}`);
+  check(
+    'an illegal answer is caught even for goals the server cannot score',
+    r7.status === VALIDATION.UNSOLVABLE && !r7.intendedWorks,
+    `status ${r7.status}: ${r7.detail}`
+  );
+
   console.log('');
   for (const r of results) {
     console.log(`${r.ok ? 'PASS' : 'FAIL'}  ${r.name}${r.ok ? '' : `\n      ${r.detail || ''}`}`);

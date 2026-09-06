@@ -6880,6 +6880,16 @@ app.post("/api/preferences/colors", authenticateToken, async (req, res) => {
   }
 });
 
+// Puzzles live in their own module - creator CRUD, the solver endpoint and
+// solver feedback - rather than adding a few hundred more lines to this file.
+require('./puzzle-routes').registerPuzzleRoutes(app, {
+  db_pool,
+  dbHelpers,
+  authenticateToken,
+  optionalAuthenticate,
+  hasAdminRole,
+});
+
 const posts = [{
   username: 'NewAccount',
   title: "Post 1"

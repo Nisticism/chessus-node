@@ -490,23 +490,32 @@ tableMigrations.push(
       -- the way lichess/chess.com do. Presentation only; not part of the answer.
       setup_move TEXT NULL,
 
-      -- What counts as solved. Kept as an enum rather than free text because the
-      -- validator has to be able to decide it mechanically.
-      goal ENUM('checkmate_in_1','specific_move') NOT NULL DEFAULT 'checkmate_in_1',
+      -- What counts as solved. Only checkmate_in_1 can be decided mechanically;
+      -- the rest are the creator's declaration, checked by solvers in practice
+      -- rather than by the server. A puzzle does not have to win the game -
+      -- winning material is a puzzle too.
+      goal ENUM('checkmate_in_1','win_material','specific_move','custom') NOT NULL DEFAULT 'checkmate_in_1',
+      -- What the solver is told to do, for goals the engine cannot express
+      -- ("win a rook", "escape the fork"). Required for anything but mate in 1.
+      goal_description VARCHAR(255) NULL,
       solution_line MEDIUMTEXT NOT NULL,
       solution_depth TINYINT UNSIGNED NOT NULL DEFAULT 1,
 
       is_draft TINYINT(1) NOT NULL DEFAULT 1,
       published_at DATETIME NULL,
 
-      -- Set by the validator, not by the creator. A puzzle with more than one
-      -- winning move is 'ambiguous' and cannot be published.
-      validation_status ENUM('unvalidated','valid','ambiguous','unsolvable') NOT NULL DEFAULT 'unvalidated',
+      -- Advisory only. Mate-in-1 puzzles get a real uniqueness check and the
+      -- creator is warned about alternatives, but nothing here blocks publishing
+      -- - a puzzle with two mates is still a puzzle. Everything else is
+      -- 'not_checkable' until there is a more general engine to judge it.
+      validation_status ENUM('unvalidated','valid','ambiguous','unsolvable','not_checkable') NOT NULL DEFAULT 'unvalidated',
       validation_detail TEXT NULL,
       validated_at DATETIME NULL,
 
+      -- Admin-driven, for genuinely abusive content. Solver feedback does NOT
+      -- feed into this; see puzzle_feedback.
       moderation_status ENUM('approved','pending_review','rejected') NOT NULL DEFAULT 'approved',
-      report_count INT UNSIGNED NOT NULL DEFAULT 0,
+      feedback_count INT UNSIGNED NOT NULL DEFAULT 0,
 
       -- The puzzle carries its own rating; a solver's rating cannot move without
       -- something to move against.
@@ -556,28 +565,36 @@ tableMigrations.push(
     description: "Create puzzle_attempts table (solver history, separate from match history)"
   },
   {
-    table: 'puzzle_reports',
-    sql: `CREATE TABLE IF NOT EXISTS puzzle_reports (
+    table: 'puzzle_feedback',
+    sql: `CREATE TABLE IF NOT EXISTS puzzle_feedback (
       id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
       puzzle_id INT UNSIGNED NOT NULL,
       reporter_user_id INT UNSIGNED NULL,
-      reason ENUM('multiple_solutions','no_solution','wrong_side_to_move','offensive','other') NOT NULL DEFAULT 'other',
-      details TEXT NULL,
-      -- The line the reporter believes also works, so the creator can check the
+
+      -- Critique addressed to the puzzle's creator, NOT a takedown request.
+      -- Nothing here can unpublish a puzzle or mark it invalid; it is a note
+      -- from a solver to the person who built it. The message is required
+      -- precisely so this cannot become a one-click "this is bad" button.
+      category ENUM('multiple_solutions','no_solution','unclear_goal','too_easy','too_hard','praise','other') NOT NULL DEFAULT 'other',
+      message TEXT NOT NULL,
+      -- The line the solver believes also works, so the creator can check the
       -- claim instead of taking their word for it.
       alternate_solution TEXT NULL,
-      status ENUM('open','accepted','rejected') NOT NULL DEFAULT 'open',
-      handled_by INT UNSIGNED NULL,
+
+      -- The creator's own reading queue. No accept/reject verdict, because
+      -- there is no ruling to make - the creator decides what to do with it.
+      status ENUM('new','read','addressed') NOT NULL DEFAULT 'new',
+      acknowledged_by INT UNSIGNED NULL,
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      resolved_at DATETIME NULL,
+      acknowledged_at DATETIME NULL,
 
       FOREIGN KEY (puzzle_id) REFERENCES puzzles(id) ON DELETE CASCADE,
       FOREIGN KEY (reporter_user_id) REFERENCES users(id) ON DELETE SET NULL,
-      FOREIGN KEY (handled_by) REFERENCES users(id) ON DELETE SET NULL,
-      INDEX idx_reports_puzzle (puzzle_id, status),
-      INDEX idx_reports_open (status, created_at)
+      FOREIGN KEY (acknowledged_by) REFERENCES users(id) ON DELETE SET NULL,
+      INDEX idx_feedback_puzzle (puzzle_id, status),
+      INDEX idx_feedback_new (status, created_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
-    description: "Create puzzle_reports table (creator-facing review queue)"
+    description: "Create puzzle_feedback table (solver critique addressed to the creator)"
   }
 );
 

@@ -1,19 +1,23 @@
 /*
  * Puzzle validation.
  *
- * The point of this module is that "is there exactly one answer?" is COMPUTED,
- * not taken on trust from the creator. Every legal move for the solving side is
- * enumerated and tested against the puzzle's goal; a puzzle with two winning
- * moves is ambiguous and cannot be published, and one with none is unsolvable.
+ * Deliberately narrow. Mate in 1 is the one goal the server can judge, because
+ * "is the opponent mated?" is a question the move engine already answers. For
+ * that goal every legal move is enumerated and tested, so a creator is told when
+ * some other piece also mates - which they genuinely cannot eyeball on a site
+ * where the pieces are user-defined.
  *
- * That matters more here than on a normal chess site: pieces are user-defined,
- * so a creator genuinely cannot eyeball whether some other piece on the board
- * also delivers mate. Reports from solvers are the backstop for goals the
- * validator cannot express - not the primary way ambiguity is found.
+ * Every other goal is the creator's declaration. A puzzle does not have to win
+ * the game; winning material is a puzzle too, and there is no general way to
+ * score that yet. Those come back as 'not_checkable' and are refined by the
+ * people solving them.
  *
- * The move engine is reused wholesale from game-socket.js (it already exports
- * these as pure functions for the AI), so a puzzle is judged by exactly the same
- * rules as a live game. No second implementation to drift.
+ * NOTHING HERE BLOCKS PUBLISHING. The result is advice for the creator. A puzzle
+ * with two mates is still a puzzle; the creator decides whether to fix it.
+ *
+ * The move engine is reused wholesale from game-socket.js (already exported as
+ * pure functions for the AI), so a puzzle is judged by exactly the same rules as
+ * a live game. No second implementation to drift.
  */
 const {
   getAllLegalMovesForPlayer,
@@ -21,16 +25,21 @@ const {
   isCheckmate,
 } = require('./game-socket');
 
-/** Goals the validator can decide mechanically. */
 const GOALS = {
   CHECKMATE_IN_1: 'checkmate_in_1',
+  WIN_MATERIAL: 'win_material',
   SPECIFIC_MOVE: 'specific_move',
+  CUSTOM: 'custom',
 };
+
+/** Only this one can be decided by the server today. */
+const MECHANICAL_GOALS = new Set([GOALS.CHECKMATE_IN_1]);
 
 const VALIDATION = {
   VALID: 'valid',
   AMBIGUOUS: 'ambiguous',
   UNSOLVABLE: 'unsolvable',
+  NOT_CHECKABLE: 'not_checkable',
 };
 
 /** Stable identity for a move, so two descriptions of the same move compare equal. */
@@ -68,45 +77,37 @@ function buildGameState(puzzle, gameType) {
 }
 
 /**
- * Does this move achieve the puzzle's goal?
- * Returns { achieved, reason } - reason is for the creator, not the solver.
+ * Apply a move to a fresh copy of the position.
+ * Returns { ok, state, reason } - state is post-move when ok.
  */
-async function moveAchievesGoal(puzzle, gameType, move) {
+async function applyToFreshState(puzzle, gameType, move) {
   const state = buildGameState(puzzle, gameType);
-  const opponent = puzzle.side_to_move === 1 ? 2 : 1;
-
   let applied;
   try {
     applied = await validateAndApplyMove(state, move, { skipTurnCheck: true });
   } catch (err) {
-    return { achieved: false, reason: `engine rejected the move: ${err.message}` };
+    return { ok: false, state: null, reason: `engine rejected the move: ${err.message}` };
   }
   if (applied && applied.valid === false) {
-    return { achieved: false, reason: applied.reason || 'illegal move' };
+    return { ok: false, state: null, reason: applied.reason || 'illegal move' };
   }
+  return { ok: true, state, reason: null };
+}
 
-  switch (puzzle.goal) {
-    case GOALS.CHECKMATE_IN_1:
-      return { achieved: !!isCheckmate(state, opponent), reason: 'not mate' };
-    case GOALS.SPECIFIC_MOVE:
-      // The creator nominated one move. Uniqueness is trivially true, so this
-      // goal exists for puzzles whose point is not expressible as a win
-      // condition ("find the only move that saves the queen"). It is the
-      // creator's judgement, and reports are the correction mechanism.
-      return { achieved: true, reason: 'creator-nominated move' };
-    default:
-      return { achieved: false, reason: `unknown goal ${puzzle.goal}` };
-  }
+/** Is this move mate? Only meaningful for CHECKMATE_IN_1. */
+async function moveIsMate(puzzle, gameType, move) {
+  const { ok, state } = await applyToFreshState(puzzle, gameType, move);
+  if (!ok) return false;
+  const opponent = puzzle.side_to_move === 1 ? 2 : 1;
+  return !!isCheckmate(state, opponent);
 }
 
 /**
- * Validate a puzzle by brute force over the solving side's legal moves.
+ * Check a puzzle as far as the server is able.
  *
- * Returns:
- *   { status, solutions, intendedWorks, detail }
- *
- * `solutions` is every move that achieves the goal, so an ambiguous puzzle can
- * show the creator exactly what else works rather than just saying "ambiguous".
+ * Returns { status, solutions, intendedWorks, detail }. Callers should treat a
+ * non-VALID status as something to show the creator, never as a reason to
+ * refuse the save.
  */
 async function validatePuzzle(puzzle, gameType) {
   const intended = Array.isArray(puzzle.solution_line) ? puzzle.solution_line[0] : puzzle.solution_line;
@@ -114,12 +115,19 @@ async function validatePuzzle(puzzle, gameType) {
     return { status: VALIDATION.UNSOLVABLE, solutions: [], intendedWorks: false, detail: 'no intended solution recorded' };
   }
 
-  // SPECIFIC_MOVE is the creator's call by definition; only check it is legal.
-  if (puzzle.goal === GOALS.SPECIFIC_MOVE) {
-    const check = await moveAchievesGoal(puzzle, gameType, intended);
-    return check.achieved
-      ? { status: VALIDATION.VALID, solutions: [intended], intendedWorks: true, detail: null }
-      : { status: VALIDATION.UNSOLVABLE, solutions: [], intendedWorks: false, detail: check.reason };
+  // Goals the server cannot score. Confirm the move is at least legal, so a
+  // puzzle whose answer cannot be played is still caught, and leave the rest to
+  // the solvers.
+  if (!MECHANICAL_GOALS.has(puzzle.goal)) {
+    const { ok, reason } = await applyToFreshState(puzzle, gameType, intended);
+    return {
+      status: ok ? VALIDATION.NOT_CHECKABLE : VALIDATION.UNSOLVABLE,
+      solutions: ok ? [intended] : [],
+      intendedWorks: ok,
+      detail: ok
+        ? `'${puzzle.goal}' is judged by the creator; the server only confirmed the move is legal`
+        : `the recorded solution is not a legal move: ${reason}`,
+    };
   }
 
   const state = buildGameState(puzzle, gameType);
@@ -127,10 +135,9 @@ async function validatePuzzle(puzzle, gameType) {
 
   const solutions = [];
   for (const candidate of candidates) {
-    // eslint-disable-next-line no-await-in-loop -- order does not matter, but the
-    // engine mutates shared structures, so these must not overlap.
-    const { achieved } = await moveAchievesGoal(puzzle, gameType, candidate);
-    if (achieved) solutions.push(candidate);
+    // eslint-disable-next-line no-await-in-loop -- the engine mutates shared
+    // structures, so these must not overlap.
+    if (await moveIsMate(puzzle, gameType, candidate)) solutions.push(candidate);
   }
 
   const intendedKey = moveKey(intended);
@@ -141,7 +148,7 @@ async function validatePuzzle(puzzle, gameType) {
       status: VALIDATION.UNSOLVABLE,
       solutions: [],
       intendedWorks: false,
-      detail: `no legal move achieves ${puzzle.goal} (${candidates.length} legal moves examined)`,
+      detail: `no legal move delivers mate (${candidates.length} legal moves examined)`,
     };
   }
   if (!intendedWorks) {
@@ -149,7 +156,7 @@ async function validatePuzzle(puzzle, gameType) {
       status: VALIDATION.UNSOLVABLE,
       solutions,
       intendedWorks: false,
-      detail: `the recorded solution does not achieve ${puzzle.goal}, though ${solutions.length} other move(s) do`,
+      detail: `the recorded solution is not mate, though ${solutions.length} other move(s) are`,
     };
   }
   if (solutions.length > 1) {
@@ -158,10 +165,18 @@ async function validatePuzzle(puzzle, gameType) {
       status: VALIDATION.AMBIGUOUS,
       solutions,
       intendedWorks: true,
-      detail: `${solutions.length} moves achieve the goal: also ${others.join(', ')}`,
+      detail: `${solutions.length} moves deliver mate: also ${others.join(', ')}`,
     };
   }
   return { status: VALIDATION.VALID, solutions, intendedWorks: true, detail: null };
 }
 
-module.exports = { validatePuzzle, moveAchievesGoal, moveKey, GOALS, VALIDATION };
+module.exports = {
+  validatePuzzle,
+  moveIsMate,
+  applyToFreshState,
+  moveKey,
+  GOALS,
+  MECHANICAL_GOALS,
+  VALIDATION,
+};
