@@ -4114,10 +4114,13 @@ const AdminDashboard = () => {
                 <h3 style={{ marginTop: '2rem' }}>Game Session Limits</h3>
                 <p style={{ color: 'var(--text-secondary)', marginBottom: '1rem', fontSize: '0.9rem' }}>
                   Maximum simultaneous games per user. Users already over the limit when it is lowered can finish their existing games.
+                  Admins and supporters (Silver and above) get the raised allowance; the owner account is never capped.
                 </p>
                 {[
-                  { key: 'game_limit_live', label: 'Live games (logged-in users)', desc: 'Max active/ready live games a logged-in user may be in at once', defaultVal: 8 },
-                  { key: 'game_limit_correspondence', label: 'Correspondence games (logged-in users)', desc: 'Max waiting/active correspondence games a logged-in user may be in at once', defaultVal: 24 },
+                  { key: 'game_limit_live', label: 'Live games (free users)', desc: 'Max active/ready live games a free logged-in user may be in at once', defaultVal: 4 },
+                  { key: 'game_limit_correspondence', label: 'Correspondence games (free users)', desc: 'Max waiting/active correspondence games a free logged-in user may be in at once', defaultVal: 12 },
+                  { key: 'game_limit_live_supporter', label: 'Live games (admins & supporters)', desc: 'Max active/ready live games an admin, Silver or Gold supporter may be in at once', defaultVal: 10 },
+                  { key: 'game_limit_correspondence_supporter', label: 'Correspondence games (admins & supporters)', desc: 'Max waiting/active correspondence games an admin, Silver or Gold supporter may be in at once', defaultVal: 40 },
                   { key: 'game_limit_open', label: 'Open matches (logged-in users)', desc: 'Max open (waiting for opponent) matches a logged-in user may have at once', defaultVal: 8 },
                   { key: 'game_limit_live_anon', label: 'Live games (anonymous users)', desc: 'Max live games an anonymous (not logged-in) user may be in per browser session', defaultVal: 4 },
                   { key: 'game_limit_correspondence_anon', label: 'Correspondence games (anonymous users)', desc: 'Not currently enforced (anonymous users cannot create correspondence games)', defaultVal: 12 },

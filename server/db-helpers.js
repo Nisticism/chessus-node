@@ -1360,7 +1360,10 @@ const hasEmailBeenSentForWeek = async (userId, weekStart) => {
 let cachedOwnerId = null;
 const getOwnerUserId = async () => {
   if (cachedOwnerId) return cachedOwnerId;
-  const rows = await query("SELECT id FROM users WHERE role = 'owner' LIMIT 1");
+  // ORDER BY id so this is deterministic if more than one owner row exists
+  // (test fixtures, a second admin promoted to owner) - the original owner wins
+  // rather than whichever row the storage engine happened to return first.
+  const rows = await query("SELECT id FROM users WHERE role = 'owner' ORDER BY id ASC LIMIT 1");
   if (rows.length > 0) {
     cachedOwnerId = rows[0].id;
     return cachedOwnerId;

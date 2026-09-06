@@ -346,6 +346,51 @@ const UNEXPLAINED_DROP_GRACE_MS = 45000;
  * missing key. Non-positive values are treated as "no limit" (returns the
  * default instead so callers can always do a numeric comparison).
  */
+/**
+ * How many games at once this account may have going, by tier.
+ *
+ * The owner is uncapped. Admins and supporters (Silver and above - Gold gets the
+ * same allowance) share one raised tier. Everyone else gets the free tier, which
+ * is what the plain `game_limit_*` settings now mean.
+ *
+ * Every number stays admin-configurable, so the tiers can be retuned from the
+ * dashboard without a deploy.
+ */
+async function getGameLimitsForUser(userId) {
+  const id = parseInt(userId, 10);
+  if (!Number.isFinite(id) || id <= 0) {
+    return { tier: 'anonymous', live: await getSiteSettingInt('game_limit_live_anon', 4), correspondence: await getSiteSettingInt('game_limit_correspondence_anon', 12) };
+  }
+
+  let role = '';
+  let donations = 0;
+  try {
+    const [[row]] = await db_pool.query('SELECT role, total_donations FROM users WHERE id = ? LIMIT 1', [id]);
+    role = (row?.role || '').toLowerCase();
+    // DECIMAL arrives from mysql2 as a string.
+    donations = parseFloat(row?.total_donations || 0) || 0;
+  } catch (_) { /* fall through to the free tier */ }
+
+  if (role === 'owner') {
+    return { tier: 'owner', live: Infinity, correspondence: Infinity };
+  }
+  if (role === 'admin' || donations >= SUPPORTER_MIN_DONATION) {
+    return {
+      tier: role === 'admin' ? 'admin' : 'supporter',
+      live: await getSiteSettingInt('game_limit_live_supporter', 10),
+      correspondence: await getSiteSettingInt('game_limit_correspondence_supporter', 40),
+    };
+  }
+  return {
+    tier: 'free',
+    live: await getSiteSettingInt('game_limit_live', 4),
+    correspondence: await getSiteSettingInt('game_limit_correspondence', 12),
+  };
+}
+
+// Silver is the entry point for the raised allowance; Gold inherits it.
+const SUPPORTER_MIN_DONATION = 5;
+
 async function getSiteSettingInt(key, defaultVal) {
   try {
     const [[row]] = await db_pool.query(
@@ -3937,9 +3982,10 @@ function initializeSocket(server) {
         const numericHostId = parseInt(hostId, 10);
         const hostIsLoggedIn = !vsComputer && Number.isFinite(numericHostId) && numericHostId > 0;
         if (hostIsLoggedIn) {
+          const limits = await getGameLimitsForUser(numericHostId);
           if (isCorrespondence) {
-            const limit = await getSiteSettingInt('game_limit_correspondence', 24);
-            const count = await countActiveCorrespondenceGames(numericHostId);
+            const limit = limits.correspondence;
+            const count = Number.isFinite(limit) ? await countActiveCorrespondenceGames(numericHostId) : 0;
             if (count >= limit) {
               return socket.emit("error", {
                 code: 'LIMIT_EXCEEDED',
@@ -3965,8 +4011,8 @@ function initializeSocket(server) {
               }
             }
             // Check live game limit
-            const liveLimit = await getSiteSettingInt('game_limit_live', 8);
-            const liveCount = await countActiveLiveGames(numericHostId);
+            const liveLimit = limits.live;
+            const liveCount = Number.isFinite(liveLimit) ? await countActiveLiveGames(numericHostId) : 0;
             if (liveCount >= liveLimit) {
               return socket.emit("error", {
                 code: 'LIMIT_EXCEEDED',
@@ -5602,6 +5648,48 @@ function initializeSocket(server) {
 
         // Get game from memory or database
         let gameState = activeGames.get(gameIdStr);
+
+        // The same cap that applies to hosting applies to joining - otherwise a
+        // player capped out on their own games could sit in unlimited ones
+        // started by other people, which is the thing the cap exists to prevent.
+        // Rejoining a game you are already in is always allowed, so being over
+        // the limit can never lock you out of your own board.
+        {
+          const numericJoinerId = parseInt(userId, 10);
+          const alreadyIn = !!gameState?.players?.some((p) => p.id === userId);
+          if (!alreadyIn && Number.isFinite(numericJoinerId) && numericJoinerId > 0) {
+            const pending = gameState || (await db_pool.query(
+              "SELECT other_data FROM games WHERE id = ? LIMIT 1", [gameId]
+            ).then(([rows]) => rows[0]).catch(() => null));
+            let joiningCorrespondence = false;
+            try {
+              if (gameState) {
+                joiningCorrespondence = !!gameState.isCorrespondence;
+              } else if (pending?.other_data) {
+                const od = typeof pending.other_data === 'string' ? JSON.parse(pending.other_data) : pending.other_data;
+                joiningCorrespondence = !!od?.isCorrespondence;
+              }
+            } catch (_) { /* assume live */ }
+
+            const limits = await getGameLimitsForUser(numericJoinerId);
+            const limit = joiningCorrespondence ? limits.correspondence : limits.live;
+            if (Number.isFinite(limit)) {
+              const count = joiningCorrespondence
+                ? await countActiveCorrespondenceGames(numericJoinerId)
+                : await countActiveLiveGames(numericJoinerId);
+              if (count >= limit) {
+                const kind = joiningCorrespondence ? 'correspondence' : 'live';
+                return socket.emit("error", {
+                  code: 'LIMIT_EXCEEDED',
+                  limitType: kind,
+                  limitCount: count,
+                  limitMax: limit,
+                  message: `You've reached the ${kind} game limit (${count}/${limit}), so you can't join another game right now. Finish or resign one of your ongoing games to free up a slot.`,
+                });
+              }
+            }
+          }
+        }
         
         if (!gameState) {
           // Try to load from database
@@ -11440,6 +11528,16 @@ function initializeSocket(server) {
         gameState.playerTimes[userId] = Math.max(0, next);
         console.log(`[test-hook] clock ${gameId}/${userId}: ${before.toFixed(2)}s -> ${gameState.playerTimes[userId].toFixed(2)}s`);
         if (typeof ack === 'function') ack({ ok: true, before, after: gameState.playerTimes[userId] });
+      });
+
+      // Resolved simultaneous-game caps for a user, so a suite can assert the
+      // tier table without creating 40 correspondence games to find its edge.
+      socket.on("__test:limits", async ({ userId } = {}, ack) => {
+        if (typeof ack !== 'function') return;
+        try {
+          const l = await getGameLimitsForUser(userId);
+          ack({ ok: true, tier: l.tier, live: l.live === Infinity ? 'unlimited' : l.live, correspondence: l.correspondence === Infinity ? 'unlimited' : l.correspondence });
+        } catch (e) { ack({ ok: false, error: e.message }); }
       });
 
       // Read back server-side game state a test cannot otherwise observe.

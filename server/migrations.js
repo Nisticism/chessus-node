@@ -4577,6 +4577,40 @@ const runMigrations = async () => {
   } catch (err) {
     console.error('Error creating feature_todo_items table:', err.message);
   }
+
+  // Tiered game limits. game_limit_live / game_limit_correspondence used to mean
+  // "every logged-in user"; they now mean the FREE tier, with a separate raised
+  // allowance for admins and supporters.
+  //
+  // Runs once and then never again (guarded by a marker row), so an admin who
+  // retunes these from the dashboard does not get overwritten on the next boot.
+  try {
+    const [[marker]] = await db_pool.query(
+      "SELECT setting_value FROM site_settings WHERE setting_key = 'game_limit_tiers_v1' LIMIT 1"
+    );
+    if (!marker) {
+      const seed = [
+        ['game_limit_live', '4'],                        // free tier
+        ['game_limit_correspondence', '12'],             // free tier
+        ['game_limit_live_supporter', '10'],             // admin / silver / gold
+        ['game_limit_correspondence_supporter', '40'],   // admin / silver / gold
+      ];
+      for (const [key, value] of seed) {
+        await db_pool.query(
+          'INSERT INTO site_settings (setting_key, setting_value) VALUES (?, ?) ' +
+          'ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)',
+          [key, value]
+        );
+      }
+      await db_pool.query(
+        "INSERT INTO site_settings (setting_key, setting_value) VALUES ('game_limit_tiers_v1', '1')"
+      );
+      console.log('[DB] Seeded tiered game limits (free 4/12, supporter 10/40; owner uncapped)');
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error seeding tiered game limits:', err.message);
+  }
 };
 
 module.exports = { runMigrations };

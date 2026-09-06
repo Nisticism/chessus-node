@@ -5285,7 +5285,15 @@ const LiveGame = () => {
     try {
       await joinGame(parseInt(gameId));
     } catch (err) {
-      setError(err.message);
+      // Hitting the simultaneous-game cap is not a broken page - show it as a
+      // toast over the board and leave the game visible, rather than replacing
+      // everything with an error screen the way a real failure does.
+      if (err.code === 'LIMIT_EXCEEDED') {
+        setMoveError(err.message);
+        setTimeout(() => setMoveError(null), 8000);
+      } else {
+        setError(err.message);
+      }
     }
   };
 
