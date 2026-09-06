@@ -9,6 +9,9 @@ import { getPieceById } from "../../actions/pieces";
 import { useDispatch } from "react-redux";
 import { canCreatePuzzles } from "../../helpers/supporterTiers";
 import InfoTooltip from "../piecewizard/InfoTooltip";
+import useBoardViewport from "../common/useBoardViewport";
+import BoardZoomControls from "../common/BoardZoomControls";
+import boardVp from "../common/boardViewport.module.scss";
 import styles from "./puzzlebuilder.module.scss";
 
 /*
@@ -92,6 +95,38 @@ const PuzzleBuilder = () => {
 
   const boardWidth = game?.board_width || 8;
   const boardHeight = game?.board_height || 8;
+
+  // The shared fit/zoom hook, so a 3x48 or a 25x10 board behaves here exactly
+  // as it does in a live game: sized to fit by default, zoomable past that,
+  // scrolling inside its own frame rather than stretching the page.
+  // How wide the board can possibly be at its default zoom, worked out from the
+  // window and the board's own rows - never from the space available. That
+  // independence is the point: the board column is capped to this, and the cap
+  // feeds the hook's width budget, so deriving it from the available width
+  // would be a loop that shrinks the board a square per pass.
+  //
+  // Without the cap a 3x48 board renders as a thin strip centred in a full-width
+  // column, leaving a gulf between it and the settings panel.
+  const boardColumnMax = useMemo(() => {
+    const heightBudget = Math.max(320, (typeof window !== 'undefined' ? window.innerHeight : 900) - 320);
+    const byHeight = Math.floor((heightBudget - 8) / Math.max(1, boardHeight));
+    const square = Math.max(6, Math.min(72, byHeight));
+    // Small floor only - the mode tabs, hint and board buttons sit in a
+    // full-width toolbar above the layout, not in this column, so nothing here
+    // needs room beyond the board itself. That is what lets a 3x48 board sit
+    // right next to the settings instead of stranding 290px of empty column.
+    return Math.max(120, square * boardWidth + 24);
+  }, [boardWidth, boardHeight]);
+
+  const vp = useBoardViewport({
+    boardWidth,
+    boardHeight,
+    fitMaxSquare: 72,
+    maxSquare: 160,
+    maxHeight: () => Math.max(320, (typeof window !== 'undefined' ? window.innerHeight : 900) - 320),
+    insetW: 8,
+    insetH: 8,
+  });
   const lightColor = currentUser?.light_square_color || localStorage.getItem('boardLightColor') || '#e3d4bf';
   const darkColor = currentUser?.dark_square_color || localStorage.getItem('boardDarkColor') || '#64472b';
 
@@ -310,7 +345,11 @@ const PuzzleBuilder = () => {
             isFrom ? styles["sol-from"] : '',
             isTo ? styles["sol-to"] : '',
           ].filter(Boolean).join(' ')}
-          style={{ background: isLight ? lightColor : darkColor }}
+          style={{
+            background: isLight ? lightColor : darkColor,
+            width: vp.squareSize,
+            height: vp.squareSize,
+          }}
           onClick={() => handleSquareClick(x, y)}
           title={p ? `${p.piece_name} (Player ${p.player_id})` : ''}
         >
@@ -329,43 +368,66 @@ const PuzzleBuilder = () => {
     <div className={styles["builder-page"]}>
       <h1>{savedId ? 'Edit Puzzle' : 'New Puzzle'}{game ? ` — ${game.game_name}` : ''}</h1>
 
-      <div className={styles["layout"]}>
-        <div className={styles["board-side"]}>
-          <div className={styles["mode-tabs"]}>
-            <button
-              className={mode === 'arrange' ? styles["tab-active"] : styles["tab"]}
-              onClick={() => { setMode('arrange'); setSelected(null); }}
-            >
-              1. Arrange the position
-            </button>
-            <button
-              className={mode === 'solution' ? styles["tab-active"] : styles["tab"]}
-              onClick={() => { setMode('solution'); setSelected(null); }}
-            >
-              2. Set the solution
-            </button>
-          </div>
-          <p className={styles["mode-hint"]}>
-            {mode === 'arrange'
-              ? 'Click a piece then an empty square to move it. Click a piece twice to take it off the board.'
-              : `Click the piece Player ${sideToMove} should move, then the square it moves to.`}
-          </p>
-
-          <div
-            className={styles["board"]}
-            style={{ gridTemplateColumns: `repeat(${boardWidth}, 1fr)` }}
+      {/* Page-level controls, deliberately not inside the board column: they need
+          a readable width, and keeping them there forced a floor on that column
+          that stranded empty space beside skinny boards. */}
+      <div className={styles["toolbar"]}>
+        <div className={styles["mode-tabs"]}>
+          <button
+            className={mode === 'arrange' ? styles["tab-active"] : styles["tab"]}
+            onClick={() => { setMode('arrange'); setSelected(null); }}
           >
-            {squares}
+            1. Arrange the position
+          </button>
+          <button
+            className={mode === 'solution' ? styles["tab-active"] : styles["tab"]}
+            onClick={() => { setMode('solution'); setSelected(null); }}
+          >
+            2. Set the solution
+          </button>
+        </div>
+        <div className={styles["board-actions"]}>
+          <button className={styles["btn-secondary"]} onClick={() => { setPlacements(startingPlacements); setSolution(null); setSelected(null); }}>
+            Reset to starting position
+          </button>
+          <button className={styles["btn-secondary"]} onClick={() => { setPlacements({}); setSolution(null); setSelected(null); }}>
+            Clear the board
+          </button>
+        </div>
+      </div>
+      <p className={styles["mode-hint"]}>
+        {mode === 'arrange'
+          ? 'Click a piece then an empty square to move it. Click a piece twice to take it off the board.'
+          : `Click the piece Player ${sideToMove} should move, then the square it moves to.`}
+      </p>
+
+      <div className={styles["layout"]}>
+        {/* A DEFINITE width, not max-width. useBoardViewport measures this column
+            to size the board, so an `auto` grid track sized by its content is a
+            loop: the board shrinks, the column shrinks with it, and it settles
+            at the 6px minimum square. */}
+        <div className={styles["board-side"]} style={{ width: boardColumnMax, maxWidth: '100%' }}>
+          {/* width is what the board WANTS; max-width is what the page allows.
+              Both are page- or window-derived, never content-derived, so the
+              hook's measurement stays stable either way. */}
+          <div style={{ ...vp.frameStyle, justifyContent: 'flex-start' }}>
+            <div
+              className={`${boardVp.viewport} ${vp.hideScrollbars ? boardVp.noScrollbars : ''}`}
+              ref={vp.viewportRef}
+              style={vp.viewportStyle}
+            >
+              <div style={vp.contentStyle}>
+                <div
+                  className={styles["board"]}
+                  style={{ gridTemplateColumns: `repeat(${boardWidth}, ${vp.squareSize}px)` }}
+                >
+                  {squares}
+                </div>
+              </div>
+            </div>
+            <BoardZoomControls {...vp.controlProps} />
           </div>
 
-          <div className={styles["board-actions"]}>
-            <button className={styles["btn-secondary"]} onClick={() => { setPlacements(startingPlacements); setSolution(null); setSelected(null); }}>
-              Reset to starting position
-            </button>
-            <button className={styles["btn-secondary"]} onClick={() => { setPlacements({}); setSolution(null); setSelected(null); }}>
-              Clear the board
-            </button>
-          </div>
         </div>
 
         <div className={styles["form-side"]}>
