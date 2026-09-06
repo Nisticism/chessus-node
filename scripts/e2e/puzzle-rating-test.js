@@ -7,7 +7,7 @@
  *   node scripts/e2e/puzzle-rating-test.js
  */
 const {
-  rateAttempt, foldSolverIntoPuzzleRating, isRatingPublic,
+  rateAttempt, scoreAttempt, foldSolverIntoPuzzleRating, isRatingPublic,
   expectedScore, ANCHOR_RATING, MIN_SOLVERS_FOR_PUBLIC_RATING,
 } = require('../../server/puzzle-rating');
 
@@ -70,6 +70,31 @@ for (let i = 0; i < 400; i++) {
   elo2 = rateAttempt({ currentElo: elo2, ratedAttemptsSoFar: 100, solved: Math.random() < 0.5 }).after;
 }
 check('a 50% solver stays near the anchor', Math.abs(elo2 - ANCHOR_RATING) < 150, `settled at ${elo2}`);
+
+// --- partial credit ----------------------------------------------------------
+// Solutions are compared as a prefix, and a miss on the first move is worth
+// nothing however much of the rest matches.
+const same = (a, b) => a === b;
+check('a full line scores 1', scoreAttempt(['a', 'b', 'c'], ['a', 'b', 'c'], same) === 1, 'x');
+check('two of three scores two thirds', Math.abs(scoreAttempt(['a', 'b', 'x'], ['a', 'b', 'c'], same) - 2 / 3) < 1e-9, 'x');
+check('one of four scores a quarter', scoreAttempt(['a'], ['a', 'b', 'c', 'd'], same) === 0.25, 'x');
+check(
+  'missing the first move scores nothing even if later moves match',
+  scoreAttempt(['x', 'b', 'c'], ['a', 'b', 'c'], same) === 0,
+  'x'
+);
+check('a single-move puzzle is all or nothing',
+  scoreAttempt(['a'], ['a'], same) === 1 && scoreAttempt(['x'], ['a'], same) === 0, 'x');
+
+const partial = rateAttempt({ currentElo: 1200, ratedAttemptsSoFar: 50, score: 0.5 });
+const full = rateAttempt({ currentElo: 1200, ratedAttemptsSoFar: 50, score: 1 });
+const none = rateAttempt({ currentElo: 1200, ratedAttemptsSoFar: 50, score: 0 });
+console.log(`  at 1200: full ${full.delta}, half ${partial.delta}, none ${none.delta}`);
+check(
+  'partial credit lands between a solve and a miss',
+  partial.delta < full.delta && partial.delta > none.delta,
+  `${none.delta} < ${partial.delta} < ${full.delta}`
+);
 
 // --- the puzzle's emergent rating -------------------------------------------
 let pz = { rating: 1200, sampleCount: 0 };

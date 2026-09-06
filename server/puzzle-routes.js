@@ -15,9 +15,39 @@
  */
 const { validatePuzzle, moveKey, GOALS, VALIDATION } = require('./puzzle-validation');
 const {
-  rateAttempt, foldSolverIntoPuzzleRating, isRatingPublic,
+  rateAttempt, scoreAttempt, foldSolverIntoPuzzleRating, isRatingPublic,
   PUZZLE_ELO_DEFAULT, MIN_SOLVERS_FOR_PUBLIC_RATING,
 } = require('./puzzle-rating');
+
+/**
+ * Column names on the `pieces` table are not the names the move engine reads.
+ * When a live game builds its piece objects it renames a handful of fields, and
+ * anything that feeds the engine has to do the same - otherwise the piece is
+ * spread in with the WRONG keys and the engine sees no movement at all. It does
+ * not error; the piece simply generates zero moves. That is how a knight came
+ * to be "unable" to move in puzzle validation while working fine in a live game.
+ *
+ * Only these eight of 174 fields are renamed (the rest pass through untouched);
+ * the live builders in game-socket.js are the source of truth.
+ */
+const ENGINE_FIELD_RENAMES = {
+  ratio_one_movement: 'ratio_movement_1',
+  ratio_two_movement: 'ratio_movement_2',
+  ratio_one_capture: 'ratio_capture_1',
+  ratio_two_capture: 'ratio_capture_2',
+  step_by_step_movement_value: 'step_movement_value',
+  step_by_step_movement_style: 'step_movement_style',
+  step_by_step_capture: 'step_capture_value',
+};
+
+/** Rename the engine-facing fields on a raw `pieces` row. */
+function toEngineFields(row) {
+  const out = { ...row };
+  for (const [from, to] of Object.entries(ENGINE_FIELD_RENAMES)) {
+    if (row[from] !== undefined) out[to] = row[from];
+  }
+  return out;
+}
 
 const MAX_TITLE = 120;
 const MAX_DESCRIPTION = 2000;
@@ -89,7 +119,7 @@ function registerPuzzleRoutes(app, { db_pool, dbHelpers, authenticateToken, opti
     const flagById = new Map(flagRows.map((r) => [Number(r.piece_id), r]));
 
     return list.map((p, i) => {
-      const def = byId.get(Number(p.piece_id)) || {};
+      const def = toEngineFields(byId.get(Number(p.piece_id)) || {});
       const fallback = flagById.get(Number(p.piece_id)) || {};
       const player = Number(p.player_id ?? p.team ?? 1);
       return {
@@ -375,6 +405,8 @@ function registerPuzzleRoutes(app, { db_pool, dbHelpers, authenticateToken, opti
       const solved =
         attempt.length === line.length &&
         attempt.every((m, i) => moveKey(m) === moveKey(line[i]));
+      // How much of the line they found, for partial credit on longer puzzles.
+      const score = scoreAttempt(attempt, line, (a, b) => moveKey(a) === moveKey(b));
 
       const userId = req.user?.id || null;
       let ratedAttempt = null;
@@ -420,14 +452,18 @@ function registerPuzzleRoutes(app, { db_pool, dbHelpers, authenticateToken, opti
           currentElo: u?.puzzle_elo ?? PUZZLE_ELO_DEFAULT,
           // This attempt is already stored, so it is in the count.
           ratedAttemptsSoFar: Math.max(0, (counts?.n || 1) - 1),
-          solved,
+          score,
         });
         await db_pool.query('UPDATE users SET puzzle_elo = ? WHERE id = ?', [result.after, userId]);
         await db_pool.query(
           'UPDATE puzzle_attempts SET rating_before = ?, rating_after = ? WHERE puzzle_id = ? AND user_id = ? AND rated_attempt = 1',
           [result.before, result.after, puzzle.id, userId]
         );
-        ratingChange = { before: result.before, after: result.after, delta: result.delta };
+        ratingChange = {
+          before: result.before, after: result.after, delta: result.delta,
+          score: result.score,
+          partial: result.score > 0 && result.score < 1,
+        };
 
         // The puzzle's own rating is the mean of the people who SOLVED it, so
         // only a success is folded in.

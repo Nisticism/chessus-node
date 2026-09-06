@@ -40,8 +40,24 @@ async function loadPieceProtos(gameType) {
      JOIN pieces p ON p.id = gtp.piece_id
      WHERE gtp.game_type_id = ?`, [GAME_TYPE_ID]
   );
+  // The engine reads different names for a few fields than the table uses; see
+  // ENGINE_FIELD_RENAMES in puzzle-routes.js. Without this a ratio piece (any
+  // knight) generates no moves at all and fails silently.
+  const RENAMES = {
+    ratio_one_movement: 'ratio_movement_1', ratio_two_movement: 'ratio_movement_2',
+    ratio_one_capture: 'ratio_capture_1', ratio_two_capture: 'ratio_capture_2',
+    step_by_step_movement_value: 'step_movement_value',
+    step_by_step_movement_style: 'step_movement_style',
+    step_by_step_capture: 'step_capture_value',
+  };
   const byName = {};
-  for (const r of rows) byName[(r.piece_name || '').toLowerCase()] = r;
+  for (const r of rows) {
+    const mapped = { ...r };
+    for (const [from, to] of Object.entries(RENAMES)) {
+      if (r[from] !== undefined) mapped[to] = r[from];
+    }
+    byName[(r.piece_name || '').toLowerCase()] = mapped;
+  }
   return byName;
 }
 

@@ -60,6 +60,53 @@
   font-variant-numeric: tabular-nums;
 }
 
+/*
+ * Its own row under the game-type link, and styled as a real button rather than
+ * borrowing the text-link class - as a <button> that inherited the browser's
+ * default light background and read as disabled when it wasn't.
+ */
+.banner-puzzle-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  // fit-content keeps it a button rather than a full-width bar: it sits on its
+  // own row, centred, sized to its text.
+  width: fit-content;
+  max-width: 100%;
+  margin: 12px auto 0;
+  padding: 9px 16px;
+  font-size: 15px;
+  font-weight: 600;
+  font-family: inherit;
+  color: var(--text-heading);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(var(--gold-rgb, 212, 175, 55), 0.45);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+
+  &:hover:not(:disabled) {
+    background: rgba(var(--gold-rgb, 212, 175, 55), 0.18);
+    border-color: rgba(var(--gold-rgb, 212, 175, 55), 0.8);
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+    border-color: rgba(255, 255, 255, 0.18);
+  }
+}
+
+.banner-puzzle-perk {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--gold-header);
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(var(--gold-rgb, 212, 175, 55), 0.16);
+}
+
 .banner-game-type-link {
   display: inline-block;
   margin-top: 12px;

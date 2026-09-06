@@ -5,6 +5,11 @@ import axios from "../../services/axios-interceptor";
 import API_URL from "../../global/global";
 import authHeader from "../../services/auth-header";
 import { getPieceById } from "../../actions/pieces";
+import {
+  createMoveEngine,
+  getMoveDotType,
+  MOVE_DOT_BACKGROUNDS,
+} from "../../helpers/moveEngine";
 import useBoardViewport from "../common/useBoardViewport";
 import BoardZoomControls from "../common/BoardZoomControls";
 import boardVp from "../common/boardViewport.module.scss";
@@ -39,6 +44,30 @@ const imageFor = (placement, pieceDataMap) => {
     }
   } catch (_) { /* fall through */ }
   return null;
+};
+
+/*
+ * The `pieces` table's column names are not the names the move engine reads. A
+ * live game renames eight of them when it builds its piece objects; spreading a
+ * raw row without doing the same leaves the engine seeing no movement, silently
+ * - which is why a knight would show no hover dots at all.
+ */
+const ENGINE_FIELD_RENAMES = {
+  ratio_one_movement: 'ratio_movement_1',
+  ratio_two_movement: 'ratio_movement_2',
+  ratio_one_capture: 'ratio_capture_1',
+  ratio_two_capture: 'ratio_capture_2',
+  step_by_step_movement_value: 'step_movement_value',
+  step_by_step_movement_style: 'step_movement_style',
+  step_by_step_capture: 'step_capture_value',
+};
+
+const toEngineFields = (row) => {
+  const out = { ...row };
+  for (const [from, to] of Object.entries(ENGINE_FIELD_RENAMES)) {
+    if (row?.[from] !== undefined) out[to] = row[from];
+  }
+  return out;
 };
 
 const goalText = (p) => {
@@ -82,6 +111,8 @@ const PuzzleSolver = () => {
   const [feedbackCategory, setFeedbackCategory] = useState('other');
   const [feedbackMessage, setFeedbackMessage] = useState('');
   const [feedbackNotice, setFeedbackNotice] = useState(null);
+  const [hoveredMoves, setHoveredMoves] = useState([]);
+  const [dragging, setDragging] = useState(null); // "y,x" being dragged
 
   const boardWidth = puzzle?.board_width || 8;
   const boardHeight = puzzle?.board_height || 8;
@@ -167,6 +198,65 @@ const PuzzleSolver = () => {
     return () => { cancelled = true; };
   }, [placements, pieceDataMap]);
 
+  /*
+   * The board stores compact placements; the move engine needs full pieces. This
+   * is the same merge the server does before it validates - piece definition,
+   * plus board position, plus the per-game-type flags that make a piece royal.
+   */
+  const enginePieces = useMemo(() => {
+    return Object.entries(placements).map(([k, pl]) => {
+      const [y, x] = k.split(',').map(Number);
+      const def = toEngineFields(pieceDataMap[pl.piece_id] || {});
+      const player = Number(pl.player_id ?? pl.team ?? 1);
+      return {
+        ...def,
+        id: pl.id || `${pl.piece_id}_${y}_${x}`,
+        piece_id: pl.piece_id,
+        x, y,
+        player_id: player,
+        team: player,
+        ends_game_on_checkmate: pl.ends_game_on_checkmate ?? def.ends_game_on_checkmate ?? false,
+        ends_game_on_capture: pl.ends_game_on_capture ?? def.ends_game_on_capture ?? false,
+      };
+    });
+  }, [placements, pieceDataMap]);
+
+  const specialSquares = useMemo(() => {
+    const squares = { range: {}, promotion: {}, control: {}, special: {} };
+    if (!board) return squares;
+    const fields = {
+      range: 'range_squares_string',
+      promotion: 'promotion_squares_string',
+      control: 'control_squares_string',
+      special: 'special_squares_string',
+    };
+    for (const [key, field] of Object.entries(fields)) {
+      try { if (board[field]) squares[key] = JSON.parse(board[field]); } catch (_) { /* ignore */ }
+    }
+    return squares;
+  }, [board]);
+
+  // currentPlayerPosition null, same as the replay board: hovering shows a
+  // piece's raw reachability rather than filtering by whose turn it is.
+  const moveEngine = useMemo(() => createMoveEngine({
+    specialSquares,
+    gameType: board,
+    enPassantTarget: null,
+    currentPlayerPosition: null,
+  }), [specialSquares, board]);
+
+  const hoverPiece = useCallback((piece) => {
+    if (!piece || !board) { setHoveredMoves([]); return; }
+    // Same arguments a live game's hover helpers use, so a piece's dots read
+    // identically in a puzzle and in a game.
+    setHoveredMoves(moveEngine.calculateValidMoves(
+      piece, enginePieces, boardWidth, boardHeight,
+      false,  // skipCheckFilter
+      false,  // forPremove
+      true    // forHoverDisplay
+    ) || []);
+  }, [moveEngine, enginePieces, board, boardWidth, boardHeight]);
+
   const submit = useCallback(async (move) => {
     setBusy(true);
     setLastTry(move);
@@ -209,8 +299,45 @@ const PuzzleSolver = () => {
     }
   }, [puzzleId]);
 
+  const playFrom = useCallback((fromKey, x, y) => {
+    const [fy, fx] = fromKey.split(',').map(Number);
+    const mover = placements[fromKey];
+    setSelected(null);
+    setHoveredMoves([]);
+    submit({
+      from: { x: fx, y: fy },
+      to: { x, y },
+      pieceId: mover?.id || `${mover?.piece_id}_${fy}_${fx}`,
+    });
+  }, [placements, submit]);
+
+  const finished = outcome === 'solved' || outcome === 'revealed';
+
+  /*
+   * Play the winning line out on the board once it is found. Without this the
+   * piece snaps back to where it started and only the two squares light up,
+   * which reads like the move was rejected.
+   */
+  const [playedOut, setPlayedOut] = useState(false);
+  useEffect(() => {
+    if (outcome !== 'solved' || playedOut || !Array.isArray(solution) || !solution.length) return;
+    setPlacements((prev) => {
+      const next = { ...prev };
+      solution.forEach((m) => {
+        if (!m?.from || !m?.to) return;
+        const fromKey = keyOf(m.from.x, m.from.y);
+        const mover = next[fromKey];
+        if (!mover) return;
+        delete next[fromKey];
+        next[keyOf(m.to.x, m.to.y)] = { ...mover, x: m.to.x, y: m.to.y };
+      });
+      return next;
+    });
+    setPlayedOut(true);
+  }, [outcome, solution, playedOut]);
+
   const handleSquareClick = useCallback((x, y) => {
-    if (busy || outcome === 'solved' || outcome === 'revealed') return;
+    if (busy || finished) return;
     const k = keyOf(x, y);
     const here = placements[k];
     if (!selected) {
@@ -220,15 +347,8 @@ const PuzzleSolver = () => {
       return;
     }
     if (selected === k) { setSelected(null); return; }
-    const [fy, fx] = selected.split(',').map(Number);
-    const mover = placements[selected];
-    setSelected(null);
-    submit({
-      from: { x: fx, y: fy },
-      to: { x, y },
-      pieceId: mover?.id || `${mover?.piece_id}_${fy}_${fx}`,
-    });
-  }, [busy, outcome, selected, placements, puzzle, submit]);
+    playFrom(selected, x, y);
+  }, [busy, finished, selected, placements, puzzle, playFrom]);
 
   const sendFeedback = async () => {
     setFeedbackNotice(null);
@@ -267,17 +387,46 @@ const PuzzleSolver = () => {
         sol && sol.to?.x === x && sol.to?.y === y ? styles["sol-to"] : '',
       ].filter(Boolean).join(' ');
       const src = imageFor(p, pieceDataMap);
+      const dot = hoveredMoves.find((m) => m.x === x && m.y === y);
+      const mine = p && Number(p.player_id) === Number(puzzle.side_to_move);
+      // Placements only have to carry a piece id; the name lives on the piece
+      // definition, so fall back to it rather than showing "undefined".
+      const pieceName = p ? (p.piece_name || pieceDataMap[p.piece_id]?.piece_name || 'Piece') : '';
       squares.push(
         <div
           key={k}
           className={classes}
           style={{ background: isLight ? lightColor : darkColor, width: vp.squareSize, height: vp.squareSize }}
           onClick={() => handleSquareClick(x, y)}
-          title={p ? `${p.piece_name} (Player ${p.player_id})` : ''}
+          onMouseEnter={() => { if (!finished && !selected && !dragging) hoverPiece(enginePieces.find((e) => e.x === x && e.y === y)); }}
+          onMouseLeave={() => { if (!selected && !dragging) setHoveredMoves([]); }}
+          onDragOver={(e) => { if (dragging && !finished) e.preventDefault(); }}
+          onDrop={(e) => {
+            e.preventDefault();
+            if (!dragging || finished || busy) return;
+            const from = dragging;
+            setDragging(null);
+            if (from !== k) playFrom(from, x, y);
+          }}
+          title={p ? `${pieceName} (Player ${p.player_id})` : ''}
         >
           {src
-            ? <img src={src} alt={p.piece_name} draggable={false} />
-            : (p ? <span className={styles["piece-fallback"]}>{(p.piece_name || '?').charAt(0)}</span> : null)}
+            ? <img
+                src={src}
+                alt={pieceName}
+                draggable={!!mine && !finished && !busy}
+                onDragStart={() => { setDragging(k); hoverPiece(enginePieces.find((e) => e.x === x && e.y === y)); }}
+                onDragEnd={() => { setDragging(null); setHoveredMoves([]); }}
+              />
+            : (p ? <span className={styles["piece-fallback"]}>{(pieceName || '?').charAt(0)}</span> : null)}
+          {/* Same movement helpers as a live game: blue for a move, red for an
+              attack, split when a piece can do both on that square. */}
+          {dot && (
+            <span
+              className={styles["move-dot"]}
+              style={{ background: MOVE_DOT_BACKGROUNDS[getMoveDotType(dot)] }}
+            />
+          )}
         </div>
       );
     }

@@ -55,23 +55,59 @@ function kFactor(ratedAttemptsSoFar) {
 }
 
 /**
- * Work out a solver's new rating after a first (rated) attempt.
- * Returns { before, after, delta, expected, k }.
+ * How much of a puzzle a solver got, as a score in [0, 1].
+ *
+ * Solutions are compared as a PREFIX: getting the first three plies of a
+ * four-ply puzzle right scores 0.75. Missing the very first move scores zero
+ * however much of the rest happens to line up - if you did not see the idea,
+ * you did not solve it, which is how the mainstream sites treat it too.
+ *
+ * Single-move puzzles (everything today) collapse to 1 or 0, so this changes
+ * nothing until multi-move solutions exist.
  */
-function rateAttempt({ currentElo, ratedAttemptsSoFar = 0, solved }) {
+function scoreAttempt(submitted, solution, sameMove) {
+  const line = Array.isArray(solution) ? solution : [solution].filter(Boolean);
+  const played = Array.isArray(submitted) ? submitted : [submitted].filter(Boolean);
+  if (!line.length) return 0;
+  let correct = 0;
+  for (let i = 0; i < line.length; i++) {
+    if (i >= played.length || !sameMove(played[i], line[i])) break;
+    correct++;
+  }
+  if (correct === 0) return 0;
+  return correct / line.length;
+}
+
+/**
+ * Work out a solver's new rating after a first (rated) attempt.
+ *
+ * `score` is the fraction of the solution found (see scoreAttempt); `solved` is
+ * accepted as a shorthand for 1 or 0.
+ *
+ * Returns { before, after, delta, expected, k, score }.
+ */
+function rateAttempt({ currentElo, ratedAttemptsSoFar = 0, solved, score }) {
   const before = Number.isFinite(currentElo) ? currentElo : PUZZLE_ELO_DEFAULT;
+  const actual = Number.isFinite(score)
+    ? Math.max(0, Math.min(1, score))
+    : (solved ? 1 : 0);
   const expected = expectedScore(before);
   const k = kFactor(ratedAttemptsSoFar);
-  const raw = k * ((solved ? 1 : 0) - expected);
+  const raw = k * (actual - expected);
 
   // Always move by at least a point in the direction of the result. Without
   // this the curve has a trapdoor: by about 2000 the expected score is so close
   // to 1 that a solve rounds to +0 while a failure still costs the full K, so
   // the rating could only ever fall no matter how well you did. A minimum step
   // puts the ceiling where +1 per solve balances the losses instead.
-  const floored = solved ? Math.max(1, raw) : Math.min(-1, raw);
-  const after = clampElo(before + floored);
-  return { before, after, delta: after - before, expected, k };
+  // A full solve always gains at least a point and a complete miss always costs
+  // at least one; partial credit in between is allowed to land wherever the
+  // arithmetic puts it, including zero.
+  let moved = raw;
+  if (actual >= 1) moved = Math.max(1, raw);
+  else if (actual <= 0) moved = Math.min(-1, raw);
+  const after = clampElo(before + moved);
+  return { before, after, delta: after - before, expected, k, score: actual };
 }
 
 /**
@@ -100,6 +136,7 @@ function isRatingPublic(puzzle) {
 }
 
 module.exports = {
+  scoreAttempt,
   PUZZLE_ELO_DEFAULT,
   ANCHOR_RATING,
   MIN_SOLVERS_FOR_PUBLIC_RATING,

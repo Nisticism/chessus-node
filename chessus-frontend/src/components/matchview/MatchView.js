@@ -721,13 +721,19 @@ const MatchView = () => {
         )}
         {/* Finished games are where the good puzzles are, and the position is
             already on screen - so hand it straight to the builder instead of
-            making someone rebuild it square by square. Only offered to accounts
-            that can actually build one. */}
-        {match.gameTypeId && canCreatePuzzles(currentUser) && (
+            making someone rebuild it square by square.
+            Shown to everyone rather than hidden from non-supporters: someone who
+            cannot use it yet should still find out it exists, which is the point
+            of a perk. */}
+        {match.gameTypeId && (
           <button
             type="button"
-            className={styles["banner-game-type-link"]}
-            onClick={() => navigate(`/games/${match.gameTypeId}/puzzles/new`, {
+            className={styles["banner-puzzle-btn"]}
+            disabled={!canCreatePuzzles(currentUser)}
+            title={canCreatePuzzles(currentUser)
+              ? 'Open the puzzle builder with this position'
+              : 'Building puzzles is a Silver Supporter perk — solving them is free for everyone'}
+            onClick={!canCreatePuzzles(currentUser) ? undefined : () => navigate(`/games/${match.gameTypeId}/puzzles/new`, {
               state: {
                 fromMatch: {
                   matchId: match.id ?? gameId,
@@ -742,6 +748,9 @@ const MatchView = () => {
             })}
           >
             🧩 Create puzzle from this position
+            {!canCreatePuzzles(currentUser) && (
+              <span className={styles["banner-puzzle-perk"]}>Silver Supporter perk</span>
+            )}
           </button>
         )}
       </div>
