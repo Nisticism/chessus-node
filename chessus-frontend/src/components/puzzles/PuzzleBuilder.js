@@ -113,17 +113,6 @@ const PuzzleBuilder = () => {
   // four toolbar buttons stack into a 2x2 block.
   const isSkinnyBoard = boardHeight >= boardWidth * 2;
 
-  const boardColumnMax = useMemo(() => {
-    const heightBudget = Math.max(320, (typeof window !== 'undefined' ? window.innerHeight : 900) - 320);
-    const byHeight = Math.floor((heightBudget - 8) / Math.max(1, boardHeight));
-    const square = Math.max(6, Math.min(72, byHeight));
-    // Small floor only - the mode tabs, hint and board buttons sit in a
-    // full-width toolbar above the layout, not in this column, so nothing here
-    // needs room beyond the board itself. That is what lets a 3x48 board sit
-    // right next to the settings instead of stranding 290px of empty column.
-    return Math.max(120, square * boardWidth + 24);
-  }, [boardWidth, boardHeight]);
-
   const vp = useBoardViewport({
     boardWidth,
     boardHeight,
@@ -133,6 +122,33 @@ const PuzzleBuilder = () => {
     insetW: 8,
     insetH: 8,
   });
+
+  const boardColumnMax = useMemo(() => {
+    const heightBudget = Math.max(320, (typeof window !== 'undefined' ? window.innerHeight : 900) - 320);
+    const byHeight = Math.floor((heightBudget - 8) / Math.max(1, boardHeight));
+    const fitSquare = Math.max(6, Math.min(72, byHeight));
+
+    // The FLOOR is what keeps this from feeding back on itself. useBoardViewport
+    // measures this column to decide how wide the board may be, so a width taken
+    // purely from the board is a loop; at the floor the width test always clears
+    // the height-limited size, which pins fitSquare to the height whatever the
+    // column does. 120px minimum only so a one-file board is still clickable.
+    const floorPx = Math.max(120, fitSquare * boardWidth + 24);
+
+    // Above the floor the column follows the board's CURRENT size, so zooming in
+    // expands sideways into space that is going spare instead of clipping
+    // against a frame stuck at the unzoomed width. A tall board then scrolls
+    // vertically only - which is the axis that genuinely cannot fit - and
+    // max-width: 100% stops it from pushing past the panel.
+    const zoomedPx = (vp.squareSize || 0) * boardWidth + 24;
+
+    // Tall boards get the zoom widget mounted beside the board rather than
+    // under it, so it takes a bite out of the same column. Without allowing for
+    // it the board is squeezed by exactly the widget's width and scrolls
+    // sideways when it did not need to.
+    const widgetPx = vp.placement === 'side' ? 64 : 0;
+    return Math.max(floorPx, zoomedPx) + widgetPx;
+  }, [boardWidth, boardHeight, vp.squareSize, vp.placement]);
   const lightColor = currentUser?.light_square_color || localStorage.getItem('boardLightColor') || '#e3d4bf';
   const darkColor = currentUser?.dark_square_color || localStorage.getItem('boardDarkColor') || '#64472b';
 

@@ -303,7 +303,16 @@ export default function useBoardViewport({
   const contentStyle = useMemo(() => ({
     // Hug the board so the viewport's max-content width measures the real content.
     width: 'max-content',
-    maxWidth: '100%',
+    // Deliberately NOT capped at 100%. Capping it meant a zoomed board could
+    // never be wider than its own viewport, so the overflow happened inside the
+    // board element instead - where `overflow: clip` (kept for the rounded
+    // corners) swallowed it without ever reaching the viewport's scrollWidth.
+    // The per-axis overflow check below then concluded there was nothing to
+    // scroll and set overflow-x: hidden, which clipped the board horizontally
+    // even when there was room on the page for it. The viewport has its own
+    // maxWidth, so letting the content exceed it is exactly what should produce
+    // a scrollbar.
+    maxWidth: 'none',
     margin: '0 auto',
   }), []);
 
