@@ -209,6 +209,57 @@
   }
 }
 
+/* Puzzle shelf on the game page. Shown to everyone whenever this game type has
+   at least one published puzzle - solving is free, only building is a perk. */
+.puzzle-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+  text-align: left;
+}
+
+.puzzle-card {
+  display: block;
+  padding: 14px 16px;
+  border-radius: 8px;
+  background: var(--bg-dark);
+  border: 1px solid var(--panel-card-border);
+  color: inherit;
+  transition: border-color 0.15s ease, transform 0.15s ease;
+
+  &:hover {
+    border-color: rgba(var(--gold-rgb, 212, 175, 55), 0.55);
+    transform: translateY(-1px);
+  }
+}
+
+.puzzle-card-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-heading);
+  margin-bottom: 4px;
+}
+
+.puzzle-card-goal {
+  font-size: 15px;
+  color: var(--gold-header);
+  margin-bottom: 8px;
+}
+
+.puzzle-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.puzzle-more {
+  margin-top: 12px;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
 .section {
   margin: 30px 0;
   padding: 20px;

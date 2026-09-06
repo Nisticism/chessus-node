@@ -2999,6 +2999,26 @@ const GameTypeView = () => {
   // everyone, so this must not be used to gate the solver.
   const puzzleBuilderAllowed = canCreatePuzzles(currentUser);
 
+  // Published puzzles for this game type. The section is shown to everyone
+  // whenever there is at least one - solving is not a supporter perk, only
+  // building is - and stays hidden entirely when there are none, so game pages
+  // do not carry an empty shelf.
+  const [puzzles, setPuzzles] = useState([]);
+  const [puzzleTotal, setPuzzleTotal] = useState(0);
+  useEffect(() => {
+    if (!gameId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await axios.get(`${API_URL}game-types/${gameId}/puzzles?limit=8`);
+        if (cancelled) return;
+        setPuzzles(data.puzzles || []);
+        setPuzzleTotal(data.total || 0);
+      } catch (_) { /* a game page must not fail because puzzles did */ }
+    })();
+    return () => { cancelled = true; };
+  }, [gameId]);
+
   const canEdit = () => {
     if (!currentUser || !game) return false;
     const role = (currentUser.role || "").toLowerCase();
@@ -3712,6 +3732,38 @@ const GameTypeView = () => {
           <h2>Description</h2>
           {game.descript ? renderContent(game.descript) : <p>No description provided.</p>}
         </div>
+
+        {puzzleTotal > 0 && (
+          <div className={styles["section"]}>
+            <h2>🧩 Puzzles</h2>
+            <div className={styles["puzzle-grid"]}>
+              {puzzles.map((pz) => (
+                <Link key={pz.id} to={`/games/${gameId}/puzzles/${pz.id}`} className={styles["puzzle-card"]}>
+                  <div className={styles["puzzle-card-title"]}>
+                    {pz.title || 'Untitled puzzle'}
+                  </div>
+                  <div className={styles["puzzle-card-goal"]}>
+                    {pz.goal === 'checkmate_in_1'
+                      ? 'Checkmate in 1'
+                      : (pz.goal_description || (pz.goal === 'win_material' ? 'Win material' : 'Find the move'))}
+                  </div>
+                  <div className={styles["puzzle-card-meta"]}>
+                    <span>Player {pz.side_to_move} to move</span>
+                    {pz.creator_username && <span>by {pz.creator_username}</span>}
+                    {pz.attempt_count > 0 && (
+                      <span>{pz.solve_count}/{pz.attempt_count} solved</span>
+                    )}
+                  </div>
+                </Link>
+              ))}
+            </div>
+            {puzzleTotal > puzzles.length && (
+              <p className={styles["puzzle-more"]}>
+                Showing {puzzles.length} of {puzzleTotal} puzzles for this game.
+              </p>
+            )}
+          </div>
+        )}
 
         {!!game.simultaneous_turns && (
           <div className={styles["section"]}>

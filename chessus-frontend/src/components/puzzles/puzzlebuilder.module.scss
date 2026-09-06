@@ -80,6 +80,35 @@
   margin-bottom: 10px;
 }
 
+/*
+ * Tall, narrow boards. The board+settings pair is only a few hundred pixels
+ * wide, so left-aligning it in a 1140px panel leaves the right half empty and
+ * the toolbar spread across nothing. Centre the pair, and fold the four buttons
+ * into a 2x2 block above it: modes on top, board actions underneath.
+ */
+.skinny {
+  .toolbar {
+    width: min(100%, 460px);
+    margin: 0 auto 10px;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .mode-tabs,
+  .board-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+
+    button { text-align: center; }
+  }
+
+  .mode-hint { text-align: center; }
+
+  .layout { justify-content: center; }
+}
+
 .mode-tabs {
   display: flex;
   gap: 8px;

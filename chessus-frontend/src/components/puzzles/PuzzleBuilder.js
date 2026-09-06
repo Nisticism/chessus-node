@@ -107,6 +107,12 @@ const PuzzleBuilder = () => {
   //
   // Without the cap a 3x48 board renders as a thin strip centred in a full-width
   // column, leaving a gulf between it and the settings panel.
+  // A board much taller than it is wide leaves the board+settings pair hugging
+  // the left of a 1140px panel with a lot of dead space to the right, and the
+  // toolbar strung out across the top of nothing. Both centre instead, and the
+  // four toolbar buttons stack into a 2x2 block.
+  const isSkinnyBoard = boardHeight >= boardWidth * 2;
+
   const boardColumnMax = useMemo(() => {
     const heightBudget = Math.max(320, (typeof window !== 'undefined' ? window.innerHeight : 900) - 320);
     const byHeight = Math.floor((heightBudget - 8) / Math.max(1, boardHeight));
@@ -365,7 +371,7 @@ const PuzzleBuilder = () => {
   }
 
   return (
-    <div className={styles["builder-page"]}>
+    <div className={`${styles["builder-page"]}${isSkinnyBoard ? ` ${styles["skinny"]}` : ''}`}>
       <h1>{savedId ? 'Edit Puzzle' : 'New Puzzle'}{game ? ` — ${game.game_name}` : ''}</h1>
 
       {/* Page-level controls, deliberately not inside the board column: they need
