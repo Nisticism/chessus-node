@@ -57,12 +57,15 @@ async function main() {
     };
   });
 
+  // A candidate carries either a single move or a whole alternating line.
+  const lineOf = (c) => (Array.isArray(c.line) ? c.line : [c.solution]);
+
   for (const c of CANDIDATES) {
     const puzzle = {
       position: hydrate(c.position),
       side_to_move: c.side_to_move,
       goal: c.goal,
-      solution_line: [c.solution],
+      solution_line: lineOf(c),
     };
     console.log(`
 === ${c.title}`);
@@ -87,9 +90,19 @@ async function main() {
         otherGameData: gameType?.other_game_data || {},
       });
       const after = build();
-      // eslint-disable-next-line no-await-in-loop
-      await validateAndApplyMove(after, c.solution, { skipTurnCheck: true });
-      const to = c.solution.to;
+      const line = lineOf(c);
+      const other = c.side_to_move === 1 ? 2 : 1;
+      for (let i = 0; i < line.length; i++) {
+        // The engine gates moves on currentTurn and never advances it itself.
+        after.currentTurn = i % 2 === 0 ? c.side_to_move : other;
+        // eslint-disable-next-line no-await-in-loop -- strictly sequential.
+        const applied = await validateAndApplyMove(after, line[i], { skipTurnCheck: true });
+        if (applied && applied.valid === false) {
+          console.log(`   !! ply ${i} did not apply: ${applied.reason}`);
+          break;
+        }
+      }
+      const to = line[line.length - 1].to;
       const at = (x, y) => after.pieces.find((p) => p.x === x && p.y === y);
       const mover = at(to.x, to.y);
 

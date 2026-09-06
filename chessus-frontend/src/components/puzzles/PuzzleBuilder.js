@@ -62,6 +62,10 @@ const imageFor = (placement, pieceDataMap) => {
   return null;
 };
 
+// Matches the server's cap. A line is [your move, their reply, ...].
+const MAX_MOVES_PER_SIDE = 8;
+const MAX_PLIES = MAX_MOVES_PER_SIDE * 2;
+
 const PuzzleBuilder = () => {
   const { gameId, puzzleId } = useParams();
   const navigate = useNavigate();
@@ -80,7 +84,17 @@ const PuzzleBuilder = () => {
 
   const [mode, setMode] = useState('arrange');   // 'arrange' | 'solution'
   const [selected, setSelected] = useState(null); // "y,x" of the held piece
-  const [solution, setSolution] = useState(null); // { from:{x,y}, to:{x,y}, pieceId }
+  /*
+   * The solution is a flat list of plies that ALTERNATES, starting with the side
+   * to move: [your move 1, their reply 1, your move 2, ...]. A one-move puzzle
+   * is a list of one, which is exactly the shape puzzles had before longer lines
+   * existed, so nothing needs converting.
+   *
+   * The replies are the creator's script rather than an engine's best defence -
+   * there is no engine for user-defined pieces. That is the whole reason a long
+   * line cannot be verified the way a mate in 1 can.
+   */
+  const [solutionLine, setSolutionLine] = useState([]);
   const [setupMove, setSetupMove] = useState(null); // the move that led into the position
 
   const [title, setTitle] = useState('');
@@ -225,7 +239,7 @@ const PuzzleBuilder = () => {
         setGoalDescription(p.goal_description || '');
         setHideRating(!!p.hide_rating);
         if (p.setup_move) setSetupMove(p.setup_move);
-        if (Array.isArray(p.solution_line) && p.solution_line[0]) setSolution(p.solution_line[0]);
+        if (Array.isArray(p.solution_line)) setSolutionLine(p.solution_line.filter(Boolean));
       } catch (err) {
         if (!cancelled) setError('Could not load that puzzle');
       }
@@ -252,6 +266,45 @@ const PuzzleBuilder = () => {
     return () => { cancelled = true; };
   }, [placements, pieceDataMap]);
 
+  /*
+   * The board as it stands after the moves recorded so far. Solution mode plays
+   * forward from the starting position, so every move after the first is chosen
+   * from the position the previous one left behind - which is the only way to
+   * record a line by hand without keeping the whole thing in your head.
+   */
+  const solutionBoard = useMemo(() => {
+    const next = { ...placements };
+    for (const ply of solutionLine) {
+      if (!ply?.from || !ply?.to) continue;
+      const fromKey = keyOf(ply.from.x, ply.from.y);
+      const mover = next[fromKey];
+      if (!mover) continue;
+      delete next[fromKey];
+      next[keyOf(ply.to.x, ply.to.y)] = {
+        ...mover,
+        /*
+         * Stamp the board id the first time a piece moves, from the square it
+         * started on. A piece keeps that id for the whole line - the engine
+         * never renames it - so a second move by the same piece has to quote it
+         * rather than build a new one from where the piece now stands.
+         */
+        id: mover.id || `${mover.piece_id}_${ply.from.y}_${ply.from.x}`,
+        x: ply.to.x,
+        y: ply.to.y,
+      };
+    }
+    return next;
+  }, [placements, solutionLine]);
+
+  // Which side plays the next ply, and whose move number it is.
+  const nextPlyIndex = solutionLine.length;
+  const nextIsSolver = nextPlyIndex % 2 === 0;
+  const nextSide = nextIsSolver
+    ? Number(sideToMove)
+    : (Number(sideToMove) === 1 ? 2 : 1);
+  const nextMoveNumber = Math.floor(nextPlyIndex / 2) + 1;
+  const lineFull = solutionLine.length >= MAX_PLIES;
+
   const positionArray = useMemo(
     () => Object.entries(placements).map(([k, v]) => {
       const [y, x] = k.split(',').map(Number);
@@ -262,7 +315,8 @@ const PuzzleBuilder = () => {
 
   const handleSquareClick = useCallback((x, y) => {
     const k = keyOf(x, y);
-    const here = placements[k];
+    // Arranging edits the starting position; recording plays forward from it.
+    const here = (mode === 'solution' ? solutionBoard : placements)[k];
 
     if (mode === 'arrange') {
       if (selected === k) {
@@ -286,26 +340,35 @@ const PuzzleBuilder = () => {
       return;
     }
 
-    // Solution mode: pick the piece, then where it goes.
+    // Solution mode: pick the piece, then where it goes. Sides alternate, so
+    // the same two clicks record your move and then their reply.
+    if (lineFull) {
+      setCheckResult({ tone: 'warn', text: `A solution can be at most ${MAX_MOVES_PER_SIDE} moves per side.` });
+      return;
+    }
     if (!selected) {
       if (!here) return;
-      if (Number(here.player_id) !== Number(sideToMove)) {
-        setCheckResult({ tone: 'warn', text: `That piece belongs to Player ${here.player_id}, but Player ${sideToMove} is to move.` });
+      if (Number(here.player_id) !== nextSide) {
+        setCheckResult({
+          tone: 'warn',
+          text: `That piece belongs to Player ${here.player_id}, but it is Player ${nextSide}'s turn in the line.`,
+        });
         return;
       }
       setSelected(k);
       return;
     }
+    if (selected === k) { setSelected(null); return; }
     const [fy, fx] = selected.split(',').map(Number);
-    const mover = placements[selected];
-    setSolution({
+    const mover = solutionBoard[selected];
+    setSolutionLine((prev) => [...prev, {
       from: { x: fx, y: fy },
       to: { x, y },
       pieceId: mover?.id || `${mover?.piece_id}_${fy}_${fx}`,
-    });
+    }]);
     setSelected(null);
     setCheckResult(null);
-  }, [mode, selected, placements, sideToMove]);
+  }, [mode, selected, placements, solutionBoard, nextSide, lineFull]);
 
   const body = () => ({
     title: title.trim() || null,
@@ -316,11 +379,11 @@ const PuzzleBuilder = () => {
     goal_description: goalDescription.trim() || null,
     setup_move: setupMove,
     hide_rating: hideRating,
-    solution_line: solution ? [solution] : [],
+    solution_line: solutionLine,
   });
 
   const save = async ({ publish = false } = {}) => {
-    if (!solution) {
+    if (!solutionLine.length) {
       setCheckResult({ tone: 'warn', text: 'Record the solution first: switch to "Set the solution" and play the move.' });
       return null;
     }
@@ -387,15 +450,19 @@ const PuzzleBuilder = () => {
   if (loading) return <div className={styles["builder-page"]}><p>Loading…</p></div>;
   if (error) return <div className={styles["builder-page"]}><p>{error}</p></div>;
 
+  const boardCells = mode === 'solution' ? solutionBoard : placements;
+  const lastPly = mode === 'solution' ? solutionLine[solutionLine.length - 1] : null;
+
   const squares = [];
   for (let y = 0; y < boardHeight; y++) {
     for (let x = 0; x < boardWidth; x++) {
       const k = keyOf(x, y);
-      const p = placements[k];
+      const p = boardCells[k];
       const isLight = (x + y) % 2 === 0;
       const isSelected = selected === k;
-      const isFrom = solution && solution.from.x === x && solution.from.y === y;
-      const isTo = solution && solution.to.x === x && solution.to.y === y;
+      // Highlight the move just recorded, so the line reads as you build it.
+      const isFrom = !!lastPly && lastPly.from.x === x && lastPly.from.y === y;
+      const isTo = !!lastPly && lastPly.to.x === x && lastPly.to.y === y;
       squares.push(
         <div
           key={k}
@@ -447,10 +514,10 @@ const PuzzleBuilder = () => {
           </button>
         </div>
         <div className={styles["board-actions"]}>
-          <button className={styles["btn-secondary"]} onClick={() => { setPlacements(startingPlacements); setSolution(null); setSelected(null); }}>
+          <button className={styles["btn-secondary"]} onClick={() => { setPlacements(startingPlacements); setSolutionLine([]); setSelected(null); }}>
             Reset to starting position
           </button>
-          <button className={styles["btn-secondary"]} onClick={() => { setPlacements({}); setSolution(null); setSelected(null); }}>
+          <button className={styles["btn-secondary"]} onClick={() => { setPlacements({}); setSolutionLine([]); setSelected(null); }}>
             Clear the board
           </button>
         </div>
@@ -458,7 +525,11 @@ const PuzzleBuilder = () => {
       <p className={styles["mode-hint"]}>
         {mode === 'arrange'
           ? 'Click a piece then an empty square to move it. Click a piece twice to take it off the board.'
-          : `Click the piece Player ${sideToMove} should move, then the square it moves to.`}
+          : (lineFull
+            ? `That is ${MAX_MOVES_PER_SIDE} moves each — as long as a solution can be.`
+            : (nextIsSolver
+              ? `Play your move ${nextMoveNumber}: click the Player ${nextSide} piece, then where it goes.`
+              : `Now play the reply you expect from Player ${nextSide} — the board carries on from there. Leave it here if your move ${Math.ceil(nextPlyIndex / 2)} is the whole answer.`))}
       </p>
 
       <div className={styles["layout"]}>
@@ -503,7 +574,7 @@ const PuzzleBuilder = () => {
 
           <label className={styles["field"]}>
             <span>Who moves?</span>
-            <select value={sideToMove} onChange={(e) => { setSideToMove(Number(e.target.value)); setSolution(null); }}>
+            <select value={sideToMove} onChange={(e) => { setSideToMove(Number(e.target.value)); setSolutionLine([]); setSelected(null); }}>
               <option value={1}>Player 1</option>
               <option value={2}>Player 2</option>
             </select>
@@ -541,11 +612,37 @@ const PuzzleBuilder = () => {
 
           <div className={styles["solution-readout"]}>
             <strong>Solution:</strong>{' '}
-            {solution
-              ? `(${solution.from.x}, ${solution.from.y}) → (${solution.to.x}, ${solution.to.y})`
-              : <em>not set yet</em>}
-            {solution && (
-              <button className={styles["link-btn"]} onClick={() => setSolution(null)}>clear</button>
+            {!solutionLine.length && <em>not set yet</em>}
+            {!!solutionLine.length && (
+              <>
+                <ol className={styles["ply-list"]}>
+                  {solutionLine.map((ply, i) => (
+                    <li
+                      key={i}
+                      className={i % 2 === 0 ? styles["ply-yours"] : styles["ply-theirs"]}
+                    >
+                      <span className={styles["ply-label"]}>
+                        {i % 2 === 0
+                          ? `Your move ${Math.floor(i / 2) + 1}`
+                          : `Their reply ${Math.floor(i / 2) + 1}`}
+                      </span>
+                      ({ply.from.x}, {ply.from.y}) → ({ply.to.x}, {ply.to.y})
+                    </li>
+                  ))}
+                </ol>
+                <button
+                  className={styles["link-btn"]}
+                  onClick={() => { setSolutionLine((prev) => prev.slice(0, -1)); setSelected(null); }}
+                >
+                  undo last move
+                </button>
+                <button
+                  className={styles["link-btn"]}
+                  onClick={() => { setSolutionLine([]); setSelected(null); }}
+                >
+                  clear
+                </button>
+              </>
             )}
           </div>
 
@@ -569,6 +666,9 @@ const PuzzleBuilder = () => {
           <p className={styles["fine-print"]}>
             Checking is advice, not a gate — you can publish either way. Only “checkmate in 1”
             can be checked automatically; everything else is judged by the people solving it.
+            On a longer line the check confirms every move can actually be played, but the
+            replies are the ones you wrote, so whether the opponent could defend better is
+            your call.
           </p>
 
           <button className={styles["link-btn"]} onClick={() => navigate(`/games/${gameId}`)}>

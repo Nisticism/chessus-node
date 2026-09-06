@@ -21,8 +21,14 @@ if (!ids) throw new Error('set E2E_FIXTURE_IDS (see scripts/e2e/fixtures.sql)');
 const token = (id, username, role = null) =>
   jwt.sign({ id, username, role, admin_level: null }, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '15m' });
 
-const CREATOR = { id: ids.e2e_free, name: 'e2e_free' };
-const SOLVER = { id: ids.e2e_silver, name: 'e2e_silver' };
+// Building is the Silver perk, so the creator has to be a supporter; solving is
+// open to everyone, so the solver deliberately is not.
+const CREATOR = { id: ids.e2e_silver, name: 'e2e_silver' };
+const SOLVER = { id: ids.e2e_free, name: 'e2e_free' };
+// Two more solvers, so the partial-credit comparison below is between two
+// untouched ratings rather than one rating measured against itself.
+const QUITTER = { id: ids.e2e_gold, name: 'e2e_gold' };
+const MISSER = { id: ids.e2e_admin, name: 'e2e_admin' };
 
 async function api(method, url, { body, as } = {}) {
   const headers = { 'Content-Type': 'application/json' };
@@ -129,7 +135,107 @@ async function main() {
   check('the solver has a puzzle history', hist.status === 200 && hist.body.attempts.length >= 2, `${hist.status} ${hist.body?.attempts?.length}`);
 
   await api('DELETE', `/api/puzzles/${puzzleId}`, { as: CREATOR });
+
+  await multiMove();
   report();
+}
+
+/*
+ * Longer puzzles: the solver finds one move at a time and the creator's scripted
+ * reply comes back, so the answer is never in the page ahead of being found.
+ */
+async function multiMove() {
+  // [your move 1, their reply, your move 2]. Legality is not the point here -
+  // the solve endpoint matches moves, and puzzle-validation-test.js is where
+  // the engine gets involved.
+  const M1 = { from: { x: 9, y: 7 }, to: { x: 9, y: 4 }, pieceId: 'wr' };
+  const R1 = { from: { x: 0, y: 0 }, to: { x: 1, y: 0 }, pieceId: 'bk' };
+  const M2 = { from: { x: 9, y: 4 }, to: { x: 9, y: 0 }, pieceId: 'wr' };
+  const WRONG = { from: { x: 9, y: 4 }, to: { x: 5, y: 4 }, pieceId: 'wr' };
+
+  const made = await api('POST', `/api/game-types/${GAME_TYPE_ID}/puzzles`, {
+    as: CREATOR,
+    body: {
+      title: 'Two-mover', position: POSITION, side_to_move: 1,
+      goal: 'win_material', goal_description: 'Win the rook',
+      solution_line: [M1, R1, M2],
+    },
+  });
+  check('a multi-move line can be saved', made.status === 201, `${made.status} ${JSON.stringify(made.body).slice(0, 160)}`);
+  const id = made.body?.puzzle?.id;
+  if (!id) return;
+  check(
+    'depth counts the solver\'s moves, not plies',
+    made.body.puzzle.solution_depth === 2,
+    `solution_depth=${made.body.puzzle.solution_depth} (3 plies = 2 moves to find)`
+  );
+  await api('POST', `/api/puzzles/${id}/publish`, { as: CREATOR, body: { publish: true } });
+
+  // --- first move: right, but not finished ---------------------------------
+  const step1 = await api('POST', `/api/puzzles/${id}/solve`, { as: SOLVER, body: { moves: [M1] } });
+  check('a correct first move is not a solve', step1.status === 200 && step1.body.solved === false,
+    JSON.stringify(step1.body).slice(0, 160));
+  check('it comes back as "continue"', step1.body?.status === 'continue', `status=${step1.body?.status}`);
+  check(
+    'the opponent\'s scripted reply is returned',
+    JSON.stringify(step1.body?.reply?.to) === JSON.stringify(R1.to),
+    JSON.stringify(step1.body?.reply)
+  );
+  check('the rest of the line is still hidden', step1.body?.solution === undefined, 'solution leaked mid-line');
+  check('progress is reported', step1.body?.movesPlayed === 1 && step1.body?.movesTotal === 2,
+    `${step1.body?.movesPlayed}/${step1.body?.movesTotal}`);
+
+  // --- a wrong second move leaves the puzzle unsolved -----------------------
+  const off = await api('POST', `/api/puzzles/${id}/solve`, { as: SOLVER, body: { moves: [M1, WRONG] } });
+  check('a wrong second move does not solve it', off.body?.solved === false && off.body?.status === 'wrong',
+    JSON.stringify(off.body).slice(0, 160));
+  check('and still does not reveal the line', off.body?.solution === undefined, 'solution leaked on a wrong move');
+
+  // --- the whole line ------------------------------------------------------
+  const done = await api('POST', `/api/puzzles/${id}/solve`, { as: SOLVER, body: { moves: [M1, M2] } });
+  check('playing the whole line solves it', done.body?.solved === true, JSON.stringify(done.body).slice(0, 160));
+  check('the full line comes back once solved', Array.isArray(done.body?.solution) && done.body.solution.length === 3,
+    `${done.body?.solution?.length} plies`);
+
+  // --- partial credit ------------------------------------------------------
+  // One solver finds the first of two moves and stops; another misses at once.
+  // Both lose rating - half a puzzle is not a solve - but stopping half way has
+  // to cost less than not starting, or partial credit means nothing.
+  const half = await api('POST', `/api/puzzles/${id}/solve`, { as: QUITTER, body: { moves: [M1] } });
+  const none = await api('POST', `/api/puzzles/${id}/solve`, { as: MISSER, body: { moves: [WRONG] } });
+  const halfDelta = half.body?.rating?.delta;
+  const noneDelta = none.body?.rating?.delta;
+  check('half a line is scored as half', half.body?.rating?.score === 0.5, `score=${half.body?.rating?.score}`);
+  check('a first-move miss scores zero', none.body?.rating?.score === 0, `score=${none.body?.rating?.score}`);
+  check(
+    'getting half way costs less than missing entirely',
+    Number.isFinite(halfDelta) && Number.isFinite(noneDelta) && halfDelta > noneDelta,
+    `half=${halfDelta} none=${noneDelta}`
+  );
+
+  // Finishing the line afterwards corrects the rating rather than stacking on
+  // top of the partial one: it is still the same first attempt.
+  const finish = await api('POST', `/api/puzzles/${id}/solve`, { as: QUITTER, body: { moves: [M1, M2] } });
+  check('finishing later turns the partial credit into a gain',
+    finish.body?.solved === true && finish.body?.rating?.delta > 0,
+    JSON.stringify(finish.body?.rating));
+  check('and it is still scored from where the attempt started',
+    finish.body?.rating?.before === half.body?.rating?.before,
+    `${half.body?.rating?.before} -> ${finish.body?.rating?.before}`);
+
+  // --- the cap -------------------------------------------------------------
+  const tooLong = await api('POST', `/api/game-types/${GAME_TYPE_ID}/puzzles`, {
+    as: CREATOR,
+    body: {
+      title: 'Far too long', position: POSITION, side_to_move: 1,
+      goal: 'win_material', goal_description: 'Win the rook',
+      solution_line: Array.from({ length: 17 }, () => M1),
+    },
+  });
+  check('a line longer than 8 moves a side is refused', tooLong.status === 400,
+    `${tooLong.status} ${JSON.stringify(tooLong.body).slice(0, 120)}`);
+
+  await api('DELETE', `/api/puzzles/${id}`, { as: CREATOR });
 }
 
 function report() {

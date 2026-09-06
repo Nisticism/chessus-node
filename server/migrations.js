@@ -615,6 +615,21 @@ const migrations = [
     description: "Add rating_sample_count to puzzles"
   },
   {
+    table: 'puzzle_attempts',
+    column: 'score',
+    sql: "ALTER TABLE puzzle_attempts ADD COLUMN score TINYINT UNSIGNED NULL",
+    description: "Add score to puzzle_attempts (percent of a multi-move line found)"
+  },
+  {
+    table: 'puzzle_attempts',
+    // An attempt at a multi-move puzzle spans several requests, so a rated
+    // attempt has to stay open between them. NULL means terminal, which is what
+    // every row written before multi-move puzzles existed is.
+    column: 'state',
+    sql: "ALTER TABLE puzzle_attempts ADD COLUMN state VARCHAR(12) NULL",
+    description: "Add state to puzzle_attempts (in_progress while a multi-move line is being played)"
+  },
+  {
     table: 'puzzles',
     column: 'hide_rating',
     sql: "ALTER TABLE puzzles ADD COLUMN hide_rating TINYINT(1) NOT NULL DEFAULT 0",

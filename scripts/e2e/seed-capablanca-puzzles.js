@@ -52,7 +52,7 @@ const api = async (method, url, body) => {
       side_to_move: c.side_to_move,
       goal: c.goal,
       goal_description: c.goal_description || null,
-      solution_line: [c.solution],
+      solution_line: Array.isArray(c.line) ? c.line : [c.solution],
     });
     if (created.status !== 201) {
       summary.push({ title: c.title, outcome: `create failed (${created.status})`, detail: created.body?.message });

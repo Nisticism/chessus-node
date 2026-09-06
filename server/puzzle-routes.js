@@ -49,6 +49,40 @@ function toEngineFields(row) {
   return out;
 }
 
+/*
+ * A solution line is a flat list of plies that ALTERNATES, starting with the
+ * side to move: index 0 is the solver's first move, index 1 is the opponent's
+ * scripted reply, index 2 is the solver's second move, and so on. A one-ply
+ * line - every puzzle built before multi-move puzzles existed - is just the
+ * solver's move, so nothing about the old shape changes.
+ *
+ * The opponent's replies are written by the creator rather than searched for.
+ * There is no engine for user-defined pieces, so there is nothing to ask what
+ * the best defence is; the creator knows what they meant, and a solver who
+ * plays something the creator did not anticipate is simply told they are off
+ * the line. That is a deliberate limit, not an oversight.
+ */
+const MAX_MOVES_PER_SIDE = 8;
+const MAX_PLIES = MAX_MOVES_PER_SIDE * 2;
+
+const solverPlies = (line) => line.filter((_, i) => i % 2 === 0);
+const replyPlies = (line) => line.filter((_, i) => i % 2 === 1);
+
+const isPly = (m) => !!m && m.from && m.to
+  && Number.isFinite(Number(m.from.x)) && Number.isFinite(Number(m.from.y))
+  && Number.isFinite(Number(m.to.x)) && Number.isFinite(Number(m.to.y));
+
+/** Coerce whatever the client sent into a storable line, or say why not. */
+function sanitizeLine(raw) {
+  const list = Array.isArray(raw) ? raw : [raw].filter(Boolean);
+  if (!list.length) return { error: 'A puzzle needs a solution' };
+  if (list.length > MAX_PLIES) {
+    return { error: `A solution can be at most ${MAX_MOVES_PER_SIDE} moves per side` };
+  }
+  if (!list.every(isPly)) return { error: 'Every move in the solution needs a from and a to square' };
+  return { line: list };
+}
+
 const MAX_TITLE = 120;
 const MAX_DESCRIPTION = 2000;
 const MAX_FEEDBACK = 2000;
@@ -152,6 +186,7 @@ function registerPuzzleRoutes(app, { db_pool, dbHelpers, authenticateToken, opti
       const [rows] = await db_pool.query(
         `SELECT p.id, p.game_type_id, p.creator_id, u.username AS creator_username,
                 p.title, p.description, p.goal, p.goal_description, p.side_to_move,
+                p.solution_depth,
                 p.rating, p.rating_sample_count, p.hide_rating,
                 p.attempt_count, p.solve_count, p.published_at, p.validation_status
          FROM puzzles p
@@ -238,9 +273,6 @@ function registerPuzzleRoutes(app, { db_pool, dbHelpers, authenticateToken, opti
       if (!Array.isArray(position) || position.length === 0) {
         return res.status(400).send({ message: 'A puzzle needs a starting position' });
       }
-      if (!solution_line || (Array.isArray(solution_line) && solution_line.length === 0)) {
-        return res.status(400).send({ message: 'A puzzle needs a solution' });
-      }
       const goalValue = Object.values(GOALS).includes(goal) ? goal : GOALS.CHECKMATE_IN_1;
       if (goalValue !== GOALS.CHECKMATE_IN_1 && !String(goal_description || '').trim()) {
         return res.status(400).send({
@@ -248,7 +280,8 @@ function registerPuzzleRoutes(app, { db_pool, dbHelpers, authenticateToken, opti
         });
       }
 
-      const line = Array.isArray(solution_line) ? solution_line : [solution_line];
+      const { line, error: lineError } = sanitizeLine(solution_line);
+      if (lineError) return res.status(400).send({ message: lineError });
       const [result] = await db_pool.query(
         `INSERT INTO puzzles
           (game_type_id, creator_id, title, description, position, side_to_move, setup_move,
@@ -264,7 +297,8 @@ function registerPuzzleRoutes(app, { db_pool, dbHelpers, authenticateToken, opti
           goalValue,
           (goal_description || '').slice(0, 255) || null,
           JSON.stringify(line),
-          line.length,
+          // Depth is what the solver has to find, so it counts their moves only.
+          solverPlies(line).length,
         ]
       );
       const created = await loadPuzzle(result.insertId);
@@ -296,9 +330,10 @@ function registerPuzzleRoutes(app, { db_pool, dbHelpers, authenticateToken, opti
       if (b.goal_description !== undefined) set('goal_description', (b.goal_description || '').slice(0, 255) || null);
       if (b.hide_rating !== undefined) set('hide_rating', b.hide_rating ? 1 : 0);
       if (b.solution_line !== undefined) {
-        const line = Array.isArray(b.solution_line) ? b.solution_line : [b.solution_line];
+        const { line, error: lineError } = sanitizeLine(b.solution_line);
+        if (lineError) return res.status(400).send({ message: lineError });
         set('solution_line', JSON.stringify(line));
-        set('solution_depth', line.length);
+        set('solution_depth', solverPlies(line).length);
       }
       // Editing the puzzle invalidates whatever the validator last said.
       if (b.position !== undefined || b.solution_line !== undefined || b.goal !== undefined) {
@@ -398,96 +433,191 @@ function registerPuzzleRoutes(app, { db_pool, dbHelpers, authenticateToken, opti
       if (!puzzle) return res.status(404).send({ message: 'Puzzle not found' });
       if (puzzle.is_draft) return res.status(404).send({ message: 'Puzzle not found' });
 
-      const attempt = Array.isArray(req.body?.moves) ? req.body.moves : [req.body?.move].filter(Boolean);
-      if (!attempt.length) return res.status(400).send({ message: 'No moves submitted' });
+      const submitted = Array.isArray(req.body?.moves) ? req.body.moves : [req.body?.move].filter(Boolean);
+      const revealed = req.body?.revealed === true;
+      if (!submitted.length && !revealed) return res.status(400).send({ message: 'No moves submitted' });
 
       const line = safeParse(puzzle.solution_line, []);
-      const solved =
-        attempt.length === line.length &&
-        attempt.every((m, i) => moveKey(m) === moveKey(line[i]));
-      // How much of the line they found, for partial credit on longer puzzles.
-      const score = scoreAttempt(attempt, line, (a, b) => moveKey(a) === moveKey(b));
+      const mine = solverPlies(line);      // the moves the solver has to find
+      const theirs = replyPlies(line);     // the creator's scripted answers
+
+      /*
+       * One number decides everything: how many of the solver's moves, from the
+       * first, match the line. "off the line", "keep going" and "solved" are all
+       * derived from it, so they cannot disagree with each other.
+       *
+       * The client re-sends the whole prefix each time rather than just the
+       * newest move, which keeps this endpoint stateless - a reload mid-puzzle
+       * picks up exactly where it left off.
+       */
+      let matched = 0;
+      while (matched < submitted.length && matched < mine.length
+             && moveKey(submitted[matched]) === moveKey(mine[matched])) matched++;
+
+      const wrong = !revealed && matched < submitted.length;
+      const solved = !revealed && !wrong && mine.length > 0 && matched === mine.length;
+      const inProgress = !revealed && !wrong && !solved;
+      const terminal = !inProgress;
+      // Same prefix rule as everywhere else: miss the first move and it is zero.
+      const score = scoreAttempt(submitted.slice(0, matched), mine, (a, b) => moveKey(a) === moveKey(b));
+      const scorePct = Math.round(score * 100);
 
       const userId = req.user?.id || null;
-      let ratedAttempt = null;
-      if (userId) {
-        const [[prior]] = await db_pool.query(
-          'SELECT COUNT(*) AS n FROM puzzle_attempts WHERE puzzle_id = ? AND user_id = ?',
-          [puzzle.id, userId]
-        );
-        // First try only; the unique index enforces it if two land at once.
-        if (!prior.n) ratedAttempt = 1;
-      }
-
-      await db_pool.query(
-        `INSERT INTO puzzle_attempts (puzzle_id, user_id, moves, solved, duration_ms, rated_attempt)
-         VALUES (?,?,?,?,?,?)`,
-        [puzzle.id, userId, JSON.stringify(attempt), solved ? 1 : 0,
-         Number.isFinite(req.body?.duration_ms) ? req.body.duration_ms : null, ratedAttempt]
-      ).catch((e) => {
-        // A duplicate rated attempt means they already had one - not an error.
-        if (e?.code !== 'ER_DUP_ENTRY') throw e;
-      });
-
-      await db_pool.query(
-        'UPDATE puzzles SET attempt_count = attempt_count + 1, solve_count = solve_count + ? WHERE id = ?',
-        [solved ? 1 : 0, puzzle.id]
-      );
-      if (solved && userId) {
-        await db_pool.query('UPDATE users SET puzzles_solved = puzzles_solved + 1 WHERE id = ?', [userId]);
-      }
-
-      // Ratings move on the first attempt only - see puzzle-rating.js for why
-      // the solver is scored against a fixed anchor rather than the puzzle's
-      // own (emergent, and at this point barely sampled) rating.
       let ratingChange = null;
-      if (userId && ratedAttempt === 1) {
-        const [[u]] = await db_pool.query(
-          'SELECT puzzle_elo FROM users WHERE id = ? LIMIT 1', [userId]
-        );
-        const [[counts]] = await db_pool.query(
-          'SELECT COUNT(*) AS n FROM puzzle_attempts WHERE user_id = ? AND rated_attempt = 1', [userId]
-        );
-        const result = rateAttempt({
-          currentElo: u?.puzzle_elo ?? PUZZLE_ELO_DEFAULT,
-          // This attempt is already stored, so it is in the count.
-          ratedAttemptsSoFar: Math.max(0, (counts?.n || 1) - 1),
-          score,
-        });
-        await db_pool.query('UPDATE users SET puzzle_elo = ? WHERE id = ?', [result.after, userId]);
-        await db_pool.query(
-          'UPDATE puzzle_attempts SET rating_before = ?, rating_after = ? WHERE puzzle_id = ? AND user_id = ? AND rated_attempt = 1',
-          [result.before, result.after, puzzle.id, userId]
-        );
-        ratingChange = {
-          before: result.before, after: result.after, delta: result.delta,
-          score: result.score,
-          partial: result.score > 0 && result.score < 1,
-        };
+      let ratingNote = null;
 
-        // The puzzle's own rating is the mean of the people who SOLVED it, so
-        // only a success is folded in.
-        if (solved) {
-          const folded = foldSolverIntoPuzzleRating({
-            rating: puzzle.rating,
-            sampleCount: puzzle.rating_sample_count,
-            solverElo: result.before,
-          });
+      if (!userId) {
+        // Nothing to rate, and a half-played line is not worth a row.
+        if (terminal) {
           await db_pool.query(
-            'UPDATE puzzles SET rating = ?, rating_sample_count = ? WHERE id = ?',
-            [folded.rating, folded.sampleCount, puzzle.id]
+            `INSERT INTO puzzle_attempts (puzzle_id, user_id, moves, solved, duration_ms, score)
+             VALUES (?,?,?,?,?,?)`,
+            [puzzle.id, null, JSON.stringify(submitted), solved ? 1 : 0,
+             Number.isFinite(req.body?.duration_ms) ? req.body.duration_ms : null, scorePct]
           );
         }
+      } else {
+        const [[open]] = await db_pool.query(
+          `SELECT id, rating_before, rating_after, score, state
+           FROM puzzle_attempts WHERE puzzle_id = ? AND user_id = ? AND rated_attempt = 1 LIMIT 1`,
+          [puzzle.id, userId]
+        );
+
+        if (!open) {
+          /*
+           * Their first attempt at this puzzle, and the only one that will ever
+           * count. It is written NOW rather than when the line finishes, so
+           * walking away from a half-solved multi-move puzzle keeps the partial
+           * score instead of costing nothing - otherwise a solver could probe a
+           * move, abandon, and come back knowing the answer for free.
+           */
+          const [[u]] = await db_pool.query('SELECT puzzle_elo FROM users WHERE id = ? LIMIT 1', [userId]);
+          const [[counts]] = await db_pool.query(
+            'SELECT COUNT(*) AS n FROM puzzle_attempts WHERE user_id = ? AND rated_attempt = 1', [userId]
+          );
+          const before = u?.puzzle_elo ?? PUZZLE_ELO_DEFAULT;
+          const result = rateAttempt({
+            currentElo: before,
+            ratedAttemptsSoFar: counts?.n || 0,
+            score,
+          });
+          try {
+            await db_pool.query(
+              `INSERT INTO puzzle_attempts
+                 (puzzle_id, user_id, moves, solved, duration_ms, rated_attempt,
+                  rating_before, rating_after, score, state)
+               VALUES (?,?,?,?,?,1,?,?,?,?)`,
+              [puzzle.id, userId, JSON.stringify(submitted), solved ? 1 : 0,
+               Number.isFinite(req.body?.duration_ms) ? req.body.duration_ms : null,
+               result.before, result.after, scorePct, terminal ? null : 'in_progress']
+            );
+            await db_pool.query(
+              'UPDATE users SET puzzle_elo = puzzle_elo + ? WHERE id = ?', [result.delta, userId]
+            );
+            ratingChange = {
+              before: result.before, after: result.after, delta: result.delta,
+              score: result.score, partial: result.score > 0 && result.score < 1,
+            };
+          } catch (e) {
+            // Two requests raced for the one rated slot; the loser is unrated.
+            if (e?.code !== 'ER_DUP_ENTRY') throw e;
+          }
+        } else if (open.state === 'in_progress') {
+          /*
+           * The same first attempt, further along. Re-score it from the rating
+           * it started at and apply only the difference, so the rating cannot
+           * drift as the line is played out, and an attempt at some other puzzle
+           * in between is not clobbered.
+           *
+           * The score only ever goes up: restarting and stopping earlier should
+           * not be able to take back ground already covered.
+           */
+          const bestPct = Math.max(scorePct, open.score || 0);
+          const [[counts]] = await db_pool.query(
+            'SELECT COUNT(*) AS n FROM puzzle_attempts WHERE user_id = ? AND rated_attempt = 1', [userId]
+          );
+          const result = rateAttempt({
+            currentElo: open.rating_before,
+            ratedAttemptsSoFar: Math.max(0, (counts?.n || 1) - 1),
+            score: bestPct / 100,
+          });
+          const alreadyApplied = (open.rating_after ?? open.rating_before) - open.rating_before;
+          await db_pool.query(
+            'UPDATE users SET puzzle_elo = puzzle_elo + ? WHERE id = ?',
+            [result.delta - alreadyApplied, userId]
+          );
+          await db_pool.query(
+            `UPDATE puzzle_attempts
+             SET moves = ?, solved = ?, score = ?, rating_after = ?, state = ?
+             WHERE id = ?`,
+            [JSON.stringify(submitted), solved ? 1 : 0, bestPct, result.after,
+             terminal ? null : 'in_progress', open.id]
+          );
+          ratingChange = {
+            before: result.before, after: result.after, delta: result.delta,
+            score: result.score, partial: result.score > 0 && result.score < 1,
+          };
+        } else if (terminal) {
+          // A retry after their rated attempt closed. Recorded, never rated.
+          await db_pool.query(
+            `INSERT INTO puzzle_attempts (puzzle_id, user_id, moves, solved, duration_ms, score)
+             VALUES (?,?,?,?,?,?)`,
+            [puzzle.id, userId, JSON.stringify(submitted), solved ? 1 : 0,
+             Number.isFinite(req.body?.duration_ms) ? req.body.duration_ms : null, scorePct]
+          );
+          ratingNote = 'Only your first attempt at a puzzle affects your rating.';
+        }
+      }
+
+      // Counters describe finished attempts; a multi-move puzzle would
+      // otherwise count one attempt per move played.
+      if (terminal) {
+        await db_pool.query(
+          'UPDATE puzzles SET attempt_count = attempt_count + 1, solve_count = solve_count + ? WHERE id = ?',
+          [solved ? 1 : 0, puzzle.id]
+        );
+        if (solved && userId) {
+          const [[prev]] = await db_pool.query(
+            'SELECT COUNT(*) AS n FROM puzzle_attempts WHERE puzzle_id = ? AND user_id = ? AND solved = 1',
+            [puzzle.id, userId]
+          );
+          // The row for this solve is already in, so 1 means this was the first.
+          if ((prev?.n || 0) <= 1) {
+            await db_pool.query('UPDATE users SET puzzles_solved = puzzles_solved + 1 WHERE id = ?', [userId]);
+          }
+        }
+      }
+
+      // The puzzle's own rating is the mean of the people who SOLVED it, so
+      // only a success is folded in, and only on the attempt that counted.
+      if (solved && ratingChange) {
+        const folded = foldSolverIntoPuzzleRating({
+          rating: puzzle.rating,
+          sampleCount: puzzle.rating_sample_count,
+          solverElo: ratingChange.before,
+        });
+        await db_pool.query(
+          'UPDATE puzzles SET rating = ?, rating_sample_count = ? WHERE id = ?',
+          [folded.rating, folded.sampleCount, puzzle.id]
+        );
       }
 
       res.json({
         solved,
-        // Only hand back the answer once they have it right (or gave up).
-        solution: solved || req.body?.revealed === true ? line : undefined,
+        status: solved ? 'solved' : (revealed ? 'revealed' : (wrong ? 'wrong' : 'continue')),
+        movesPlayed: matched,
+        movesTotal: mine.length,
+        /*
+         * The opponent's answer to the move just found. Handing this back is not
+         * a leak - it is the consequence of a move the solver already played,
+         * and without it they cannot see the position their next move starts
+         * from.
+         */
+        reply: inProgress ? (theirs[matched - 1] ?? null) : null,
+        // The whole line only once they have it, or have given up on it.
+        solution: solved || revealed ? line : undefined,
         rating: ratingChange,
-        ratingNote: ratingChange
-          ? null
-          : (userId ? 'Only your first attempt at a puzzle affects your rating.' : null),
+        ratingNote: ratingChange ? null : (userId ? ratingNote : null),
       });
     } catch (err) {
       console.error('POST /api/puzzles/:id/solve:', err);

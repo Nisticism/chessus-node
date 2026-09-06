@@ -7,6 +7,13 @@
  * some other piece also mates - which they genuinely cannot eyeball on a site
  * where the pieces are user-defined.
  *
+ * A line longer than one move cannot be judged either: the opponent's replies
+ * are the creator's script, not an engine's best defence, so "is this forced?"
+ * is not a question there is anything to ask. What IS checked is that every
+ * move in the line is legal from the position the one before it leaves behind -
+ * which catches the common authoring slip of recording a move that the piece
+ * cannot actually make - and whether the line happens to end in mate.
+ *
  * Every other goal is the creator's declaration. A puzzle does not have to win
  * the game; winning material is a puzzle too, and there is no general way to
  * score that yet. Those come back as 'not_checkable' and are refined by the
@@ -94,6 +101,39 @@ async function applyToFreshState(puzzle, gameType, move) {
   return { ok: true, state, reason: null };
 }
 
+/**
+ * Apply a whole line, ply by ply, to one state.
+ *
+ * Returns { ok, state, plyIndex, reason }. plyIndex is the move that failed,
+ * counted from 0, so a creator can be told WHICH move in the line is wrong
+ * rather than just that something is.
+ */
+async function playLine(puzzle, gameType, line) {
+  const state = buildGameState(puzzle, gameType);
+  const opponent = puzzle.side_to_move === 1 ? 2 : 1;
+  for (let i = 0; i < line.length; i++) {
+    /*
+     * The engine decides whose piece a move is allowed to touch from
+     * gameState.currentTurn, and it does not advance it itself - a live game
+     * does that in its own flow. Alternate it by hand or every reply in the
+     * line comes back as "Not your piece".
+     */
+    state.currentTurn = i % 2 === 0 ? puzzle.side_to_move : opponent;
+    let applied;
+    try {
+      // eslint-disable-next-line no-await-in-loop -- strictly sequential: each
+      // move is made from the position the previous one left behind.
+      applied = await validateAndApplyMove(state, line[i], { skipTurnCheck: true });
+    } catch (err) {
+      return { ok: false, state, plyIndex: i, reason: `engine rejected the move: ${err.message}` };
+    }
+    if (applied && applied.valid === false) {
+      return { ok: false, state, plyIndex: i, reason: applied.reason || 'illegal move' };
+    }
+  }
+  return { ok: true, state, plyIndex: -1, reason: null };
+}
+
 /** Is this move mate? Only meaningful for CHECKMATE_IN_1. */
 async function moveIsMate(puzzle, gameType, move) {
   const { ok, state } = await applyToFreshState(puzzle, gameType, move);
@@ -110,9 +150,42 @@ async function moveIsMate(puzzle, gameType, move) {
  * refuse the save.
  */
 async function validatePuzzle(puzzle, gameType) {
-  const intended = Array.isArray(puzzle.solution_line) ? puzzle.solution_line[0] : puzzle.solution_line;
+  const line = Array.isArray(puzzle.solution_line) ? puzzle.solution_line : [puzzle.solution_line].filter(Boolean);
+  const intended = line[0];
   if (!intended) {
     return { status: VALIDATION.UNSOLVABLE, solutions: [], intendedWorks: false, detail: 'no intended solution recorded' };
+  }
+
+  /*
+   * A multi-move line: check that it can actually be played, and say whether it
+   * finishes with mate. Uniqueness is out of reach - see the note at the top -
+   * so this comes back as advice either way.
+   */
+  if (line.length > 1) {
+    const played = await playLine(puzzle, gameType, line);
+    if (!played.ok) {
+      const which = played.plyIndex % 2 === 0
+        ? `your move ${Math.floor(played.plyIndex / 2) + 1}`
+        : `the opponent's reply ${Math.floor(played.plyIndex / 2) + 1}`;
+      return {
+        status: VALIDATION.UNSOLVABLE,
+        solutions: [],
+        intendedWorks: false,
+        detail: `${which} cannot be played: ${played.reason}`,
+      };
+    }
+    const defender = puzzle.side_to_move === 1 ? 2 : 1;
+    played.state.currentTurn = defender;
+    const endsInMate = !!isCheckmate(played.state, defender);
+    const moves = Math.ceil(line.length / 2);
+    return {
+      status: VALIDATION.NOT_CHECKABLE,
+      solutions: [intended],
+      intendedWorks: true,
+      detail: `the whole ${moves}-move line is legal${endsInMate ? ' and ends in checkmate' : ''}. `
+        + 'Whether the opponent could have defended differently is your call - the replies are the ones you wrote.',
+      endsInMate,
+    };
   }
 
   // Goals the server cannot score. Confirm the move is at least legal, so a

@@ -3749,6 +3749,9 @@ const GameTypeView = () => {
                   </div>
                   <div className={styles["puzzle-card-meta"]}>
                     <span>Player {pz.side_to_move} to move</span>
+                    {/* Depth counts the solver's own moves, so a puzzle with two
+                        of theirs and one reply reads as 2. */}
+                    {pz.solution_depth > 1 && <span>{pz.solution_depth} moves</span>}
                     {pz.creator_username && <span>by {pz.creator_username}</span>}
                     {pz.attempt_count > 0 && (
                       <span>{pz.solve_count}/{pz.attempt_count} solved</span>

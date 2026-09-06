@@ -199,6 +199,63 @@ async function main() {
     `status ${r7.status}: ${r7.detail}`
   );
 
+  // --- 8. A multi-move line is played out, ply by ply -----------------------
+  // Black king on a8, white king on a6, white rook on j1. The line is
+  // Rj1-j5, Ka8-b8, Rj5-b5+ : white, black, white, so the middle ply belongs to
+  // the OTHER side. The engine decides ownership from gameState.currentTurn and
+  // never advances it itself, so a validator that forgets to alternate rejects
+  // every reply as "Not your piece" - which is exactly what happened.
+  const twoMover = {
+    goal: GOALS.WIN_MATERIAL,
+    goal_description: 'Cut the king off',
+    side_to_move: 1,
+    position: [
+      at(king, 'bk', 0, 0, 2),
+      at(king, 'wk', 0, 2, 1),
+      at(rook, 'wr', 9, 7, 1),
+    ],
+    solution_line: [
+      { from: { x: 9, y: 7 }, to: { x: 9, y: 4 }, pieceId: 'wr' },
+      { from: { x: 0, y: 0 }, to: { x: 1, y: 0 }, pieceId: 'bk' },
+      // Still the rook that started on j1, so it keeps that id.
+      { from: { x: 9, y: 4 }, to: { x: 1, y: 4 }, pieceId: 'wr' },
+    ],
+  };
+  const r8 = await validatePuzzle(twoMover, gameType);
+  console.log(`  [8] status=${r8.status} detail=${r8.detail}`);
+  check(
+    'a legal multi-move line comes back as the creator\'s call, not a failure',
+    r8.status === VALIDATION.NOT_CHECKABLE && r8.intendedWorks,
+    `status ${r8.status}: ${r8.detail}`
+  );
+  check(
+    'the whole line is reported as playable',
+    /2-move line is legal/.test(r8.detail || ''),
+    r8.detail
+  );
+
+  // --- 9. An impossible reply is caught, and named -------------------------
+  const badReply = {
+    ...twoMover,
+    solution_line: [
+      twoMover.solution_line[0],
+      { from: { x: 0, y: 0 }, to: { x: 4, y: 4 }, pieceId: 'bk' }, // kings do not teleport
+      twoMover.solution_line[2],
+    ],
+  };
+  const r9 = await validatePuzzle(badReply, gameType);
+  console.log(`  [9] status=${r9.status} detail=${r9.detail}`);
+  check(
+    'a reply that cannot be played fails the line',
+    r9.status === VALIDATION.UNSOLVABLE,
+    `status ${r9.status}: ${r9.detail}`
+  );
+  check(
+    'and the creator is told which move is wrong',
+    /opponent's reply 1/.test(r9.detail || ''),
+    r9.detail
+  );
+
   console.log('');
   for (const r of results) {
     console.log(`${r.ok ? 'PASS' : 'FAIL'}  ${r.name}${r.ok ? '' : `\n      ${r.detail || ''}`}`);

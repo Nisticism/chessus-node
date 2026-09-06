@@ -26,10 +26,24 @@ const at = (piece_id, x, y, player_id) => ({
 
 const w = (piece_id, x, y) => at(piece_id, x, y, 1);
 const b = (piece_id, x, y) => at(piece_id, x, y, 2);
-const move = (fx, fy, tx, ty, piece_id) => ({
-  from: { x: fx, y: fy }, to: { x: tx, y: ty }, pieceId: `${piece_id}_${fy}_${fx}`,
+/*
+ * A piece keeps the id it was given on its STARTING square for the whole game -
+ * the engine never renames it - so the second move of the same piece in a line
+ * has to quote that original id, not one built from where it now stands. Pass
+ * `id` explicitly for those.
+ */
+const move = (fx, fy, tx, ty, piece_id, id) => ({
+  from: { x: fx, y: fy }, to: { x: tx, y: ty }, pieceId: id || `${piece_id}_${fy}_${fx}`,
 });
 
+/*
+ * A candidate records either a single `solution` move or a whole `line`. A line
+ * ALTERNATES, starting with the side to move: [your move, their reply, your
+ * move, ...]. The replies are written here rather than searched for - there is
+ * no engine for user-defined pieces - so a line is only as forced as its author
+ * made it. This one is: every legal Black reply loses the queen, which was
+ * checked before it was written down.
+ */
 const CANDIDATES = [
   {
     title: 'Smothered on the j-file',
@@ -111,6 +125,28 @@ const CANDIDATES = [
       w(P.PAWN, 4, 6), w(P.PAWN, 5, 6), w(P.PAWN, 6, 6), w(P.PAWN, 7, 6),
     ],
     solution: move(9, 4, 6, 1, P.ARCHBISHOP),
+  },
+  {
+    title: 'Win the queen in two',
+    description:
+      'The chancellor forks the king and queen. Black has three legal answers and all of them lose the queen - play the fork, then take what it wins.',
+    goal: 'win_material',
+    goal_description: 'Fork with the chancellor, then take the queen',
+    side_to_move: 1,
+    position: [
+      b(P.KING, 6, 0), b(P.QUEEN, 9, 1), b(P.ROOK, 0, 0),
+      b(P.PAWN, 0, 1), b(P.PAWN, 1, 1), b(P.PAWN, 5, 1), b(P.PAWN, 7, 1),
+      b(P.KNIGHT, 3, 2), b(P.BISHOP, 2, 1),
+      w(P.KING, 5, 7), w(P.CHANCELLOR, 7, 6), w(P.ROOK, 0, 7), w(P.BISHOP, 3, 5),
+      w(P.KNIGHT, 2, 4),
+      w(P.PAWN, 0, 6), w(P.PAWN, 1, 6), w(P.PAWN, 2, 6), w(P.PAWN, 4, 6), w(P.PAWN, 5, 6),
+    ],
+    line: [
+      move(7, 6, 7, 2, P.CHANCELLOR),   // the fork, with check
+      move(6, 0, 7, 0, P.KING),         // Black steps aside - any square does
+      // Still the chancellor that started on (7,6), so it keeps that id.
+      move(7, 2, 9, 1, P.CHANCELLOR, `${P.CHANCELLOR}_6_7`),   // and the queen goes
+    ],
   },
 ];
 

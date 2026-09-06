@@ -70,6 +70,25 @@ const toEngineFields = (row) => {
   return out;
 };
 
+/** Move a piece on the board map. Anything unplayable is left alone. */
+const applyPly = (cells, ply) => {
+  if (!ply?.from || !ply?.to) return cells;
+  const fromKey = keyOf(ply.from.x, ply.from.y);
+  const mover = cells[fromKey];
+  if (!mover) return cells;
+  const next = { ...cells };
+  delete next[fromKey];
+  next[keyOf(ply.to.x, ply.to.y)] = {
+    // A piece keeps the id it had on its starting square, so a second move by
+    // the same piece quotes that one rather than its current square.
+    ...mover,
+    id: mover.id || `${mover.piece_id}_${ply.from.y}_${ply.from.x}`,
+    x: ply.to.x,
+    y: ply.to.y,
+  };
+  return next;
+};
+
 const goalText = (p) => {
   if (!p) return '';
   if (p.goal === 'checkmate_in_1') return 'Checkmate in one move';
@@ -99,7 +118,15 @@ const PuzzleSolver = () => {
   const [placements, setPlacements] = useState({});
   const [selected, setSelected] = useState(null);
   const [lastTry, setLastTry] = useState(null);   // {from,to}
-  const [outcome, setOutcome] = useState(null);   // 'solved' | 'wrong' | 'revealed'
+  const [outcome, setOutcome] = useState(null);   // 'solved' | 'wrong' | 'revealed' | 'continue'
+  /*
+   * A puzzle can run to several moves. The moves found so far are re-sent with
+   * every submission rather than kept on the server, so a reload picks up where
+   * it left off, and the answer still never reaches the page: the server hands
+   * back only the opponent's reply to a move already found.
+   */
+  const [playedMoves, setPlayedMoves] = useState([]);
+  const [progress, setProgress] = useState(null); // { played, total }
   const [attempts, setAttempts] = useState(0);
   const [solution, setSolution] = useState(null);
   const [ratingChange, setRatingChange] = useState(null);
@@ -260,44 +287,70 @@ const PuzzleSolver = () => {
   const submit = useCallback(async (move) => {
     setBusy(true);
     setLastTry(move);
+    const attemptLine = [...playedMoves, move];
     try {
       const { data } = await axios.post(
         `${API_URL}puzzles/${puzzleId}/solve`,
-        { moves: [move], duration_ms: Date.now() - startedAt },
+        { moves: attemptLine, duration_ms: Date.now() - startedAt },
         { headers: authHeader() }
       );
-      setAttempts((n) => n + 1);
       if (data.rating) setRatingChange(data.rating);
       else if (data.ratingNote) setRatingNote(data.ratingNote);
-      if (data.solved) {
-        setOutcome('solved');
-        setSolution(data.solution || [move]);
-      } else {
-        setOutcome('wrong');
+      if (Number.isFinite(data.movesTotal)) {
+        setProgress({ played: data.movesPlayed || 0, total: data.movesTotal });
       }
+
+      if (data.status === 'continue') {
+        // Right so far: play the move, then the answer the creator wrote for it.
+        setPlayedMoves(attemptLine);
+        setPlacements((prev) => applyPly(applyPly(prev, move), data.reply));
+        setLastTry(data.reply || move);
+        setOutcome('continue');
+        return;
+      }
+      if (data.solved) {
+        const line = data.solution || attemptLine;
+        setPlayedMoves(attemptLine);
+        // Everything from here to the end of the line: this move, plus any
+        // reply the creator wrote after it.
+        setPlacements((prev) => line.slice(playedMoves.length * 2).reduce(applyPly, prev));
+        setSolution(line);
+        setOutcome('solved');
+        return;
+      }
+      // Off the line. The board stays where it is, so they can try again from
+      // the same position.
+      setAttempts((n) => n + 1);
+      setOutcome('wrong');
     } catch (err) {
       setError(err?.response?.data?.message || 'Could not submit that move');
     } finally {
       setBusy(false);
     }
-  }, [puzzleId, startedAt]);
+  }, [puzzleId, startedAt, playedMoves]);
 
   const reveal = useCallback(async () => {
     setBusy(true);
     try {
       const { data } = await axios.post(
         `${API_URL}puzzles/${puzzleId}/solve`,
-        { moves: [{ from: { x: -1, y: -1 }, to: { x: -1, y: -1 } }], revealed: true },
+        // What they found before giving up, so a part-solved line still scores.
+        { moves: playedMoves, revealed: true, duration_ms: Date.now() - startedAt },
         { headers: authHeader() }
       );
-      setSolution(data.solution || null);
+      const line = data.solution || null;
+      setSolution(line);
+      if (Array.isArray(line)) {
+        setPlacements((prev) => line.slice(playedMoves.length * 2).reduce(applyPly, prev));
+      }
+      if (data.rating) setRatingChange(data.rating);
       setOutcome('revealed');
     } catch (err) {
       setError(err?.response?.data?.message || 'Could not load the solution');
     } finally {
       setBusy(false);
     }
-  }, [puzzleId]);
+  }, [puzzleId, playedMoves, startedAt]);
 
   const playFrom = useCallback((fromKey, x, y) => {
     const [fy, fx] = fromKey.split(',').map(Number);
@@ -312,29 +365,9 @@ const PuzzleSolver = () => {
   }, [placements, submit]);
 
   const finished = outcome === 'solved' || outcome === 'revealed';
-
-  /*
-   * Play the winning line out on the board once it is found. Without this the
-   * piece snaps back to where it started and only the two squares light up,
-   * which reads like the move was rejected.
-   */
-  const [playedOut, setPlayedOut] = useState(false);
-  useEffect(() => {
-    if (outcome !== 'solved' || playedOut || !Array.isArray(solution) || !solution.length) return;
-    setPlacements((prev) => {
-      const next = { ...prev };
-      solution.forEach((m) => {
-        if (!m?.from || !m?.to) return;
-        const fromKey = keyOf(m.from.x, m.from.y);
-        const mover = next[fromKey];
-        if (!mover) return;
-        delete next[fromKey];
-        next[keyOf(m.to.x, m.to.y)] = { ...mover, x: m.to.x, y: m.to.y };
-      });
-      return next;
-    });
-    setPlayedOut(true);
-  }, [outcome, solution, playedOut]);
+  // How many moves the solver has to find. solution_depth counts their moves
+  // only, so a 3-move line with 2 replies reads as 3.
+  const movesToFind = progress?.total || Number(puzzle?.solution_depth) || 1;
 
   const handleSquareClick = useCallback((x, y) => {
     if (busy || finished) return;
@@ -370,7 +403,8 @@ const PuzzleSolver = () => {
   if (error && !puzzle) return <div className={styles["solver-page"]}><p>{error}</p></div>;
   if (!puzzle) return null;
 
-  const sol = Array.isArray(solution) ? solution[0] : null;
+  const solutionPlies = Array.isArray(solution) ? solution.filter(Boolean) : [];
+  const sol = solutionPlies[0] || null;
   const squares = [];
   for (let y = 0; y < boardHeight; y++) {
     for (let x = 0; x < boardWidth; x++) {
@@ -474,12 +508,25 @@ const PuzzleSolver = () => {
 
           {outcome === 'solved' && (
             <div className={`${styles["notice"]} ${styles["notice-ok"]}`}>
-              Solved{attempts > 1 ? ` in ${attempts} tries` : ' first try'}. Nicely done.
+              Solved{attempts === 0
+                ? ' first try'
+                : ` after ${attempts} wrong ${attempts === 1 ? 'try' : 'tries'}`}. Nicely done.
+            </div>
+          )}
+          {outcome === 'continue' && (
+            <div className={`${styles["notice"]} ${styles["notice-ok"]}`}>
+              That's it. Your opponent has answered — keep going.
             </div>
           )}
           {outcome === 'wrong' && (
             <div className={`${styles["notice"]} ${styles["notice-warn"]}`}>
               Not that one. Try again — the position is unchanged.
+            </div>
+          )}
+          {/* Only worth showing once there is more than one move to find. */}
+          {movesToFind > 1 && !finished && (
+            <div className={styles["progress"]}>
+              Move <strong>{(progress?.played || 0) + 1}</strong> of {movesToFind}
             </div>
           )}
           {ratingChange && (
@@ -495,7 +542,23 @@ const PuzzleSolver = () => {
           )}
           {outcome === 'revealed' && sol && (
             <div className={`${styles["notice"]} ${styles["notice-info"]}`}>
-              The answer was ({sol.from.x}, {sol.from.y}) → ({sol.to.x}, {sol.to.y}), highlighted on the board.
+              {solutionPlies.length > 1 ? (
+                <>
+                  The answer, played out on the board:
+                  <ol className={styles["ply-list"]}>
+                    {solutionPlies.map((ply, i) => (
+                      <li key={i} className={i % 2 === 0 ? styles["ply-yours"] : styles["ply-theirs"]}>
+                        <span className={styles["ply-label"]}>
+                          {i % 2 === 0 ? `Move ${Math.floor(i / 2) + 1}` : 'Their reply'}
+                        </span>
+                        ({ply.from.x}, {ply.from.y}) → ({ply.to.x}, {ply.to.y})
+                      </li>
+                    ))}
+                  </ol>
+                </>
+              ) : (
+                <>The answer was ({sol.from.x}, {sol.from.y}) → ({sol.to.x}, {sol.to.y}), highlighted on the board.</>
+              )}
             </div>
           )}
           {error && <div className={`${styles["notice"]} ${styles["notice-error"]}`}>{error}</div>}
