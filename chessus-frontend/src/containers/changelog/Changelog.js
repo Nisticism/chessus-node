@@ -5,6 +5,15 @@ import styles from "./changelog.module.scss";
 const changelogData = [
   {
     date: "September 6, 2026",
+    title: "Fixed: deploys were wiping piece movement",
+    items: [
+      "Fixed the real cause of pieces losing their movement. A database cleanup step was clearing a piece's movement whenever an old internal flag was off. That flag stopped being set when the piece wizard moved to reading movement straight from the values, so the step ran on every deploy and cleared the movement of every piece created or edited since the previous one — including pieces people had just fixed. It has been removed.",
+      "Steps that change saved data are now recorded once and never run again, so a one-off repair cannot quietly become something that happens on every restart.",
+      "If a piece of yours lost its movement, it was this. Nothing you did caused it, and re-entering the movement is now safe.",
+    ],
+  },
+  {
+    date: "September 6, 2026",
     title: "Notification links, and a round of interface fixes",
     items: [
       "Fixed the owner's \u201cnew user registered\u201d notification linking to nothing for anyone who signed up with a username and password \u2014 the account's id was missing when the link was built, so it pointed at /profile/id/undefined. Existing broken ones have been cleared.",

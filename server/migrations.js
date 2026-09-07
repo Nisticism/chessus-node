@@ -14,6 +14,42 @@ const tableExists = async (tableName) => {
   return results[0].count > 0;
 };
 
+/*
+ * A ledger for data migrations - the ones that CHANGE ROWS rather than shape.
+ *
+ * Schema migrations are safe to re-run because they check first: does the
+ * column exist, is it the right type. A data migration has no such check. It
+ * is written once, against the data as it looked that day, and re-running it
+ * later applies yesterday's assumptions to today's rows.
+ *
+ * That is not hypothetical. A migration that zeroed movement values whose style
+ * flag was 0 ran on every deploy, and once the wizard stopped setting those
+ * flags it deleted the movement of every piece saved since the previous deploy.
+ *
+ * So: any migration that writes to user data goes through here, gets a name,
+ * and runs at most once per database, for ever.
+ */
+const runOnceDataMigration = async (key, description, fn) => {
+  await db_pool.query(`
+    CREATE TABLE IF NOT EXISTS applied_data_migrations (
+      migration_key VARCHAR(120) NOT NULL PRIMARY KEY,
+      description   VARCHAR(255) NULL,
+      applied_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      rows_affected INT NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+
+  const [[seen]] = await db_pool.query(
+    'SELECT COUNT(*) AS n FROM applied_data_migrations WHERE migration_key = ?', [key]);
+  if (seen.n > 0) return false;
+
+  const affected = await fn();
+  await db_pool.query(
+    'INSERT INTO applied_data_migrations (migration_key, description, rows_affected) VALUES (?,?,?)',
+    [key, description, Number.isFinite(affected) ? affected : null]);
+  console.log(`[DB] Data migration '${key}' applied${Number.isFinite(affected) ? ` (${affected} row(s))` : ''} - it will not run again.`);
+  return true;
+};
+
 /**
  * Check if a column exists in a table
  */
@@ -1243,50 +1279,28 @@ const runMigrations = async () => {
     console.error('Error converting point columns to DECIMAL:', err.message);
   }
 
-  // Retire the movement "style" gate flags in favor of a value-only model:
-  // an ability is active iff its value(s) are non-zero. This zeroes orphaned values
-  // left behind when a style toggle was turned off (the piece-750 phantom-move class).
-  // Gated on an orphan-count pre-check so it does real work only on the first restart.
-  try {
-    const hasStyleCol = await columnExists('pieces', 'step_by_step_movement_style');
-    if (hasStyleCol) {
-      const [chk] = await db_pool.query(`
-        SELECT
-          SUM(COALESCE(step_by_step_movement_style,0)=0 AND step_by_step_movement_value<>0) AS m,
-          SUM(COALESCE(ratio_movement_style,0)=0 AND (ratio_one_movement<>0 OR ratio_two_movement<>0)) AS r,
-          SUM(COALESCE(directional_movement_style,0)=0 AND (
-            up_movement<>0 OR up_right_movement<>0 OR right_movement<>0 OR down_right_movement<>0 OR
-            down_movement<>0 OR down_left_movement<>0 OR left_movement<>0 OR up_left_movement<>0)) AS d
-        FROM pieces
-      `);
-      const pending = chk[0] && (Number(chk[0].m) || Number(chk[0].r) || Number(chk[0].d));
-      if (pending) {
-        await runMigration(
-          `UPDATE pieces SET step_by_step_movement_value=0
-             WHERE COALESCE(step_by_step_movement_style,0)=0 AND step_by_step_movement_value<>0`,
-          'Value-only gates: zero orphaned step-by-step movement values'
-        );
-        migrationsRun++;
-        await runMigration(
-          `UPDATE pieces SET ratio_one_movement=0, ratio_two_movement=0
-             WHERE COALESCE(ratio_movement_style,0)=0 AND (ratio_one_movement<>0 OR ratio_two_movement<>0)`,
-          'Value-only gates: zero orphaned ratio movement values'
-        );
-        migrationsRun++;
-        await runMigration(
-          `UPDATE pieces SET up_movement=0, up_right_movement=0, right_movement=0, down_right_movement=0,
-             down_movement=0, down_left_movement=0, left_movement=0, up_left_movement=0
-             WHERE COALESCE(directional_movement_style,0)=0 AND (
-               up_movement<>0 OR up_right_movement<>0 OR right_movement<>0 OR down_right_movement<>0 OR
-               down_movement<>0 OR down_left_movement<>0 OR left_movement<>0 OR up_left_movement<>0)`,
-          'Value-only gates: zero orphaned directional movement values'
-        );
-        migrationsRun++;
-      }
-    }
-  } catch (err) {
-    console.error('Error retiring movement/attack style gates:', err.message);
-  }
+  /*
+   * REMOVED 2026-09-06: a migration that zeroed a piece's movement whenever its
+   * `*_movement_style` gate flag was 0.
+   *
+   * It was written to clean up values orphaned by turning a style toggle off,
+   * and it was correct for the model of the time. Then the wizard moved to the
+   * value-only model - an ability is active iff its value is non-zero - and
+   * stopped ever setting those flags to true. Nothing reads them as gates any
+   * more; the engines derive "active" from the value.
+   *
+   * That left every piece saved by the current wizard sitting with movement
+   * values and a style flag of 0: exactly the shape this migration deleted. It
+   * ran on EVERY startup, so each deploy silently wiped the movement of every
+   * piece created or edited since the last one - including pieces someone had
+   * just edited to repair. Game type 489 lost six of its seven pieces this way;
+   * the survivor was the one piece that still had the old flag set.
+   *
+   * Do not reinstate it. If orphaned values ever need cleaning again, it is a
+   * one-off script run by hand against a backup, not something that runs on
+   * every boot. See runOnceDataMigration below for the pattern to use when a
+   * data fix genuinely does belong in startup.
+   */
 
   // ============================================
   // LEGACY MIGRATIONS FOR OLD TABLE STRUCTURE (HISTORICAL ONLY)
@@ -4462,13 +4476,20 @@ const runMigrations = async () => {
   // The piece wizard never sets this field, so any non-null value is a data
   // artifact from the migration. NULL it out so old pieces like rooks are not
   // incorrectly restricted once the feature is implemented in game-socket.js.
+  // Through the ledger: this rewrites user data, and nothing about a piece row
+  // tells you whether it has already been done. Left unguarded it re-ran on
+  // every boot, which was harmless only for as long as nothing wrote the column.
   try {
-    const [affected] = await db_pool.query(
-      `UPDATE pieces SET available_for_moves = NULL WHERE available_for_moves IS NOT NULL`
+    await runOnceDataMigration(
+      'null-legacy-available-for-moves',
+      'Reset available_for_moves left over from the piece_movement consolidation',
+      async () => {
+        const [affected] = await db_pool.query(
+          `UPDATE pieces SET available_for_moves = NULL WHERE available_for_moves IS NOT NULL`
+        );
+        return affected.affectedRows;
+      }
     );
-    if (affected.affectedRows > 0) {
-      console.log(`[DB] Cleaned up available_for_moves: reset ${affected.affectedRows} pieces to NULL (legacy boolean artifact)`);
-    }
   } catch (err) {
     console.error('Error cleaning up available_for_moves:', err.message);
   }
