@@ -1,7 +1,8 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { Link } from "react-router-dom";
 import { getFriends, removeFriend, setOnlineUsers } from "../../actions/friends";
+import ListFilterBar from "../common/ListFilterBar";
 import styles from "./friendslist.module.scss";
 import DefaultAvatar from "../../assets/pieces/legacy/White-pawn.png";
 
@@ -11,6 +12,8 @@ const FriendsList = ({ userId, showOnlineOnly = false, socket, friendsOverride, 
   const dispatch = useDispatch();
   const { friends, onlineUsers } = useSelector((state) => state.friends);
   const currentUser = useSelector((state) => state.authReducer.user);
+  const [query, setQuery] = useState('');
+  const [onlineFilter, setOnlineFilter] = useState('all');
 
   // Use friendsOverride if provided, otherwise use friends from Redux
   const friendsList = friendsOverride || friends;
@@ -51,11 +54,23 @@ const FriendsList = ({ userId, showOnlineOnly = false, socket, friendsOverride, 
 
   // If friendsOverride is provided, it's already filtered (e.g., server-side online filter)
   // Don't apply additional showOnlineOnly filter to avoid desync issues
-  const displayedFriends = showOnlineOnly && !friendsOverride
+  const baseFriends = showOnlineOnly && !friendsOverride
     ? friendsList.filter((friend) => isOnline(friend.id))
     : friendsList;
 
-  if (displayedFriends.length === 0) {
+  // The search bar's own online filter, on top of whatever the caller asked
+  // for. Only surfaced once the list is long enough to warrant it.
+  const displayedFriends = baseFriends.filter((friend) => {
+    const q = query.trim().toLowerCase();
+    if (q && !(friend.username || '').toLowerCase().includes(q)) return false;
+    if (onlineFilter === 'online') return isOnline(friend.id);
+    if (onlineFilter === 'offline') return !isOnline(friend.id);
+    return true;
+  });
+
+  // Only a genuinely empty list gets the empty state. A search that matches
+  // nothing must keep the search bar on screen, or there is no way back.
+  if (baseFriends.length === 0) {
     return (
       <div className={styles["empty-state"]}>
         <p>{showOnlineOnly ? "No friends online" : "No friends yet"}</p>
@@ -70,6 +85,24 @@ const FriendsList = ({ userId, showOnlineOnly = false, socket, friendsOverride, 
 
   return (
     <div className={styles["friends-list"]}>
+      <ListFilterBar
+        total={baseFriends.length}
+        shown={displayedFriends.length}
+        query={query}
+        onQueryChange={setQuery}
+        placeholder="Search friends"
+        filters={[
+          { value: 'all', label: 'All' },
+          { value: 'online', label: 'Online' },
+          { value: 'offline', label: 'Offline' },
+        ]}
+        filter={onlineFilter}
+        onFilterChange={setOnlineFilter}
+        label="friends"
+      />
+      {displayedFriends.length === 0 && (
+        <p className={styles["hint"]}>No friends match that search.</p>
+      )}
       {displayedFriends.map((friend) => (
         <div key={friend.id} className={styles["friend-card"]}>
           <Link to={`/profile/${friend.username}`} className={styles["friend-info"]}>

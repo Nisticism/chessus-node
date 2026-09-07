@@ -5,6 +5,16 @@ import styles from "./changelog.module.scss";
 const changelogData = [
   {
     date: "September 6, 2026",
+    title: "Editing puzzles, and search on long profile lists",
+    items: [
+      "Puzzle creators can now edit a published puzzle from its own page, and admins and owners can edit anyone's. The Edit button opens it in the builder with the position and answer already loaded.",
+      "New Duplicate as draft button on a puzzle, for building a variation on a position instead of rebuilding it square by square. The copy is yours, starts unpublished, and carries none of the original's attempts or rating.",
+      "The puzzle builder now lists that game's puzzles at the bottom — yours, or everyone's if you are an admin — with drafts first. Click one to open and edit it without going back to the game page to find it.",
+      "Ongoing Games, My Games, My Pieces and Friends on a profile now get a search box and a filter once there are more than 20 of them. Ongoing games filter by whose turn it is, games by published or draft, pieces by category, and friends by who is online.",
+    ],
+  },
+  {
+    date: "September 6, 2026",
     title: "Drag pieces in puzzles, All Games in the Play menu",
     items: [
       "You can now pick a piece up in a puzzle and drag it. Press and hold, the piece follows the cursor with its legal squares marked, and it lands where you let go. Clicking the piece and then the square still works exactly as before.",

@@ -5,6 +5,7 @@ import axios from "../../services/axios-interceptor";
 import API_URL from "../../global/global";
 import authHeader from "../../services/auth-header";
 import { getPieceById } from "../../actions/pieces";
+import { hasStaffRole } from "../../helpers/supporterTiers";
 import {
   createMoveEngine,
   getMoveDotType,
@@ -138,6 +139,7 @@ const PuzzleSolver = () => {
   const [feedbackCategory, setFeedbackCategory] = useState('other');
   const [feedbackMessage, setFeedbackMessage] = useState('');
   const [feedbackNotice, setFeedbackNotice] = useState(null);
+  const [duplicateError, setDuplicateError] = useState(null);
   const [hoveredMoves, setHoveredMoves] = useState([]);
   /*
    * Dragging a piece.
@@ -388,6 +390,27 @@ const PuzzleSolver = () => {
     return { x, y };
   }, [vp.squareSize, boardWidth, boardHeight]);
 
+  /*
+   * Editing is the creator's, plus admins and owners - the same rule the server
+   * enforces on the update route, mirrored here only to decide whether to draw
+   * the buttons. The server is what actually refuses.
+   */
+  const canManage = !!currentUser && !!puzzle
+    && (Number(puzzle.creator_id) === Number(currentUser.id) || hasStaffRole(currentUser));
+
+  const duplicatePuzzle = useCallback(async () => {
+    setDuplicateError(null);
+    try {
+      const { data } = await axios.post(
+        `${API_URL}puzzles/${puzzleId}/duplicate`, {}, { headers: authHeader() }
+      );
+      const copy = data?.puzzle;
+      if (copy?.id) navigate(`/games/${copy.game_type_id}/puzzles/${copy.id}/edit`);
+    } catch (err) {
+      setDuplicateError(err?.response?.data?.message || 'Could not duplicate this puzzle');
+    }
+  }, [puzzleId, navigate]);
+
   const finished = outcome === 'solved' || outcome === 'revealed';
   // How many moves the solver has to find. solution_depth counts their moves
   // only, so a 3-move line with 2 replies reads as 3.
@@ -606,6 +629,32 @@ const PuzzleSolver = () => {
           </div>
 
           {puzzle.description && <p className={styles["description"]}>{puzzle.description}</p>}
+
+          {/* Creator tools. Deliberately below the goal rather than beside the
+              title: they are for the few people who can use them, and a solver
+              should meet the puzzle first. */}
+          {canManage && (
+            <div className={styles["manage-row"]}>
+              <button
+                type="button"
+                className={styles["btn-secondary"]}
+                onClick={() => navigate(`/games/${puzzle.game_type_id}/puzzles/${puzzle.id}/edit`)}
+              >
+                ✏️ Edit puzzle
+              </button>
+              <button
+                type="button"
+                className={styles["btn-secondary"]}
+                onClick={duplicatePuzzle}
+                title="Copies this position and solution into a new draft you can change"
+              >
+                ⧉ Duplicate as draft
+              </button>
+            </div>
+          )}
+          {duplicateError && (
+            <div className={`${styles["notice"]} ${styles["notice-warn"]}`}>{duplicateError}</div>
+          )}
 
           {outcome === 'solved' && (
             <div className={`${styles["notice"]} ${styles["notice-ok"]}`}>

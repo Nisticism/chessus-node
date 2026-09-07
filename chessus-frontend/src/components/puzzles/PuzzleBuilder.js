@@ -109,6 +109,15 @@ const PuzzleBuilder = () => {
   const [busy, setBusy] = useState(false);
   const [savedId, setSavedId] = useState(puzzleId ? Number(puzzleId) : null);
 
+  /*
+   * Everything for this game the signed-in account may edit: their own puzzles
+   * including drafts, or all of them for an admin or owner. Listed at the foot
+   * of the builder so editing an existing puzzle does not mean going back to
+   * the game page to find it.
+   */
+  const [myPuzzles, setMyPuzzles] = useState([]);
+  const [puzzleListStaff, setPuzzleListStaff] = useState(false);
+
   const allowed = canCreatePuzzles(currentUser);
 
   const boardWidth = game?.board_width || 8;
@@ -305,6 +314,19 @@ const PuzzleBuilder = () => {
   const nextMoveNumber = Math.floor(nextPlyIndex / 2) + 1;
   const lineFull = solutionLine.length >= MAX_PLIES;
 
+  const refreshPuzzleList = useCallback(async () => {
+    if (!gameId || !allowed) return;
+    try {
+      const { data } = await axios.get(
+        `${API_URL}game-types/${gameId}/puzzles/editable`, { headers: authHeader() }
+      );
+      setMyPuzzles(data?.puzzles || []);
+      setPuzzleListStaff(!!data?.staff);
+    } catch (_) { /* the builder still works without the list */ }
+  }, [gameId, allowed]);
+
+  useEffect(() => { refreshPuzzleList(); }, [refreshPuzzleList]);
+
   const positionArray = useMemo(
     () => Object.entries(placements).map(([k, v]) => {
       const [y, x] = k.split(',').map(Number);
@@ -401,6 +423,7 @@ const PuzzleBuilder = () => {
       if (publish) {
         await axios.post(`${API_URL}puzzles/${id}/publish`, { publish: true }, { headers: authHeader() });
       }
+      refreshPuzzleList();
       setCheckResult({ tone: 'ok', text: publish ? 'Published.' : 'Saved as a draft.' });
       return id;
     } catch (err) {
@@ -676,6 +699,42 @@ const PuzzleBuilder = () => {
           </button>
         </div>
       </div>
+
+      {myPuzzles.length > 0 && (
+        <div className={styles["puzzle-list"]}>
+          <h2>
+            {puzzleListStaff ? 'All puzzles for this game' : 'Your puzzles for this game'}
+            <span className={styles["puzzle-list-count"]}>{myPuzzles.length}</span>
+          </h2>
+          <p className={styles["puzzle-list-hint"]}>
+            Click one to open it here and edit it. Drafts are listed first and are not
+            visible to anyone else.
+          </p>
+          <div className={styles["puzzle-list-rows"]}>
+            {myPuzzles.map((pz) => (
+              <button
+                type="button"
+                key={pz.id}
+                className={`${styles["puzzle-row"]}${Number(pz.id) === Number(savedId) ? ` ${styles["puzzle-row-current"]}` : ''}`}
+                onClick={() => navigate(`/games/${gameId}/puzzles/${pz.id}/edit`)}
+              >
+                <span className={styles["puzzle-row-title"]}>
+                  {!!pz.is_draft && <span className={styles["draft-tag"]}>DRAFT</span>}
+                  {pz.title || 'Untitled puzzle'}
+                </span>
+                <span className={styles["puzzle-row-meta"]}>
+                  {pz.goal === 'checkmate_in_1'
+                    ? 'Checkmate in 1'
+                    : (pz.goal_description || (pz.goal === 'win_material' ? 'Win material' : 'Find the move'))}
+                  {pz.solution_depth > 1 && <> · {pz.solution_depth} moves</>}
+                  {puzzleListStaff && pz.creator_username && <> · by {pz.creator_username}</>}
+                  {pz.attempt_count > 0 && <> · {pz.solve_count}/{pz.attempt_count} solved</>}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

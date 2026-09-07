@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useSelector } from "react-redux";
 import axios from "axios";
+import ListFilterBar from "../common/ListFilterBar";
 import styles from "./ongoing-games.module.scss";
 import API_URL from "../../global/global";
 
@@ -9,6 +10,8 @@ const OngoingGames = ({ userId }) => {
   const { user: currentUser } = useSelector((state) => state.authReducer);
   const currentUserId = currentUser?.id;
   const [games, setGames] = useState([]);
+  const [query, setQuery] = useState('');
+  const [turnFilter, setTurnFilter] = useState('all');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const navigate = useNavigate();
@@ -80,8 +83,48 @@ const OngoingGames = ({ userId }) => {
     );
   }
 
-  const liveGames = games.filter(g => !g.isCorrespondence);
-  const correspondenceGames = games.filter(g => g.isCorrespondence);
+  /*
+   * The list belongs to the profile being viewed, so the turn filter is about
+   * THEM, not about whoever is reading the page. The buttons stay viewer-
+   * relative (they say "Watch" when you are not in the game); this does not,
+   * or "waiting on them" would mean nothing on someone else's profile.
+   */
+  const listOwnerId = userId || currentUserId;
+  const isOwnProfile = String(listOwnerId) === String(currentUserId);
+
+  /*
+   * Whose move it is, by the same reading the buttons below use: in a
+   * simultaneous game you are "to move" until you have submitted, otherwise it
+   * is whichever seat matches playerTurn.
+   */
+  const isMyTurn = (game) => {
+    const myIdNum = parseInt(listOwnerId);
+    if (!game.players?.some(p => p.id === myIdNum)) return false;
+    if (game.simultaneousTurns) {
+      return !(Array.isArray(game.simulSubmittedPlayerIds)
+        && game.simulSubmittedPlayerIds.some(id => Number(id) === myIdNum));
+    }
+    const myPos = game.players.findIndex(p => p.id === myIdNum) + 1;
+    return !!game.playerTurn && myPos > 0 && game.playerTurn === myPos;
+  };
+
+  const matchesFilters = (game) => {
+    const q = query.trim().toLowerCase();
+    if (q) {
+      const opponent = getOpponent(game);
+      const haystack = [game.gameTypeName, opponent?.username]
+        .filter(Boolean).join(' ').toLowerCase();
+      if (!haystack.includes(q)) return false;
+    }
+    if (turnFilter === 'mine') return game.status === 'active' && isMyTurn(game);
+    if (turnFilter === 'theirs') return game.status === 'active' && !isMyTurn(game);
+    if (turnFilter === 'waiting') return game.status !== 'active';
+    return true;
+  };
+
+  const visibleGames = games.filter(matchesFilters);
+  const liveGames = visibleGames.filter(g => !g.isCorrespondence);
+  const correspondenceGames = visibleGames.filter(g => g.isCorrespondence);
 
   if (games.length === 0) {
     return (
@@ -93,6 +136,27 @@ const OngoingGames = ({ userId }) => {
 
   return (
     <div className={styles["ongoing-games"]}>
+      <ListFilterBar
+        total={games.length}
+        shown={visibleGames.length}
+        query={query}
+        onQueryChange={setQuery}
+        placeholder="Search by game or opponent"
+        filters={[
+          { value: 'all', label: 'All games' },
+          { value: 'mine', label: isOwnProfile ? 'Your turn' : 'Their turn' },
+          { value: 'theirs', label: "Opponent's turn" },
+          { value: 'waiting', label: 'Not started' },
+        ]}
+        filter={turnFilter}
+        onFilterChange={setTurnFilter}
+        label="games"
+      />
+
+      {visibleGames.length === 0 && (
+        <div className={styles["empty-state"]}>No games match that search.</div>
+      )}
+
       {/* Live / Rapid / Classical Games */}
       {liveGames.length > 0 && (
         <div className={styles["games-section"]}>

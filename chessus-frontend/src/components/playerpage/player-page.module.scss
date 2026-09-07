@@ -1021,3 +1021,11 @@
   letter-spacing: 0.5px;
   vertical-align: middle;
 }
+
+/* Shown in place of a created-content list when a search matches nothing. The
+   filter bar stays above it, so there is always a way back. */
+.no-matches {
+  margin: 4px 0;
+  font-size: 15px;
+  color: var(--text-secondary);
+}

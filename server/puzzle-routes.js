@@ -225,6 +225,38 @@ function registerPuzzleRoutes(app, { db_pool, dbHelpers, authenticateToken, opti
   });
 
   /*
+   * Every puzzle for this game type that the caller is allowed to edit, drafts
+   * included - their own, or all of them for an admin or owner.
+   *
+   * Separate from the public browse route rather than a flag on it: that one is
+   * a shelf for solvers and must never leak a draft, and mixing "what everyone
+   * can see" with "what you may edit" into one endpoint is how it eventually
+   * would. This one is for the builder's own list.
+   */
+  app.get('/api/game-types/:gameTypeId/puzzles/editable', authenticateToken, async (req, res) => {
+    try {
+      const gameTypeId = parseInt(req.params.gameTypeId, 10);
+      const staff = isStaff(req.user);
+      const params = staff ? [gameTypeId] : [gameTypeId, req.user.id];
+      const [rows] = await db_pool.query(
+        `SELECT p.id, p.title, p.goal, p.goal_description, p.side_to_move, p.solution_depth,
+                p.is_draft, p.creator_id, u.username AS creator_username,
+                p.attempt_count, p.solve_count, p.updated_at, p.validation_status
+         FROM puzzles p
+         LEFT JOIN users u ON u.id = p.creator_id
+         WHERE p.game_type_id = ?${staff ? '' : ' AND p.creator_id = ?'}
+         ORDER BY p.is_draft DESC, p.updated_at DESC, p.id DESC
+         LIMIT 200`,
+        params
+      );
+      res.json({ puzzles: rows, staff });
+    } catch (err) {
+      console.error('GET /api/game-types/:gameTypeId/puzzles/editable:', err);
+      res.status(500).send({ message: 'Failed to load puzzles' });
+    }
+  });
+
+  /*
    * One published puzzle at random, preferring ones this solver has not tried.
    *
    * Once they have been through the lot the button still has to work, so it
@@ -401,6 +433,52 @@ function registerPuzzleRoutes(app, { db_pool, dbHelpers, authenticateToken, opti
     } catch (err) {
       console.error('PUT /api/puzzles/:id:', err);
       res.status(500).send({ message: 'Failed to update puzzle' });
+    }
+  });
+
+  /*
+   * Copy a puzzle into a new draft.
+   *
+   * For building a variation on a position rather than rebuilding it square by
+   * square. The copy belongs to whoever made it - an admin duplicating someone
+   * else's puzzle gets their own draft, not a second copy of theirs - and
+   * starts unpublished with none of the original's history: attempts, ratings
+   * and validation all belong to the puzzle that earned them.
+   */
+  app.post('/api/puzzles/:id/duplicate', authenticateToken, async (req, res) => {
+    try {
+      const puzzle = await loadPuzzle(parseInt(req.params.id, 10));
+      if (!puzzle) return res.status(404).send({ message: 'Puzzle not found' });
+      if (!canEdit(puzzle, req.user)) {
+        return res.status(403).send({ message: 'You can only duplicate your own puzzles' });
+      }
+      // Duplicating creates a puzzle, so it needs the same permission creating
+      // one does - otherwise this is a way around the supporter gate.
+      if (!isStaff(req.user) && !(await canCreatePuzzles(req.user.id))) {
+        return res.status(403).send({
+          message: 'Building puzzles is a Silver Supporter perk. Solving them is free for everyone.',
+          requiresSupporter: true,
+        });
+      }
+
+      const title = `${puzzle.title || 'Untitled puzzle'} (Copy)`.slice(0, MAX_TITLE);
+      const [result] = await db_pool.query(
+        `INSERT INTO puzzles
+           (game_type_id, creator_id, title, description, position, side_to_move, setup_move,
+            goal, goal_description, solution_line, solution_depth, hide_rating, is_draft)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1)`,
+        [
+          puzzle.game_type_id, req.user.id, title, puzzle.description,
+          puzzle.position, puzzle.side_to_move, puzzle.setup_move,
+          puzzle.goal, puzzle.goal_description,
+          puzzle.solution_line, puzzle.solution_depth, puzzle.hide_rating ? 1 : 0,
+        ]
+      );
+      const created = await loadPuzzle(result.insertId);
+      res.status(201).json({ puzzle: publicPuzzle(created, { includeSolution: true }) });
+    } catch (err) {
+      console.error('POST /api/puzzles/:id/duplicate:', err);
+      res.status(500).send({ message: 'Failed to duplicate puzzle' });
     }
   });
 

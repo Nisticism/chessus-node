@@ -335,3 +335,89 @@
   line-height: 1.5;
   margin: 0;
 }
+
+/* The list of this game's puzzles at the foot of the builder. Full width under
+   the board+settings pair, so it reads as a separate section rather than a
+   third column. */
+.puzzle-list {
+  margin-top: 28px;
+  padding-top: 20px;
+  border-top: 1px solid var(--panel-card-border);
+
+  h2 {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0 0 4px;
+    font-size: 20px;
+    color: var(--gold-header);
+  }
+}
+
+.puzzle-list-count {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.puzzle-list-hint {
+  margin: 0 0 14px;
+  font-size: 15px;
+  color: var(--text-secondary);
+}
+
+.puzzle-list-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.puzzle-row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  width: 100%;
+  padding: 10px 14px;
+  text-align: left;
+  font-family: inherit;
+  background: var(--bg-dark);
+  border: 1px solid var(--panel-card-border);
+  border-radius: 6px;
+  cursor: pointer;
+
+  &:hover { border-color: rgba(var(--gold-rgb, 212, 175, 55), 0.6); }
+}
+
+/* The puzzle already open in the builder. */
+.puzzle-row-current {
+  border-color: rgba(var(--gold-rgb, 212, 175, 55), 0.8);
+  background: rgba(var(--gold-rgb, 212, 175, 55), 0.08);
+}
+
+.puzzle-row-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-heading);
+}
+
+.puzzle-row-meta {
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.draft-tag {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: var(--bg-dark);
+  background: var(--gold-header);
+}

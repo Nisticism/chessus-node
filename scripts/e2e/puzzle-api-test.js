@@ -29,10 +29,12 @@ const SOLVER = { id: ids.e2e_free, name: 'e2e_free' };
 // untouched ratings rather than one rating measured against itself.
 const QUITTER = { id: ids.e2e_gold, name: 'e2e_gold' };
 const MISSER = { id: ids.e2e_admin, name: 'e2e_admin' };
+// Admin and owner carry a role, which is what lets them edit anyone's puzzle.
+const ADMIN = { id: ids.e2e_admin, name: 'e2e_admin', role: 'admin' };
 
 async function api(method, url, { body, as } = {}) {
   const headers = { 'Content-Type': 'application/json' };
-  if (as) headers.Authorization = `Bearer ${token(as.id, as.name)}`;
+  if (as) headers.Authorization = `Bearer ${token(as.id, as.name, as.role || null)}`;
   const r = await fetch(`${BASE}${url}`, { method, headers, body: body ? JSON.stringify(body) : undefined });
   const text = await r.text();
   let json; try { json = JSON.parse(text); } catch (_) { json = text.slice(0, 200); }
@@ -138,7 +140,112 @@ async function main() {
 
   await multiMove();
   await randomPuzzle();
+  await editAndDuplicate();
   report();
+}
+
+/*
+ * Editing and duplicating: the creator's, plus admins and owners.
+ *
+ * The interesting cases are the negative ones - a supporter who did not make
+ * the puzzle must not be able to edit it, and duplicating must not become a way
+ * around the perk that gates creating one.
+ */
+async function editAndDuplicate() {
+  const gt = parseInt(process.env.TEST_EMPTY_GAME_TYPE_ID || '485', 10);
+
+  const made = await api('POST', `/api/game-types/${gt}/puzzles`, {
+    as: CREATOR,
+    body: {
+      title: 'Editable', position: POSITION, side_to_move: 1,
+      goal: 'checkmate_in_1', solution_line: SOLUTION,
+    },
+  });
+  const id = made.body?.puzzle?.id;
+  check('a puzzle to edit', !!id, `${made.status}`);
+  if (!id) return;
+  await api('POST', `/api/puzzles/${id}/publish`, { as: CREATOR, body: { publish: true } });
+
+  // --- the editable list ----------------------------------------------------
+  const mine = await api('GET', `/api/game-types/${gt}/puzzles/editable`, { as: CREATOR });
+  check('a creator sees their own puzzles for the game',
+    mine.status === 200 && mine.body.puzzles.some((p) => p.id === id),
+    `${mine.status} ${JSON.stringify(mine.body).slice(0, 140)}`);
+  check('and is not told they are staff', mine.body?.staff === false, `staff=${mine.body?.staff}`);
+
+  const theirs = await api('GET', `/api/game-types/${gt}/puzzles/editable`, { as: SOLVER });
+  check('someone else does not see it in their editable list',
+    theirs.status === 200 && !theirs.body.puzzles.some((p) => p.id === id),
+    JSON.stringify(theirs.body).slice(0, 140));
+
+  const staffList = await api('GET', `/api/game-types/${gt}/puzzles/editable`, { as: ADMIN });
+  check('an admin sees everyone\'s',
+    staffList.status === 200 && staffList.body.puzzles.some((p) => p.id === id) && staffList.body.staff === true,
+    JSON.stringify(staffList.body).slice(0, 140));
+
+  const anon = await api('GET', `/api/game-types/${gt}/puzzles/editable`);
+  check('and it is not readable signed out', anon.status === 401 || anon.status === 403, `${anon.status}`);
+
+  // --- editing --------------------------------------------------------------
+  const edited = await api('PUT', `/api/puzzles/${id}`, { as: CREATOR, body: { title: 'Edited by creator' } });
+  check('the creator can edit their puzzle', edited.status === 200, `${edited.status}`);
+
+  const byAdmin = await api('PUT', `/api/puzzles/${id}`, { as: ADMIN, body: { description: 'Tidied up by an admin' } });
+  check('an admin can edit anyone\'s puzzle', byAdmin.status === 200, `${byAdmin.status}`);
+
+  const byStranger = await api('PUT', `/api/puzzles/${id}`, { as: SOLVER, body: { title: 'Hijacked' } });
+  check('someone else cannot', byStranger.status === 403, `${byStranger.status}`);
+
+  const check1 = await api('GET', `/api/puzzles/${id}`, { as: CREATOR });
+  check('the edits actually stuck',
+    check1.body?.puzzle?.title === 'Edited by creator' && check1.body?.puzzle?.description === 'Tidied up by an admin',
+    JSON.stringify({ t: check1.body?.puzzle?.title, d: check1.body?.puzzle?.description }));
+
+  // --- duplicating ----------------------------------------------------------
+  const copy = await api('POST', `/api/puzzles/${id}/duplicate`, { as: CREATOR });
+  check('the creator can duplicate it', copy.status === 201, `${copy.status} ${JSON.stringify(copy.body).slice(0, 120)}`);
+  const copyId = copy.body?.puzzle?.id;
+  check('the copy is a draft', copy.body?.puzzle?.is_draft === 1, `is_draft=${copy.body?.puzzle?.is_draft}`);
+  check('the copy is a different puzzle, not the same row', copyId && copyId !== id, `${copyId} vs ${id}`);
+  // `position` comes back as the stored JSON string here - only solution_line is
+  // parsed on this shape - so compare it parsed rather than by length.
+  const copiedPosition = typeof copy.body?.puzzle?.position === 'string'
+    ? JSON.parse(copy.body.puzzle.position)
+    : copy.body?.puzzle?.position;
+  check('and it carries the position and the answer',
+    JSON.stringify(copy.body?.puzzle?.solution_line) === JSON.stringify(SOLUTION)
+      && (copiedPosition || []).length === POSITION.length,
+    `${(copiedPosition || []).length} placements, line ${JSON.stringify(copy.body?.puzzle?.solution_line)}`);
+  check('with none of the original\'s history',
+    copy.body?.puzzle?.attempt_count === 0 && copy.body?.puzzle?.solve_count === 0,
+    `${copy.body?.puzzle?.attempt_count}/${copy.body?.puzzle?.solve_count}`);
+
+  const adminCopy = await api('POST', `/api/puzzles/${id}/duplicate`, { as: ADMIN });
+  check('an admin can duplicate someone else\'s', adminCopy.status === 201, `${adminCopy.status}`);
+  check('and the copy belongs to the admin, not the original creator',
+    adminCopy.body?.puzzle?.creator_id === ADMIN.id,
+    `creator ${adminCopy.body?.puzzle?.creator_id}, expected ${ADMIN.id}`);
+
+  /*
+   * The stranger here has to be a SUPPORTER, or a 403 proves nothing: a free
+   * account is refused by the perk gate whatever the ownership rules say, and
+   * the check would pass with the ownership check deleted entirely.
+   */
+  const strangerCopy = await api('POST', `/api/puzzles/${id}/duplicate`, { as: QUITTER });
+  check('a supporter who did not make it cannot duplicate it',
+    strangerCopy.status === 403 && /your own puzzles/i.test(strangerCopy.body?.message || ''),
+    `${strangerCopy.status} ${strangerCopy.body?.message}`);
+
+  // A free account is refused too. It trips the ownership check first, since it
+  // cannot own a puzzle to begin with - the perk gate behind it only matters to
+  // an account that made puzzles and then stopped supporting.
+  const freeCopy = await api('POST', `/api/puzzles/${id}/duplicate`, { as: SOLVER });
+  check('and so is a free account', freeCopy.status === 403, `${freeCopy.status}`);
+
+  for (const cleanup of [copyId, adminCopy.body?.puzzle?.id, id].filter(Boolean)) {
+    // eslint-disable-next-line no-await-in-loop
+    await api('DELETE', `/api/puzzles/${cleanup}`, { as: ADMIN });
+  }
 }
 
 /*

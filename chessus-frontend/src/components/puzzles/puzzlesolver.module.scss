@@ -312,3 +312,10 @@
     min-width: 0;
   }
 }
+
+/* Creator/admin tools on the solver page. */
+.manage-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}

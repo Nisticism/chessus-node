@@ -1,0 +1,80 @@
+@import '../../index.css';
+
+.filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.search-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1 1 180px;
+  min-width: 0;
+}
+
+.search-icon {
+  position: absolute;
+  left: 10px;
+  font-size: 13px;
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+.search-input {
+  width: 100%;
+  min-width: 0;
+  padding: 8px 30px 8px 30px;
+  font-size: 15px;
+  font-family: inherit;
+  color: var(--text-heading);
+  background: var(--bg-dark);
+  border: 1px solid var(--panel-card-border);
+  border-radius: 6px;
+
+  &:focus {
+    outline: none;
+    border-color: rgba(var(--gold-rgb, 212, 175, 55), 0.6);
+  }
+
+  /* The browser's own clear affordance sits under ours. */
+  &::-webkit-search-cancel-button { display: none; }
+}
+
+.clear-btn {
+  position: absolute;
+  right: 6px;
+  width: 20px;
+  height: 20px;
+  line-height: 1;
+  font-size: 16px;
+  color: var(--text-secondary);
+  background: transparent;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+
+  &:hover { color: var(--text-heading); }
+}
+
+.filter-select {
+  padding: 8px 10px;
+  font-size: 15px;
+  font-family: inherit;
+  color: var(--text-heading);
+  background: var(--bg-dark);
+  border: 1px solid var(--panel-card-border);
+  border-radius: 6px;
+  cursor: pointer;
+
+  &:focus { outline: none; border-color: rgba(var(--gold-rgb, 212, 175, 55), 0.6); }
+}
+
+.count {
+  font-size: 13px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}

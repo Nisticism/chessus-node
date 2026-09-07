@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { Navigate, useNavigate, useParams, useLocation, Link } from 'react-router-dom';
 import { useSelector, useDispatch } from "react-redux";
 import styles from "./player-page.module.scss";
@@ -14,6 +14,7 @@ import MatchHistory from "../matchhistory/MatchHistory";
 import OngoingGames from "../ongoinggames/OngoingGames";
 import { parseServerDate } from "../../helpers/date-formatter";
 import FriendsList from "../friendslist/FriendsList";
+import ListFilterBar from "../common/ListFilterBar";
 import { addFriend, removeFriend, checkFriendshipStatus, acceptFriendRequest, cancelFriendRequest, getIncomingRequests, clearFriends } from "../../actions/friends";
 import { useSocket } from "../../contexts/SocketContext";
 import DefaultAvatar from "../../assets/pieces/legacy/White-pawn.png";
@@ -54,6 +55,42 @@ const PlayerPage = (props) => {
   const [piecesCollapsed, setPiecesCollapsed] = useState(true);
   const [ongoingCollapsed, setOngoingCollapsed] = useState(true);
   const [friendsCollapsed, setFriendsCollapsed] = useState(true);
+
+  // Search and filter for the created-content lists. They only appear once a
+  // list is long enough to need them - see ListFilterBar.
+  const [gameQuery, setGameQuery] = useState('');
+  const [gameFilter, setGameFilter] = useState('all');
+  const [pieceQuery, setPieceQuery] = useState('');
+  const [pieceFilter, setPieceFilter] = useState('all');
+
+  const visibleGames = useMemo(() => {
+    const q = gameQuery.trim().toLowerCase();
+    return createdGames.filter((g) => {
+      if (q && !(g.game_name || '').toLowerCase().includes(q)) return false;
+      if (gameFilter === 'draft') return !!g.is_draft;
+      if (gameFilter === 'published') return !g.is_draft;
+      return true;
+    });
+  }, [createdGames, gameQuery, gameFilter]);
+
+  // Categories are whatever this player actually used, so the filter never
+  // offers an option that matches nothing.
+  const pieceCategories = useMemo(() => {
+    const seen = new Set();
+    createdPieces.forEach((p) => { if (p.piece_category) seen.add(p.piece_category); });
+    return [...seen].sort((a, b) => a.localeCompare(b));
+  }, [createdPieces]);
+
+  const visiblePieces = useMemo(() => {
+    const q = pieceQuery.trim().toLowerCase();
+    return createdPieces.filter((p) => {
+      if (q && !(p.piece_name || '').toLowerCase().includes(q)) return false;
+      if (pieceFilter === 'all') return true;
+      if (pieceFilter === 'uncategorised') return !p.piece_category;
+      return p.piece_category === pieceFilter;
+    });
+  }, [createdPieces, pieceQuery, pieceFilter]);
+
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   // const [postDeleteUsername, setPostDeleteUsername] = useState("");
   const playerPageUser = useSelector((state) => state.authReducer.playerPage);
@@ -831,8 +868,27 @@ const PlayerPage = (props) => {
                     <span className={`${styles["collapse-arrow"]} ${gamesCollapsed ? styles["collapsed"] : ''}`}>{`\u25BC`}</span>
                   </h2>
                   {!gamesCollapsed && (
+                    <>
+                      <ListFilterBar
+                        total={createdGames.length}
+                        shown={visibleGames.length}
+                        query={gameQuery}
+                        onQueryChange={setGameQuery}
+                        placeholder="Search games"
+                        filters={[
+                          { value: 'all', label: 'All' },
+                          { value: 'published', label: 'Published' },
+                          { value: 'draft', label: 'Drafts' },
+                        ]}
+                        filter={gameFilter}
+                        onFilterChange={setGameFilter}
+                        label="games"
+                      />
                     <div className={styles["created-content-list"]}>
-                      {createdGames.map((game) => {
+                      {visibleGames.length === 0 && (
+                        <p className={styles["no-matches"]}>No games match that search.</p>
+                      )}
+                      {visibleGames.map((game) => {
                         const isDraft = Boolean(game.is_draft);
 
                         return (
@@ -852,6 +908,7 @@ const PlayerPage = (props) => {
                         );
                       })}
                     </div>
+                    </>
                   )}
                 </div>
               )}
@@ -864,8 +921,27 @@ const PlayerPage = (props) => {
                     <span className={`${styles["collapse-arrow"]} ${piecesCollapsed ? styles["collapsed"] : ''}`}>{`\u25BC`}</span>
                   </h2>
                   {!piecesCollapsed && (
+                    <>
+                      <ListFilterBar
+                        total={createdPieces.length}
+                        shown={visiblePieces.length}
+                        query={pieceQuery}
+                        onQueryChange={setPieceQuery}
+                        placeholder="Search pieces"
+                        filters={[
+                          { value: 'all', label: 'All categories' },
+                          ...pieceCategories.map((c) => ({ value: c, label: c })),
+                          { value: 'uncategorised', label: 'Uncategorised' },
+                        ]}
+                        filter={pieceFilter}
+                        onFilterChange={setPieceFilter}
+                        label="pieces"
+                      />
                     <div className={styles["created-content-list"]}>
-                      {createdPieces.map((piece) => (
+                      {visiblePieces.length === 0 && (
+                        <p className={styles["no-matches"]}>No pieces match that search.</p>
+                      )}
+                      {visiblePieces.map((piece) => (
                         <Link
                           key={piece.id}
                           to={`/pieces/${piece.id}`}
@@ -878,6 +954,7 @@ const PlayerPage = (props) => {
                         </Link>
                       ))}
                     </div>
+                    </>
                   )}
                 </div>
               )}
