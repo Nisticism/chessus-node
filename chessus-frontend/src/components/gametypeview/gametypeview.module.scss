@@ -262,8 +262,18 @@
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
+  /* The divider belongs to the whole header row, not to the word "Puzzles".
+     Left on the h2 it underlined only the heading's own width and floated
+     above the first card; here it matches every other section on the page. */
+  margin-bottom: 20px;
+  padding-bottom: 10px;
+  border-bottom: 2px solid rgba(var(--accent-rgb), 0.3);
 
-  h2 { margin: 0; }
+  h2 {
+    margin: 0;
+    border-bottom: none;
+    padding-bottom: 0;
+  }
 }
 
 .puzzle-random-btn {

@@ -9,6 +9,7 @@ import { getPieceById } from "../../actions/pieces";
 import { useDispatch } from "react-redux";
 import { canCreatePuzzles } from "../../helpers/supporterTiers";
 import InfoTooltip from "../piecewizard/InfoTooltip";
+import ListPager, { usePagedList } from "../common/ListPager";
 import useBoardViewport from "../common/useBoardViewport";
 import BoardZoomControls from "../common/BoardZoomControls";
 import boardVp from "../common/boardViewport.module.scss";
@@ -139,6 +140,9 @@ const PuzzleBuilder = () => {
   // toolbar strung out across the top of nothing. Both centre instead, and the
   // four toolbar buttons stack into a 2x2 block.
   const isSkinnyBoard = boardHeight >= boardWidth * 2;
+
+  // The builder's own list of this game's puzzles, 20 at a time.
+  const pagedPuzzles = usePagedList(myPuzzles);
 
   const vp = useBoardViewport({
     boardWidth,
@@ -711,7 +715,7 @@ const PuzzleBuilder = () => {
             visible to anyone else.
           </p>
           <div className={styles["puzzle-list-rows"]}>
-            {myPuzzles.map((pz) => (
+            {pagedPuzzles.pageItems.map((pz) => (
               <button
                 type="button"
                 key={pz.id}
@@ -733,6 +737,7 @@ const PuzzleBuilder = () => {
               </button>
             ))}
           </div>
+          <ListPager {...pagedPuzzles} label="puzzles" />
         </div>
       )}
     </div>

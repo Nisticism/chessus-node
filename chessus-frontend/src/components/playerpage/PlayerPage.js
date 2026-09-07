@@ -15,6 +15,7 @@ import OngoingGames from "../ongoinggames/OngoingGames";
 import { parseServerDate } from "../../helpers/date-formatter";
 import FriendsList from "../friendslist/FriendsList";
 import ListFilterBar from "../common/ListFilterBar";
+import ListPager, { usePagedList } from "../common/ListPager";
 import { addFriend, removeFriend, checkFriendshipStatus, acceptFriendRequest, cancelFriendRequest, getIncomingRequests, clearFriends } from "../../actions/friends";
 import { useSocket } from "../../contexts/SocketContext";
 import DefaultAvatar from "../../assets/pieces/legacy/White-pawn.png";
@@ -90,6 +91,9 @@ const PlayerPage = (props) => {
       return p.piece_category === pieceFilter;
     });
   }, [createdPieces, pieceQuery, pieceFilter]);
+
+  const pagedGames = usePagedList(visibleGames);
+  const pagedPieces = usePagedList(visiblePieces);
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   // const [postDeleteUsername, setPostDeleteUsername] = useState("");
@@ -888,7 +892,7 @@ const PlayerPage = (props) => {
                       {visibleGames.length === 0 && (
                         <p className={styles["no-matches"]}>No games match that search.</p>
                       )}
-                      {visibleGames.map((game) => {
+                      {pagedGames.pageItems.map((game) => {
                         const isDraft = Boolean(game.is_draft);
 
                         return (
@@ -908,6 +912,7 @@ const PlayerPage = (props) => {
                         );
                       })}
                     </div>
+                    <ListPager {...pagedGames} label="games" />
                     </>
                   )}
                 </div>
@@ -941,7 +946,7 @@ const PlayerPage = (props) => {
                       {visiblePieces.length === 0 && (
                         <p className={styles["no-matches"]}>No pieces match that search.</p>
                       )}
-                      {visiblePieces.map((piece) => (
+                      {pagedPieces.pageItems.map((piece) => (
                         <Link
                           key={piece.id}
                           to={`/pieces/${piece.id}`}
@@ -954,6 +959,7 @@ const PlayerPage = (props) => {
                         </Link>
                       ))}
                     </div>
+                    <ListPager {...pagedPieces} label="pieces" />
                     </>
                   )}
                 </div>

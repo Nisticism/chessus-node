@@ -61,14 +61,23 @@
 }
 
 .filter-select {
-  padding: 8px 10px;
+  /* The solid triangle the rest of the site's selects use, in place of the
+     browser's own control. The right padding leaves room for it plus a clear
+     gap to the border, so the arrow never sits against the outline. */
+  padding: 8px 34px 8px 10px;
   font-size: 15px;
   font-family: inherit;
   color: var(--text-heading);
-  background: var(--bg-dark);
+  background-color: var(--bg-dark);
+  background-image: url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23999' d='M6 8L0 0h12z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
   border: 1px solid var(--panel-card-border);
   border-radius: 6px;
   cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
 
   &:focus { outline: none; border-color: rgba(var(--gold-rgb, 212, 175, 55), 0.6); }
 }

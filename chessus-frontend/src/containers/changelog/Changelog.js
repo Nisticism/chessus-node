@@ -5,6 +5,21 @@ import styles from "./changelog.module.scss";
 const changelogData = [
   {
     date: "September 6, 2026",
+    title: "Notification links, and a round of interface fixes",
+    items: [
+      "Fixed the owner's \u201cnew user registered\u201d notification linking to nothing for anyone who signed up with a username and password \u2014 the account's id was missing when the link was built, so it pointed at /profile/id/undefined. Existing broken ones have been cleared.",
+      "Fixed the AI-training notification pointing at a page that does not exist (/admin instead of /admin/dashboard). Existing ones have been repaired.",
+      "Notification links can no longer be saved with a missing id in them: a link built from nothing is now dropped, so the notification still reads but does not promise a destination it cannot reach.",
+      "A notification pointing at something since deleted now says so \u2014 a removed piece reads \u201cThis piece no longer exists\u201d instead of \u201cFailed to load piece\u201d.",
+      "Fixed secondary text rendering black in several places, including the puzzle builder. The colour it asked for had never been defined.",
+      "Dragging a piece no longer paints a blue text selection across the board, in games and in puzzles.",
+      "Ongoing Games, My Games, My Pieces, Friends and the builder's puzzle list now page 20 at a time.",
+      "The puzzle section on a game page now has the same divider as every other section, and more room between the Random puzzle button and the puzzles.",
+      "The new filter dropdowns use the same arrow as the rest of the site, with room between it and the edge of the box.",
+    ],
+  },
+  {
+    date: "September 6, 2026",
     title: "Editing puzzles, and search on long profile lists",
     items: [
       "Puzzle creators can now edit a published puzzle from its own page, and admins and owners can edit anyone's. The Edit button opens it in the builder with the position and answer already loaded.",

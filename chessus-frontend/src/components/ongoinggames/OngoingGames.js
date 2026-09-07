@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useSelector } from "react-redux";
 import axios from "axios";
 import ListFilterBar from "../common/ListFilterBar";
+import ListPager, { usePagedList } from "../common/ListPager";
 import styles from "./ongoing-games.module.scss";
 import API_URL from "../../global/global";
 
@@ -67,22 +68,6 @@ const OngoingGames = ({ userId }) => {
     navigate(`/play/${gameId}`);
   };
 
-  if (loading) {
-    return (
-      <div className={styles["ongoing-games"]}>
-        <div className={styles["loading"]}>Loading ongoing games...</div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className={styles["ongoing-games"]}>
-        <div className={styles["error"]}>{error}</div>
-      </div>
-    );
-  }
-
   /*
    * The list belongs to the profile being viewed, so the turn filter is about
    * THEM, not about whoever is reading the page. The buttons stay viewer-
@@ -123,8 +108,30 @@ const OngoingGames = ({ userId }) => {
   };
 
   const visibleGames = games.filter(matchesFilters);
-  const liveGames = visibleGames.filter(g => !g.isCorrespondence);
-  const correspondenceGames = visibleGames.filter(g => g.isCorrespondence);
+  /*
+   * Paged across both kinds at once, then split into the two sections. Paging
+   * each section separately would mean two sets of controls for one list.
+   */
+  const paged = usePagedList(visibleGames);
+  const liveGames = paged.pageItems.filter(g => !g.isCorrespondence);
+  const correspondenceGames = paged.pageItems.filter(g => g.isCorrespondence);
+
+  if (loading) {
+    return (
+      <div className={styles["ongoing-games"]}>
+        <div className={styles["loading"]}>Loading ongoing games...</div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className={styles["ongoing-games"]}>
+        <div className={styles["error"]}>{error}</div>
+      </div>
+    );
+  }
+
 
   if (games.length === 0) {
     return (
@@ -260,8 +267,10 @@ const OngoingGames = ({ userId }) => {
           </div>
         </div>
       )}
+      <ListPager {...paged} label="games" />
     </div>
   );
 };
 
 export default OngoingGames;
+

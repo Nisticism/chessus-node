@@ -1198,6 +1198,9 @@
   justify-content: center;
   position: relative;
   cursor: pointer;
+  /* Dragging a piece must not paint a text selection across the board. */
+  user-select: none;
+  -webkit-user-select: none;
   transition: transform 0.15s ease, box-shadow 0.15s ease;
 
   &.light {

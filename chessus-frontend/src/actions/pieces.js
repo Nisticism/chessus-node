@@ -45,8 +45,14 @@ export const getPieceById = async (pieceId) => {
     const response = await PiecesService.getPieceById(pieceId);
     return response.data;
   } catch (error) {
-    const message = getErrorMessage(error);
-    return Promise.reject(message);
+    /*
+     * Rejects with an Error rather than a bare string so callers can tell "this
+     * piece is gone" from "the request failed". `message` is the same text it
+     * always was, so anything rendering the rejection still reads the same.
+     */
+    const failure = new Error(getErrorMessage(error));
+    failure.status = error?.response?.status || null;
+    return Promise.reject(failure);
   }
 };
 export const getGamesByPieceId = async (pieceId) => {

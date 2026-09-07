@@ -3,6 +3,7 @@ import { useDispatch, useSelector } from "react-redux";
 import { Link } from "react-router-dom";
 import { getFriends, removeFriend, setOnlineUsers } from "../../actions/friends";
 import ListFilterBar from "../common/ListFilterBar";
+import ListPager, { usePagedList } from "../common/ListPager";
 import styles from "./friendslist.module.scss";
 import DefaultAvatar from "../../assets/pieces/legacy/White-pawn.png";
 
@@ -68,6 +69,8 @@ const FriendsList = ({ userId, showOnlineOnly = false, socket, friendsOverride, 
     return true;
   });
 
+  const paged = usePagedList(displayedFriends);
+
   // Only a genuinely empty list gets the empty state. A search that matches
   // nothing must keep the search bar on screen, or there is no way back.
   if (baseFriends.length === 0) {
@@ -103,7 +106,7 @@ const FriendsList = ({ userId, showOnlineOnly = false, socket, friendsOverride, 
       {displayedFriends.length === 0 && (
         <p className={styles["hint"]}>No friends match that search.</p>
       )}
-      {displayedFriends.map((friend) => (
+      {paged.pageItems.map((friend) => (
         <div key={friend.id} className={styles["friend-card"]}>
           <Link to={`/profile/${friend.username}`} className={styles["friend-info"]}>
             <div className={styles["friend-avatar-wrapper"]}>
@@ -148,6 +151,7 @@ const FriendsList = ({ userId, showOnlineOnly = false, socket, friendsOverride, 
           </div>
         </div>
       ))}
+      <ListPager {...paged} label="friends" />
     </div>
   );
 };

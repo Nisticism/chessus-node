@@ -132,6 +132,10 @@ code {
   --border-bright: #237a50;
 
   /* Themed text colors */
+  /* --text-secondary is used by a dozen stylesheets but was never defined, so
+     every one of them fell back to inherited black. It is the same role as
+     --text-muted; kept as its own name because that is what they ask for. */
+  --text-secondary: #a0d0b8;
   --text-muted: #a0d0b8;
   --text-dim: #6ba88b;
   --text-info: #5cb3a8;
@@ -254,6 +258,7 @@ h3 {
   --border-bright: #6d8a76;
 
   /* Themed text colors */
+  --text-secondary: #adc8b6;
   --text-muted: #adc8b6;
   --text-dim: #88a894;
   --text-info: #78a08c;
@@ -357,6 +362,7 @@ h3 {
   /* Themed text colors */
   --text-heading: #d0d8e0;
   --text-white: #d0d8e0;
+  --text-secondary: #a0b8d0;
   --text-muted: #a0b8d0;
   --text-dim: #6b8ba8;
   --text-info: #5cb3e8;

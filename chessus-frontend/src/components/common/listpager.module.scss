@@ -1,0 +1,30 @@
+@import '../../index.css';
+
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin-top: 14px;
+  flex-wrap: wrap;
+
+  button {
+    padding: 7px 14px;
+    font-size: 15px;
+    font-family: inherit;
+    color: var(--text-heading);
+    background: var(--bg-dark);
+    border: 1px solid var(--panel-card-border);
+    border-radius: 6px;
+    cursor: pointer;
+
+    &:disabled { opacity: 0.4; cursor: default; }
+    &:hover:not(:disabled) { border-color: rgba(var(--gold-rgb, 212, 175, 55), 0.6); }
+  }
+}
+
+.pager-count {
+  font-size: 14px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}

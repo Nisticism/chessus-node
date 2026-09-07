@@ -53,11 +53,22 @@ const createUser = async (username, hashedPassword, email) => {
   const defaultLightColor = '#e3d4bf';  // Wood light: hsl(35, 40%, 82%)
   const defaultDarkColor = '#64472b';   // Wood dark: hsl(30, 40%, 28%)
   
-  await query(
+  /*
+   * The insert id has to come back with the user. Callers use it to link to the
+   * new account - the owner's "new user registered" notification pointed at
+   * /profile/id/undefined for every account created this way, because this
+   * returned a hand-built object with no id in it.
+   */
+  const result = await query(
     "INSERT INTO chessusnode.users (username, password, email, light_square_color, dark_square_color, allow_non_friend_dms, sound_enabled, created_at) VALUES (?,?,?,?,?,1,1,NOW())",
     [username, hashedPassword, email, defaultLightColor, defaultDarkColor]
   );
-  return { username, password: hashedPassword, email, light_square_color: defaultLightColor, dark_square_color: defaultDarkColor, allow_non_friend_dms: 1, sound_enabled: 1 };
+  return {
+    id: result?.insertId ?? null,
+    username, password: hashedPassword, email,
+    light_square_color: defaultLightColor, dark_square_color: defaultDarkColor,
+    allow_non_friend_dms: 1, sound_enabled: 1,
+  };
 };
 
 /**
@@ -1212,7 +1223,26 @@ const recordDonation = async ({ userId, email, username, amount, method, transac
 
 // ----------------------- Notifications ---------------------------
 
+/*
+ * A link built from a value that turned out to be undefined is worse than no
+ * link: the notification looks clickable and goes nowhere, and it is frozen in
+ * the row for good. Drop it instead, so the notification still reads but does
+ * not promise a destination it cannot reach.
+ *
+ * This is a backstop. The real fix for "/profile/id/undefined" was making
+ * createUser return its insert id; this only stops the next one being silent.
+ */
+const sanitizeActionUrl = (action_url, type) => {
+  if (!action_url) return null;
+  if (/\/(undefined|null|NaN)(\/|$|\?)/.test(action_url)) {
+    console.warn(`[notifications] dropped a broken action_url on a '${type}' notification: ${action_url}`);
+    return null;
+  }
+  return action_url;
+};
+
 const createNotification = async ({ user_id, sender_id, type, title, content, related_id, action_url }) => {
+  action_url = sanitizeActionUrl(action_url, type);
   const result = await query(
     `INSERT INTO notifications (user_id, sender_id, type, title, content, related_id, action_url)
      VALUES (?, ?, ?, ?, ?, ?, ?)`,

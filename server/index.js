@@ -3979,7 +3979,9 @@ app.get('/api/trainer/global-pack', authenticateToken, async (req, res) => {
             title: `Trainer downloaded: ${username}`,
             content: `${username} downloaded the AI trainer (${platform}, v${TRAINER_VERSION}).`,
             related_id: req.user.id,
-            action_url: `/admin?tab=ai-training`,
+            // The admin page is /admin/dashboard; /admin is not a route, so this link
+            // opened nothing at all.
+            action_url: `/admin/dashboard?tab=ai-training`,
           });
           const gameSocket = require('./game-socket');
           const ownerSocketId = gameSocket.userSockets.get(ownerId.toString());
@@ -4220,7 +4222,9 @@ app.post(
               title,
               content,
               related_id: gameId,
-              action_url: `/admin?tab=ai-training`,
+              // The admin page is /admin/dashboard; /admin is not a route, so this link
+            // opened nothing at all.
+            action_url: `/admin/dashboard?tab=ai-training`,
             });
             const socketId = gameSocket.userSockets.get(userId.toString());
             if (socketId && gameSocket.getIO()) {

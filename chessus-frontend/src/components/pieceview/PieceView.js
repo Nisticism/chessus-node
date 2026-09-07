@@ -85,7 +85,15 @@ const PieceView = () => {
         setLoading(false);
       } catch (err) {
         console.error("Error loading piece:", err);
-        setError("Failed to load piece");
+        /*
+         * A 404 here is usually an old notification or bookmark outliving the
+         * piece it pointed at, which is not a failure worth alarming anyone
+         * about - say what happened instead of "something went wrong".
+         */
+        const status = err?.status ?? err?.response?.status;
+        setError(status === 404 || status === 410
+          ? "This piece no longer exists. It may have been deleted by its creator."
+          : "Failed to load piece");
         setLoading(false);
       }
     };
