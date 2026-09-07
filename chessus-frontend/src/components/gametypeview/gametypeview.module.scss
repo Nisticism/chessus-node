@@ -254,6 +254,60 @@
   color: var(--text-secondary);
 }
 
+/* The puzzle shelf's own header row: heading on the left, the random-puzzle
+   button on the right, wrapping on a narrow screen. */
+.puzzle-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+
+  h2 { margin: 0; }
+}
+
+.puzzle-random-btn {
+  padding: 8px 14px;
+  font-size: 15px;
+  font-weight: 600;
+  font-family: inherit;
+  color: var(--text-heading);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(var(--gold-rgb, 212, 175, 55), 0.45);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+
+  &:hover:not(:disabled) {
+    background: rgba(var(--gold-rgb, 212, 175, 55), 0.18);
+    border-color: rgba(var(--gold-rgb, 212, 175, 55), 0.8);
+  }
+
+  &:disabled { cursor: default; opacity: 0.6; }
+}
+
+.puzzle-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin-top: 14px;
+
+  button {
+    padding: 7px 14px;
+    font-size: 15px;
+    font-family: inherit;
+    color: var(--text-heading);
+    background: var(--bg-dark);
+    border: 1px solid var(--panel-card-border);
+    border-radius: 6px;
+    cursor: pointer;
+
+    &:disabled { opacity: 0.4; cursor: default; }
+    &:hover:not(:disabled) { border-color: rgba(var(--gold-rgb, 212, 175, 55), 0.6); }
+  }
+}
+
 .puzzle-more {
   margin-top: 12px;
   font-size: 14px;

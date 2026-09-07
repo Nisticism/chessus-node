@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useParams, useNavigate, Link, useLocation } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import axios from "../../services/axios-interceptor";
@@ -3010,19 +3010,52 @@ const GameTypeView = () => {
   // do not carry an empty shelf.
   const [puzzles, setPuzzles] = useState([]);
   const [puzzleTotal, setPuzzleTotal] = useState(0);
+  const [puzzlePage, setPuzzlePage] = useState(0);
+  const [puzzlesBusy, setPuzzlesBusy] = useState(false);
+  const PUZZLES_PER_PAGE = 8;
   useEffect(() => {
     if (!gameId) return;
     let cancelled = false;
     (async () => {
       try {
-        const { data } = await axios.get(`${API_URL}game-types/${gameId}/puzzles?limit=8`);
+        const { data } = await axios.get(
+          `${API_URL}game-types/${gameId}/puzzles?limit=${PUZZLES_PER_PAGE}&offset=${puzzlePage * PUZZLES_PER_PAGE}`
+        );
         if (cancelled) return;
         setPuzzles(data.puzzles || []);
         setPuzzleTotal(data.total || 0);
       } catch (_) { /* a game page must not fail because puzzles did */ }
     })();
     return () => { cancelled = true; };
-  }, [gameId]);
+  }, [gameId, puzzlePage]);
+
+  // A game page is long, so changing page scrolls the shelf back into view
+  // rather than leaving the reader wherever the old page happened to end.
+  const puzzleSectionRef = useRef(null);
+  const goToPuzzlePage = useCallback((page) => {
+    setPuzzlePage(page);
+    puzzleSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, []);
+
+  /*
+   * Hand the solver a puzzle they have not seen, falling back to a repeat once
+   * they have played them all - the server decides which, since only it knows
+   * what this account has attempted.
+   */
+  const playRandomPuzzle = useCallback(async () => {
+    if (!gameId) return;
+    setPuzzlesBusy(true);
+    try {
+      const { data } = await axios.get(
+        `${API_URL}game-types/${gameId}/puzzles/random`, { headers: authHeader() }
+      );
+      if (data?.id) navigate(`/games/${gameId}/puzzles/${data.id}`);
+    } catch (_) {
+      /* nothing to play; the button only appears when there is something */
+    } finally {
+      setPuzzlesBusy(false);
+    }
+  }, [gameId, navigate]);
 
   const canEdit = () => {
     if (!currentUser || !game) return false;
@@ -3739,8 +3772,19 @@ const GameTypeView = () => {
         </div>
 
         {puzzleTotal > 0 && (
-          <div className={styles["section"]}>
-            <h2>🧩 Puzzles</h2>
+          <div className={styles["section"]} ref={puzzleSectionRef}>
+            <div className={styles["puzzle-header"]}>
+              <h2>🧩 Puzzles</h2>
+              <button
+                type="button"
+                className={styles["puzzle-random-btn"]}
+                onClick={playRandomPuzzle}
+                disabled={puzzlesBusy}
+                title="Opens one you have not tried yet, or a repeat once you have played them all"
+              >
+                🎲 {puzzlesBusy ? 'Finding one…' : 'Random puzzle'}
+              </button>
+            </div>
             <div className={styles["puzzle-grid"]}>
               {puzzles.map((pz) => (
                 <Link key={pz.id} to={`/games/${gameId}/puzzles/${pz.id}`} className={styles["puzzle-card"]}>
@@ -3770,10 +3814,26 @@ const GameTypeView = () => {
                 </Link>
               ))}
             </div>
-            {puzzleTotal > puzzles.length && (
-              <p className={styles["puzzle-more"]}>
-                Showing {puzzles.length} of {puzzleTotal} puzzles for this game.
-              </p>
+            {puzzleTotal > PUZZLES_PER_PAGE && (
+              <div className={styles["puzzle-pager"]}>
+                <button
+                  type="button"
+                  onClick={() => goToPuzzlePage(puzzlePage - 1)}
+                  disabled={puzzlePage === 0}
+                >
+                  ← Previous
+                </button>
+                <span className={styles["puzzle-more"]}>
+                  {puzzlePage * PUZZLES_PER_PAGE + 1}–{puzzlePage * PUZZLES_PER_PAGE + puzzles.length} of {puzzleTotal}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => goToPuzzlePage(puzzlePage + 1)}
+                  disabled={(puzzlePage + 1) * PUZZLES_PER_PAGE >= puzzleTotal}
+                >
+                  Next →
+                </button>
+              </div>
             )}
           </div>
         )}

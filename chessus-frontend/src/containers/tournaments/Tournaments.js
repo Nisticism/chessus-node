@@ -290,6 +290,20 @@ const Tournaments = () => {
 
   return (
     <div className={styles["tournaments-page"]}>
+      {/* Tournaments are half-built: the wizard saves and the list renders, but
+          nothing runs a bracket yet. Say so plainly rather than letting the page
+          look like a finished feature that is simply empty. */}
+      <div className={styles["construction-banner"]}>
+        <span className={styles["construction-icon"]} aria-hidden="true">🚧</span>
+        <div>
+          <strong>Tournaments are under construction.</strong>
+          <p>
+            You can create one and others can join, but pairings, rounds and standings are
+            not running yet — treat anything here as a preview rather than a real event.
+          </p>
+        </div>
+      </div>
+
       <div className={styles["header"]}>
         <h1>Tournaments</h1>
         <p>

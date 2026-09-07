@@ -224,6 +224,57 @@ function registerPuzzleRoutes(app, { db_pool, dbHelpers, authenticateToken, opti
     }
   });
 
+  /*
+   * One published puzzle at random, preferring ones this solver has not tried.
+   *
+   * Once they have been through the lot the button still has to work, so it
+   * falls back to the whole set and says so: a repeat is playable but cannot
+   * move a rating, since only a first attempt is ever rated.
+   *
+   * Signed out, every puzzle is "unplayed" - there is nothing to remember them
+   * by, and that is the honest answer rather than a reason to refuse.
+   */
+  app.get('/api/game-types/:gameTypeId/puzzles/random', optionalAuthenticate, async (req, res) => {
+    try {
+      const gameTypeId = parseInt(req.params.gameTypeId, 10);
+      const userId = req.user?.id || null;
+      const published = `game_type_id = ? AND is_draft = 0 AND moderation_status = 'approved'`;
+
+      let row = null;
+      if (userId) {
+        const [[fresh]] = await db_pool.query(
+          `SELECT id FROM puzzles p
+           WHERE ${published}
+             AND NOT EXISTS (
+               SELECT 1 FROM puzzle_attempts a WHERE a.puzzle_id = p.id AND a.user_id = ?
+             )
+           ORDER BY RAND() LIMIT 1`,
+          [gameTypeId, userId]
+        );
+        row = fresh || null;
+      }
+      const unplayed = !!row;
+
+      if (!row) {
+        const [[any]] = await db_pool.query(
+          `SELECT id FROM puzzles WHERE ${published} ORDER BY RAND() LIMIT 1`, [gameTypeId]
+        );
+        row = any || null;
+      }
+      if (!row) return res.status(404).send({ message: 'This game has no puzzles yet' });
+
+      res.json({
+        id: row.id,
+        // Signed-out solvers get `unplayed: true` because nothing is tracked for
+        // them; the client uses this only to decide whether to warn about rating.
+        unplayed: userId ? unplayed : true,
+      });
+    } catch (err) {
+      console.error('GET /api/game-types/:gameTypeId/puzzles/random:', err);
+      res.status(500).send({ message: 'Failed to pick a puzzle' });
+    }
+  });
+
   // ---------------------------------------------------------------- detail --
   // optionalAuthenticate, not authenticateToken: anyone may read a published
   // puzzle, but the creator has to be recognised or they cannot open their own

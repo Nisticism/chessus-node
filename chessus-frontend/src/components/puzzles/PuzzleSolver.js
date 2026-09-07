@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { useSelector } from "react-redux";
 import axios from "../../services/axios-interceptor";
@@ -139,7 +139,21 @@ const PuzzleSolver = () => {
   const [feedbackMessage, setFeedbackMessage] = useState('');
   const [feedbackNotice, setFeedbackNotice] = useState(null);
   const [hoveredMoves, setHoveredMoves] = useState([]);
-  const [dragging, setDragging] = useState(null); // "y,x" being dragged
+  /*
+   * Dragging a piece.
+   *
+   * Not HTML5 drag-and-drop: the piece images are `pointer-events: none` (so a
+   * click lands on the square, not the picture), which means they can never
+   * start a native drag - and a native drag gives a translucent browser ghost
+   * rather than the piece itself moving. Pointer events instead, with the piece
+   * drawn under the cursor.
+   *
+   * `pending` is a press that has not moved far enough to count as a drag yet,
+   * so a plain click still selects rather than being swallowed.
+   */
+  const [drag, setDrag] = useState(null); // { fromKey, x, y }
+  const pendingRef = useRef(null);        // { fromKey, startX, startY }
+  const boardRef = useRef(null);
 
   const boardWidth = puzzle?.board_width || 8;
   const boardHeight = puzzle?.board_height || 8;
@@ -364,10 +378,80 @@ const PuzzleSolver = () => {
     });
   }, [placements, submit]);
 
+  /** Which square a client-space point is over, or null if it is off the board. */
+  const squareAtPoint = useCallback((clientX, clientY) => {
+    const rect = boardRef.current?.getBoundingClientRect();
+    if (!rect || !vp.squareSize) return null;
+    const x = Math.floor((clientX - rect.left) / vp.squareSize);
+    const y = Math.floor((clientY - rect.top) / vp.squareSize);
+    if (x < 0 || y < 0 || x >= boardWidth || y >= boardHeight) return null;
+    return { x, y };
+  }, [vp.squareSize, boardWidth, boardHeight]);
+
   const finished = outcome === 'solved' || outcome === 'revealed';
   // How many moves the solver has to find. solution_depth counts their moves
   // only, so a 3-move line with 2 replies reads as 3.
   const movesToFind = progress?.total || Number(puzzle?.solution_depth) || 1;
+
+  /*
+   * A press on one of your own pieces. Movement past a few pixels turns it into
+   * a drag; anything less stays a click, which keeps click-to-move working
+   * exactly as before.
+   *
+   * Mouse and pen only. On touch the board deliberately keeps `touch-action`
+   * alone so the page still scrolls under a finger - tapping the piece and then
+   * the destination is the touch path.
+   */
+  const startPress = useCallback((e, x, y) => {
+    if (busy || finished || e.pointerType === 'touch' || e.button !== 0) return;
+    const k = keyOf(x, y);
+    const here = placements[k];
+    if (!here || Number(here.player_id) !== Number(puzzle?.side_to_move)) return;
+    pendingRef.current = { fromKey: k, startX: e.clientX, startY: e.clientY };
+  }, [busy, finished, placements, puzzle]);
+
+  useEffect(() => {
+    const DRAG_THRESHOLD_PX = 4;
+
+    const onMove = (e) => {
+      const pending = pendingRef.current;
+      if (!pending) return;
+      const far = Math.abs(e.clientX - pending.startX) > DRAG_THRESHOLD_PX
+        || Math.abs(e.clientY - pending.startY) > DRAG_THRESHOLD_PX;
+      if (!far && !drag) return;
+      if (!drag) {
+        // Crossed the threshold: lift the piece and show where it can go.
+        const [fy, fx] = pending.fromKey.split(',').map(Number);
+        hoverPiece(enginePieces.find((p) => p.x === fx && p.y === fy));
+        setSelected(null);
+      }
+      setDrag({ fromKey: pending.fromKey, x: e.clientX, y: e.clientY });
+    };
+
+    const onUp = (e) => {
+      const pending = pendingRef.current;
+      pendingRef.current = null;
+      if (!pending || !drag) { setDrag(null); return; }
+      setDrag(null);
+      setHoveredMoves([]);
+      const target = squareAtPoint(e.clientX, e.clientY);
+      const [fy, fx] = pending.fromKey.split(',').map(Number);
+      // Dropped off the board, or back where it started: nothing happened.
+      if (!target || (target.x === fx && target.y === fy)) return;
+      playFrom(pending.fromKey, target.x, target.y);
+    };
+
+    const onCancel = () => { pendingRef.current = null; setDrag(null); setHoveredMoves([]); };
+
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onCancel);
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onCancel);
+    };
+  }, [drag, squareAtPoint, playFrom, hoverPiece, enginePieces]);
 
   const handleSquareClick = useCallback((x, y) => {
     if (busy || finished) return;
@@ -423,34 +507,29 @@ const PuzzleSolver = () => {
       const src = imageFor(p, pieceDataMap);
       const dot = hoveredMoves.find((m) => m.x === x && m.y === y);
       const mine = p && Number(p.player_id) === Number(puzzle.side_to_move);
+      const isDragOrigin = !!drag && drag.fromKey === k;
       // Placements only have to carry a piece id; the name lives on the piece
       // definition, so fall back to it rather than showing "undefined".
       const pieceName = p ? (p.piece_name || pieceDataMap[p.piece_id]?.piece_name || 'Piece') : '';
       squares.push(
         <div
           key={k}
-          className={classes}
+          className={`${classes}${mine && !finished ? ` ${styles["grabbable"]}` : ''}`}
           style={{ background: isLight ? lightColor : darkColor, width: vp.squareSize, height: vp.squareSize }}
           onClick={() => handleSquareClick(x, y)}
-          onMouseEnter={() => { if (!finished && !selected && !dragging) hoverPiece(enginePieces.find((e) => e.x === x && e.y === y)); }}
-          onMouseLeave={() => { if (!selected && !dragging) setHoveredMoves([]); }}
-          onDragOver={(e) => { if (dragging && !finished) e.preventDefault(); }}
-          onDrop={(e) => {
-            e.preventDefault();
-            if (!dragging || finished || busy) return;
-            const from = dragging;
-            setDragging(null);
-            if (from !== k) playFrom(from, x, y);
-          }}
+          onPointerDown={(e) => startPress(e, x, y)}
+          onMouseEnter={() => { if (!finished && !selected && !drag) hoverPiece(enginePieces.find((e) => e.x === x && e.y === y)); }}
+          onMouseLeave={() => { if (!selected && !drag) setHoveredMoves([]); }}
           title={p ? `${pieceName} (Player ${p.player_id})` : ''}
         >
           {src
             ? <img
                 src={src}
                 alt={pieceName}
-                draggable={!!mine && !finished && !busy}
-                onDragStart={() => { setDragging(k); hoverPiece(enginePieces.find((e) => e.x === x && e.y === y)); }}
-                onDragEnd={() => { setDragging(null); setHoveredMoves([]); }}
+                draggable={false}
+                // While it is being dragged the piece is drawn under the cursor
+                // instead, so the square it came from reads as empty.
+                style={isDragOrigin ? { opacity: 0 } : undefined}
               />
             : (p ? <span className={styles["piece-fallback"]}>{(pieceName || '?').charAt(0)}</span> : null)}
           {/* Same movement helpers as a live game: blue for a move, red for an
@@ -466,8 +545,26 @@ const PuzzleSolver = () => {
     }
   }
 
+  // The piece currently in hand, drawn at the cursor. Fixed-position and
+  // pointer-transparent so it cannot swallow the pointerup that drops it.
+  const draggedPlacement = drag ? placements[drag.fromKey] : null;
+  const draggedSrc = draggedPlacement ? imageFor(draggedPlacement, pieceDataMap) : null;
+
   return (
     <div className={`${styles["solver-page"]}${isSkinnyBoard ? ` ${styles["skinny"]}` : ''}`}>
+      {drag && draggedSrc && (
+        <img
+          className={styles["drag-piece"]}
+          src={draggedSrc}
+          alt=""
+          style={{
+            left: drag.x,
+            top: drag.y,
+            width: vp.squareSize,
+            height: vp.squareSize,
+          }}
+        />
+      )}
       <h1>{puzzle.title || 'Puzzle'}</h1>
       <p className={styles["subtitle"]}>
         {puzzle.game_name && <>in <Link to={`/games/${puzzle.game_type_id}`}>{puzzle.game_name}</Link></>}
@@ -483,7 +580,11 @@ const PuzzleSolver = () => {
               style={vp.viewportStyle}
             >
               <div style={vp.contentStyle}>
-                <div className={styles["board"]} style={{ gridTemplateColumns: `repeat(${boardWidth}, ${vp.squareSize}px)` }}>
+                <div
+                  className={styles["board"]}
+                  ref={boardRef}
+                  style={{ gridTemplateColumns: `repeat(${boardWidth}, ${vp.squareSize}px)` }}
+                >
                   {squares}
                 </div>
               </div>
@@ -628,3 +729,4 @@ const PuzzleSolver = () => {
 };
 
 export default PuzzleSolver;
+

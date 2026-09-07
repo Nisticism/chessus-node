@@ -5,6 +5,18 @@ import styles from "./changelog.module.scss";
 const changelogData = [
   {
     date: "September 6, 2026",
+    title: "Drag pieces in puzzles, All Games in the Play menu",
+    items: [
+      "You can now pick a piece up in a puzzle and drag it. Press and hold, the piece follows the cursor with its legal squares marked, and it lands where you let go. Clicking the piece and then the square still works exactly as before.",
+      "Fixed the reason dragging did nothing until now: the piece images ignore the pointer so that clicks land on the square underneath, which also meant they could never start a drag.",
+      "The Play menu (and the footer, and the Play hub) now has All Games, which opens the game library. It was previously reachable only under Create.",
+      "Game pages now page through their puzzles eight at a time instead of showing the first eight and stopping.",
+      "New Random puzzle button on a game's puzzle shelf. It gives you one you have not played; once you have played them all it keeps working and gives you a repeat — which is worth knowing is unrated, since only your first attempt at a puzzle ever moves your rating.",
+      "The Tournaments page now says up front that it is under construction. You can still create one and others can join, but nothing runs pairings, rounds or standings yet.",
+    ],
+  },
+  {
+    date: "September 6, 2026",
     title: "Diagonal-only step-by-step pieces",
     items: [
       "Step-by-step movement can now exclude ORTHOGONAL steps, the mirror of the existing option to exclude diagonal ones. A piece set this way moves only on diagonals — one square at a time, turning corners as it goes — which also means it stays on squares of a single colour, the way a bishop does.",

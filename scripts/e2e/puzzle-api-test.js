@@ -137,7 +137,91 @@ async function main() {
   await api('DELETE', `/api/puzzles/${puzzleId}`, { as: CREATOR });
 
   await multiMove();
+  await randomPuzzle();
   report();
+}
+
+/*
+ * "Play a random puzzle": prefer something the solver has not tried, but keep
+ * working once they have played them all.
+ *
+ * Uses its own game type (TEST_EMPTY_GAME_TYPE_ID, one with no puzzles of its
+ * own) so the set is exactly what this test creates - on a shared game type the
+ * "they have played everything" case could never be reached.
+ */
+async function randomPuzzle() {
+  const gt = parseInt(process.env.TEST_EMPTY_GAME_TYPE_ID || '485', 10);
+
+  const empty = await api('GET', `/api/game-types/${gt}/puzzles/random`);
+  check('a game with no puzzles says so rather than erroring', empty.status === 404, `${empty.status}`);
+
+  const ids = [];
+  for (const title of ['Random A', 'Random B', 'Random C']) {
+    const made = await api('POST', `/api/game-types/${gt}/puzzles`, {
+      as: CREATOR,
+      body: {
+        title, position: POSITION, side_to_move: 1,
+        goal: 'checkmate_in_1', solution_line: SOLUTION,
+      },
+    });
+    if (made.body?.puzzle?.id) {
+      ids.push(made.body.puzzle.id);
+      await api('POST', `/api/puzzles/${made.body.puzzle.id}/publish`, { as: CREATOR, body: { publish: true } });
+    }
+  }
+  check('three puzzles to draw from', ids.length === 3, `${ids.length}`);
+  if (ids.length !== 3) return;
+
+  // A draft must never be handed out at random.
+  const draft = await api('POST', `/api/game-types/${gt}/puzzles`, {
+    as: CREATOR,
+    body: { title: 'Random draft', position: POSITION, side_to_move: 1, goal: 'checkmate_in_1', solution_line: SOLUTION },
+  });
+  const draftId = draft.body?.puzzle?.id;
+
+  const picks = new Set();
+  for (let i = 0; i < 15; i++) {
+    // eslint-disable-next-line no-await-in-loop
+    const r = await api('GET', `/api/game-types/${gt}/puzzles/random`, { as: MISSER });
+    picks.add(r.body?.id);
+  }
+  check('it only ever offers published puzzles',
+    [...picks].every((id) => ids.includes(id)),
+    `picked ${[...picks].join(',')} from ${ids.join(',')}${draftId ? ` (draft ${draftId})` : ''}`);
+  check('and does not just hand out the same one', picks.size > 1, `${picks.size} distinct in 15 draws`);
+
+  // Play two of the three; the third is the only one it should offer now.
+  for (const id of ids.slice(0, 2)) {
+    // eslint-disable-next-line no-await-in-loop
+    await api('POST', `/api/puzzles/${id}/solve`, { as: MISSER, body: { moves: SOLUTION } });
+  }
+  const afterTwo = new Set();
+  for (let i = 0; i < 10; i++) {
+    // eslint-disable-next-line no-await-in-loop
+    const r = await api('GET', `/api/game-types/${gt}/puzzles/random`, { as: MISSER });
+    afterTwo.add(r.body?.id);
+  }
+  check('it skips puzzles this solver has already played',
+    afterTwo.size === 1 && afterTwo.has(ids[2]),
+    `offered ${[...afterTwo].join(',')}, expected only ${ids[2]}`);
+
+  const lastOne = await api('GET', `/api/game-types/${gt}/puzzles/random`, { as: MISSER });
+  check('and says the pick is one they have not played', lastOne.body?.unplayed === true,
+    JSON.stringify(lastOne.body));
+
+  // Play the third: now everything is played and it has to keep working.
+  await api('POST', `/api/puzzles/${ids[2]}/solve`, { as: MISSER, body: { moves: SOLUTION } });
+  const exhausted = await api('GET', `/api/game-types/${gt}/puzzles/random`, { as: MISSER });
+  check('once they have played them all it still returns one',
+    exhausted.status === 200 && ids.includes(exhausted.body?.id),
+    `${exhausted.status} ${JSON.stringify(exhausted.body)}`);
+  check('flagged as a repeat, so the page can say it will not move a rating',
+    exhausted.body?.unplayed === false, JSON.stringify(exhausted.body));
+
+  for (const id of [...ids, draftId].filter(Boolean)) {
+    // eslint-disable-next-line no-await-in-loop
+    await api('DELETE', `/api/puzzles/${id}`, { as: CREATOR });
+  }
 }
 
 /*

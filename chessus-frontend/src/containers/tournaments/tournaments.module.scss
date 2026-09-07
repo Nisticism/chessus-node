@@ -1,3 +1,35 @@
+/* Under-construction notice. Deliberately the first thing on the page and
+   styled as a warning rather than an aside - the point is that it is read. */
+.construction-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin-bottom: 20px;
+  padding: 14px 18px;
+  border-radius: 8px;
+  text-align: left;
+  background: rgba(255, 170, 0, 0.12);
+  border: 1px solid rgba(255, 170, 0, 0.45);
+
+  strong {
+    display: block;
+    font-size: 16px;
+    color: var(--text-heading);
+  }
+
+  p {
+    margin: 4px 0 0;
+    font-size: 15px;
+    line-height: 1.5;
+    color: var(--text-secondary);
+  }
+}
+
+.construction-icon {
+  font-size: 22px;
+  line-height: 1.2;
+}
+
 .tournaments-page {
   width: min(1400px, 96%);
   margin: 22px auto 32px;

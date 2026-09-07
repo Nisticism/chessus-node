@@ -11,6 +11,12 @@ const PlayHub = () => {
       link: "/play/games",
     },
     {
+      title: "All Games",
+      description: "Browse every game type on the site, from chess variants to something nobody has played yet.",
+      icon: "📚",
+      link: "/create/games",
+    },
+    {
       title: "Tournaments",
       description: "Compete in organized tournaments, track brackets, and climb the standings against other players.",
       icon: "🏆",
