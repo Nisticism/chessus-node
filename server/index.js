@@ -8441,6 +8441,35 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
 
 const parseBooleanField = (value) => value === true || value === 'true' || value === 1 || value === '1';
 
+/*
+ * The `*_movement_style` flags are vestigial: both engines decide an ability is
+ * active from its VALUE being non-zero, and the wizard has not set these to true
+ * since it moved to that model. They are still written, because a migration that
+ * used to run on every deploy zeroed a piece's movement whenever the flag was 0 -
+ * it has been removed (see server/migrations.js), but a rollback to an older
+ * build would bring it back, and a piece saved with the flag set is invisible to
+ * it.
+ *
+ * So: derive the flag from whether the piece actually has values, rather than
+ * trusting a client that never sends true. Costs nothing today; makes a rollback
+ * survivable.
+ */
+const nonZero = (v) => {
+  const n = parseInt(v, 10);
+  return Number.isFinite(n) && n !== 0;
+};
+
+const derivedStyleFlags = (pieceData) => ({
+  directional: parseBooleanField(pieceData.directional_movement_style) || [
+    'up_movement', 'up_right_movement', 'right_movement', 'down_right_movement',
+    'down_movement', 'down_left_movement', 'left_movement', 'up_left_movement',
+  ].some((f) => nonZero(pieceData[f])),
+  ratio: parseBooleanField(pieceData.ratio_movement_style)
+    || nonZero(pieceData.ratio_one_movement) || nonZero(pieceData.ratio_two_movement),
+  step: parseBooleanField(pieceData.step_by_step_movement_style)
+    || nonZero(pieceData.step_by_step_movement_value),
+});
+
 // Limits for piece configuration to avoid pathological pieces causing UI lag.
 const MAX_STEP_BY_STEP_VALUE = 8;
 const MAX_CUSTOM_SQUARES = 50;
@@ -8758,7 +8787,7 @@ app.post("/api/pieces/create", authenticateToken, multerWrap(pieceUpload.array('
       pieceData.can_castle === 'true',
       pieceData.can_promote === 'true',
       // Movement fields
-      parseBooleanField(pieceData.directional_movement_style),
+      derivedStyleFlags(pieceData).directional,
       parseBooleanField(pieceData.repeating_movement),
       parseInt(pieceData.up_left_movement) || 0,
       parseInt(pieceData.up_movement) || 0,
@@ -8786,12 +8815,12 @@ app.post("/api/pieces/create", authenticateToken, multerWrap(pieceUpload.array('
       parseInt(pieceData.down_movement_available_for) || null,
       parseInt(pieceData.down_left_movement_available_for) || null,
       parseInt(pieceData.left_movement_available_for) || null,
-      parseBooleanField(pieceData.ratio_movement_style),
+      derivedStyleFlags(pieceData).ratio,
       parseInt(pieceData.ratio_one_movement) || null,
       parseInt(pieceData.ratio_two_movement) || null,
       parseBooleanField(pieceData.repeating_ratio),
       parseInt(pieceData.max_ratio_iterations) || null,
-      parseBooleanField(pieceData.step_by_step_movement_style),
+      derivedStyleFlags(pieceData).step,
       parseInt(pieceData.step_by_step_movement_value) || null,
       parseBooleanField(pieceData.step_by_step_movement_no_orthogonal),
       parseBooleanField(pieceData.can_hop_over_allies),
@@ -9476,7 +9505,7 @@ app.put("/api/pieces/:pieceId", authenticateToken, multerWrap(pieceUpload.array(
       pieceData.can_castle === 'true',
       pieceData.can_promote === 'true',
       // Movement fields
-      parseBooleanField(pieceData.directional_movement_style),
+      derivedStyleFlags(pieceData).directional,
       parseBooleanField(pieceData.repeating_movement),
       parseInt(pieceData.up_left_movement) || 0,
       parseInt(pieceData.up_movement) || 0,
@@ -9504,12 +9533,12 @@ app.put("/api/pieces/:pieceId", authenticateToken, multerWrap(pieceUpload.array(
       parseInt(pieceData.down_movement_available_for) || null,
       parseInt(pieceData.down_left_movement_available_for) || null,
       parseInt(pieceData.left_movement_available_for) || null,
-      parseBooleanField(pieceData.ratio_movement_style),
+      derivedStyleFlags(pieceData).ratio,
       parseInt(pieceData.ratio_one_movement) || null,
       parseInt(pieceData.ratio_two_movement) || null,
       parseBooleanField(pieceData.repeating_ratio),
       parseInt(pieceData.max_ratio_iterations) || null,
-      parseBooleanField(pieceData.step_by_step_movement_style),
+      derivedStyleFlags(pieceData).step,
       parseInt(pieceData.step_by_step_movement_value) || null,
       parseBooleanField(pieceData.step_by_step_movement_no_orthogonal),
       parseBooleanField(pieceData.can_hop_over_allies),
