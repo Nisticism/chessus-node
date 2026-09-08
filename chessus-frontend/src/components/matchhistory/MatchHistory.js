@@ -51,12 +51,11 @@ const MatchHistory = ({ userId, username }) => {
     });
   };
 
-  const formatTimeControl = (seconds, increment) => {
-    if (!seconds) return "Unlimited";
-    const minutes = Math.floor(seconds / 60);
-    if (increment) {
-      return `${minutes}+${increment}`;
-    }
+  // Minutes per player, straight from games.turn_length - not seconds. Dividing
+  // by 60 here showed every game under an hour as "0 min".
+  const formatTimeControl = (minutes, increment) => {
+    if (!minutes) return "Unlimited";
+    if (increment) return `${minutes}+${increment}`;
     return `${minutes} min`;
   };
 

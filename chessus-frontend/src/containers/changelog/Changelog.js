@@ -4,6 +4,14 @@ import styles from "./changelog.module.scss";
 
 const changelogData = [
   {
+    date: "September 8, 2026",
+    title: "Fixed losing to an opponent who was never there",
+    items: [
+      "Fixed a way to lose a game to an absent opponent. Someone could open a game, walk away, and have it sit waiting for hours; when another player finally joined, only the player who actually turned up could be timed out for disconnecting — the one who had already left was treated as present, because nothing had ever seen them leave during a game. Now anyone who is already gone when a game starts is put on the same disconnect clock as everyone else.",
+      "Fixed the time control reading “0 minutes” on the match page and in match history. Both were dividing the minutes by 60 as though they were seconds, so every game shorter than an hour showed as zero.",
+    ],
+  },
+  {
     date: "September 6, 2026",
     title: "Fixed: deploys were wiping piece movement",
     items: [

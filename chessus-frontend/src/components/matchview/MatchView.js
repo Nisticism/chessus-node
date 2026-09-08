@@ -187,13 +187,16 @@ const MatchView = () => {
     return `${diffMins}m ${diffSecs}s`;
   };
 
-  const formatTimeControl = (seconds, increment) => {
-    if (!seconds) return "Unlimited";
-    const minutes = Math.floor(seconds / 60);
-    if (increment) {
-      return `${minutes}+${increment}`;
-    }
-    return `${minutes} minutes`;
+  /*
+   * `timeControl` is MINUTES per player - it comes straight from
+   * games.turn_length, which is what the create-game form asks for. This used
+   * to divide by 60 as though it were seconds, so every game under an hour
+   * displayed as "0 minutes" and a 60-minute game as "1 minutes".
+   */
+  const formatTimeControl = (minutes, increment) => {
+    if (!minutes) return "Unlimited";
+    if (increment) return `${minutes}+${increment}`;
+    return `${minutes} minute${minutes === 1 ? '' : 's'}`;
   };
 
   const getReasonText = (reason) => {

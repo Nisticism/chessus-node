@@ -1848,6 +1848,37 @@ function clearDisconnectForfeitTimer(gameId, userId, { broadcast = false, io = n
   return true;
 }
 
+/**
+ * Arm disconnect timers for players who were ALREADY gone when the game starts.
+ *
+ * The forfeit timer is otherwise only armed from the socket 'disconnect'
+ * handler, and only when the game is already in progress. A player who opens a
+ * game, walks away, and has someone join hours later therefore counts as
+ * present for ever: nothing ever observed them leaving *during* a game. The
+ * opponent who actually turned up becomes the only player who can be
+ * forfeited, and loses to an empty seat on their first network blip.
+ *
+ * That is game 2610: a guest opened an invite game at 21:45 and left. Someone
+ * joined at 00:19, moved, dropped ~30s later, and lost by disconnect to an
+ * opponent who had not been connected for two and a half hours.
+ *
+ * Deliberately uses the long unexplained-drop grace. This is an inference about
+ * presence rather than an observed close, and a player still loading the page
+ * when their opponent readies up must not be punished for it - if they are
+ * there at all, their socket registers and the timer is cleared.
+ */
+function armTimersForAbsentPlayers(io, gameId, gameState) {
+  if (!gameState || gameState.botPlayer || !gameState.timeControl) return;
+  for (const player of gameState.players || []) {
+    if (!player || player.id == null) continue;
+    if (userHasLiveSocket(player.id)) continue;
+    startDisconnectForfeitTimer(
+      io, String(gameId), player.id, getDisconnectGraceMs(gameState.timeControl),
+      { graceMs: UNEXPLAINED_DROP_GRACE_MS }
+    );
+  }
+}
+
 /** Cancel all disconnect timers for a user across all games (e.g. on auth). */
 function clearAllDisconnectForfeitTimersForUser(io, userId) {
   for (const [key, entry] of Array.from(gameDisconnectTimers.entries())) {
@@ -3434,6 +3465,8 @@ async function handleSimulReadyToStart(io, socket, gameState, gameId, userId) {
     io.emit('gameStarted', { gameId });
     invalidateLobbyCache();
     startGameTimer(io, gameId);
+    // Anyone who was already gone before this point never had a timer armed.
+    armTimersForAbsentPlayers(io, gameId, gameState);
 
     // If a bot is in this game, kick off its first simul submission now.
     if (gameState.botPlayer) {
@@ -4635,6 +4668,8 @@ function initializeSocket(server) {
               } catch (err) { console.error('Failed to update last_played_at:', err); }
             }
             startGameTimer(io, gameId);
+            // Anyone who was already gone before this point never had a timer armed.
+            armTimersForAbsentPlayers(io, gameId, gameState);
             console.log(`[Bot] Bot is P1, starting game ${gameId} and triggering first bot turn`);
             processBotTurn(io, gameId, gameState);
           }
@@ -5176,6 +5211,8 @@ function initializeSocket(server) {
               [startTimeStr, buildOtherData(gameState, { isBotGame: true, botDifficulty: 'stockfish' }), gameId]
             );
             startGameTimer(io, gameId);
+            // Anyone who was already gone before this point never had a timer armed.
+            armTimersForAbsentPlayers(io, gameId, gameState);
             processBotTurn(io, gameId, gameState);
           }
           return;
@@ -9955,6 +9992,8 @@ function initializeSocket(server) {
             try { await db_pool.query("UPDATE game_types SET last_played_at = ? WHERE id = ?", [startTimeStr, gameState.gameTypeId]); } catch (_) {}
           }
           startGameTimer(io, gameIdStr);
+          // Anyone who was already gone before this point never had a timer armed.
+          armTimersForAbsentPlayers(io, gameIdStr, gameState);
         } else {
           await db_pool.query(
             "UPDATE games SET pieces = ?, other_data = ? WHERE id = ?",
@@ -12655,6 +12694,8 @@ async function activateGameOnFirstMove(io, gameState, gameId) {
   io.emit("gameStarted", { gameId });
   invalidateLobbyCache();
   startGameTimer(io, gameId);
+  // Anyone who was already gone before this point never had a timer armed.
+  armTimersForAbsentPlayers(io, gameId, gameState);
 }
 
 function startGameTimer(io, gameId) {
