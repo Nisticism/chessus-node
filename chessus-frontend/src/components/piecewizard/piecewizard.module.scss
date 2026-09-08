@@ -1277,6 +1277,129 @@
 }
 
 // Summary Section
+/*
+ * The movement & attack review panel. Deliberately roomier than the summary
+ * grid below it: a piece can carry eight directions on each side plus L-shapes,
+ * step budgets and custom squares, and the point of the panel is that all of it
+ * is readable at once.
+ */
+.ma-summary {
+  background-color: rgba(255, 255, 255, 0.05);
+  padding: 2rem;
+  border-radius: 8px;
+  margin-top: 2rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+
+  h3 {
+    color: var(--light-gray);
+    margin-bottom: 1.25rem;
+  }
+
+  h4 {
+    margin: 0 0 0.75rem;
+    font-size: 1.05rem;
+    color: var(--text-heading);
+    padding-bottom: 0.4rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  }
+}
+
+/* A piece that cannot move, or cannot attack. Loud on purpose - it is the one
+   thing on this page that is probably a mistake - but never blocking. */
+.ma-incomplete {
+  border: 2px solid rgba(248, 113, 113, 0.85);
+  background-color: rgba(248, 113, 113, 0.06);
+}
+
+.ma-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2rem;
+
+  @media (max-width: 800px) {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+  }
+}
+
+.ma-column {
+  min-width: 0;
+}
+
+.ma-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+
+  &:last-child { border-bottom: none; }
+}
+
+.ma-row-label {
+  flex: 0 0 8.5rem;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+}
+
+.ma-row-value {
+  color: var(--text-heading);
+  font-size: 0.98rem;
+}
+
+/* One chip per direction, so eight of them wrap instead of running off. */
+.ma-dirs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.ma-dir {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.9rem;
+  color: var(--text-heading);
+  background: rgba(255, 255, 255, 0.07);
+  white-space: nowrap;
+}
+
+.ma-arrow {
+  font-size: 1rem;
+  opacity: 0.85;
+}
+
+.ma-subhead {
+  margin: 0.9rem 0 0.3rem;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+  opacity: 0.9;
+}
+
+.ma-empty {
+  margin: 0;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.ma-warning {
+  margin-top: 1.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid rgba(248, 113, 113, 0.4);
+
+  p {
+    margin: 0 0 1rem;
+    color: var(--text-heading);
+    line-height: 1.55;
+  }
+}
+
 .summary-section {
   background-color: rgba(255, 255, 255, 0.05);
   padding: 2rem;

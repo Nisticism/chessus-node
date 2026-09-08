@@ -5,12 +5,12 @@ import styles from "./changelog.module.scss";
 const changelogData = [
   {
     date: "September 8, 2026",
-    title: "The piece wizard now catches a piece that cannot move or attack",
+    title: "The piece wizard's review step now spells out movement and attack",
     items: [
-      "Saving a piece that has movement but no way to capture — or a way to capture but no movement — now asks about it first, and offers to give it the same pattern on the other side. One button copies it across and saves.",
-      "You can still save either way. A piece that only moves, or one that sits still and takes anything that comes near it, is a legitimate design, so this asks rather than refuses.",
-      "A piece with nothing set on either side is flagged too, with no copy offered — there is nothing to copy.",
-      "Drafts are unaffected: being half-finished is what a draft is for.",
+      "The final step of the piece wizard has a new Movement & Attack panel that lists what the piece will actually do — every direction and distance, L-shapes, step budgets, custom squares, and whether it captures by moving or at range — side by side.",
+      "If the piece cannot move, or cannot capture, the panel is outlined in red and says so, with a button to give it the same pattern on the other side. It fills in as soon as you press it, so you can see the result before saving.",
+      "You can still save either way. A piece that only moves, or one that sits still and takes anything that comes near it, is a legitimate design, so this points it out rather than refusing.",
+      "The general summary underneath no longer repeats those settings as bare on/off rows — the new panel says it properly.",
     ],
   },
   {

@@ -4,6 +4,7 @@ import NumberInput from "../common/NumberInput";
 import InfoTooltip from "./InfoTooltip";
 import ToggleSwitch from "../common/ToggleSwitch";
 import PieceSoundUploader from "./PieceSoundUploader";
+import PieceMovementAttackSummary from "./PieceMovementAttackSummary";
 
 const PieceStep4Special = ({ pieceData, updatePieceData, currentUser }) => {
   const handleChange = (field, value) => {
@@ -231,6 +232,10 @@ const PieceStep4Special = ({ pieceData, updatePieceData, currentUser }) => {
         )}
       </div>
 
+      {/* What this piece can actually do, in full. Sits above the general
+          summary because it is the part worth reading before saving. */}
+      <PieceMovementAttackSummary pieceData={pieceData} updatePieceData={updatePieceData} />
+
       {/* Summary Section */}
       <div className={styles["summary-section"]}>
         <h3>Summary</h3>
@@ -243,37 +248,6 @@ const PieceStep4Special = ({ pieceData, updatePieceData, currentUser }) => {
           </div>
           <div className={styles["summary-item"]}>
             <strong>Dimensions:</strong> {pieceData.piece_width || "?"}x{pieceData.piece_height || "?"}
-          </div>
-          <div className={styles["summary-item"]}>
-            <span className={styles["summary-tooltip"]}>Per-direction movement with configurable distance, exact/infinite range, and first-move-only options.</span>
-            <strong>Directional Movement:</strong>{" "}
-            {hasDirectionalMovement ? "Enabled" : "Disabled"}
-          </div>
-          <div className={styles["summary-item"]}>
-            <span className={styles["summary-tooltip"]}>L-shaped movement like a knight. Moves one distance in one direction, then a different distance perpendicularly.</span>
-            <strong>Ratio Movement:</strong>{" "}
-            {hasRatioMovement
-              ? `${pieceData.ratio_one_movement || 0}-${pieceData.ratio_two_movement || 0}`
-              : "Disabled"}
-          </div>
-          <div className={styles["summary-item"]}>
-            <span className={styles["summary-tooltip"]}>A step budget where the piece moves one square at a time in any direction, changing direction each step.</span>
-            <strong>Step-by-Step:</strong>{" "}
-            {hasStepByStepMovement
-              ? `${Math.abs(pieceData.step_by_step_movement_value || 0)} steps${
-                  pieceData.step_by_step_movement_value < 0 ? " (no diagonal)" : " (with diagonal)"
-                }`
-              : "Disabled"}
-          </div>
-          <div className={styles["summary-item"]}>
-            <span className={styles["summary-tooltip"]}>The piece moves to the enemy's square to capture it, like most chess pieces.</span>
-            <strong>Capture on Move:</strong>{" "}
-            {pieceData.can_capture_enemy_on_move ? "Yes" : "No"}
-          </div>
-          <div className={styles["summary-item"]}>
-            <span className={styles["summary-tooltip"]}>The piece attacks without moving — stays in place but can capture distant enemies.</span>
-            <strong>Ranged Attack:</strong>{" "}
-            {pieceData.can_capture_enemy_via_range ? "Enabled" : "Disabled"}
           </div>
           <div className={styles["summary-item"]}>
             <span className={styles["summary-tooltip"]}>Whether the piece can hop over other pieces during movement. Does not capture hopped-over pieces.</span>

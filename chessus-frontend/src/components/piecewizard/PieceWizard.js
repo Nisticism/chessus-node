@@ -5,9 +5,6 @@ import styles from "./piecewizard.module.scss";
 import StandardButton from "../standardbutton/StandardButton";
 import Divider from "../Divider/Divider";
 import { createPiece, updatePiece, getPieceById, checkPieceDuplicates, invalidatePieceValueCache } from "../../actions/pieces";
-import {
-  hasAnyMovement, hasAnyAttack, movementToAttackUpdates, attackToMovementUpdates,
-} from "../../helpers/pieceMovementAttackCopy";
 import { trackPieceCreation, trackEvent } from "../../analytics/GoogleAnalytics";
 import { validateContent } from "../../utils/contentModeration";
 import PieceStep1BasicInfo from "./PieceStep1BasicInfo";
@@ -30,13 +27,6 @@ const PieceWizard = ({ editPieceId = null }) => {
   const [missingFields, setMissingFields] = useState(null);
   const [duplicateWarning, setDuplicateWarning] = useState(null); // { matches, nameSame }
   const [ratioZeroWarning, setRatioZeroWarning] = useState(false);
-  // { missing: 'attack' | 'movement' | 'both' } - a piece that cannot do one of
-  // the two, offered the chance to copy the other across before saving.
-  const [movementAttackWarning, setMovementAttackWarning] = useState(null);
-  // Set after a copy so the save resumes once the new values are in state;
-  // calling handleSubmit straight after updatePieceData would submit the old
-  // ones, because that setState has not flushed yet.
-  const [resumeSaveAfterCopy, setResumeSaveAfterCopy] = useState(false);
   const [submitError, setSubmitError] = useState(null);
   
   // Scroll to top when step changes
@@ -598,23 +588,6 @@ const PieceWizard = ({ editPieceId = null }) => {
     setPieceData(prev => ({ ...prev, ...updates }));
   };
 
-  /*
-   * Resume the save once a copy has landed in state. The flag is cleared first
-   * so a failed save cannot leave it armed and re-fire on the next edit.
-   */
-  useEffect(() => {
-    if (!resumeSaveAfterCopy) return;
-    setResumeSaveAfterCopy(false);
-    handleSubmit(false, true, false, {}, true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resumeSaveAfterCopy]);
-
-  const applyCopyAndSave = (updates) => {
-    updatePieceData(updates);
-    setMovementAttackWarning(null);
-    setResumeSaveAfterCopy(true);
-  };
-
   const nextStep = () => {
     if (currentStep < totalSteps) {
       setCurrentStep(currentStep + 1);
@@ -650,7 +623,7 @@ const PieceWizard = ({ editPieceId = null }) => {
     return fields;
   };
 
-  const handleSubmit = async (bypassDuplicateCheck = false, bypassRatioWarning = false, asDraft = false, opts = {}, bypassMovementAttackWarning = false) => {
+  const handleSubmit = async (bypassDuplicateCheck = false, bypassRatioWarning = false, asDraft = false, opts = {}) => {
     // Collect all missing required fields
     const missing = [];
     
@@ -680,24 +653,6 @@ const PieceWizard = ({ editPieceId = null }) => {
       const r2 = pieceData.ratio_two_movement || 0;
       if ((r1 > 0) !== (r2 > 0)) {
         setRatioZeroWarning(true);
-        return;
-      }
-    }
-
-    /*
-     * A piece that cannot move, or cannot attack, is almost always an unfinished
-     * one rather than a deliberate design - and the fix is usually "it should do
-     * the same thing on both sides". Offer that rather than just refusing, and
-     * let them save it as-is if they really meant it. Drafts are exempt: being
-     * incomplete is the point of a draft.
-     */
-    if (!asDraft && !bypassMovementAttackWarning) {
-      const canMove = hasAnyMovement(pieceData);
-      const canAttack = hasAnyAttack(pieceData);
-      if (!canMove || !canAttack) {
-        setMovementAttackWarning({
-          missing: !canMove && !canAttack ? 'both' : (!canMove ? 'movement' : 'attack'),
-        });
         return;
       }
     }
@@ -995,65 +950,6 @@ const PieceWizard = ({ editPieceId = null }) => {
               <StandardButton
                 buttonText="Save Anyway"
                 onClick={() => { setRatioZeroWarning(false); handleSubmit(false, true); }}
-              />
-            </div>
-          </div>
-        </div>
-      )}
-
-      {movementAttackWarning && (
-        <div className={styles["warning-overlay"]}>
-          <div className={styles["warning-modal"]}>
-            <h3>⚠️ {movementAttackWarning.missing === 'both'
-              ? 'This piece cannot move or attack'
-              : movementAttackWarning.missing === 'movement'
-                ? 'This piece cannot move'
-                : 'This piece cannot attack'}</h3>
-
-            {movementAttackWarning.missing === 'both' && (
-              <p>
-                Nothing is set on either <strong>Step 2: Movement</strong> or
-                <strong> Step 3: Attack</strong>, so this piece will not be able to do
-                anything in a game. There is nothing to copy across — go back and give it
-                a movement or an attack.
-              </p>
-            )}
-            {movementAttackWarning.missing === 'attack' && (
-              <p>
-                This piece has movement but no way to capture. You can give it the same
-                pattern for attacking as it uses for moving, or save it as it is — a piece
-                that only moves is a valid design.
-              </p>
-            )}
-            {movementAttackWarning.missing === 'movement' && (
-              <p>
-                This piece can attack but has no movement, so it will never be able to
-                leave its starting square. You can give it the same pattern for moving as
-                it uses for attacking, or save it as it is — an immobile piece is a valid
-                design.
-              </p>
-            )}
-
-            <div className={styles["warning-buttons"]}>
-              <StandardButton
-                buttonText="Keep Editing"
-                onClick={() => setMovementAttackWarning(null)}
-              />
-              {movementAttackWarning.missing === 'attack' && (
-                <StandardButton
-                  buttonText="Copy Movement to Attack"
-                  onClick={() => applyCopyAndSave(movementToAttackUpdates(pieceData))}
-                />
-              )}
-              {movementAttackWarning.missing === 'movement' && (
-                <StandardButton
-                  buttonText="Copy Attack to Movement"
-                  onClick={() => applyCopyAndSave(attackToMovementUpdates(pieceData))}
-                />
-              )}
-              <StandardButton
-                buttonText="Save Anyway"
-                onClick={() => { setMovementAttackWarning(null); handleSubmit(false, true, false, {}, true); }}
               />
             </div>
           </div>
