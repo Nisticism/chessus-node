@@ -5,6 +5,16 @@ import styles from "./changelog.module.scss";
 const changelogData = [
   {
     date: "September 8, 2026",
+    title: "The piece wizard now catches a piece that cannot move or attack",
+    items: [
+      "Saving a piece that has movement but no way to capture — or a way to capture but no movement — now asks about it first, and offers to give it the same pattern on the other side. One button copies it across and saves.",
+      "You can still save either way. A piece that only moves, or one that sits still and takes anything that comes near it, is a legitimate design, so this asks rather than refuses.",
+      "A piece with nothing set on either side is flagged too, with no copy offered — there is nothing to copy.",
+      "Drafts are unaffected: being half-finished is what a draft is for.",
+    ],
+  },
+  {
+    date: "September 8, 2026",
     title: "Fixed losing to an opponent who was never there",
     items: [
       "Fixed a way to lose a game to an absent opponent. Someone could open a game, walk away, and have it sit waiting for hours; when another player finally joined, only the player who actually turned up could be timed out for disconnecting — the one who had already left was treated as present, because nothing had ever seen them leave during a game. Now anyone who is already gone when a game starts is put on the same disconnect clock as everyone else.",

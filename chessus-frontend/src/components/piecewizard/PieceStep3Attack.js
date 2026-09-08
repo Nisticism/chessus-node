@@ -6,30 +6,12 @@ import NumberInput from "../common/NumberInput";
 import InfoTooltip from "./InfoTooltip";
 import FairyStockfishInfoNote from "../common/FairyStockfishInfoNote";
 import ToggleSwitch from "../common/ToggleSwitch";
+import { movementToAttackUpdates } from "../../helpers/pieceMovementAttackCopy";
 import { PIECE_WIZARD_TEXT } from "../../global/global";
 
 const PieceStep3Attack = ({ pieceData, updatePieceData }) => {
   
   // Helper to convert additionalMovements to additionalCaptures format
-  const convertMovementsToCaptures = (specialScenarioMoves) => {
-    if (!specialScenarioMoves) return null;
-    try {
-      const parsed = typeof specialScenarioMoves === 'string' 
-        ? JSON.parse(specialScenarioMoves)
-        : specialScenarioMoves;
-      
-      if (!parsed.additionalMovements) return null;
-      
-      // Convert additionalMovements to additionalCaptures
-      // The structure is the same, just different naming
-      return JSON.stringify({
-        additionalCaptures: parsed.additionalMovements
-      });
-    } catch {
-      return null;
-    }
-  };
-  
   const handleChange = (field, value) => {
     const updates = { [field]: value };
     
@@ -277,92 +259,13 @@ const PieceStep3Attack = ({ pieceData, updatePieceData }) => {
     });
   };
 
+  /*
+   * Shared with the save-time warning in PieceWizard, which offers the same
+   * operation when a piece has movement but no attack. Two copies of a
+   * 60-field mapping would not stay the same for long.
+   */
   const handleCopyFromMovement = () => {
-    const convertedCaptures = convertMovementsToCaptures(pieceData.special_scenario_moves);
-    updatePieceData({
-      can_capture_enemy_on_move: true,
-      // Copy directional movement to capture
-      up_left_capture: pieceData.up_left_movement,
-      up_capture: pieceData.up_movement,
-      up_right_capture: pieceData.up_right_movement,
-      left_capture: pieceData.left_movement,
-      right_capture: pieceData.right_movement,
-      down_left_capture: pieceData.down_left_movement,
-      down_capture: pieceData.down_movement,
-      down_right_capture: pieceData.down_right_movement,
-      // Copy exact flags for directional captures
-      up_left_capture_exact: pieceData.up_left_movement_exact,
-      up_capture_exact: pieceData.up_movement_exact,
-      up_right_capture_exact: pieceData.up_right_movement_exact,
-      left_capture_exact: pieceData.left_movement_exact,
-      right_capture_exact: pieceData.right_movement_exact,
-      down_left_capture_exact: pieceData.down_left_movement_exact,
-      down_capture_exact: pieceData.down_movement_exact,
-      down_right_capture_exact: pieceData.down_right_movement_exact,
-      // Copy available_for flags for directional captures
-      up_left_capture_available_for: pieceData.up_left_movement_available_for,
-      up_capture_available_for: pieceData.up_movement_available_for,
-      up_right_capture_available_for: pieceData.up_right_movement_available_for,
-      left_capture_available_for: pieceData.left_movement_available_for,
-      right_capture_available_for: pieceData.right_movement_available_for,
-      down_left_capture_available_for: pieceData.down_left_movement_available_for,
-      down_capture_available_for: pieceData.down_movement_available_for,
-      down_right_capture_available_for: pieceData.down_right_movement_available_for,
-      // Copy ratio movement (only if ratio movement is configured)
-      ratio_one_capture: (pieceData.ratio_one_movement > 0 && pieceData.ratio_two_movement > 0) ? pieceData.ratio_one_movement : 0,
-      ratio_two_capture: (pieceData.ratio_one_movement > 0 && pieceData.ratio_two_movement > 0) ? pieceData.ratio_two_movement : 0,
-      // Copy step-by-step
-      step_by_step_capture: pieceData.step_by_step_movement_value,
-      step_by_step_capture_no_orthogonal: pieceData.step_by_step_movement_no_orthogonal,
-      // Copy repeating movement setting
-      repeating_capture: pieceData.repeating_movement,
-      // Copy ratio repeating settings
-      repeating_ratio_capture: (pieceData.ratio_one_movement > 0 && pieceData.ratio_two_movement > 0) ? pieceData.repeating_ratio : false,
-      max_ratio_capture_iterations: (pieceData.ratio_one_movement > 0 && pieceData.ratio_two_movement > 0) ? pieceData.max_ratio_iterations : 0,
-      // Copy additional movements to additional captures
-      ...(convertedCaptures && { special_scenario_capture: convertedCaptures }),
-      // Copy custom movement squares to custom attack squares
-      custom_attack_squares: pieceData.custom_movement_squares,
-      // Preserve existing ranged attack state
-      can_capture_enemy_via_range: pieceData.can_capture_enemy_via_range,
-      // Copy movement hopping settings to attack hopping
-      can_hop_attack_over_allies: pieceData.can_hop_over_allies,
-      can_hop_attack_over_enemies: pieceData.can_hop_over_enemies,
-      exact_ratio_hop_only_attack: pieceData.exact_ratio_hop_only,
-      directional_hop_disabled_attack: pieceData.directional_hop_disabled,
-      hop_stop_at_occupied_attack: pieceData.hop_stop_at_occupied,
-      directional_hop_only_attack: pieceData.directional_hop_only,
-      max_directional_hop_pieces_attack: pieceData.max_directional_hop_pieces,
-      // Copy direction change (movement) settings to capture
-      directional_capture_change: pieceData.directional_movement_change,
-      up_left_capture_change: pieceData.up_left_movement_change,
-      up_capture_change: pieceData.up_movement_change,
-      up_right_capture_change: pieceData.up_right_movement_change,
-      right_capture_change: pieceData.right_movement_change,
-      down_right_capture_change: pieceData.down_right_movement_change,
-      down_capture_change: pieceData.down_movement_change,
-      down_left_capture_change: pieceData.down_left_movement_change,
-      left_capture_change: pieceData.left_movement_change,
-      up_left_capture_change_exact: pieceData.up_left_movement_change_exact,
-      up_capture_change_exact: pieceData.up_movement_change_exact,
-      up_right_capture_change_exact: pieceData.up_right_movement_change_exact,
-      right_capture_change_exact: pieceData.right_movement_change_exact,
-      down_right_capture_change_exact: pieceData.down_right_movement_change_exact,
-      down_capture_change_exact: pieceData.down_movement_change_exact,
-      down_left_capture_change_exact: pieceData.down_left_movement_change_exact,
-      left_capture_change_exact: pieceData.left_movement_change_exact,
-      up_left_capture_change_available_for: pieceData.up_left_movement_change_available_for,
-      up_capture_change_available_for: pieceData.up_movement_change_available_for,
-      up_right_capture_change_available_for: pieceData.up_right_movement_change_available_for,
-      right_capture_change_available_for: pieceData.right_movement_change_available_for,
-      down_right_capture_change_available_for: pieceData.down_right_movement_change_available_for,
-      down_capture_change_available_for: pieceData.down_movement_change_available_for,
-      down_left_capture_change_available_for: pieceData.down_left_movement_change_available_for,
-      left_capture_change_available_for: pieceData.left_movement_change_available_for,
-      repeating_capture_change: pieceData.repeating_movement_change,
-      require_empty_via_capture: pieceData.require_empty_via_movement,
-      require_direction_change_capture: pieceData.require_direction_change,
-    });
+    updatePieceData(movementToAttackUpdates(pieceData));
   };
 
   const renderDCCaptureCell = (dirKey, label) => {
