@@ -226,7 +226,7 @@ const PieceMovementAttackSummary = ({ pieceData, updatePieceData }) => {
         <div className={styles["ma-warning"]}>
           <p>
             {!canMove && !canAttack
-              ? 'This piece can neither move nor capture, so it will do nothing in a game. You can still save it — but there is nothing to copy across, so give it a movement or an attack first.'
+              ? 'This piece can neither move nor capture, so it will do nothing in a game. You can still save it, but it will sit on the board doing nothing until you set a movement in Step 2 or an attack in Step 3.'
               : !canAttack
                 ? 'This piece can move but cannot capture anything. You can still save it — a piece that only moves is a valid design — or give it the same pattern for attacking as it uses for moving.'
                 : 'This piece can capture but cannot move, so it will never leave its starting square. You can still save it — an immobile piece is a valid design — or give it the same pattern for moving as it uses for attacking.'}

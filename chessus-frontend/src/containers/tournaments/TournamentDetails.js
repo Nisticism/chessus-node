@@ -5,6 +5,7 @@ import { getGames } from "../../actions/games";
 import {
   getTournamentByIdPlaceholder,
   joinTournamentPlaceholder,
+  leaveTournament,
   updateTournamentPlaceholder
 } from "../../services/tournament-service";
 import styles from "./tournaments.module.scss";
@@ -97,6 +98,7 @@ const TournamentDetails = () => {
   const [tournament, setTournament] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isJoining, setIsJoining] = useState(false);
+  const [isLeaving, setIsLeaving] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
@@ -155,6 +157,13 @@ const TournamentDetails = () => {
     return tournament.participants.some((participant) => Number(participant.id) === Number(currentUser.id));
   }, [tournament, currentUser]);
 
+  /*
+   * The HOST specifically, not everyone who may edit: an admin can edit any
+   * tournament but is an ordinary entrant in one, and must be able to leave it.
+   * Only the host is barred, because the server refuses their withdrawal.
+   */
+  const isHost = Number(currentUser?.id) === Number(tournament?.createdById);
+
   const canEdit = useMemo(() => {
     if (!currentUser || !tournament) {
       return false;
@@ -163,6 +172,21 @@ const TournamentDetails = () => {
     const role = (currentUser.role || "").toLowerCase();
     return Number(currentUser.id) === Number(tournament.createdById) || role === "admin" || role === "owner";
   }, [currentUser, tournament]);
+
+  const handleLeaveTournament = async () => {
+    setIsLeaving(true);
+    setErrorMessage("");
+    setSuccessMessage("");
+    try {
+      const updated = await leaveTournament({ tournamentId });
+      setTournament(updated);
+      setSuccessMessage("You have left the tournament.");
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error, "Unable to leave this tournament."));
+    } finally {
+      setIsLeaving(false);
+    }
+  };
 
   const handleJoinTournament = async () => {
     if (!currentUser) {
@@ -462,20 +486,32 @@ const TournamentDetails = () => {
             {isSaving ? "Saving..." : "Save Changes"}
           </button>
         ) : (
-          <button
-            type="button"
-            className={styles["join-button"]}
-            disabled={isJoining || hasJoined || tournament.participants.length >= tournament.maxPlayers}
-            onClick={handleJoinTournament}
-          >
-            {hasJoined
-              ? "Joined"
-              : isJoining
-                ? "Joining..."
-                : tournament.participants.length >= tournament.maxPlayers
-                  ? "Tournament Full"
-                  : "Join Tournament"}
-          </button>
+          hasJoined && !isHost ? (
+            /* Already in it: the useful action is getting back out. */
+            <button
+              type="button"
+              className={styles["leave-button"]}
+              disabled={isLeaving}
+              onClick={handleLeaveTournament}
+            >
+              {isLeaving ? "Leaving..." : "Leave Tournament"}
+            </button>
+          ) : (
+            <button
+              type="button"
+              className={styles["join-button"]}
+              disabled={isJoining || hasJoined || tournament.participants.length >= tournament.maxPlayers}
+              onClick={handleJoinTournament}
+            >
+              {hasJoined
+                ? "Joined"
+                : isJoining
+                  ? "Joining..."
+                  : tournament.participants.length >= tournament.maxPlayers
+                    ? "Tournament Full"
+                    : "Join Tournament"}
+            </button>
+          )
         )}
       </div>
     </div>

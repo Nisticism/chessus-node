@@ -376,3 +376,40 @@
     align-items: flex-start;
   }
 }
+
+/* Withdrawing, and the host's equivalent. Deliberately not styled as a primary
+   action - it sits beside Join, and the two must not look alike. */
+.leave-button {
+  padding: 8px 14px;
+  font-size: 15px;
+  font-family: inherit;
+  color: var(--text-heading);
+  background: transparent;
+  border: 1px solid rgba(248, 113, 113, 0.5);
+  border-radius: 6px;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    background: rgba(248, 113, 113, 0.12);
+    border-color: rgba(248, 113, 113, 0.85);
+  }
+
+  &:disabled { opacity: 0.5; cursor: default; }
+}
+
+/* Finished and cancelled tournaments, kept as a record. Dimmed so the live
+   list above stays the thing you look at first. */
+.past-listing {
+  margin-top: 24px;
+  opacity: 0.85;
+
+  .tournament-card { border-style: dashed; }
+}
+
+.past-count {
+  font-size: 13px;
+  color: var(--text-secondary);
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+}

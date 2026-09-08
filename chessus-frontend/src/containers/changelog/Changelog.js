@@ -5,6 +5,18 @@ import styles from "./changelog.module.scss";
 const changelogData = [
   {
     date: "September 8, 2026",
+    title: "Tournaments: leaving, history, and a few fixes",
+    items: [
+      "You can now leave a tournament you have joined, from the tournament list or its own page. The host cannot leave their own — they cancel it instead, which releases everyone.",
+      "Finished and cancelled tournaments now appear under Past Tournaments instead of sitting in the open list, so there is a record of what has run.",
+      "Fixed being able to join a tournament that had already started, finished, or been cancelled. Nothing checked the status before, only whether it was full.",
+      "Fixed the tournament page showing “Request failed with status code 400” instead of the actual reason, so messages like “Tournament is already full” now reach you.",
+      "The Join button now says Full and stops being clickable when a tournament has no room left.",
+      "Tournaments still cannot be played: nothing draws a bracket, pairs anyone, or records results. The notice at the top of the page says so, and that is the next piece of work.",
+    ],
+  },
+  {
+    date: "September 8, 2026",
     title: "The piece wizard's review step now spells out movement and attack",
     items: [
       "The final step of the piece wizard has a new Movement & Attack panel that lists what the piece will actually do — every direction and distance, L-shapes, step budgets, custom squares, and whether it captures by moving or at range — side by side.",

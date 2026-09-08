@@ -7,11 +7,27 @@ import {
   calculateTournamentRounds,
   createTournamentPlaceholder,
   joinTournamentPlaceholder,
-  listTournaments
+  leaveTournament,
+  listTournaments,
+  updateTournamentPlaceholder
 } from "../../services/tournament-service";
 import styles from "./tournaments.module.scss";
 import { parseServerDate } from "../../helpers/date-formatter";
 import NumberInput from "../../components/common/NumberInput";
+
+/*
+ * Finished or cancelled: shown as history rather than as something to join.
+ */
+const PAST_STATUSES = new Set(["completed", "cancelled"]);
+
+/*
+ * axios puts the server's message on the response, not on error.message - this
+ * page was reading the latter, so "Tournament is already full" reached the user
+ * as "Request failed with status code 400".
+ */
+const getTournamentError = (error, fallbackMessage) => (
+  error?.response?.data?.message || error?.message || fallbackMessage
+);
 
 const FORMATS = [
   {
@@ -93,6 +109,7 @@ const Tournaments = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoadingTournaments, setIsLoadingTournaments] = useState(true);
   const [joiningTournamentId, setJoiningTournamentId] = useState(null);
+  const [busyTournamentId, setBusyTournamentId] = useState(null);
   const [tournaments, setTournaments] = useState([]);
   const [errorMessage, setErrorMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
@@ -257,7 +274,7 @@ const Tournaments = () => {
       });
       await loadTournaments();
     } catch (error) {
-      setErrorMessage(error.message || "Failed to create tournament.");
+      setErrorMessage(getTournamentError(error, "Failed to create tournament."));
     } finally {
       setIsSubmitting(false);
     }
@@ -282,11 +299,118 @@ const Tournaments = () => {
       setSuccessMessage("You have joined the tournament.");
       await loadTournaments();
     } catch (error) {
-      setErrorMessage(error.message || "Unable to join this tournament.");
+      setErrorMessage(getTournamentError(error, "Unable to join this tournament."));
     } finally {
       setJoiningTournamentId(null);
     }
   };
+
+  const renderTournamentCard = (tournament, { readOnly = false } = {}) => {
+    const hasJoined = tournament.participants.some(
+      (participant) => Number(participant.id) === Number(currentUser?.id)
+    );
+    const isHost = Number(tournament.createdById) === Number(currentUser?.id);
+    const isFull = tournament.participants.length >= tournament.maxPlayers;
+    const busy = busyTournamentId === tournament.id || joiningTournamentId === tournament.id;
+
+    return (
+      <div key={tournament.id} className={styles["tournament-card"]}>
+        <div className={styles["card-top"]}>
+          <div>
+            <strong>{tournament.gameTypeName}</strong>
+            <p>{FORMATS.find((format) => format.id === tournament.format)?.label || tournament.format}</p>
+          </div>
+          <span className={styles["status"]}>{tournament.status}</span>
+        </div>
+        <div className={styles["card-meta"]}>
+          <span>Host: {tournament.createdByUsername}</span>
+          <span>Clock: {tournament.timeControl} min + {tournament.increment}s</span>
+          <span>
+            Players: {tournament.participants.length}/{tournament.maxPlayers} (min {tournament.minPlayers})
+          </span>
+          <span>Visibility: {tournament.isPrivate ? "Private" : "Public"}</span>
+          <span>Start: {formatDateTime(tournament.startDateTime)}</span>
+        </div>
+        <div className={styles["card-actions"]}>
+          <Link to={`/play/tournaments/${tournament.id}`} className={styles["details-link"]}>
+            Details
+          </Link>
+          {!readOnly && hasJoined && !isHost && (
+            <button
+              type="button"
+              className={styles["leave-button"]}
+              disabled={busy}
+              onClick={() => handleLeaveTournament(tournament.id)}
+            >
+              {busy ? "Leaving..." : "Leave"}
+            </button>
+          )}
+          {!readOnly && isHost && (
+            <button
+              type="button"
+              className={styles["leave-button"]}
+              disabled={busy}
+              onClick={() => handleCancelTournament(tournament.id)}
+            >
+              Cancel Tournament
+            </button>
+          )}
+          {!readOnly && !hasJoined && (
+            <button
+              type="button"
+              className={styles["join-button"]}
+              disabled={busy || isFull}
+              onClick={() => handleJoinTournament(tournament.id)}
+            >
+              {joiningTournamentId === tournament.id
+                ? "Joining..."
+                : isFull
+                  ? "Full"
+                  : "Join Tournament"}
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const handleLeaveTournament = async (tournamentId) => {
+    setBusyTournamentId(tournamentId);
+    resetMessages();
+    try {
+      await leaveTournament({ tournamentId });
+      setSuccessMessage("You have left the tournament.");
+      await loadTournaments();
+    } catch (error) {
+      setErrorMessage(getTournamentError(error, "Unable to leave this tournament."));
+    } finally {
+      setBusyTournamentId(null);
+    }
+  };
+
+  // A host cannot withdraw - they end it instead, which frees everyone else.
+  const handleCancelTournament = async (tournamentId) => {
+    if (!window.confirm("Cancel this tournament? Everyone who joined will be released.")) return;
+    setBusyTournamentId(tournamentId);
+    resetMessages();
+    try {
+      await updateTournamentPlaceholder({ tournamentId, updates: { status: 'cancelled' } });
+      setSuccessMessage("Tournament cancelled.");
+      await loadTournaments();
+    } catch (error) {
+      setErrorMessage(getTournamentError(error, "Unable to cancel this tournament."));
+    } finally {
+      setBusyTournamentId(null);
+    }
+  };
+
+  /*
+   * Past tournaments are kept and shown rather than dropped from the list: a
+   * cancelled or finished tournament is a record of something that happened,
+   * and hiding it makes it look as though it never did.
+   */
+  const liveTournaments = tournaments.filter((t) => !PAST_STATUSES.has(t.status));
+  const pastTournaments = tournaments.filter((t) => PAST_STATUSES.has(t.status));
 
   return (
     <div className={styles["tournaments-page"]}>
@@ -510,63 +634,29 @@ const Tournaments = () => {
 
           {isLoadingTournaments ? (
             <div className={styles["empty"]}>Loading tournaments...</div>
-          ) : tournaments.length === 0 ? (
-            <div className={styles["empty"]}>No tournaments yet. Create the first one using the wizard.</div>
+          ) : liveTournaments.length === 0 ? (
+            <div className={styles["empty"]}>No tournaments open right now. Create one using the wizard.</div>
           ) : (
             <div className={styles["tournament-list"]}>
-              {tournaments.map((tournament) => {
-                const hasJoined = tournament.participants.some(
-                  (participant) => Number(participant.id) === Number(currentUser?.id)
-                );
-
-                return (
-                  <div key={tournament.id} className={styles["tournament-card"]}>
-                    <div className={styles["card-top"]}>
-                      <div>
-                        <strong>{tournament.gameTypeName}</strong>
-                        <p>{FORMATS.find((format) => format.id === tournament.format)?.label || tournament.format}</p>
-                      </div>
-                      <span className={styles["status"]}>{tournament.status}</span>
-                    </div>
-                    <div className={styles["card-meta"]}>
-                      <span>Host: {tournament.createdByUsername}</span>
-                      <span>Clock: {tournament.timeControl} min + {tournament.increment}s</span>
-                      <span>
-                        Players: {tournament.participants.length}/{tournament.maxPlayers} (min {tournament.minPlayers})
-                      </span>
-                      <span>Visibility: {tournament.isPrivate ? "Private" : "Public"}</span>
-                      <span>Start: {formatDateTime(tournament.startDateTime)}</span>
-                    </div>
-                    <div className={styles["card-actions"]}>
-                      <Link to={`/play/tournaments/${tournament.id}`} className={styles["details-link"]}>
-                        Details
-                      </Link>
-                      <button
-                        type="button"
-                        className={styles["join-button"]}
-                        disabled={joiningTournamentId === tournament.id || hasJoined}
-                        onClick={() => handleJoinTournament(tournament.id)}
-                      >
-                        {hasJoined
-                          ? "Joined"
-                          : joiningTournamentId === tournament.id
-                            ? "Joining..."
-                            : "Join Tournament"}
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
+              {liveTournaments.map((tournament) => renderTournamentCard(tournament))}
             </div>
           )}
         </section>
       </div>
 
+      {pastTournaments.length > 0 && (
+        <section className={`${styles["listing"]} ${styles["past-listing"]}`}>
+          <div className={styles["listing-header"]}>
+            <h2>Past Tournaments</h2>
+            <span className={styles["past-count"]}>{pastTournaments.length}</span>
+          </div>
+          <div className={styles["tournament-list"]}>
+            {pastTournaments.map((tournament) => renderTournamentCard(tournament, { readOnly: true }))}
+          </div>
+        </section>
+      )}
+
       <div className={styles["footnote"]}>
-        <span>
-          Backend integration placeholder: currently stores tournament objects locally. Next step can switch to API endpoints
-          without changing this wizard UX.
-        </span>
         <Link to="/play/games">Back to Play Lobby</Link>
       </div>
     </div>

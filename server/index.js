@@ -1057,6 +1057,21 @@ app.post("/api/tournaments/:tournamentId/join", authenticateToken, async (req, r
 
     const tournament = tournamentRows[0];
 
+    /*
+     * Only a tournament that is still taking entries can be joined. Without
+     * this the cap and the duplicate check were the only guards, so a player
+     * could join one that had already started, finished, or been cancelled -
+     * and end up listed as an entrant in a bracket that had been drawn without
+     * them.
+     */
+    if (TERMINAL_TOURNAMENT_STATUSES.has(tournament.status)) {
+      await connection.rollback();
+      const readable = tournament.status === 'started'
+        ? 'has already started'
+        : tournament.status === 'completed' ? 'has finished' : 'was cancelled';
+      return res.status(400).send({ message: `This tournament ${readable}` });
+    }
+
     const [existingRows] = await connection.query(
       "SELECT id FROM tournament_participants WHERE tournament_id = ? AND user_id = ? LIMIT 1",
       [tournamentId, requesterId]
@@ -1105,6 +1120,77 @@ app.post("/api/tournaments/:tournamentId/join", authenticateToken, async (req, r
     await connection.rollback();
     console.error("Error in POST /api/tournaments/:tournamentId/join:", err);
     return res.status(500).send({ message: "Failed to join tournament", err: err.message });
+  } finally {
+    connection.release();
+  }
+});
+
+/*
+ * Withdraw from a tournament.
+ *
+ * Only before it starts: once a bracket is drawn, removing an entrant silently
+ * would leave their opponents facing nobody. After that the host has to cancel
+ * it, which is why the host cannot leave their own tournament either - they
+ * would strand everyone else with a tournament nobody can run.
+ */
+app.post("/api/tournaments/:tournamentId/leave", authenticateToken, async (req, res) => {
+  const { tournamentId } = req.params;
+  const requesterId = Number(req.user.id);
+  const connection = await db_pool.getConnection();
+
+  try {
+    await connection.beginTransaction();
+
+    const [tournamentRows] = await connection.query(
+      "SELECT id, max_players, status, created_by_id FROM tournaments WHERE id = ? FOR UPDATE",
+      [tournamentId]
+    );
+
+    if (!tournamentRows.length) {
+      await connection.rollback();
+      return res.status(404).send({ message: "Tournament not found" });
+    }
+
+    const tournament = tournamentRows[0];
+
+    if (Number(tournament.created_by_id) === requesterId) {
+      await connection.rollback();
+      return res.status(400).send({
+        message: "The host cannot leave their own tournament. Cancel it instead."
+      });
+    }
+
+    if (TERMINAL_TOURNAMENT_STATUSES.has(tournament.status)) {
+      await connection.rollback();
+      const readable = tournament.status === 'started'
+        ? 'has already started'
+        : tournament.status === 'completed' ? 'has finished' : 'was cancelled';
+      return res.status(400).send({ message: `This tournament ${readable}` });
+    }
+
+    const [result] = await connection.query(
+      "DELETE FROM tournament_participants WHERE tournament_id = ? AND user_id = ?",
+      [tournamentId, requesterId]
+    );
+
+    if (!result.affectedRows) {
+      await connection.rollback();
+      return res.status(400).send({ message: "You are not in this tournament" });
+    }
+
+    // A seat has opened up, so it is taking entries again.
+    if (tournament.status === "full") {
+      await connection.query("UPDATE tournaments SET status = 'open' WHERE id = ?", [tournamentId]);
+    }
+
+    await connection.commit();
+    const updatedTournament = await getTournamentByIdForResponse(tournamentId, requesterId);
+    if (updatedTournament) delete updatedTournament.requesterIsParticipant;
+    return res.status(200).json({ tournament: updatedTournament });
+  } catch (err) {
+    await connection.rollback();
+    console.error("Error in POST /api/tournaments/:tournamentId/leave:", err);
+    return res.status(500).send({ message: "Failed to leave tournament", err: err.message });
   } finally {
     connection.release();
   }

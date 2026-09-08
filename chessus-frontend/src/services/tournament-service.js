@@ -166,6 +166,18 @@ export const joinTournamentPlaceholder = async ({ tournamentId, user }) => {
   return normalizeTournamentFromApi(response?.data?.tournament);
 };
 
+/* Withdraw before it starts. The server refuses once a bracket could exist, and
+   refuses the host outright - they cancel instead. */
+export const leaveTournament = async ({ tournamentId }) => {
+  const response = await axios.post(
+    API_URL + `tournaments/${tournamentId}/leave`,
+    {},
+    { headers: authHeader() }
+  );
+
+  return normalizeTournamentFromApi(response?.data?.tournament);
+};
+
 export const updateTournamentPlaceholder = async ({ tournamentId, updates }) => {
   const response = await axios.put(API_URL + `tournaments/${tournamentId}`, updates, {
     headers: authHeader()
