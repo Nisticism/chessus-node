@@ -6,8 +6,10 @@ import {
   getTournamentByIdPlaceholder,
   joinTournamentPlaceholder,
   leaveTournament,
+  startTournament,
   updateTournamentPlaceholder
 } from "../../services/tournament-service";
+import TournamentBracket from "./TournamentBracket";
 import styles from "./tournaments.module.scss";
 import { parseServerDate } from "../../helpers/date-formatter";
 
@@ -101,6 +103,7 @@ const TournamentDetails = () => {
   const [isLeaving, setIsLeaving] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isStarting, setIsStarting] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
   const [editData, setEditData] = useState({
@@ -173,6 +176,17 @@ const TournamentDetails = () => {
     return Number(currentUser.id) === Number(tournament.createdById) || role === "admin" || role === "owner";
   }, [currentUser, tournament]);
 
+  /*
+   * Once the bracket is drawn the entry list is frozen - the seeding was taken
+   * from it, so a player joining or leaving now would leave a bracket that
+   * does not match its own tournament. Editing closes for the same reason:
+   * the format and the field size are what the bracket was built from.
+   */
+  const isTournamentUnderWay = tournament?.status === "started"
+    || tournament?.status === "completed";
+
+  const canStart = tournament?.status === "open" || tournament?.status === "full";
+
   const handleLeaveTournament = async () => {
     setIsLeaving(true);
     setErrorMessage("");
@@ -215,6 +229,27 @@ const TournamentDetails = () => {
       setErrorMessage(getErrorMessage(error, "Unable to join this tournament."));
     } finally {
       setIsJoining(false);
+    }
+  };
+
+  /*
+   * Drawing the bracket is the point of no return: the seeding is fixed here,
+   * so entries close and nobody can leave once it is done.
+   */
+  const handleStartTournament = async () => {
+    if (!tournament) return;
+    setIsStarting(true);
+    setErrorMessage("");
+    setSuccessMessage("");
+    try {
+      const { tournament: updated } = await startTournament({ tournamentId: tournament.id });
+      if (updated) setTournament(updated);
+      else await loadTournament();
+      setSuccessMessage("The bracket has been drawn. The tournament is under way.");
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error, "Unable to start this tournament."));
+    } finally {
+      setIsStarting(false);
     }
   };
 
@@ -464,9 +499,17 @@ const TournamentDetails = () => {
         )}
       </section>
 
+      {/* The bracket, once there is one. It draws nothing until the
+          tournament starts, so it is safe to render either way. */}
+      <TournamentBracket
+        tournament={tournament}
+        currentUser={currentUser}
+        onTournamentChanged={loadTournament}
+      />
+
       <div className={styles["wizard-actions"]}>
         <Link to="/play/tournaments" className={styles["secondary-button"]}>Back</Link>
-        {canEdit && (
+        {canEdit && !isTournamentUnderWay && (
           <button
             type="button"
             className={styles["secondary-button"]}
@@ -474,6 +517,19 @@ const TournamentDetails = () => {
             disabled={isSaving}
           >
             {isEditing ? "Cancel Edit" : "Edit Tournament"}
+          </button>
+        )}
+        {canEdit && canStart && (
+          <button
+            type="button"
+            className={styles["join-button"]}
+            onClick={handleStartTournament}
+            disabled={isStarting || tournament.participants.length < 2}
+            title={tournament.participants.length < 2
+              ? "At least two players are needed to draw a bracket"
+              : undefined}
+          >
+            {isStarting ? "Drawing bracket..." : "Start Tournament"}
           </button>
         )}
         {isEditing && canEdit ? (
@@ -486,7 +542,7 @@ const TournamentDetails = () => {
             {isSaving ? "Saving..." : "Save Changes"}
           </button>
         ) : (
-          hasJoined && !isHost ? (
+          isTournamentUnderWay ? null : hasJoined && !isHost ? (
             /* Already in it: the useful action is getting back out. */
             <button
               type="button"

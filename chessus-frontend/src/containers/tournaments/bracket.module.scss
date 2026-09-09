@@ -1,0 +1,321 @@
+/* The bracket on the tournament page.
+   Rounds are columns that scroll sideways, since a 32-player draw is five
+   columns wide and there is no honest way to fit that on a phone. */
+
+.bracket-card {
+  margin-top: 18px;
+  padding: 16px 18px 20px;
+  border: 1px solid rgba(var(--panel-card-border-rgb), 0.82);
+  border-radius: 10px;
+  background: rgba(var(--panel-bg-start-rgb), 0.4);
+
+  h2 {
+    margin: 0;
+    font-size: 1.15rem;
+    color: var(--text-heading);
+  }
+}
+
+.bracket-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.champion {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(250, 204, 21, 0.55);
+  background: rgba(250, 204, 21, 0.12);
+
+  strong {
+    color: var(--text-heading);
+    font-size: 1rem;
+  }
+}
+
+.champion-label {
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.section-title {
+  margin: 18px 0 10px;
+  font-size: 0.98rem;
+  color: var(--text-heading);
+}
+
+.bracket-section + .bracket-section .section-title {
+  padding-top: 14px;
+  border-top: 1px solid rgba(var(--panel-card-border-rgb), 0.5);
+}
+
+/* Columns, one per round. */
+.rounds-scroller {
+  display: flex;
+  align-items: stretch;
+  gap: 18px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+}
+
+/* A round robin has no left-to-right progression, so its rounds stack. */
+.rounds-stacked {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.round {
+  min-width: 210px;
+  flex: 0 0 auto;
+}
+
+.rounds-stacked .round {
+  min-width: 0;
+}
+
+.round-title {
+  margin-bottom: 8px;
+  font-size: 0.8rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.round-matches {
+  display: flex;
+  flex-direction: column;
+  /* Spread the matches down the column so a later round sits opposite the two
+     matches that feed it, which is what makes the bracket readable. */
+  justify-content: space-around;
+  gap: 12px;
+  height: 100%;
+}
+
+.rounds-stacked .round-matches {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.match {
+  padding: 8px 10px;
+  border: 1px solid rgba(var(--panel-card-border-rgb), 0.75);
+  border-radius: 8px;
+  background: rgba(var(--panel-bg-start-rgb), 0.65);
+}
+
+.match-yours {
+  border-color: rgba(96, 165, 250, 0.75);
+  box-shadow: 0 0 0 1px rgba(96, 165, 250, 0.25);
+}
+
+.match-decided {
+  opacity: 0.92;
+}
+
+.match-bye {
+  opacity: 0.62;
+}
+
+/* A seat in the bracket that nobody can ever occupy. Kept in place so the
+   rounds still line up, but plainly not a fixture. */
+.match-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 56px;
+  border-style: dashed;
+  opacity: 0.4;
+}
+
+.match-label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+  margin-bottom: 6px;
+  font-size: 0.72rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.match-note {
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.seat {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 7px;
+  border-radius: 5px;
+  font-size: 0.92rem;
+  color: var(--text-muted);
+
+  & + & {
+    margin-top: 3px;
+  }
+}
+
+.seat-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.seat-seed {
+  flex: 0 0 auto;
+  min-width: 18px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 0.72rem;
+  text-align: center;
+  color: var(--text-dim);
+  background: rgba(var(--panel-card-border-rgb), 0.45);
+}
+
+.seat-pending,
+.seat-bye {
+  font-style: italic;
+  color: var(--text-dim);
+}
+
+.seat-winner {
+  color: var(--text-heading);
+  font-weight: 600;
+  background: rgba(74, 222, 128, 0.14);
+}
+
+.seat-loser {
+  color: var(--text-dim);
+  text-decoration: line-through;
+}
+
+.seat-you {
+  box-shadow: inset 2px 0 0 rgba(96, 165, 250, 0.9);
+}
+
+.match-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 6px;
+  min-height: 20px;
+}
+
+.match-link {
+  font-size: 0.82rem;
+  color: var(--link-color, #60a5fa);
+  text-decoration: none;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+.match-play {
+  padding: 4px 10px;
+  font-family: inherit;
+  font-size: 0.82rem;
+  color: var(--text-heading);
+  background: transparent;
+  border: 1px solid rgba(96, 165, 250, 0.6);
+  border-radius: 5px;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    background: rgba(96, 165, 250, 0.15);
+    border-color: rgba(96, 165, 250, 0.9);
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: default;
+  }
+}
+
+.your-turn {
+  margin-bottom: 12px;
+  padding: 9px 12px;
+  border-radius: 7px;
+  border: 1px solid rgba(96, 165, 250, 0.45);
+  background: rgba(96, 165, 250, 0.12);
+  color: var(--text-muted);
+  font-size: 0.92rem;
+
+  a {
+    color: var(--link-color, #60a5fa);
+  }
+}
+
+.error {
+  margin-bottom: 12px;
+  padding: 9px 12px;
+  border-radius: 7px;
+  border: 1px solid rgba(248, 113, 113, 0.5);
+  background: rgba(248, 113, 113, 0.12);
+  color: var(--text-muted);
+  font-size: 0.92rem;
+}
+
+.empty {
+  padding: 12px 0;
+  color: var(--text-dim);
+  font-size: 0.95rem;
+}
+
+/* Standings */
+.standings-wrap {
+  overflow-x: auto;
+}
+
+.standings {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+  color: var(--text-muted);
+
+  th {
+    padding: 6px 8px;
+    text-align: left;
+    font-size: 0.74rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    border-bottom: 1px solid rgba(var(--panel-card-border-rgb), 0.6);
+    white-space: nowrap;
+  }
+
+  td {
+    padding: 6px 8px;
+    border-bottom: 1px solid rgba(var(--panel-card-border-rgb), 0.35);
+  }
+
+  strong {
+    color: var(--text-heading);
+  }
+}
+
+.standings-rank {
+  width: 34px;
+}
+
+.standings-you td {
+  background: rgba(96, 165, 250, 0.1);
+}

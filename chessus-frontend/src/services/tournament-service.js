@@ -185,3 +185,41 @@ export const updateTournamentPlaceholder = async ({ tournamentId, updates }) => 
 
   return normalizeTournamentFromApi(response?.data?.tournament);
 };
+
+/* --- The bracket ------------------------------------------------------------
+   Reading the bracket reconciles it server-side first, so what comes back has
+   already caught up with any game that finished since the last look. */
+
+export const getTournamentBracket = async (tournamentId) => {
+  const response = await axios.get(API_URL + `tournaments/${tournamentId}/bracket`, {
+    headers: authHeader()
+  });
+  return response?.data?.bracket || null;
+};
+
+/* Draw the bracket and begin. Host (or an admin) only, and only once. */
+export const startTournament = async ({ tournamentId }) => {
+  const response = await axios.post(
+    API_URL + `tournaments/${tournamentId}/start`,
+    {},
+    { headers: authHeader() }
+  );
+  return {
+    tournament: response?.data?.tournament
+      ? normalizeTournamentFromApi(response.data.tournament)
+      : null,
+    bracket: response?.data?.bracket || null
+  };
+};
+
+/* Tell the bracket which game decides a match. The game itself is created
+   through the ordinary challenge flow, so a tournament game is built exactly
+   the way every other game is. */
+export const attachGameToMatch = async ({ tournamentId, matchKey, gameId }) => {
+  const response = await axios.post(
+    API_URL + `tournaments/${tournamentId}/matches/${encodeURIComponent(matchKey)}/game`,
+    { gameId },
+    { headers: authHeader() }
+  );
+  return response?.data?.bracket || null;
+};
