@@ -15,6 +15,7 @@
  * ended the game, the row says who won.
  */
 const db_pool = require('../configs/db');
+const dbHelpers = require('./db-helpers');
 const bracketLogic = require('./tournament-bracket');
 
 const { BYE } = bracketLogic;
@@ -211,7 +212,126 @@ const startTournament = async (tournamentId) => {
     connection.release();
   }
 
-  return loadBracket(tournamentId);
+  // The first round is playable the moment the bracket is drawn.
+  const drawn = await loadBracket(tournamentId);
+  await announceReadyMatches(tournamentId, drawn.filter((n) => n.status === 'ready'));
+  return drawn;
+};
+
+/* ------------------------------------------------------------ telling people
+ *
+ * A bracket advances when the game behind a match finishes, which may be while
+ * neither of the next two players is looking at it - the pairing that decides
+ * their opponent could be settled hours later, in someone else's game. Without
+ * a notification the only way to learn your next match exists is to keep
+ * checking, so the tournament stalls on whoever happened to look.
+ */
+
+/** Deliver one notification, and push it to the player if they are online. */
+const sendNotification = async ({ userId, type, title, content, tournamentId, actionUrl }) => {
+  try {
+    const notification = await dbHelpers.createNotification({
+      user_id: userId,
+      sender_id: null,
+      type,
+      title,
+      content,
+      related_id: tournamentId,
+      action_url: actionUrl
+    });
+
+    // Live delivery, if the socket layer is up. Required lazily: the socket
+    // module is large, and this file is loaded by scripts that never start it.
+    try {
+      const gameSocket = require('./game-socket');
+      const io = gameSocket.getIO && gameSocket.getIO();
+      const socketId = gameSocket.userSockets && gameSocket.userSockets.get(String(userId));
+      if (io && socketId) {
+        io.to(socketId).emit('newNotification', notification);
+        const unreadCount = await dbHelpers.getUnreadNotificationCount(userId);
+        io.to(socketId).emit('unreadNotificationCount', { unreadCount });
+      }
+    } catch (_) { /* no socket layer in this process */ }
+  } catch (err) {
+    // A notification that cannot be delivered must not undo a result that has
+    // already been recorded - the bracket is the thing that matters.
+    console.error(`[tournament ${tournamentId}] notification failed for user ${userId}:`, err.message);
+  }
+};
+
+const tournamentLabel = async (tournamentId) => {
+  const [[row]] = await db_pool.query(
+    `SELECT gt.game_name FROM tournaments t
+     INNER JOIN game_types gt ON gt.id = t.game_type_id
+     WHERE t.id = ?`,
+    [tournamentId]
+  );
+  return row && row.game_name ? `${row.game_name} tournament` : 'tournament';
+};
+
+const usernamesFor = async (userIds) => {
+  const ids = [...new Set(userIds.map(Number).filter(Boolean))];
+  if (!ids.length) return new Map();
+  const [rows] = await db_pool.query('SELECT id, username FROM users WHERE id IN (?)', [ids]);
+  return new Map(rows.map((r) => [String(r.id), r.username]));
+};
+
+/**
+ * Tell both players that a match of theirs is now playable.
+ *
+ * A walkover never reaches 'ready' - settleNode resolves it to 'bye' the
+ * moment it is drawn - so it is already excluded, and there would be nothing
+ * to tell the player to do anyway. The check on the two seats is belt and
+ * braces against a future status that skips that rule.
+ */
+const announceReadyMatches = async (tournamentId, nodes) => {
+  const playable = (nodes || []).filter((n) => n.status === 'ready'
+    && Number(n.playerOneId) && Number(n.playerTwoId));
+  if (!playable.length) return 0;
+
+  const label = await tournamentLabel(tournamentId);
+  const names = await usernamesFor(playable.flatMap((n) => [n.playerOneId, n.playerTwoId]));
+  const actionUrl = `/play/tournaments/${tournamentId}`;
+
+  let sent = 0;
+  for (const node of playable) {
+    for (const [playerId, opponentId] of [
+      [node.playerOneId, node.playerTwoId],
+      [node.playerTwoId, node.playerOneId]
+    ]) {
+      const opponent = names.get(String(opponentId)) || 'your opponent';
+      await sendNotification({
+        userId: Number(playerId),
+        type: 'tournament',
+        title: 'Your next tournament match is ready',
+        content: `You are drawn against ${opponent} in the ${label}. Open the bracket to start the game.`,
+        tournamentId,
+        actionUrl
+      });
+      sent += 1;
+    }
+  }
+  return sent;
+};
+
+/** Tell everyone how the tournament ended. */
+const announceTournamentFinished = async (tournamentId, championId, playerIds) => {
+  const label = await tournamentLabel(tournamentId);
+  const names = await usernamesFor([...playerIds, championId]);
+  const championName = names.get(String(championId)) || 'Someone';
+  const actionUrl = `/play/tournaments/${tournamentId}`;
+
+  for (const playerId of playerIds) {
+    const won = Number(playerId) === Number(championId);
+    await sendNotification({
+      userId: Number(playerId),
+      type: 'tournament',
+      title: won ? 'You won the tournament' : 'The tournament has finished',
+      content: won ? `You won the ${label}.` : `${championName} won the ${label}.`,
+      tournamentId,
+      actionUrl
+    });
+  }
 };
 
 /**
@@ -219,12 +339,22 @@ const startTournament = async (tournamentId) => {
  */
 const recordResult = async (tournamentId, matchKey, winnerId, { isDraw = false } = {}) => {
   const nodes = await loadBracket(tournamentId);
+
+  // What was playable before this result, so that only the matches this result
+  // actually opened up get announced. A match makes that crossing once, which
+  // is what stops the notification being sent twice.
+  const wasReady = new Set(nodes.filter((n) => n.status === 'ready').map((n) => n.key));
+
   const changedKeys = bracketLogic.applyResult(nodes, matchKey, winnerId, { isDraw });
   if (!changedKeys.length) return { changed: 0, nodes };
 
   await persistNodes(tournamentId, nodes, changedKeys);
+
+  const newlyReady = nodes.filter((n) => n.status === 'ready' && !wasReady.has(n.key));
+  if (newlyReady.length) await announceReadyMatches(tournamentId, newlyReady);
+
   await settleTournamentIfFinished(tournamentId, nodes);
-  return { changed: changedKeys.length, nodes };
+  return { changed: changedKeys.length, nodes, newlyReady: newlyReady.map((n) => n.key) };
 };
 
 /** Close the tournament off once its last match is decided. */
@@ -244,10 +374,17 @@ const settleTournamentIfFinished = async (tournamentId, nodes) => {
   const champion = bracketLogic.championOf(tournament.format, nodes, playerIds);
   if (champion == null || champion === BYE) return null;
 
-  await db_pool.query(
-    `UPDATE tournaments SET status = 'completed', winner_id = ?, completed_at = NOW() WHERE id = ?`,
+  const [update] = await db_pool.query(
+    `UPDATE tournaments SET status = 'completed', winner_id = ?, completed_at = NOW()
+     WHERE id = ? AND status = 'started'`,
     [Number(champion), tournamentId]
   );
+
+  // Only the call that actually closed the tournament announces it, so two
+  // reconciles arriving together cannot send the result twice.
+  if (update.affectedRows) {
+    await announceTournamentFinished(tournamentId, Number(champion), playerIds);
+  }
   return Number(champion);
 };
 

@@ -22,6 +22,7 @@ const NOTIFICATION_ICONS = {
   system: "📢",
   announcement: "📣",
   ai_analysis_request: "📊",
+  tournament: "🏆",
 };
 
 const formatTimeAgo = (dateStr) => {
@@ -282,6 +283,20 @@ const NotificationsPage = () => {
                         }}
                       >
                         {notification.action_url.startsWith('/profile') ? 'View Profile' : 'View'}
+                      </button>
+                    </div>
+                  )}
+
+                  {notification.type === "tournament" && notification.action_url && (
+                    <div className={styles["notification-actions-row"]}>
+                      <button
+                        className={`${styles["notification-action-btn"]} ${styles.view}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleNotificationClick(notification);
+                        }}
+                      >
+                        View Bracket
                       </button>
                     </div>
                   )}

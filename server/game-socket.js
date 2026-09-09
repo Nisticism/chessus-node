@@ -708,32 +708,104 @@ function isMoveBanned(gameState, move) {
   return vs.banned.includes(vetoSignature(move));
 }
 
-// Lightweight, side-effect-free check: does this move land a promotable piece
-// on a promotion square? Used only to enforce veto_disallow_promotion.
-function moveTriggersPromotion(gameState, move) {
-  if (!move || !move.to || move.type === 'place') return false;
-  const piece = gameState.pieces.find(p => p.id === move.pieceId);
-  if (!piece || !piece.can_promote || piece.disable_promotion) return false;
-  const gt = gameState.gameType;
-  if (!gt) return false;
+/*
+ * Promotion squares: one rule, for everybody who asks.
+ *
+ * Four places used to decide independently whether a piece landing on a square
+ * promotes, and they had drifted. The veto check in particular had neither the
+ * per-player restriction nor the starting-square exclusion, so on a promotion
+ * square belonging to the OTHER player it reported a promotion that would never
+ * happen - and since veto_disallow_promotion means "a promoting move cannot be
+ * vetoed", that wrongly shielded an ordinary move from being vetoed.
+ *
+ * The square set is the game's promotion squares plus any custom square flagged
+ * asPromotion. A custom square does not override a real promotion square that
+ * already exists on the same key.
+ */
+function collectPromotionSquares(gameType) {
   const squares = {};
+  if (!gameType) return squares;
+
   try {
-    if (gt.promotion_squares_string) {
-      const parsed = JSON.parse(gt.promotion_squares_string);
+    if (gameType.promotion_squares_string) {
+      const parsed = typeof gameType.promotion_squares_string === 'string'
+        ? JSON.parse(gameType.promotion_squares_string)
+        : gameType.promotion_squares_string;
       if (parsed && typeof parsed === 'object') Object.assign(squares, parsed);
     }
-  } catch (_) { /* ignore */ }
+  } catch (e) {
+    console.error('Error parsing promotion_squares_string:', e);
+  }
+
   try {
-    if (gt.special_squares_string) {
-      const custom = typeof gt.special_squares_string === 'string' ? JSON.parse(gt.special_squares_string) : gt.special_squares_string;
+    if (gameType.special_squares_string) {
+      const custom = typeof gameType.special_squares_string === 'string'
+        ? JSON.parse(gameType.special_squares_string)
+        : gameType.special_squares_string;
       if (custom && typeof custom === 'object') {
         for (const [key, cfg] of Object.entries(custom)) {
-          if (cfg && cfg.asPromotion && !squares[key]) squares[key] = { type: 'promotion' };
+          if (cfg && cfg.asPromotion && !squares[key]) {
+            squares[key] = {
+              type: 'promotion',
+              fromCustom: true,
+              appliesToPlayer: cfg.promotionAppliesToPlayer || 'all',
+            };
+          }
         }
       }
     }
-  } catch (_) { /* ignore */ }
-  return !!squares[`${move.to.y},${move.to.x}`];
+  } catch (_) { /* ignore malformed custom squares */ }
+
+  return squares;
+}
+
+/**
+ * Does this piece, landing here, reach a promotion square that is its to use?
+ *
+ * Answers the square question only - whether there is anything worth promoting
+ * TO is a separate (and asynchronous) matter, handled by getPromotionOptions.
+ */
+function squarePromotesFor(gameType, piece, destX, destY) {
+  if (!piece || !piece.can_promote || piece.disable_promotion || !gameType) return false;
+
+  const squares = collectPromotionSquares(gameType);
+  const key = `${destY},${destX}`;
+  const cfg = squares[key];
+  if (!cfg) return false;
+
+  // A promotion square can belong to one player, to the neutral side, or to
+  // everybody. 'all', 'both' and an absent value all mean everybody.
+  if (cfg && typeof cfg === 'object') {
+    const restriction = cfg.appliesToPlayer;
+    if (restriction && restriction !== 'all' && restriction !== 'both') {
+      const pieceOwner = piece.player_id || piece.team;
+      const isNeutralPiece = piece.is_neutral || pieceOwner === 0;
+      if (restriction === 'neutral') {
+        if (!isNeutralPiece) return false;
+      } else {
+        // 'p1', 'p2', 'p3', ... - neutral pieces never qualify.
+        const match = String(restriction).match(/^p(\d+)$/);
+        if (match) {
+          if (isNeutralPiece) return false;
+          if (pieceOwner !== parseInt(match[1], 10)) return false;
+        }
+      }
+    }
+  }
+
+  // A piece that begins the game on a promotion square does not promote by
+  // returning to it; the square has to be reached.
+  if (`${piece.initial_y},${piece.initial_x}` === key) return false;
+
+  return true;
+}
+
+// Does this move land a promotable piece on a promotion square that is theirs
+// to use? Used only to enforce veto_disallow_promotion.
+function moveTriggersPromotion(gameState, move) {
+  if (!move || !move.to || move.type === 'place') return false;
+  const piece = gameState.pieces.find(p => p.id === move.pieceId);
+  return squarePromotesFor(gameState.gameType, piece, move.to.x, move.to.y);
 }
 
 // Validate a proposed veto set (raw descriptors) submitted by the vetoer against
@@ -2378,58 +2450,7 @@ function squareKey(x, y) { return `${x},${y}`; }
  * async DB work and without filtering options.
  */
 function simulMoveLandsOnPromotionSquare(gameType, piece, destX, destY) {
-  if (!piece || !piece.can_promote || piece.disable_promotion || !gameType) return false;
-  let promoSquares = {};
-  try {
-    if (gameType.promotion_squares_string) {
-      const parsed = typeof gameType.promotion_squares_string === 'string'
-        ? JSON.parse(gameType.promotion_squares_string)
-        : gameType.promotion_squares_string;
-      if (parsed && typeof parsed === 'object') promoSquares = { ...parsed };
-    }
-  } catch (_) {}
-  try {
-    if (gameType.special_squares_string) {
-      const cs = typeof gameType.special_squares_string === 'string'
-        ? JSON.parse(gameType.special_squares_string)
-        : gameType.special_squares_string;
-      if (cs && typeof cs === 'object') {
-        for (const [k, cfg] of Object.entries(cs)) {
-          if (cfg && cfg.asPromotion && !promoSquares[k]) {
-            promoSquares[k] = { appliesToPlayer: cfg.promotionAppliesToPlayer || 'all' };
-          }
-        }
-      }
-    }
-  } catch (_) {}
-  const key = `${destY},${destX}`;
-  if (!promoSquares[key]) return false;
-  // Check player restriction on this promotion square
-  const squareCfg = promoSquares[key];
-  if (squareCfg && typeof squareCfg === 'object') {
-    const restriction = squareCfg.appliesToPlayer;
-    // 'all', 'both', null/undefined → no restriction
-    if (restriction && restriction !== 'all' && restriction !== 'both') {
-      const pieceOwner = piece.player_id || piece.team;
-      const isNeutralPiece = piece.is_neutral || pieceOwner === 0;
-      if (restriction === 'neutral') {
-        if (!isNeutralPiece) return false;
-      } else {
-        // Expect 'p1', 'p2', 'p3', … — extract the player number
-        // Neutral pieces cannot use player-specific promotion squares
-        const match = String(restriction).match(/^p(\d+)$/);
-        if (match) {
-          if (isNeutralPiece) return false;
-          if (pieceOwner !== parseInt(match[1], 10)) return false;
-        }
-      }
-    }
-  }
-  // Exclude the piece's starting square — promotion squares only fire if the
-  // piece reaches a NEW promotion square.
-  const initialKey = `${piece.initial_y},${piece.initial_x}`;
-  if (initialKey === key) return false;
-  return true;
+  return squarePromotesFor(gameType, piece, destX, destY);
 }
 
 /**
@@ -14697,72 +14718,13 @@ async function checkPromotionEligibility(piece, targetSquare, gameState) {
   
   const gameType = gameState.gameType;
   if (!gameType) return null;
-  
-  // Combine actual promotion squares with any "custom" squares flagged as
-  // acting as promotion squares (asPromotion === true).
-  let promotionSquares = {};
-  try {
-    if (gameType.promotion_squares_string) {
-      const parsed = JSON.parse(gameType.promotion_squares_string);
-      if (parsed && typeof parsed === 'object') {
-        promotionSquares = { ...parsed };
-      }
-    }
-  } catch (e) {
-    console.error('Error parsing promotion_squares_string:', e);
-  }
 
-  try {
-    if (gameType.special_squares_string) {
-      const customSquares = typeof gameType.special_squares_string === 'string'
-        ? JSON.parse(gameType.special_squares_string)
-        : gameType.special_squares_string;
-      if (customSquares && typeof customSquares === 'object') {
-        for (const [key, cfg] of Object.entries(customSquares)) {
-          if (cfg && cfg.asPromotion && !promotionSquares[key]) {
-            promotionSquares[key] = {
-              type: 'promotion',
-              fromCustom: true,
-              appliesToPlayer: cfg.promotionAppliesToPlayer || 'all',
-            };
-          }
-        }
-      }
-    }
-  } catch (e) { /* ignore */ }
+  // The square rule lives in one place - see squarePromotesFor. It covers the
+  // game's promotion squares, custom squares flagged asPromotion, whose
+  // promotion square it is, and the exclusion of the piece's own starting
+  // square.
+  if (!squarePromotesFor(gameType, piece, targetSquare.x, targetSquare.y)) return null;
 
-  if (Object.keys(promotionSquares).length === 0) return null;
-  
-  // Check if target square is a promotion square
-  const squareKey = `${targetSquare.y},${targetSquare.x}`;
-  if (!promotionSquares[squareKey]) return null;
-
-  // Check player restriction on this promotion square
-  const squareCfg = promotionSquares[squareKey];
-  if (squareCfg && typeof squareCfg === 'object') {
-    const restriction = squareCfg.appliesToPlayer;
-    // 'all', 'both', null/undefined → no restriction
-    if (restriction && restriction !== 'all' && restriction !== 'both') {
-      const pieceOwner = piece.player_id || piece.team;
-      const isNeutralPiece = piece.is_neutral || pieceOwner === 0;
-      if (restriction === 'neutral') {
-        if (!isNeutralPiece) return null;
-      } else {
-        // Expect 'p1', 'p2', 'p3', … — extract the player number
-        // Neutral pieces cannot use player-specific promotion squares
-        const match = String(restriction).match(/^p(\d+)$/);
-        if (match) {
-          if (isNeutralPiece) return null;
-          if (pieceOwner !== parseInt(match[1], 10)) return null;
-        }
-      }
-    }
-  }
-
-  // Check if the piece started on this promotion square
-  const initialKey = `${piece.initial_y},${piece.initial_x}`;
-  if (initialKey === squareKey) return null; // Can't promote on starting square
-  
   // Get eligible pieces for promotion (all starting piece types except:
   // - promotable pieces (pieces with can_promote flag)
   // - any piece with checkmate rule or capture-loss rule
@@ -21950,4 +21912,13 @@ module.exports = {
   evaluateInitialPosition,
   buildSyntheticInitialState,
   hashPiecesPositions,
+  // Promotion. Exported so the promotion rules can be tested directly rather
+  // than through a whole live game - there are four separate places that decide
+  // whether a square promotes, and they have to agree with each other.
+  checkPromotionEligibility,
+  getPromotionOptions,
+  applyPromotionToPiece,
+  moveTriggersPromotion,
+  simulMoveLandsOnPromotionSquare,
+  computeAllPieceValues,
 };

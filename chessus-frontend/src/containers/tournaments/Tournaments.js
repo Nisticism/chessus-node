@@ -420,10 +420,11 @@ const Tournaments = () => {
       <div className={styles["construction-banner"]}>
         <span className={styles["construction-icon"]} aria-hidden="true">🚧</span>
         <div>
-          <strong>Tournaments are under construction.</strong>
+          <strong>Tournaments are new.</strong>
           <p>
-            You can create one and others can join, but pairings, rounds and standings are
-            not running yet — treat anything here as a preview rather than a real event.
+            Brackets, pairings and standings are running: create one, let people join, and
+            press Start to draw the bracket. It has not been through a real event yet, so
+            tell us if something looks wrong.
           </p>
         </div>
       </div>
@@ -431,7 +432,8 @@ const Tournaments = () => {
       <div className={styles["header"]}>
         <h1>Tournaments</h1>
         <p>
-          Tournament hosting is in MVP mode. Use the wizard to configure a tournament object that others can join.
+          Create a tournament, gather players, and draw a bracket. Single elimination,
+          double elimination and pool play are all supported.
         </p>
         {!currentUser && (
           <div className={styles["guest-note"]}>

@@ -25,6 +25,19 @@ const check = (name, ok, detail) => results.push({ name, ok: !!ok, detail });
 
 const created = { tournaments: [], games: [] };
 
+/** Every tournament notification sent for one tournament, newest last. */
+const notificationsFor = async (tournamentId, userId = null) => {
+  const [rows] = await db_pool.query(
+    `SELECT user_id, title, content, action_url, created_at, id
+     FROM notifications
+     WHERE type = 'tournament' AND related_id = ?
+       ${userId ? 'AND user_id = ?' : ''}
+     ORDER BY id ASC`,
+    userId ? [tournamentId, userId] : [tournamentId]
+  );
+  return rows;
+};
+
 const gameTypeId = parseInt(process.env.TEST_GAME_TYPE_ID || '18', 10);
 
 /** Fixture users, in join order - which is also seeding order. */
@@ -337,6 +350,116 @@ async function main() {
     finishedDE.status === 'completed' && PLAYERS.includes(Number(finishedDE.winner_id)),
     `${finishedDE.status} / ${finishedDE.winner_id}`);
 
+  /* ------------------------------------------------------- notifications ---
+   *
+   * A bracket advances when somebody else's game finishes, so the only way a
+   * player learns their next match exists is to be told. These check that they
+   * are told once, at the right moment, and that the link goes somewhere.
+   */
+  const notifyPlayers = PLAYERS.slice(0, 4);
+  const notifyId = await makeTournament('single_elimination', notifyPlayers);
+  await engine.startTournament(notifyId);
+
+  const atStart = await notificationsFor(notifyId);
+  check('drawing the bracket tells all four players their first match is ready',
+    atStart.length === 4 && new Set(atStart.map((n) => Number(n.user_id))).size === 4,
+    `${atStart.length} notification(s) to ${new Set(atStart.map((n) => n.user_id)).size} player(s)`);
+
+  check('and the notification links to the bracket',
+    atStart.every((n) => n.action_url === `/play/tournaments/${notifyId}`),
+    atStart.map((n) => n.action_url).join(' | '));
+
+  check('each player is told who they are drawn against', (() => {
+    const first = atStart.find((n) => Number(n.user_id) === notifyPlayers[0]);
+    if (!first) return false;
+    // Their opponent's name appears in the message, and their own does not.
+    return /drawn against \w+/.test(first.content);
+  })(), atStart[0] && atStart[0].content);
+
+  // Play the first semi-final. Nobody new becomes ready - the other semi is
+  // still outstanding - so the winner should not be told anything yet.
+  const semis = await readyMatches(notifyId);
+  await playMatch(notifyId, semis[0], semis[0].playerOneId);
+  const afterOne = await notificationsFor(notifyId);
+  check('winning one semi-final announces nothing while the other is unplayed',
+    afterOne.length === 4, `${afterOne.length} notification(s)`);
+
+  // Play the second. Now the final has both its players.
+  const remaining = await readyMatches(notifyId);
+  await playMatch(notifyId, remaining[0], remaining[0].playerOneId);
+  const afterTwo = await notificationsFor(notifyId);
+  const finalists = afterTwo.slice(4);
+  check('and finishing the second one tells both finalists',
+    finalists.length === 2 && new Set(finalists.map((n) => Number(n.user_id))).size === 2,
+    `${finalists.length} notification(s)`);
+
+  check('the two who were knocked out are not told about a match they are not in',
+    finalists.every((n) => [semis[0].playerOneId, remaining[0].playerOneId]
+      .includes(Number(n.user_id))),
+    finalists.map((n) => n.user_id).join(','));
+
+  // Reconciling again must not repeat anything.
+  await engine.reconcileTournament(notifyId);
+  await engine.getBracketForResponse(notifyId);
+  check('reading the bracket again does not send the same notification twice',
+    (await notificationsFor(notifyId)).length === afterTwo.length,
+    `${(await notificationsFor(notifyId)).length} vs ${afterTwo.length}`);
+
+  // Finish it.
+  await playOut(notifyId);
+  const atEnd = await notificationsFor(notifyId);
+  const closing = atEnd.slice(afterTwo.length);
+  check('everybody is told when the tournament finishes',
+    closing.length === 4, `${closing.length} closing notification(s)`);
+
+  const championId = Number((await tournamentRow(notifyId)).winner_id);
+  const championNote = closing.find((n) => Number(n.user_id) === championId);
+  check('and the winner is told they won, not that somebody else did',
+    championNote && /You won/.test(championNote.title),
+    championNote && championNote.title);
+
+  check('while everyone else is told who did',
+    closing.filter((n) => Number(n.user_id) !== championId)
+      .every((n) => /finished/i.test(n.title) && !/You won/.test(n.title)),
+    closing.map((n) => `${n.user_id}:${n.title}`).join(' | '));
+
+  /*
+   * Two reconciles arriving together on the last match of a tournament.
+   *
+   * That is not far-fetched: the bracket reconciles whenever anybody reads it,
+   * and the page polls, so two readers looking at the moment the final ends is
+   * the ordinary case rather than the exotic one. Both calls see a tournament
+   * still marked as in progress, so only the write that actually closes it may
+   * announce the result.
+   */
+  const raceNotifyId = await makeTournament('single_elimination', PLAYERS.slice(0, 2));
+  await engine.startTournament(raceNotifyId);
+  const raceFinal = (await readyMatches(raceNotifyId))[0];
+  const raceGame = await makeGame(raceFinal.playerOneId, raceFinal.playerTwoId);
+  await engine.attachGameToMatch(raceNotifyId, raceFinal.key, raceGame, raceFinal.playerOneId);
+  await finishGame(raceGame, raceFinal.playerOneId);
+
+  const before = (await notificationsFor(raceNotifyId)).length;
+  await Promise.allSettled([
+    engine.reconcileTournament(raceNotifyId),
+    engine.reconcileTournament(raceNotifyId)
+  ]);
+  const closingRace = (await notificationsFor(raceNotifyId)).length - before;
+  check('two reconciles landing together announce the result once, not twice',
+    closingRace === 2, `${closingRace} closing notification(s) for a 2-player final`);
+
+  /*
+   * A bye is not worth a notification - there is nothing for the player to do,
+   * and telling them a match is ready would send them to a bracket with no
+   * button on it.
+   */
+  const byeId = await makeTournament('single_elimination', PLAYERS.slice(0, 3));
+  await engine.startTournament(byeId);
+  const byeNotes = await notificationsFor(byeId);
+  check('a walkover is not announced as a match to play',
+    byeNotes.length === 2,
+    `${byeNotes.length} notification(s) for a 3-player draw with one bye`);
+
   // ------------------------------------------------------------- refusals ---
   const tinyId = await makeTournament('single_elimination', [PLAYERS[0]]);
   let tooFew = null;
@@ -354,6 +477,9 @@ async function main() {
 
 async function cleanup() {
   for (const id of created.tournaments) {
+    await db_pool.query(
+      "DELETE FROM notifications WHERE type = 'tournament' AND related_id = ?", [id]
+    ).catch(() => {});
     // tournament_matches and participants cascade from here.
     await db_pool.query('DELETE FROM tournaments WHERE id = ?', [id]).catch(() => {});
   }

@@ -4,6 +4,39 @@ import styles from "./changelog.module.scss";
 
 const changelogData = [
   {
+    date: "September 9, 2026",
+    title: "Tournaments can now actually be played",
+    items: [
+      "Tournaments now draw a bracket. The host presses Start, everyone who joined is seeded in the order they joined, and the pairings appear on the tournament page.",
+      "Single elimination, double elimination and pool play (round robin) are all supported. Double elimination gives you a losers bracket and a grand final, and if the player who came up through the losers bracket wins it, the final is replayed once — they have to beat the winners-bracket player twice, as they should. Pool play has everybody play everybody once, with a standings table.",
+      "Fields that are not a power of two are handled properly: a 6-player draw seats everyone in a bracket of 8 and gives the top seeds byes, rather than making somebody sit out a round at random.",
+      "When it is your turn to play, your match has a Start match button on it. That creates an ordinary game between the two of you, on the tournament's game type and clock, and the bracket picks up the result when the game ends — however it ends, including by resignation, timeout or disconnection.",
+      "You are notified when your next match is ready, and told who you are drawn against. The bracket advances when somebody else's game finishes, which can be hours after you last looked, so waiting for a notification beats checking.",
+      "Everyone is told when the tournament finishes, and the winner is recorded on the tournament.",
+      "A knockout game that ends in a draw does not eliminate anybody: the pairing stays and the two of you play it again. In pool play a draw counts as a draw, worth half a point.",
+      "Once the bracket is drawn the entry list is frozen — the seeding came from it — so joining, leaving and editing all close at that point.",
+    ],
+  },
+  {
+    date: "September 9, 2026",
+    title: "Fixed promoted pieces in replays",
+    items: [
+      "Fixed promoted pieces moving like whatever they used to be when you step through a finished game. A promoted pawn was drawn with a queen's picture but still carried a pawn's movement, so hovering it showed a pawn's moves — or, once it had reached the last rank, none at all.",
+      "Live games were never affected. This was only the replay board on the match page, and only since movement helpers were added there last week; before that nothing ever asked a promoted piece how it moved, so the fault had no symptom.",
+      "Games from before today are fixed as well as new ones: the replay works out what the piece became from the rest of the board, including the case where the promoted piece was captured later and is not in the final position.",
+    ],
+  },
+  {
+    date: "September 9, 2026",
+    title: "Promotion rules: two fixes found while auditing them",
+    items: [
+      "Fixed not being able to save a game with Win on Promotion turned on when its promotion squares were custom squares marked as promotion squares. The check only looked at the dedicated promotion squares and refused the save, even though the squares were real and the game would have worked.",
+      "Fixed a promotion square belonging to one player being treated as a promotion square for everybody by the veto rules. In a game where promoting moves cannot be vetoed, this wrongly protected an ordinary move from being vetoed — a move onto the other player's promotion square, which would never have promoted at all. The same check also ignored the rule that a piece does not promote by sitting on the square it started on.",
+      "Four separate places used to decide whether a piece landing on a square promotes, and they had drifted apart from each other. There is now one rule that all of them ask.",
+      "Checked and working as intended: promotion squares reserved for one player, custom squares acting as promotion squares, the setting that forbids promoting to royal pieces, the cap that stops you promoting into more of a piece than you started with (counted per player, not across the board), and promoted pieces being banked and valued as what they became when captured.",
+    ],
+  },
+  {
     date: "September 8, 2026",
     title: "Tournaments: leaving, history, and a few fixes",
     items: [

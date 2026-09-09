@@ -3930,6 +3930,17 @@ app.delete("/api/games/:gameId", authenticateToken, async (req, res) => {
     // Delete game instances/matches that use this game type
     await db_pool.query("DELETE FROM games WHERE game_type_id = ?", [gameId]);
     
+    // Notifications about those tournaments have to go first, while the
+    // tournaments are still there to identify them. Left behind they would
+    // point at a bracket that no longer exists, which is how notifications
+    // end up leading nowhere.
+    await db_pool.query(
+      `DELETE FROM notifications
+       WHERE type = 'tournament'
+         AND related_id IN (SELECT id FROM tournaments WHERE game_type_id = ?)`,
+      [gameId]
+    );
+
     // Delete tournaments that use this game type
     await db_pool.query("DELETE FROM tournaments WHERE game_type_id = ?", [gameId]);
     

@@ -421,7 +421,14 @@ const GameWizard = ({ editGameId }) => {
       }
     }
 
-    // Warn if promotion condition is enabled but no promotion squares are set
+    /*
+     * Warn if promotion condition is enabled but no promotion squares are set.
+     *
+     * A custom square flagged "acts as a promotion square" counts. The server
+     * has always treated the two the same way, so checking only the dedicated
+     * promotion squares here refused to save a game whose promotion squares
+     * were real and working.
+     */
     if (gameData.promotion_condition) {
       let hasPromotionSquares = false;
       try {
@@ -429,7 +436,13 @@ const GameWizard = ({ editGameId }) => {
         hasPromotionSquares = Object.keys(promoSquares).length > 0;
       } catch { /* ignore */ }
       if (!hasPromotionSquares) {
-        setSaveError('Win on Promotion is enabled but no promotion squares are defined. Add promotion squares in Step 3 (Board & Squares).');
+        try {
+          const specialSquares = JSON.parse(gameData.special_squares_string || '{}');
+          hasPromotionSquares = Object.values(specialSquares || {}).some((cfg) => cfg && cfg.asPromotion);
+        } catch { /* ignore */ }
+      }
+      if (!hasPromotionSquares) {
+        setSaveError('Win on Promotion is enabled but no promotion squares are defined. Add promotion squares in Step 3 (Board & Squares), or mark a custom square as a promotion square.');
         return;
       }
     }
