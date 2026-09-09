@@ -281,6 +281,7 @@ const dbHelpers = require("./db-helpers");
 const { checkUsername, validateContent, checkProfessionalName } = require("./content-moderation");
 const imageModeration = require("./image-moderation");
 const initialStateValidator = require("./initial-state-validator");
+const tournamentEngine = require("./tournament-engine");
 
 /**
  * Extract all unique GridGrove usernames mentioned via profile links in a
@@ -1193,6 +1194,108 @@ app.post("/api/tournaments/:tournamentId/leave", authenticateToken, async (req, 
     return res.status(500).send({ message: "Failed to leave tournament", err: err.message });
   } finally {
     connection.release();
+  }
+});
+
+/*
+ * The bracket.
+ *
+ * Reading it reconciles it first, so a bracket is never stale just because
+ * nobody happened to be watching when a game finished.
+ */
+app.get("/api/tournaments/:tournamentId/bracket", optionalAuthenticate, async (req, res) => {
+  try {
+    const { tournamentId } = req.params;
+    const requesterId = req.user?.id ? Number(req.user.id) : null;
+    const requesterRole = req.user?.role?.toLowerCase() || "";
+
+    const tournament = await getTournamentByIdForResponse(tournamentId, requesterId);
+    if (!tournament) {
+      return res.status(404).send({ message: "Tournament not found" });
+    }
+
+    const canViewPrivate = requesterRole === "admin"
+      || requesterRole === "owner"
+      || (requesterId && tournament.createdById === requesterId)
+      || tournament.requesterIsParticipant;
+
+    if (tournament.isPrivate && !canViewPrivate) {
+      return res.status(403).send({ message: "This private tournament is not visible to your account" });
+    }
+
+    const bracket = await tournamentEngine.getBracketForResponse(tournamentId);
+    return res.status(200).json({ bracket });
+  } catch (err) {
+    console.error("Error in GET /api/tournaments/:tournamentId/bracket:", err);
+    return res.status(500).send({ message: "Failed to load bracket", err: err.message });
+  }
+});
+
+/*
+ * Draw the bracket and begin. Only the host or an admin can, and only once -
+ * the seeding is fixed at this moment, so a second call would otherwise redraw
+ * a tournament that is already being played.
+ */
+app.post("/api/tournaments/:tournamentId/start", authenticateToken, async (req, res) => {
+  try {
+    const { tournamentId } = req.params;
+    const requesterId = Number(req.user.id);
+    const requesterRole = req.user?.role?.toLowerCase() || "";
+
+    const [[tournament]] = await db_pool.query(
+      "SELECT id, created_by_id FROM tournaments WHERE id = ?",
+      [tournamentId]
+    );
+    if (!tournament) {
+      return res.status(404).send({ message: "Tournament not found" });
+    }
+
+    const isHost = Number(tournament.created_by_id) === requesterId;
+    if (!isHost && requesterRole !== "admin" && requesterRole !== "owner") {
+      return res.status(403).send({ message: "Only the host can start this tournament" });
+    }
+
+    await tournamentEngine.startTournament(tournamentId);
+    const bracket = await tournamentEngine.getBracketForResponse(tournamentId);
+    const updated = await getTournamentByIdForResponse(tournamentId, requesterId);
+    if (updated) delete updated.requesterIsParticipant;
+
+    return res.status(200).json({ tournament: updated, bracket });
+  } catch (err) {
+    if (err.statusCode) {
+      return res.status(err.statusCode).send({ message: err.message });
+    }
+    console.error("Error in POST /api/tournaments/:tournamentId/start:", err);
+    return res.status(500).send({ message: "Failed to start tournament", err: err.message });
+  }
+});
+
+/*
+ * Attach the game that decides a match.
+ *
+ * The game itself is created through the ordinary challenge flow, so a
+ * tournament game is built exactly the way every other game is; this only
+ * records which game belongs to which match, and refuses anything that is not
+ * between the two players the bracket paired.
+ */
+app.post("/api/tournaments/:tournamentId/matches/:matchKey/game", authenticateToken, async (req, res) => {
+  try {
+    const { tournamentId, matchKey } = req.params;
+    const gameId = Number(req.body?.gameId);
+    if (!gameId) {
+      return res.status(400).send({ message: "A game id is required" });
+    }
+
+    const bracket = await tournamentEngine.attachGameToMatch(
+      tournamentId, matchKey, gameId, Number(req.user.id)
+    );
+    return res.status(200).json({ bracket });
+  } catch (err) {
+    if (err.statusCode) {
+      return res.status(err.statusCode).send({ message: err.message });
+    }
+    console.error("Error in POST /api/tournaments/:tournamentId/matches/:matchKey/game:", err);
+    return res.status(500).send({ message: "Failed to attach game to match", err: err.message });
   }
 });
 

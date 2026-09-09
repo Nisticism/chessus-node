@@ -171,6 +171,53 @@ const tableMigrations = [
     description: "Create tournament_participants table"
   },
   {
+    /*
+     * The bracket: one row per match, carrying the edges out of it.
+     *
+     * winner_to_key / winner_to_slot say which seat of which other match this
+     * match's winner takes, and loser_to_* the same for its loser, which is
+     * what a double-elimination bracket needs and a single-elimination one
+     * leaves null. Recording a result is then one update here and one write
+     * into the named seat, rather than a re-derivation of the whole bracket
+     * from the list of results.
+     *
+     * A bye is a flag rather than a player id, since there is no user to point
+     * at - a bracket padded out to a power of two has empty seats in it.
+     */
+    table: 'tournament_matches',
+    sql: `CREATE TABLE IF NOT EXISTS tournament_matches (
+      id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      tournament_id BIGINT UNSIGNED NOT NULL,
+      match_key VARCHAR(16) NOT NULL,
+      bracket VARCHAR(20) NOT NULL,
+      round_number INT UNSIGNED NOT NULL,
+      slot_index INT UNSIGNED NOT NULL,
+      player_one_id INT UNSIGNED NULL,
+      player_two_id INT UNSIGNED NULL,
+      player_one_is_bye TINYINT(1) NOT NULL DEFAULT 0,
+      player_two_is_bye TINYINT(1) NOT NULL DEFAULT 0,
+      winner_id INT UNSIGNED NULL,
+      loser_id INT UNSIGNED NULL,
+      is_draw TINYINT(1) NOT NULL DEFAULT 0,
+      game_id INT UNSIGNED NULL,
+      status VARCHAR(16) NOT NULL DEFAULT 'pending',
+      winner_to_key VARCHAR(16) NULL,
+      winner_to_slot TINYINT UNSIGNED NULL,
+      loser_to_key VARCHAR(16) NULL,
+      loser_to_slot TINYINT UNSIGNED NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      FOREIGN KEY (tournament_id) REFERENCES tournaments(id) ON DELETE CASCADE,
+      UNIQUE KEY unique_tournament_match (tournament_id, match_key),
+      INDEX idx_tournament_matches_tournament (tournament_id),
+      INDEX idx_tournament_matches_game (game_id),
+      INDEX idx_tournament_matches_status (tournament_id, status),
+      INDEX idx_tournament_matches_player_one (player_one_id),
+      INDEX idx_tournament_matches_player_two (player_two_id)
+    )`,
+    description: "Create tournament_matches table (the bracket)"
+  },
+  {
     table: 'donations',
     sql: `CREATE TABLE IF NOT EXISTS donations (
       id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -1119,7 +1166,13 @@ const migrations = [
   // Each holds a path under /uploads/piece-sounds, or NULL to use the site default.
   { table: 'pieces', column: 'move_sound_url', sql: "ALTER TABLE pieces ADD COLUMN move_sound_url VARCHAR(255) DEFAULT NULL", description: "Optional custom sound played when this piece moves. NULL uses the default move sound." },
   { table: 'pieces', column: 'capture_sound_url', sql: "ALTER TABLE pieces ADD COLUMN capture_sound_url VARCHAR(255) DEFAULT NULL", description: "Optional custom sound played when this piece captures. NULL uses the default capture sound." },
-  { table: 'pieces', column: 'hit_sound_url', sql: "ALTER TABLE pieces ADD COLUMN hit_sound_url VARCHAR(255) DEFAULT NULL", description: "Optional custom sound played when this piece damages without killing (HP/AD). NULL uses the default hit sound." }
+  { table: 'pieces', column: 'hit_sound_url', sql: "ALTER TABLE pieces ADD COLUMN hit_sound_url VARCHAR(255) DEFAULT NULL", description: "Optional custom sound played when this piece damages without killing (HP/AD). NULL uses the default hit sound." },
+  // --- Tournament results ---
+  // Who won, and when it ran. A finished tournament keeps its bracket, so the
+  // history is the tournament_matches rows; these are the summary.
+  { table: 'tournaments', column: 'winner_id', sql: "ALTER TABLE tournaments ADD COLUMN winner_id INT UNSIGNED DEFAULT NULL", description: "The tournament champion, once the bracket has been played out." },
+  { table: 'tournaments', column: 'started_at', sql: "ALTER TABLE tournaments ADD COLUMN started_at DATETIME DEFAULT NULL", description: "When the bracket was drawn and play began." },
+  { table: 'tournaments', column: 'completed_at', sql: "ALTER TABLE tournaments ADD COLUMN completed_at DATETIME DEFAULT NULL", description: "When the final match was decided." }
 ];
 
 // Ensure physical_board_requests table exists (may have been created after tableMigrations ran)
