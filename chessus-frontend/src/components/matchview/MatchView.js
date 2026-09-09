@@ -292,7 +292,9 @@ const MatchView = () => {
     if (reviewMoveIndex < 0) {
       return Array.isArray(match.initialPieces) ? JSON.parse(JSON.stringify(match.initialPieces)) : [];
     }
-    return replayToMove(match.initialPieces, match.moveHistory, reviewMoveIndex);
+    // The final board is passed as the definition source: a piece that promoted
+    // is still there, in full, which is how the replay learns how it moves.
+    return replayToMove(match.initialPieces, match.moveHistory, reviewMoveIndex, match.pieces);
   }, [match, reviewMoveIndex]);
 
   // Which indicator rows the legend needs. Derived from every piece the match

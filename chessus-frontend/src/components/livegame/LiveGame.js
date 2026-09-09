@@ -5360,7 +5360,7 @@ const LiveGame = () => {
     const boardHeight = gameState.gameType?.board_height || 8;
     const isGhostMode = ghostMoveIndex !== null && initialPiecesRef.current;
     const pieces = isGhostMode
-      ? replayToMove(initialPiecesRef.current, gameState.moveHistory, ghostMoveIndex)
+      ? replayToMove(initialPiecesRef.current, gameState.moveHistory, ghostMoveIndex, gameState.pieces)
       : parsePieces(gameState.pieces);
     const lastMove = isGhostMode
       ? gameState.moveHistory[ghostMoveIndex] || null

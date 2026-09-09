@@ -1185,7 +1185,73 @@ export const formatMoveNotation = (move, includeFrom = true, boardHeight = 8) =>
  * @param {number} targetIndex - Replay up to and including this move index
  * @returns {Array} Reconstructed pieces array at the given move
  */
-export const replayToMove = (initialPieces, moveHistory, targetIndex) => {
+/*
+ * Promotion in a replay.
+ *
+ * A promotion record on a move carries only what it takes to LABEL the new
+ * piece - piece_id, name and images. It does not carry how the piece moves, so
+ * a replay that applied only those fields left the piece with its original
+ * movement: a promoted pawn kept a pawn's pattern while showing a queen's
+ * picture, and hovering it showed a pawn's moves, or none at all once it had
+ * reached the last rank.
+ *
+ * Live play was never affected - the server swaps the whole definition in
+ * applyPromotionToPiece. This is the replay catching up with it.
+ *
+ * The definition is taken, in order of preference, from:
+ *   1. the move record itself, for games played since the server started
+ *      stamping the full definition;
+ *   2. the same board piece in a later position (the final board still holds
+ *      the promoted piece, with everything about it);
+ *   3. any piece of the promoted-to type on the board, as a last resort.
+ */
+
+// What belongs to the piece ON THE BOARD rather than to its type. Everything
+// else comes from the promoted-to definition.
+const PROMOTION_PRESERVED_KEYS = new Set([
+  'id', 'x', 'y',
+  'player_id', 'team', 'player', 'player_number', 'is_neutral',
+  'hasMoved', 'has_moved', 'current_hp', 'turnsAlive', 'moveCount',
+]);
+
+const applyPromotionDefinition = (piece, template) => {
+  if (!piece || !template) return;
+  for (const key of Object.keys(template)) {
+    if (PROMOTION_PRESERVED_KEYS.has(key)) continue;
+    piece[key] = template[key];
+  }
+};
+
+/**
+ * Find the promoted-to piece's full definition.
+ * `definitionPieces` is a later board state - the live board, or the final
+ * position of a finished game - where the promoted piece still exists in full.
+ */
+const findPromotionTemplate = (promotion, pieceId, promotedPieceTypeId, definitionPieces, boardPieces) => {
+  if (promotion && promotion.definition) return promotion.definition;
+
+  const pools = [definitionPieces, boardPieces].filter(Array.isArray);
+  const typeId = promotedPieceTypeId != null ? String(promotedPieceTypeId) : null;
+
+  // The same piece, later on: it is this exact piece after promoting.
+  for (const pool of pools) {
+    const sameBoardPiece = pool.find(
+      (p) => String(p.id) === String(pieceId) && (typeId == null || String(p.piece_id) === typeId)
+    );
+    if (sameBoardPiece) return sameBoardPiece;
+  }
+
+  // Failing that, any piece of the same type will have the same definition.
+  if (typeId != null) {
+    for (const pool of pools) {
+      const sameType = pool.find((p) => String(p.piece_id) === typeId);
+      if (sameType) return sameType;
+    }
+  }
+  return null;
+};
+
+export const replayToMove = (initialPieces, moveHistory, targetIndex, definitionPieces = null) => {
   const pieces = JSON.parse(JSON.stringify(initialPieces));
 
   for (let i = 0; i <= targetIndex && i < moveHistory.length; i++) {
@@ -1203,9 +1269,14 @@ export const replayToMove = (initialPieces, moveHistory, targetIndex) => {
       if (promotedPiece) {
         // Use embedded promoteToPiece data if present; otherwise find a
         // template piece with matching piece_id from the current board.
-        const template = move.promoteToPiece || pieces.find(p => p.piece_id === move.promoteToPieceId);
+        const template = move.promoteToPiece
+          || findPromotionTemplate(move, move.pieceId, move.promoteToPieceId, definitionPieces, pieces);
         if (template) {
+          applyPromotionDefinition(promotedPiece, template);
+          // The record's own labels win over the template's, since they name
+          // exactly what this piece became.
           if (template.piece_id != null) promotedPiece.piece_id = template.piece_id;
+          if (move.promoteToPieceId != null) promotedPiece.piece_id = move.promoteToPieceId;
           if (template.piece_name) promotedPiece.piece_name = template.piece_name;
           if (template.image_url) {
             promotedPiece.image_url = template.image_url;
@@ -1262,6 +1333,15 @@ export const replayToMove = (initialPieces, moveHistory, targetIndex) => {
     // the move it promoted (so the replay board shows the new piece for
     // every position from this move forward).
     if (movingPiece && move.promotion) {
+      /*
+       * Take the whole definition, not just the labels - otherwise the piece
+       * keeps moving like whatever it was before it promoted.
+       */
+      const template = findPromotionTemplate(
+        move.promotion, move.pieceId, move.promotion.piece_id, definitionPieces, pieces
+      );
+      if (template) applyPromotionDefinition(movingPiece, template);
+
       if (move.promotion.piece_id != null) movingPiece.piece_id = move.promotion.piece_id;
       if (move.promotion.piece_name) movingPiece.piece_name = move.promotion.piece_name;
       if (move.promotion.image_url) {

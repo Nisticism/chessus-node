@@ -14347,11 +14347,29 @@ function attachPromotionToLastMove(gameState, promotedPiece, fallbackPieceId) {
     console.warn(`[promotion-stamp] Could not find move for pieceId=${targetId}; stamping last move (pieceId=${targetMove.pieceId})`);
   }
 
+  /*
+   * The labels AND the definition. Without the definition a replay has no way
+   * to know how the promoted piece moves - it kept the pre-promotion pattern,
+   * so a promoted pawn showed a queen's picture and a pawn's moves. The replay
+   * can infer it from a later board state for older games, but a move record
+   * that carries its own answer does not depend on the piece surviving to the
+   * end of the game.
+   *
+   * Position and ownership are deliberately left out: they belong to the piece
+   * on the board, not to the type it became.
+   */
+  const definition = { ...promotedPiece };
+  for (const key of ['id', 'x', 'y', 'player_id', 'team', 'player', 'player_number',
+    'is_neutral', 'hasMoved', 'has_moved', 'current_hp']) {
+    delete definition[key];
+  }
+
   targetMove.promotion = {
     piece_id: promotedPiece.piece_id,
     piece_name: promotedPiece.piece_name,
     image_url: promotedPiece.image_url || promotedPiece.image || null,
     image_location: promotedPiece.image_location || null,
+    definition,
   };
 }
 
