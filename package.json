@@ -13,6 +13,7 @@
     "backend": "nodemon server/index.js",
     "build:rust": "node scripts/build-rust.js",
     "dev": "concurrently \"npm run backend\" \"npm run frontend\"",
+    "stop": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/stop-servers.ps1",
     "start:all": "concurrently \"npm run backend\" \"npm run frontend\""
   },
   "engines": {
