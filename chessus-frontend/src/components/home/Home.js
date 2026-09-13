@@ -510,7 +510,18 @@ const Home = () => {
                     </Link>
                   </div>
                   <div className={styles["popular-game-name"]}>
-                    {game.game_name || game.name || `Game ${index + 1}`}
+                    {/* The NAME goes to the game; the card around it still
+                        previews. stopPropagation so one click does one thing -
+                        without it the board would swap underneath a person on
+                        their way to another page. */}
+                    <Link
+                      to={`/games/${game.id}`}
+                      className={styles["popular-game-name-link"]}
+                      onClick={(e) => e.stopPropagation()}
+                      title={`About ${game.game_name || 'this game'}`}
+                    >
+                      {game.game_name || game.name || `Game ${index + 1}`}
+                    </Link>
                   </div>
                   <div className={styles["popular-game-meta"]}>
                     {game.board_width}×{game.board_height} board
