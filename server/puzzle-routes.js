@@ -39,7 +39,7 @@ const UPLOADS_BASE = process.env.UPLOADS_DIR
   ? require('path').resolve(process.env.UPLOADS_DIR)
   : require('path').join(__dirname, '../uploads');
 const { optionalDiscord } = require('./discord-auth');
-const { recordDiscordAttempt } = require('./discord-routes');
+const { recordDiscordAttempt, bumpStreak, linkedPlayerFor } = require('./discord-routes');
 const {
   createDailyPuzzle, DAILY_REQUIREMENTS, DAILY_DISCRETION,
 } = require('./daily-puzzle');
@@ -1607,16 +1607,37 @@ function registerPuzzleRoutes(app, {
        * account still gets the streak.
        */
       let discordProgress = null;
-      if (discordId && terminal) {
+      if (terminal) {
         try {
           const date = dailyPuzzle.todayKey();
           const todayRow = await dailyPuzzle.forDate(date);
-          discordProgress = await recordDiscordAttempt(db_pool, req.discord, {
+          const opts = {
             solved,
             isDaily: Number(todayRow?.puzzle_id) === Number(puzzle.id),
             date,
             yesterday: dailyPuzzle.addDays(date, -1),
-          });
+          };
+
+          if (discordId) {
+            discordProgress = await recordDiscordAttempt(db_pool, req.discord, opts);
+          } else if (userId) {
+            /*
+             * A solve on the WEBSITE by somebody whose account is linked.
+             *
+             * Once linked, the streak stops being a fact about Discord and
+             * becomes a fact about the person - so turning up counts wherever
+             * they turned up. Somebody who solves on their phone in the morning
+             * should not lose a run because they were not in Discord that day.
+             */
+            const linked = await linkedPlayerFor(db_pool, userId);
+            if (linked) {
+              discordProgress = await bumpStreak(db_pool, {
+                discordId: linked.discord_user_id,
+                username: linked.username,
+                avatar: linked.avatar,
+              }, opts);
+            }
+          }
         } catch (e) {
           // A streak is a nicety. Losing it must not lose the solve, which is
           // already written by this point.

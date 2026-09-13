@@ -45,6 +45,21 @@ const { createDailyPuzzle } = require('./daily-puzzle');
  */
 async function recordDiscordAttempt(db_pool, discord, { solved, isDaily, date, yesterday }) {
   if (!discord?.id) return null;
+  return bumpStreak(db_pool, { discordId: discord.id, username: discord.username, avatar: discord.avatar },
+    { solved, isDaily, date, yesterday });
+}
+
+/**
+ * Move a player's streak record on, however they arrived.
+ *
+ * Split out from recordDiscordAttempt because once an account is LINKED the
+ * streak stops being a fact about Discord and becomes a fact about the person:
+ * solving on the website counts towards it too. Same rule either way - the
+ * daily puzzle, once a day, consecutive days.
+ */
+async function bumpStreak(db_pool, who, { solved, isDaily, date, yesterday }) {
+  const { discordId, username = null, avatar = null } = who;
+  if (!discordId) return null;
 
   await db_pool.query(
     `INSERT INTO discord_players (discord_user_id, username, avatar, total_attempts)
@@ -53,7 +68,7 @@ async function recordDiscordAttempt(db_pool, discord, { solved, isDaily, date, y
        username = VALUES(username),
        avatar = VALUES(avatar),
        total_attempts = total_attempts + 1`,
-    [discord.id, discord.username, discord.avatar]
+    [discordId, username, avatar]
   );
 
   if (solved) {
@@ -68,7 +83,7 @@ async function recordDiscordAttempt(db_pool, discord, { solved, isDaily, date, y
       `SELECT current_streak, best_streak,
               DATE_FORMAT(last_solved_date, '%Y-%m-%d') AS last_solved_date
        FROM discord_players WHERE discord_user_id = ?`,
-      [discord.id]
+      [discordId]
     );
 
     if (isDaily && row?.last_solved_date !== date) {
@@ -81,13 +96,13 @@ async function recordDiscordAttempt(db_pool, discord, { solved, isDaily, date, y
          SET current_streak = ?, best_streak = GREATEST(best_streak, ?),
              last_solved_date = ?, total_solved = total_solved + 1
          WHERE discord_user_id = ?`,
-        [streak, streak, date, discord.id]
+        [streak, streak, date, discordId]
       );
     } else if (!isDaily) {
       // Counts towards the total, never towards the streak.
       await db_pool.query(
         'UPDATE discord_players SET total_solved = total_solved + 1 WHERE discord_user_id = ?',
-        [discord.id]
+        [discordId]
       );
     }
   }
@@ -96,9 +111,25 @@ async function recordDiscordAttempt(db_pool, discord, { solved, isDaily, date, y
     `SELECT current_streak, best_streak, total_solved, total_attempts,
             DATE_FORMAT(last_solved_date, '%Y-%m-%d') AS last_solved_date
      FROM discord_players WHERE discord_user_id = ?`,
-    [discord.id]
+    [discordId]
   );
   return after || null;
+}
+
+/**
+ * The Discord player linked to a GridGrove account, if any.
+ *
+ * This is what lets a solve on the WEBSITE move a Discord streak: the solve
+ * endpoint knows the user id, and asks here whether that user is somebody with
+ * a streak to move.
+ */
+async function linkedPlayerFor(db_pool, userId) {
+  if (!userId) return null;
+  const [[row]] = await db_pool.query(
+    'SELECT discord_user_id, username, avatar FROM discord_players WHERE user_id = ? LIMIT 1',
+    [userId]
+  ).catch(() => [[null]]);
+  return row || null;
 }
 
 function registerDiscordRoutes(app, { db_pool }) {
@@ -184,6 +215,53 @@ function registerDiscordRoutes(app, { db_pool }) {
   });
 
   /*
+   * Step one of linking: the activity asks for a code.
+   *
+   * Authenticated by the Discord token, so the code can only ever be issued for
+   * an id Discord itself vouched for. That is the fact the code carries; the
+   * website supplies the other half from its own session.
+   */
+  app.post('/api/discord/link-code', optionalDiscord, async (req, res) => {
+    try {
+      if (!req.discord) return res.status(401).send({ message: 'Sign in with Discord first' });
+
+      const [[existing]] = await db_pool.query(
+        'SELECT user_id FROM discord_players WHERE discord_user_id = ? LIMIT 1',
+        [req.discord.id]
+      );
+      if (existing?.user_id) {
+        return res.status(409).send({ message: 'This Discord account is already linked.' });
+      }
+
+      /*
+       * One live code per Discord id. Asking again replaces the old one rather
+       * than accumulating valid codes, so a code read off a screen an hour ago
+       * cannot still be used.
+       */
+      await db_pool.query(
+        'UPDATE discord_link_codes SET used_at = NOW() WHERE discord_user_id = ? AND used_at IS NULL',
+        [req.discord.id]
+      );
+
+      // No O/0 or I/1: this is read off one screen and typed into another.
+      const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+      const bytes = require('crypto').randomBytes(6);
+      const code = [...bytes].map((b) => ALPHABET[b % ALPHABET.length]).join('');
+
+      await db_pool.query(
+        `INSERT INTO discord_link_codes (code, discord_user_id, expires_at)
+         VALUES (?,?, DATE_ADD(NOW(), INTERVAL 10 MINUTE))`,
+        [code, req.discord.id]
+      );
+
+      res.json({ code, expiresInMinutes: 10 });
+    } catch (err) {
+      console.error('POST /api/discord/link-code:', err);
+      res.status(500).send({ message: 'Could not create a link code' });
+    }
+  });
+
+  /*
    * The streak board.
    *
    * Public, because it is a scoreboard, and it only ever carries what Discord
@@ -210,4 +288,4 @@ function registerDiscordRoutes(app, { db_pool }) {
   });
 }
 
-module.exports = { registerDiscordRoutes, recordDiscordAttempt };
+module.exports = { registerDiscordRoutes, recordDiscordAttempt, bumpStreak, linkedPlayerFor };

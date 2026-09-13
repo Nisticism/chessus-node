@@ -10,6 +10,7 @@ import axios from "axios";
 import API_URL from "../../global/global";
 import BioSection from "../biosection/BioSection";
 import DonorBadge from "../DonorBadge/DonorBadge";
+import DiscordLinkPanel from "../discord/DiscordLinkPanel";
 import MatchHistory from "../matchhistory/MatchHistory";
 import OngoingGames from "../ongoinggames/OngoingGames";
 import { parseServerDate } from "../../helpers/date-formatter";
@@ -709,6 +710,11 @@ const PlayerPage = (props) => {
                   </div>
                 )}
               </div>
+              {/* Only on your own profile: linking is not something anyone
+                  should be able to start from somebody else's page. */}
+              {currentUser && playerPageUser && currentUser.id === playerPageUser.id && (
+                <DiscordLinkPanel />
+              )}
               <div className={styles["profile-stats"]}>
                 <div className={styles["elo-display"]}>
                   <div className={styles["elo-label"]}>ELO Rating</div>

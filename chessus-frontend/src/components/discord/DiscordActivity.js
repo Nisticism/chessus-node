@@ -91,6 +91,8 @@ export default function DiscordActivity() {
    */
   const [found, setFound] = useState([]);
   const [attempts, setAttempts] = useState(0);
+  // The one-time code for joining this Discord id to a GridGrove account.
+  const [linkCode, setLinkCode] = useState(null);
 
   const boardRef = useRef(null);
   const hintCache = useRef(new Map());
@@ -412,6 +414,24 @@ export default function DiscordActivity() {
     );
   }, [bySquare, hints, drag]);
 
+  /*
+   * Ask for a link code. Nothing is linked by pressing this - it hands back six
+   * characters to type on the website, where the session proves which account
+   * they belong to. See server/index.js, /api/account/link-discord.
+   */
+  const requestLinkCode = useCallback(async () => {
+    try {
+      const { data } = await axios.post(`${API_URL}discord/link-code`, {}, { headers: discordHeaders });
+      setLinkCode(data.code);
+    } catch (err) {
+      setLinkCode(null);
+      setVerdict({
+        status: 'error',
+        text: err?.response?.data?.message || 'Could not create a link code.',
+      });
+    }
+  }, [discordHeaders]);
+
   const dragSrc = drag ? imageFor(board?.[drag.fromKey]) : null;
   const player = progress?.player || null;
 
@@ -486,6 +506,23 @@ export default function DiscordActivity() {
             </button>
           )}
         </p>
+      )}
+
+      {/* Only offered to somebody Discord has identified: there is nothing to
+          link for an anonymous player, and nothing to link it to once linked. */}
+      {player && !player.linked_username && (
+        <div className={styles["link-row"]}>
+          {linkCode ? (
+            <p className={styles["muted"]}>
+              On GridGrove, open your account page and enter{' '}
+              <strong className={styles["code"]}>{linkCode}</strong> within 10 minutes.
+            </p>
+          ) : (
+            <button type="button" className={styles["link-btn"]} onClick={requestLinkCode}>
+              Link a GridGrove account
+            </button>
+          )}
+        </div>
       )}
 
       <footer className={styles["foot"]}>

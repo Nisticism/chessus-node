@@ -148,6 +148,19 @@
 .error    { color: #e8a44c; }
 .handoff  { color: #b5bac1; }
 
+/* The link offer sits above the footer, not in it: it is an invitation rather
+   than a status line, and it disappears for good once taken. */
+.link-row {
+  text-align: center;
+}
+
+.code {
+  font-family: var(--mono, ui-monospace, Consolas, monospace);
+  font-size: 1rem;
+  letter-spacing: 0.14em;
+  color: #f0b132;
+}
+
 .foot {
   margin-top: auto;
   padding-top: 8px;

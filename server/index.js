@@ -7296,6 +7296,134 @@ require('./puzzle-routes').registerPuzzleRoutes(app, {
  */
 require('./discord-routes').registerDiscordRoutes(app, { db_pool });
 
+/*
+ * Linking a Discord id to this account.
+ *
+ * These live here rather than in discord-routes.js because they are
+ * authenticated as the USER, with an ordinary session, and a Discord token has
+ * nothing to do with them. The code issued in the activity is the only thing
+ * crossing over, and all it asserts is "the person holding this Discord id was
+ * signed in to Discord ten minutes ago". The session asserts the rest.
+ */
+app.post('/api/account/link-discord', authenticateToken, async (req, res) => {
+  try {
+    const raw = String(req.body?.code || '').trim().toUpperCase();
+    if (!/^[A-Z0-9]{4,12}$/.test(raw)) {
+      return res.status(400).send({ message: 'That does not look like a link code.' });
+    }
+
+    const [[row]] = await db_pool.query(
+      `SELECT code, discord_user_id, used_at, expires_at < NOW() AS expired
+       FROM discord_link_codes WHERE code = ? LIMIT 1`,
+      [raw]
+    );
+
+    /*
+     * Consumed on sight, whatever happens next. A code that survived a failed
+     * redemption could be retried, and retrying is how a guessed code becomes a
+     * found one.
+     */
+    if (row) {
+      await db_pool.query('UPDATE discord_link_codes SET used_at = NOW() WHERE code = ?', [raw]);
+    }
+
+    if (!row || row.used_at || Number(row.expired)) {
+      // One message for all three. Distinguishing "wrong" from "expired" tells
+      // a guesser which codes exist.
+      return res.status(400).send({ message: 'That code is not valid any more. Generate a new one.' });
+    }
+
+    const [[alreadyThisUser]] = await db_pool.query(
+      'SELECT discord_user_id FROM discord_players WHERE user_id = ? LIMIT 1', [req.user.id]
+    );
+    if (alreadyThisUser) {
+      return res.status(409).send({
+        message: 'This account is already linked to a Discord account. Unlink it first.',
+      });
+    }
+
+    /*
+     * Claim the Discord record, and carry the streak over in the same
+     * statement. `user_id IS NULL` in the WHERE is what makes the carry-over
+     * happen exactly once: a second attempt matches nothing.
+     *
+     * Carrying it over is deliberate - somebody who played for three weeks
+     * signed out earned that streak, and taking it away would punish exactly
+     * the behaviour we want. Once, though: repeatable merging is how you
+     * manufacture a streak out of several Discord accounts.
+     */
+    const [result] = await db_pool.query(
+      'UPDATE discord_players SET user_id = ? WHERE discord_user_id = ? AND user_id IS NULL',
+      [req.user.id, row.discord_user_id]
+    );
+
+    if (!result.affectedRows) {
+      /*
+       * No row yet - they got a code without ever finishing a puzzle. Create
+       * one so the link exists; there is no streak to carry.
+       */
+      await db_pool.query(
+        `INSERT INTO discord_players (discord_user_id, user_id) VALUES (?,?)
+         ON DUPLICATE KEY UPDATE user_id = COALESCE(user_id, VALUES(user_id))`,
+        [row.discord_user_id, req.user.id]
+      );
+    }
+
+    const [[player]] = await db_pool.query(
+      `SELECT discord_user_id, username, current_streak, best_streak, total_solved
+       FROM discord_players WHERE discord_user_id = ? LIMIT 1`,
+      [row.discord_user_id]
+    );
+
+    /*
+     * Past solves are NOT retroactively rated. A rating means "played under
+     * rating conditions", and a solve made with nothing at stake was not one -
+     * back-rating them would let somebody practise a puzzle signed out and bank
+     * the win on linking. They still count towards totals.
+     */
+    res.json({
+      message: 'Discord account linked.',
+      player,
+      carriedStreak: Number(player?.current_streak) || 0,
+    });
+  } catch (err) {
+    if (err?.code === 'ER_DUP_ENTRY') {
+      return res.status(409).send({ message: 'That Discord account is linked to somebody else.' });
+    }
+    console.error('POST /api/account/link-discord:', err);
+    res.status(500).send({ message: 'Could not link your Discord account' });
+  }
+});
+
+/*
+ * Unlinking. As easy as linking, and it leaves the streak on the Discord
+ * record - this is "stop connecting these", not "delete my history".
+ */
+app.delete('/api/account/link-discord', authenticateToken, async (req, res) => {
+  try {
+    await db_pool.query('UPDATE discord_players SET user_id = NULL WHERE user_id = ?', [req.user.id]);
+    res.json({ message: 'Discord account unlinked.' });
+  } catch (err) {
+    console.error('DELETE /api/account/link-discord:', err);
+    res.status(500).send({ message: 'Could not unlink your Discord account' });
+  }
+});
+
+/** Which Discord account, if any, this one is linked to. */
+app.get('/api/account/link-discord', authenticateToken, async (req, res) => {
+  try {
+    const [[row]] = await db_pool.query(
+      `SELECT discord_user_id, username, avatar, current_streak, best_streak, total_solved
+       FROM discord_players WHERE user_id = ? LIMIT 1`,
+      [req.user.id]
+    ).catch(() => [[null]]);
+    res.json({ linked: row || null });
+  } catch (err) {
+    console.error('GET /api/account/link-discord:', err);
+    res.status(500).send({ message: 'Could not load your Discord link' });
+  }
+});
+
 const posts = [{
   username: 'NewAccount',
   title: "Post 1"

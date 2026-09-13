@@ -1,0 +1,87 @@
+/* The Discord link panel on the account page.
+   Takes the site's own theme variables rather than Discord's colours - unlike
+   the activity, this renders inside GridGrove and should look like it. */
+.panel {
+  background: var(--panel-card-bg, #1b1f2a);
+  border: 2px solid var(--panel-card-border, #2a3040);
+  border-radius: 8px;
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.title {
+  margin: 0;
+  font-size: 1.05rem;
+  color: var(--accent-vivid, var(--accent-primary-text, #5fd0a4));
+}
+
+.body {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--text-dim, #9aa4b2);
+  line-height: 1.5;
+}
+
+.streak {
+  margin: 0;
+  font-size: 0.95rem;
+  color: var(--text-main, #e7eae7);
+}
+
+.muted { color: var(--text-dim, #9aa4b2); font-weight: 400; }
+
+.form { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* Monospace and wide-tracked: this is a code being transcribed from another
+   screen, so every character has to be individually legible. */
+.input {
+  flex: 1 1 140px;
+  min-width: 0;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 1rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--panel-card-border, #2a3040);
+  background: var(--input-bg, #11141c);
+  color: var(--text-main, #e7eae7);
+}
+
+.input:focus-visible {
+  outline: 2px solid var(--accent-vivid, #5fd0a4);
+  outline-offset: 1px;
+}
+
+.primary {
+  padding: 8px 16px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--accent-vivid, #5fd0a4);
+  color: #0b1410;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.primary:disabled { opacity: 0.5; cursor: default; }
+
+.ghost {
+  align-self: flex-start;
+  padding: 6px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--panel-card-border, #2a3040);
+  background: none;
+  color: var(--text-dim, #9aa4b2);
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.ghost:hover { color: var(--text-main, #e7eae7); }
+
+.message { margin: 0; font-size: 0.88rem; }
+.ok  { color: #5fd0a4; }
+.bad { color: #e8a44c; }

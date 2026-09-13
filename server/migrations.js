@@ -818,6 +818,33 @@ tableMigrations.push(
       INDEX idx_snapshot_game (game_type_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
     description: "Create puzzle_rule_snapshots (the frozen rules a puzzle was built under)"
+  },
+  {
+    table: 'discord_link_codes',
+    sql: `CREATE TABLE IF NOT EXISTS discord_link_codes (
+      -- Short enough to read off one screen and type into another, which is
+      -- exactly what happens to it. Unambiguous alphabet, no O/0 or I/1.
+      code VARCHAR(12) NOT NULL PRIMARY KEY,
+
+      -- The Discord id this code will link, established BEFORE the code was
+      -- issued: Discord confirmed the token belonged to it. The code carries
+      -- that fact across to the website, where the session establishes the
+      -- other half.
+      discord_user_id VARCHAR(32) NOT NULL,
+
+      -- Ten minutes. It is a hand-off between two windows the same person has
+      -- open, not a credential.
+      expires_at DATETIME NOT NULL,
+      -- Set the moment it is redeemed, successfully or not, so a code cannot be
+      -- retried or reused.
+      used_at DATETIME NULL,
+
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+      INDEX idx_link_code_discord (discord_user_id),
+      INDEX idx_link_code_expiry (expires_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+    description: "Create discord_link_codes (the one-time code that joins a Discord id to an account)"
   }
 );
 
@@ -5178,6 +5205,28 @@ const runMigrations = async () => {
    * redeploy adds only what is genuinely new and never duplicates a game. A
    * puzzle the owner has since edited or deleted is left alone.
    */
+  /*
+   * One GridGrove account links to at most one Discord id.
+   *
+   * A unique index rather than a check in the linking code, because the rule
+   * has to hold under a race: two link attempts arriving together would both
+   * find user_id free and both write. NULL is not unique in MySQL, so the many
+   * unlinked players are unaffected.
+   */
+  try {
+    const [existing] = await db_pool.query(
+      "SHOW INDEX FROM discord_players WHERE Key_name = 'uniq_discord_user'"
+    ).catch(() => [[]]);
+    if (!existing.length) {
+      await runMigration(
+        'ALTER TABLE discord_players ADD UNIQUE INDEX uniq_discord_user (user_id)',
+        'One GridGrove account links to at most one Discord id'
+      );
+    }
+  } catch (err) {
+    console.error('Error adding the unique Discord link index:', err.message);
+  }
+
   /*
    * Stop a deleted game taking its puzzles with it.
    *
