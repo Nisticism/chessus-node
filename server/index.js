@@ -15900,6 +15900,105 @@ app.put("/api/admin/site-settings/:key", authenticateAdmin1, async (req, res) =>
   }
 });
 
+/*
+ * The platform account - GridGrove's own profile.
+ *
+ * It is a normal users row that publishes the site's own work: the generated
+ * puzzles behind Puzzle of the Day, and anything else made for everyone rather
+ * than by one player. Nobody can log into it, so its bio and picture cannot be
+ * edited the way every other profile is, through the account page.
+ *
+ * OWNER ONLY, not admin. Editing it is speaking as the site to every visitor,
+ * which is a different thing from the moderation powers an admin is trusted
+ * with - so this uses an explicit role check rather than authenticateAdmin1,
+ * which admits admins too.
+ */
+const PLATFORM_ACCOUNT_USERNAME = 'GridGrove';
+
+const requireOwner = (req, res) => {
+  const role = (req.user?.role || '').toLowerCase();
+  if (role !== 'owner') {
+    res.status(403).json({ message: "Only the site owner can edit the platform account." });
+    return false;
+  }
+  return true;
+};
+
+app.get("/api/admin/platform-account", authenticateToken, async (req, res) => {
+  try {
+    if (!requireOwner(req, res)) return;
+    const [[user]] = await db_pool.query(
+      "SELECT id, username, bio, profile_picture FROM users WHERE username = ? LIMIT 1",
+      [PLATFORM_ACCOUNT_USERNAME]
+    );
+    if (!user) return res.status(404).json({ message: `No account named ${PLATFORM_ACCOUNT_USERNAME}.` });
+    res.json({ account: user });
+  } catch (err) {
+    console.error("Error loading the platform account:", err.message);
+    res.status(500).json({ message: "Failed to load the platform account" });
+  }
+});
+
+app.put("/api/admin/platform-account", authenticateToken, async (req, res) => {
+  try {
+    if (!requireOwner(req, res)) return;
+    const { bio, profile_picture } = req.body || {};
+
+    const updates = [];
+    const params = [];
+
+    if (bio !== undefined) {
+      const v = String(bio || '').trim();
+      // Matches the column, so a bio that is too long is refused here rather
+      // than silently truncated by MySQL.
+      if (v.length > 500) {
+        return res.status(400).json({ message: `The bio is ${v.length} characters; the limit is 500.` });
+      }
+      updates.push('bio = ?');
+      params.push(v || null);
+    }
+
+    if (profile_picture !== undefined) {
+      const v = String(profile_picture || '').trim();
+      if (v) {
+        /*
+         * A site-relative path and nothing else. The frontend renders this as
+         * ASSET_URL + the value, so an absolute URL would produce a broken
+         * src, and anything with ".." in it is trying to be something other
+         * than a path.
+         */
+        if (!v.startsWith('/') || v.startsWith('//') || v.includes('..') || /^[a-z]+:/i.test(v)) {
+          return res.status(400).json({
+            message: 'The picture must be a site-relative path, e.g. /logo512.png',
+          });
+        }
+        if (v.length > 255) {
+          return res.status(400).json({ message: 'That path is longer than 255 characters.' });
+        }
+      }
+      updates.push('profile_picture = ?');
+      params.push(v || null);
+    }
+
+    if (!updates.length) return res.status(400).json({ message: 'Nothing to update.' });
+
+    // Matched on the username, which is the only row this endpoint may ever
+    // touch - there is no id parameter to get wrong.
+    params.push(PLATFORM_ACCOUNT_USERNAME);
+    await db_pool.query(`UPDATE users SET ${updates.join(', ')} WHERE username = ?`, params);
+
+    const [[user]] = await db_pool.query(
+      "SELECT id, username, bio, profile_picture FROM users WHERE username = ? LIMIT 1",
+      [PLATFORM_ACCOUNT_USERNAME]
+    );
+    console.log(`[platform-account] ${req.user.username} updated ${updates.join(', ')}`);
+    res.json({ message: 'Platform account updated', account: user });
+  } catch (err) {
+    console.error("Error updating the platform account:", err.message);
+    res.status(500).json({ message: "Failed to update the platform account" });
+  }
+});
+
 // Owner-only: Save Twitch API credentials into site_settings.
 // Secrets are stored as plain text in the DB (same security boundary as .env).
 // Saving new credentials also invalidates the cached app token so the next

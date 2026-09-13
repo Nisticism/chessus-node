@@ -84,6 +84,15 @@ const AdminDashboard = () => {
   const [forumInviteDraft, setForumInviteDraft] = useState('');
   const [savingForumInvite, setSavingForumInvite] = useState(false);
   const [twitchClientIdDraft, setTwitchClientIdDraft] = useState('');
+  /*
+   * GridGrove's own profile. Nobody can log into that account, so its bio and
+   * picture have no other way in - the account page edits whoever is signed in.
+   */
+  const [platformAccount, setPlatformAccount] = useState(null);
+  const [platformBioDraft, setPlatformBioDraft] = useState('');
+  const [platformPicDraft, setPlatformPicDraft] = useState('');
+  const [platformSaving, setPlatformSaving] = useState(false);
+  const [platformMsg, setPlatformMsg] = useState(null);
   const [twitchClientSecretDraft, setTwitchClientSecretDraft] = useState('');
   const [savingTwitchCreds, setSavingTwitchCreds] = useState(false);
   // Game-session limits are edited as a draft and saved together. Saving on
@@ -3822,6 +3831,36 @@ const AdminDashboard = () => {
   }
 
   const userRole = currentUser.role?.toLowerCase();
+  const loadPlatformAccount = async () => {
+    try {
+      const { data } = await axios.get(`${API_URL}admin/platform-account`, { headers: authHeader() });
+      setPlatformAccount(data.account);
+      setPlatformBioDraft(data.account?.bio || '');
+      setPlatformPicDraft(data.account?.profile_picture || '');
+      setPlatformMsg(null);
+    } catch (err) {
+      setPlatformMsg({ tone: 'error', text: err?.response?.data?.message || 'Could not load the platform account.' });
+    }
+  };
+
+  const savePlatformAccount = async () => {
+    setPlatformSaving(true);
+    setPlatformMsg(null);
+    try {
+      const { data } = await axios.put(
+        `${API_URL}admin/platform-account`,
+        { bio: platformBioDraft, profile_picture: platformPicDraft },
+        { headers: authHeader() }
+      );
+      setPlatformAccount(data.account);
+      setPlatformMsg({ tone: 'ok', text: 'Saved.' });
+    } catch (err) {
+      setPlatformMsg({ tone: 'error', text: err?.response?.data?.message || 'Could not save.' });
+    } finally {
+      setPlatformSaving(false);
+    }
+  };
+
   if (userRole !== 'admin' && userRole !== 'owner') {
     return <Navigate to="/" state={{ message: "Admin access required" }} />;
   }
@@ -4088,6 +4127,87 @@ const AdminDashboard = () => {
 
                 {currentUser?.role?.toLowerCase() === 'owner' && (
                   <>
+                    {/* Owner only, and deliberately not admin: editing this is
+                        speaking as the site to every visitor, which is a
+                        different trust level from moderating. The server
+                        enforces it too - this block only decides what is
+                        rendered. */}
+                    <h3 style={{ marginTop: '2rem' }}>GridGrove Platform Account</h3>
+                    <p style={{ color: 'var(--text-secondary)', marginBottom: '1rem', fontSize: '0.9rem' }}>
+                      The profile the site publishes its own work under — the generated puzzles
+                      behind Puzzle of the Day, and anything made for everyone rather than by one
+                      player. Nobody can sign into it, so this is the only way to edit its profile.
+                    </p>
+
+                    {!platformAccount ? (
+                      <button className={styles["save-button"]} onClick={loadPlatformAccount}>
+                        Load account
+                      </button>
+                    ) : (
+                      <div className={styles["setting-textarea-row"]}>
+                        <div className={styles["setting-info"]}>
+                          <span className={styles["setting-label"]}>Bio</span>
+                          <span className={styles["setting-description"]}>
+                            {platformBioDraft.length}/500 characters.
+                          </span>
+                        </div>
+                        <textarea
+                          value={platformBioDraft}
+                          maxLength={500}
+                          rows={5}
+                          onChange={(e) => setPlatformBioDraft(e.target.value)}
+                          style={{ width: '100%', padding: '8px', background: 'var(--bg-dark)', border: '1px solid var(--panel-card-border)', borderRadius: '6px', color: 'var(--text-bright)', fontFamily: 'inherit', boxSizing: 'border-box' }}
+                        />
+
+                        <div className={styles["setting-info"]} style={{ marginTop: '1rem' }}>
+                          <span className={styles["setting-label"]}>Profile picture</span>
+                          <span className={styles["setting-description"]}>
+                            A site-relative path, e.g. <code>/logo512.png</code>. Files in the
+                            frontend's public folder are served from the root.
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                          {platformPicDraft && (
+                            <img
+                              src={`${ASSET_URL}${platformPicDraft}`}
+                              alt=""
+                              style={{ width: 56, height: 56, borderRadius: '50%', objectFit: 'cover', border: '1px solid var(--panel-card-border)', background: 'var(--bg-dark)' }}
+                              onError={(e) => { e.currentTarget.style.visibility = 'hidden'; }}
+                            />
+                          )}
+                          <input
+                            type="text"
+                            value={platformPicDraft}
+                            maxLength={255}
+                            placeholder="/logo512.png"
+                            onChange={(e) => setPlatformPicDraft(e.target.value)}
+                            style={{ flex: 1, padding: '8px', background: 'var(--bg-dark)', border: '1px solid var(--panel-card-border)', borderRadius: '6px', color: 'var(--text-bright)', fontFamily: 'inherit' }}
+                          />
+                        </div>
+
+                        {platformMsg && (
+                          <p style={{ marginTop: '0.75rem', color: platformMsg.tone === 'error' ? '#e85c5c' : '#5fd0a4' }}>
+                            {platformMsg.text}
+                          </p>
+                        )}
+
+                        <div style={{ display: 'flex', gap: '8px', marginTop: '1rem' }}>
+                          <button
+                            className={styles["save-button"]}
+                            disabled={platformSaving
+                              || (platformBioDraft === (platformAccount.bio || '')
+                                  && platformPicDraft === (platformAccount.profile_picture || ''))}
+                            onClick={savePlatformAccount}
+                          >
+                            {platformSaving ? 'Saving...' : 'Save profile'}
+                          </button>
+                          <button className={styles["save-button"]} onClick={loadPlatformAccount} disabled={platformSaving}>
+                            Reset
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
                     <h3 style={{ marginTop: '2rem' }}>Twitch Integration</h3>
                     <p style={{ color: 'var(--text-secondary)', marginBottom: '1rem', fontSize: '0.9rem' }}>
                       Enter your Twitch application credentials to enable live stream detection on the Streams page.
