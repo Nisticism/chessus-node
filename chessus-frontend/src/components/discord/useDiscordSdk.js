@@ -62,11 +62,12 @@ export default function useDiscordSdk() {
          *
          *   identify              a user id and display name, which is all a
          *                         streak needs.
-         *   rpc.activities.write  lets the activity describe ITSELF - see
-         *                         setActivity in DiscordActivity.js. Without
-         *                         it Discord falls back to a generic "Game
-         *                         Invitation / Game ended. Start a new one?"
-         *                         card, which makes no sense for a puzzle.
+         *   rpc.activities.write  lets the activity set the player's PRESENCE
+         *                         - see setActivity in DiscordActivity.js, and
+         *                         read the note there about what it does not
+         *                         do. Optional in practice: dismissing the
+         *                         prompt costs presence and a streak, never
+         *                         the puzzle.
          *
          * Anything beyond these would mean asking a player to grant more
          * access than solving a puzzle warrants.

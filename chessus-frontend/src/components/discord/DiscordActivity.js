@@ -191,16 +191,22 @@ export default function DiscordActivity() {
   const puzzle = daily?.puzzle || null;
 
   /*
-   * Tell Discord what this activity IS.
+   * Tell Discord what this player is doing, for their PROFILE.
    *
-   * Without this, the card Discord posts when somebody launches the activity
-   * reads "Game Invitation - Game ended. Start a new one?", which is the
-   * generic fallback for an activity that never described itself. It makes no
-   * sense for a puzzle, and it is the reason Wordle's card looks considered and
-   * ours did not: Wordle sets its own presence ("Wordle No. 1911") and gets the
-   * proper card, with Discord's own Play button, for free.
+   * This is what makes their status read "Playing GridGrove - Mate in one" with
+   * the game and goal underneath, rather than a bare app name.
    *
-   * Needs the rpc.activities.write scope, requested in useDiscordSdk.
+   * It does NOT change the "Game Invitation - Game ended. Start a new one?"
+   * card posted in the channel, which I first thought it would. That card is
+   * the follow-up message Discord itself sends because the app's Entry Point
+   * command uses the DISCORD_LAUNCH_ACTIVITY handler, where Discord answers the
+   * interaction "without coordinating with the app" - so nothing the app says
+   * about itself can reach it. Changing that card means switching the Entry
+   * Point command to APP_HANDLER and receiving the interaction ourselves.
+   *
+   * Needs the rpc.activities.write scope, requested in useDiscordSdk. A player
+   * who dismisses the authorisation prompt gets no presence and the whole
+   * puzzle, which is the right way round.
    */
   useEffect(() => {
     if (!discord.sdk || !puzzle) return;
