@@ -38,6 +38,7 @@ const CommunityHub = lazy(() => import("./containers/communityhub/CommunityHub")
 const Leaderboard = lazy(() => import("./components/leaderboard/Leaderboard"));
 const Play = lazy(() => import("./containers/play/Play"));
 const PlayHub = lazy(() => import("./containers/play/PlayHub"));
+const PuzzleList = lazy(() => import("./containers/puzzles/PuzzleList"));
 const Tournaments = lazy(() => import("./containers/tournaments/Tournaments"));
 const TournamentDetails = lazy(() => import("./containers/tournaments/TournamentDetails"));
 const LiveGame = lazy(() => import("./components/livegame/LiveGame"));
@@ -122,6 +123,7 @@ function App() {
       '/create/games': 'Browse Games | GridGrove',
       '/play': 'Play | GridGrove',
       '/play/games': 'Play Games | GridGrove',
+      '/play/puzzles': 'Puzzles | GridGrove',
       '/play/tournaments': 'Tournaments | GridGrove',
       '/sandbox': 'Sandbox | GridGrove',
       '/chess-original': 'Chess (Original) | GridGrove',
@@ -254,6 +256,7 @@ function App() {
             <Route exact path="/tutorial/chess" element={<Tutorial />} />
             <Route exact path="/play" element={<PlayHub />} />
             <Route exact path="/play/games" element={<Play />} />
+            <Route exact path="/play/puzzles" element={<PuzzleList />} />
             <Route exact path="/play/tournaments" element={<Tournaments />} />
             <Route exact path="/play/tournaments/:tournamentId" element={<TournamentDetails />} />
             <Route exact path="/play/:gameId" element={<LiveGame />} />

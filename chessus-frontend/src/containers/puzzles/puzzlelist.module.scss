@@ -1,0 +1,279 @@
+/*
+ * The puzzle shelf.
+ *
+ * Deliberately the same furniture as the forums browse page - the search box,
+ * the sort pills, the filter select - because they are the same controls doing
+ * the same job, and a second visual language for "filter a list" is a cost with
+ * no return.
+ */
+
+.page-title {
+  margin: 0 0 6px 0;
+  color: var(--text-heading);
+}
+
+.page-sub {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+  max-width: 62ch;
+}
+
+/* ------------------------------------------------------------- filters -- */
+.filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+  margin: 20px 0 12px 0;
+}
+
+.search-wrapper {
+  position: relative;
+  flex: 1 1 260px;
+  min-width: 0;
+}
+
+.search-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  translate: 0 -50%;
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.search-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 34px 10px 36px;
+  background: var(--bg-dark);
+  border: 1px solid var(--panel-card-border);
+  border-radius: 8px;
+  color: var(--text-bright);
+  font-family: inherit;
+  font-size: 0.95rem;
+
+  &:focus {
+    outline: none;
+    border-color: var(--accent-primary-text);
+  }
+}
+
+.search-clear {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  translate: 0 -50%;
+  border: none;
+  background: none;
+  color: var(--text-dim);
+  font-size: 1.2rem;
+  line-height: 1;
+  cursor: pointer;
+
+  &:hover { color: var(--text-bright); }
+}
+
+.filter-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+}
+
+.filter-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.filter-label {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.filter-select {
+  padding: 8px 10px;
+  background: var(--bg-dark);
+  border: 1px solid var(--panel-card-border);
+  border-radius: 8px;
+  color: var(--text-bright);
+  font-family: inherit;
+  font-size: 0.9rem;
+  /* A game name can be long; the row must not stretch because of one. */
+  max-width: 220px;
+}
+
+.sort-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.sort-pill {
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--panel-card-border);
+  background: var(--bg-dark);
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+
+  &:hover { color: var(--text-bright); }
+}
+
+.sort-pill-active {
+  composes: sort-pill;
+  color: var(--bg-dark);
+  background: var(--gold-header);
+  border-color: var(--gold-header);
+  font-weight: 600;
+}
+
+.count-line {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 16px 0;
+  color: var(--text-dim);
+  font-size: 0.9rem;
+}
+
+.clear-all {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--text-info);
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+
+  &:hover { color: var(--accent-primary-text); }
+}
+
+.empty {
+  padding: 32px 0;
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+/* --------------------------------------------------------------- cards -- */
+.grid {
+  display: grid;
+  /* auto-fill rather than auto-fit: with one or two results, auto-fit would
+     stretch a card across the whole page. */
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 14px;
+  margin-bottom: 28px;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  background: linear-gradient(135deg, var(--panel-bg-start) 0%, var(--panel-bg-end) 100%);
+  border: 1px solid var(--panel-card-border);
+  border-radius: 10px;
+  transition: border-color 0.2s ease, transform 0.2s ease;
+
+  &:hover {
+    border-color: rgba(var(--gold-rgb, 212, 175, 55), 0.6);
+    transform: translateY(-2px);
+  }
+}
+
+/* The whole title block opens the puzzle. A button rather than a link wrapping
+   the card, because the card also holds links of its own and nesting them is
+   invalid and unclickable. */
+.card-open {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 0;
+  border: none;
+  background: none;
+  text-align: left;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.card-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text-heading);
+  line-height: 1.3;
+}
+
+.card-goal {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+}
+
+.chip {
+  display: inline-block;
+  max-width: 100%;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: rgba(var(--panel-card-border-rgb), 0.35);
+  border: 1px solid rgba(var(--panel-card-border-rgb), 0.82);
+  color: var(--text-info);
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-decoration: none;
+  /* Game names on this site get long and emoji-laden. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  &:hover { color: var(--accent-primary-text); }
+}
+
+.date {
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.card-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(var(--panel-card-border-rgb), 0.5);
+}
+
+.muted {
+  font-size: 0.78rem;
+  color: var(--text-dim);
+}
+
+.featured {
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  color: var(--bg-dark);
+  background: var(--gold-header);
+  white-space: nowrap;
+}
+
+@media (max-width: 600px) {
+  .filter-bar { gap: 12px; }
+  .filter-controls { width: 100%; }
+  .filter-select { max-width: 100%; flex: 1; }
+}

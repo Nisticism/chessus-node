@@ -10,6 +10,7 @@ export const NAV_MENUS = [
     path: "/play",
     items: [
       { label: "Open Games", path: "/play/games", icon: <FaChessPawn color="#cbd5e1" /> },
+      { label: "Puzzles", path: "/play/puzzles", icon: "🧩" },
       // Points at the game library rather than a Play-specific page: it is the
       // same list, and reaching it only through Create was the thing to fix.
       { label: "All Games", path: "/create/games", icon: "📚" },

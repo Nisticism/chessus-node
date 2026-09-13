@@ -217,6 +217,118 @@ function registerPuzzleRoutes(app, {
     }
   });
 
+  /*
+   * Every published puzzle on the site, across all games.
+   *
+   * The per-game list above answers "what else is there for THIS game", which is
+   * the right question once you are already on a game's page and the wrong one
+   * for somebody who just wants a puzzle. Until now that second question had no
+   * endpoint at all, and the home page's "Find puzzles" button pointed at the
+   * open-games lobby, which is not a shelf of puzzles by any reading.
+   *
+   * Same visibility rules as the per-game list - published, approved, and no
+   * solution in the payload. A browse response that carried solution_line would
+   * spoil every puzzle on it to anyone who opened the network tab.
+   */
+  app.get('/api/puzzles', async (req, res) => {
+    try {
+      const limit = Math.min(60, Math.max(1, parseInt(req.query.limit, 10) || 24));
+      const offset = Math.max(0, parseInt(req.query.offset, 10) || 0);
+      const gameTypeId = parseInt(req.query.gameTypeId, 10) || null;
+      const search = String(req.query.search || '').trim().slice(0, 80);
+
+      /*
+       * An allow-list rather than an interpolated column name, because this
+       * string comes from the query string and lands in an ORDER BY, which is
+       * the one place a parameter placeholder cannot go.
+       */
+      const SORTS = {
+        newest: 'p.published_at DESC, p.id DESC',
+        oldest: 'p.published_at ASC, p.id ASC',
+        popular: 'p.attempt_count DESC, p.published_at DESC',
+        hardest: 'p.rating IS NULL, p.rating DESC, p.published_at DESC',
+        easiest: 'p.rating IS NULL, p.rating ASC, p.published_at DESC',
+      };
+      const order = SORTS[req.query.sort] || SORTS.newest;
+
+      const where = ['p.is_draft = 0', "p.moderation_status = 'approved'"];
+      const params = [];
+      if (gameTypeId) { where.push('p.game_type_id = ?'); params.push(gameTypeId); }
+      if (search) {
+        // Title, the game's name, or the author - the three things somebody
+        // actually remembers a puzzle by.
+        where.push('(p.title LIKE ? OR gt.game_name LIKE ? OR u.username LIKE ?)');
+        const like = `%${search}%`;
+        params.push(like, like, like);
+      }
+      const whereSql = where.join(' AND ');
+
+      const [rows] = await db_pool.query(
+        `SELECT p.id, p.game_type_id, gt.game_name,
+                p.creator_id, u.username AS creator_username,
+                p.title, p.description, p.goal, p.goal_description,
+                p.side_to_move, p.solution_depth,
+                p.rating, p.rating_sample_count, p.hide_rating,
+                p.attempt_count, p.solve_count, p.published_at,
+                p.validation_status,
+                /*
+                 * The first day it was Puzzle of the Day, if it ever was. A
+                 * subquery rather than a join: a puzzle can be scheduled more
+                 * than once, and a join would return it once per appearance and
+                 * quietly break the paging.
+                 */
+                (SELECT MIN(d.puzzle_date) FROM daily_puzzles d
+                  WHERE d.puzzle_id = p.id AND d.puzzle_date <= CURDATE()) AS featured_on
+         FROM puzzles p
+         LEFT JOIN users u ON u.id = p.creator_id
+         LEFT JOIN game_types gt ON gt.id = p.game_type_id
+         WHERE ${whereSql}
+         ORDER BY ${order}
+         LIMIT ? OFFSET ?`,
+        [...params, limit, offset]
+      );
+
+      const [[{ total }]] = await db_pool.query(
+        `SELECT COUNT(*) AS total
+         FROM puzzles p
+         LEFT JOIN users u ON u.id = p.creator_id
+         LEFT JOIN game_types gt ON gt.id = p.game_type_id
+         WHERE ${whereSql}`,
+        params
+      );
+
+      res.json({
+        puzzles: rows.map((r) => publicPuzzle(r)),
+        total, limit, offset,
+      });
+    } catch (err) {
+      console.error('GET /api/puzzles:', err);
+      res.status(500).send({ message: 'Failed to load puzzles' });
+    }
+  });
+
+  /*
+   * The games that actually have a published puzzle, for the browse filter.
+   *
+   * Built from the puzzles rather than from the game list, so the dropdown can
+   * never offer a game that turns out to have nothing in it.
+   */
+  app.get('/api/puzzles/games', async (req, res) => {
+    try {
+      const [rows] = await db_pool.query(
+        `SELECT gt.id, gt.game_name, COUNT(*) AS puzzle_count
+         FROM puzzles p JOIN game_types gt ON gt.id = p.game_type_id
+         WHERE p.is_draft = 0 AND p.moderation_status = 'approved'
+         GROUP BY gt.id, gt.game_name
+         ORDER BY puzzle_count DESC, gt.game_name ASC`
+      );
+      res.json({ games: rows });
+    } catch (err) {
+      console.error('GET /api/puzzles/games:', err);
+      res.status(500).send({ message: 'Failed to load games' });
+    }
+  });
+
   // The creator's own puzzles, drafts included.
   app.get('/api/puzzles/mine', authenticateToken, async (req, res) => {
     try {

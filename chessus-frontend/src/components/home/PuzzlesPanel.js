@@ -581,10 +581,18 @@ const PuzzlesPanel = () => {
               <strong>Any game, any pieces.</strong> A puzzle can come from any game on
               the site, so finding the answer might depend on knowing the rules and the typical patterns of the game.
             </li>
+            <li>
+              <strong>Yours could be Puzzle of the Day.</strong> Publish it, press
+              &ldquo;Check puzzle&rdquo; and get a clean result with exactly one answer, and
+              leave the daily rotation switched on — it is on by default. The game it
+              belongs to has to be in the daily pool, which wants a board close to square
+              and at least three different piece types a side. The builder lists the full
+              set of requirements, and tells you which ones a puzzle already meets.
+            </li>
           </ul>
 
           <div className={styles["about-actions"]}>
-            <Link to="/play/games" className={styles["btn-secondary"]}>Find puzzles</Link>
+            <Link to="/play/puzzles" className={styles["btn-secondary"]}>Find puzzles</Link>
             {!supporter && (
               <Link to="/donate" className={styles["btn-link"]}>
                 {currentUser ? 'Become a supporter' : 'See supporter perks'} →
