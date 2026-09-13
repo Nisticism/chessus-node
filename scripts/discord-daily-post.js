@@ -146,7 +146,19 @@ function prettyDate(key) {
       // Refers to the file uploaded alongside this message, by name. Discord
       // resolves `attachment://` against the multipart parts below.
       image: { url: `attachment://${IMAGE_NAME}` },
-      footer: { text: `Puzzle of the Day · ${prettyDate(date)}` },
+      footer: {
+        /*
+         * Who made the puzzle, said out loud. Most of these are GridGrove's own
+         * generated ones, so the ones that are NOT want crediting - and "puzzle
+         * by" rather than "by", because the byline sits next to a game name and
+         * "by X" reads as though X made the game.
+         */
+        text: [
+          'Puzzle of the Day',
+          puzzle.creator_username ? `puzzle by ${puzzle.creator_username}` : null,
+          prettyDate(date),
+        ].filter(Boolean).join(' · '),
+      },
     }],
     components: [{
       type: 1,          // action row
@@ -208,7 +220,22 @@ function prettyDate(key) {
     form.append('files[0]', new Blob([png], { type: 'image/png' }), IMAGE_NAME);
   }
 
-  const post = await fetch(WEBHOOK, {
+  /*
+   * ?with_components=true, or the button silently does not appear.
+   *
+   * Discord's wording is that the parameter decides "whether to respect the
+   * components field of the request" - so without it the array is dropped
+   * rather than rejected, and the message posts looking fine with no button on
+   * it. That is exactly what happened on the first real post.
+   *
+   * A plain channel webhook may only send NON-interactive components even with
+   * this set, which is why the button is style 5 (a link). An interactive
+   * button would need an application-owned webhook and somewhere to receive the
+   * interaction, and the link is all this needs anyway.
+   */
+  const target = WEBHOOK + (WEBHOOK.includes('?') ? '&' : '?') + 'with_components=true';
+
+  const post = await fetch(target, {
     method: 'POST',
     // No Content-Type header: fetch sets it, with the multipart boundary.
     body: form,
