@@ -103,16 +103,35 @@ export default function DiscordLinkPanel({ itemClass = '', labelClass = '' }) {
 
       {linked ? (
         <div className={styles["linked"]}>
-          <span className={styles["name"]}>{linked.username || linked.discord_user_id}</span>
-          {linked.current_streak > 0 && (
-            <span className={styles["streak"]}>
-              {linked.current_streak} day streak
-              {linked.best_streak > linked.current_streak && ` · best ${linked.best_streak}`}
-            </span>
-          )}
-          <button type="button" className={styles["ghost"]} onClick={unlink} disabled={busy}>
-            Unlink
-          </button>
+          <div className={styles["linked-head"]}>
+            <span className={styles["name"]}>{linked.username || linked.discord_user_id}</span>
+            {/*
+              * What the link actually DOES, not just that it exists. "Linked"
+              * on its own leaves somebody wondering whether their Discord
+              * solves count - which is the only reason they linked it.
+              */}
+            <span className={styles["synced"]}>Synced</span>
+          </div>
+          <p className={styles["body"]}>
+            Daily puzzles you solve in Discord count towards your puzzle rating,
+            and solving on the site counts towards your streak.
+          </p>
+          <div className={styles["linked-foot"]}>
+            {linked.current_streak > 0 && (
+              <span className={styles["streak"]}>
+                <strong>{linked.current_streak}</strong> day streak
+                {linked.best_streak > linked.current_streak && ` · best ${linked.best_streak}`}
+              </span>
+            )}
+            {linked.total_solved > 0 && (
+              <span className={styles["streak"]}>
+                {linked.total_solved} solved
+              </span>
+            )}
+            <button type="button" className={styles["ghost"]} onClick={unlink} disabled={busy}>
+              Unlink
+            </button>
+          </div>
         </div>
       ) : (
         <div className={styles["unlinked"]}>

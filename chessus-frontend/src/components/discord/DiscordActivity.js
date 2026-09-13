@@ -189,6 +189,42 @@ export default function DiscordActivity() {
   }, [discord.token, discordHeaders]);
 
   const puzzle = daily?.puzzle || null;
+
+  /*
+   * Tell Discord what this activity IS.
+   *
+   * Without this, the card Discord posts when somebody launches the activity
+   * reads "Game Invitation - Game ended. Start a new one?", which is the
+   * generic fallback for an activity that never described itself. It makes no
+   * sense for a puzzle, and it is the reason Wordle's card looks considered and
+   * ours did not: Wordle sets its own presence ("Wordle No. 1911") and gets the
+   * proper card, with Discord's own Play button, for free.
+   *
+   * Needs the rpc.activities.write scope, requested in useDiscordSdk.
+   */
+  useEffect(() => {
+    if (!discord.sdk || !puzzle) return;
+    discord.sdk.commands.setActivity({
+      activity: {
+        // 0 = Playing, which is what puts "was playing" above the card.
+        type: 0,
+        details: puzzle.title || 'Puzzle of the Day',
+        state: [
+          puzzle.game_name,
+          puzzle.goal_label,
+        ].filter(Boolean).join(' · '),
+        // When they started, so the card shows elapsed time as Wordle's does.
+        timestamps: { start: Date.now() },
+      },
+    }).catch(() => {
+      /*
+       * Presence is decoration. A player who declined the scope, or an older
+       * client that does not support it, still gets the whole puzzle - so this
+       * failing is not worth telling them about.
+       */
+    });
+  }, [discord.sdk, puzzle]);
+
   const boardWidth = puzzle?.board_width || 8;
   const boardHeight = puzzle?.board_height || 8;
 

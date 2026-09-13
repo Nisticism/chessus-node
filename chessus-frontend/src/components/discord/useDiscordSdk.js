@@ -58,16 +58,25 @@ export default function useDiscordSdk() {
         await sdk.ready();
 
         /*
-         * `identify` and nothing else. It returns a user id and a display name,
-         * which is all a streak needs. Asking for more would mean asking the
-         * player to grant more, for a puzzle.
+         * Two scopes, and no more.
+         *
+         *   identify              a user id and display name, which is all a
+         *                         streak needs.
+         *   rpc.activities.write  lets the activity describe ITSELF - see
+         *                         setActivity in DiscordActivity.js. Without
+         *                         it Discord falls back to a generic "Game
+         *                         Invitation / Game ended. Start a new one?"
+         *                         card, which makes no sense for a puzzle.
+         *
+         * Anything beyond these would mean asking a player to grant more
+         * access than solving a puzzle warrants.
          */
         const { code } = await sdk.commands.authorize({
           client_id: clientId,
           response_type: 'code',
           state: '',
           prompt: 'none',
-          scope: ['identify'],
+          scope: ['identify', 'rpc.activities.write'],
         });
 
         /*

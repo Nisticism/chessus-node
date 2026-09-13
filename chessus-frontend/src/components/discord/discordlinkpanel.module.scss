@@ -8,11 +8,28 @@
   gap: 6px;
 }
 
-.linked {
+.linked { display: flex; flex-direction: column; gap: 6px; }
+
+.linked-head,
+.linked-foot {
   display: flex;
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
+}
+
+/* The status that matters: not "there is a link" but "your solves count".
+   A chip rather than a sentence so it reads at a glance, and green because it
+   is a healthy state rather than a warning. */
+.synced {
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 3px;
+  background: rgba(95, 208, 164, 0.14);
+  color: var(--accent-primary, #5fd0a4);
 }
 
 .name {
