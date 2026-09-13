@@ -22,6 +22,13 @@ const {
 } = require('./game-socket');
 const { summariseRules } = require('./game-rules-summary');
 const { renderPuzzle } = require('./puzzle-image');
+const { rulesForPuzzle, ensureSnapshot, readLive } = require('./puzzle-snapshot');
+/*
+ * Hydration lives in its own module because more than one thing needs it - the
+ * routes here and the snapshot backfill - and a second copy of it is exactly
+ * the bug this codebase keeps having. See server/puzzle-hydrate.js.
+ */
+const { hydratePosition, toEngineFields } = require('./puzzle-hydrate');
 
 /*
  * Where uploaded piece art lives. Same rule index.js uses: an explicit
@@ -52,24 +59,6 @@ const {
  * Only these eight of 174 fields are renamed (the rest pass through untouched);
  * the live builders in game-socket.js are the source of truth.
  */
-const ENGINE_FIELD_RENAMES = {
-  ratio_one_movement: 'ratio_movement_1',
-  ratio_two_movement: 'ratio_movement_2',
-  ratio_one_capture: 'ratio_capture_1',
-  ratio_two_capture: 'ratio_capture_2',
-  step_by_step_movement_value: 'step_movement_value',
-  step_by_step_movement_style: 'step_movement_style',
-  step_by_step_capture: 'step_capture_value',
-};
-
-/** Rename the engine-facing fields on a raw `pieces` row. */
-function toEngineFields(row) {
-  const out = { ...row };
-  for (const [from, to] of Object.entries(ENGINE_FIELD_RENAMES)) {
-    if (row[from] !== undefined) out[to] = row[from];
-  }
-  return out;
-}
 
 /*
  * A solution line is a flat list of plies that ALTERNATES, starting with the
@@ -163,154 +152,14 @@ function registerPuzzleRoutes(app, {
    * answer "is this piece where it began?" - and that question is what decides
    * whether its first-move-only movement is still available.
    */
-  const startingSquareIndex = async (gameTypeId) => {
-    const [[row]] = await db_pool.query(
-      'SELECT pieces_string FROM game_types WHERE id = ? LIMIT 1', [gameTypeId]
-    );
-    const parsed = safeParse(row?.pieces_string, null);
-    const out = new Set();
-    if (!parsed || typeof parsed !== 'object') return out;
-    for (const [key, v] of Object.entries(parsed)) {
-      const [ky, kx] = String(key).split(',').map(Number);
-      const x = Number(v.x ?? kx);
-      const y = Number(v.y ?? ky);
-      const player = Number(v.player_id ?? v.player_number ?? 1);
-      out.add(`${Number(v.piece_id)}:${player}:${y},${x}`);
-    }
-    return out;
-  };
-
-  /**
-   * Has this piece moved yet?
-   *
-   * A puzzle has no history, so this is inferred from geography: a piece standing
-   * on one of ITS OWN starting squares for this game type is treated as unmoved;
-   * a piece anywhere else has obviously moved to get there.
-   *
-   * That inference is what makes first-move-only movement behave. Without it
-   * every piece counted as unmoved, so a pawn halfway up the board still offered
-   * its double step and a king that had clearly walked could still castle - and
-   * the extra phantom moves quietly broke the uniqueness check, because a
-   * defender was credited with escapes it does not have.
-   *
-   * An explicit flag on the placement still wins, so a position that needs to say
-   * "this rook has moved even though it is home" can, once there is a way to set
-   * it. The geography is the default, not a rule.
+  /*
+   * The rules to play this puzzle under: its snapshot if it has one, the live
+   * game if it does not. Returns { game, pieces, placements, fromSnapshot }.
    */
-  const movedState = (placement, pieceId, player, startingSquares) => {
-    if (placement.hasMoved !== undefined && placement.hasMoved !== null) {
-      const moved = !!placement.hasMoved;
-      return { hasMoved: moved, moveCount: Number(placement.moveCount) || (moved ? 1 : 0) };
-    }
-    const home = startingSquares.has(`${pieceId}:${player}:${Number(placement.y)},${Number(placement.x)}`);
-    return { hasMoved: !home, moveCount: home ? 0 : (Number(placement.moveCount) || 1) };
-  };
+  const loadRulesFor = (puzzle) => rulesForPuzzle(db_pool, puzzle);
 
-  /**
-   * Turn a stored position into pieces the move engine understands.
-   *
-   * A puzzle stores placements in the same compact shape as a game type's
-   * pieces_string - piece_id, player_id, x, y, plus the per-game-type flags -
-   * rather than sixty movement columns per square. The movement fields are
-   * merged in here from the pieces table.
-   *
-   * ends_game_on_checkmate is the one to be careful with: it is a property of a
-   * piece IN A GAME TYPE, so it rides on the placement, not on the piece row.
-   * Lose it and the engine sees no royal piece, nothing is ever check, and a
-   * mate puzzle silently reports as unsolvable rather than erroring.
-   *
-   * It is not the only one. Everything in JUNCTION_OVERRIDES is configured per
-   * placement in the game wizard, not on the piece: which pieces a pawn may
-   * promote to, whether this copy promotes at all, whether it can be captured
-   * en passant, who it castles with. Merging only the two royal flags left a
-   * puzzle playing a subtly different piece from the one in the live game -
-   * most visibly for custom promotion, where the curated promotion list simply
-   * did not arrive and every promotable piece offered the default set instead.
-   *
-   * The row is matched on (piece_id, player_number) so a game that configures
-   * one side's copy differently keeps that difference, falling back to any row
-   * for the piece when a side-specific one does not exist.
-   */
-  const JUNCTION_OVERRIDES = [
-    'ends_game_on_checkmate', 'ends_game_on_capture',
-    'manual_castling_partners', 'castling_partner_left_key', 'castling_partner_right_key',
-    'castling_distance', 'can_control_squares', 'can_en_passant',
-    'can_fire_over_allies', 'can_fire_over_enemies',
-    'promotion_pieces_override', 'disable_promotion',
-    'can_promote_to_checkmate', 'limit_promote_checkmate_to_original',
-    'can_promote_to_capture', 'limit_promote_capture_to_original',
-    'capture_points_gain', 'capture_points_loss',
-    'cannot_move_outside_zone', 'cannot_be_captured', 'is_neutral',
-    'hit_points', 'attack_damage', 'hp_regen', 'burn_damage', 'burn_duration',
-    'trample', 'trample_radius', 'ghostwalk', 'die_on_capture',
-    'die_on_capture_grants_win', 'attack_radius',
-  ];
-
-  const hydratePosition = async (gameTypeId, placements) => {
-    const list = Array.isArray(placements) ? placements : [];
-    if (!list.length) return [];
-
-    const pieceIds = [...new Set(list.map((p) => Number(p.piece_id)).filter(Boolean))];
-    if (!pieceIds.length) return [];
-    const [rows] = await db_pool.query(
-      `SELECT * FROM pieces WHERE id IN (${pieceIds.map(() => '?').join(',')})`, pieceIds
-    );
-    const byId = new Map(rows.map((r) => [Number(r.id), r]));
-
-    const [junctionRows] = await db_pool.query(
-      'SELECT * FROM game_type_pieces WHERE game_type_id = ?', [gameTypeId]
-    );
-    // Keyed by piece and side, with a piece-only fallback for the common case
-    // where both sides share one configuration.
-    const junctionBySide = new Map();
-    const junctionByPiece = new Map();
-    for (const r of junctionRows) {
-      junctionBySide.set(`${Number(r.piece_id)}:${Number(r.player_number)}`, r);
-      if (!junctionByPiece.has(Number(r.piece_id))) junctionByPiece.set(Number(r.piece_id), r);
-    }
-
-    const startingSquares = await startingSquareIndex(gameTypeId);
-
-    return list.map((p) => {
-      const pieceId = Number(p.piece_id);
-      const def = toEngineFields(byId.get(pieceId) || {});
-      const player = Number(p.player_id ?? p.team ?? 1);
-      const junction = junctionBySide.get(`${pieceId}:${player}`) || junctionByPiece.get(pieceId) || {};
-
-      const merged = {
-        ...def,
-        // Board identity, not the piece-definition id.
-        id: p.id || `${p.piece_id}_${p.y}_${p.x}`,
-        piece_id: p.piece_id,
-        x: Number(p.x),
-        y: Number(p.y),
-        player_id: player,
-        team: player,
-        player_number: player,
-        ...movedState(p, pieceId, player, startingSquares),
-      };
-
-      /*
-       * The placement's own value wins where the author set one; otherwise the
-       * game type's configuration applies; otherwise the piece keeps its own.
-       *
-       * NULL means "not overridden", not "off". Most junction columns are null
-       * for most rows - Chess's pawn carries can_en_passant on the PIECE and
-       * null in every junction row - so treating null as a value silently turns
-       * the flag off and en passant quietly stops existing.
-       */
-      for (const col of JUNCTION_OVERRIDES) {
-        if (p[col] != null) merged[col] = p[col];
-        else if (junction[col] != null) merged[col] = junction[col];
-      }
-      return merged;
-    });
-  };
-
-  const loadGameTypeFor = async (puzzle) => {
-    const [[gt]] = await db_pool.query('SELECT * FROM game_types WHERE id = ? LIMIT 1', [puzzle.game_type_id]);
-    return gt || null;
-  };
+  /** The live rules for a game, for a puzzle that does not exist yet. */
+  const loadLiveRules = (gameTypeId) => readLive(db_pool, gameTypeId);
 
   /**
    * The game type's OPENING position, hydrated the same way a puzzle position is.
@@ -322,7 +171,8 @@ function registerPuzzleRoutes(app, {
    * a pawn one square from promoting with only kings left would be offered
    * nothing, and the promotion would be skipped without a word.
    */
-  const loadStartingRoster = async (gameType) => {
+  const loadStartingRoster = async (rules) => {
+    const gameType = rules?.game;
     if (!gameType?.pieces_string) return [];
     const parsed = safeParse(gameType.pieces_string, null);
     if (!parsed || typeof parsed !== 'object') return [];
@@ -332,7 +182,7 @@ function registerPuzzleRoutes(app, {
       const [y, x] = String(key).split(',').map(Number);
       return { ...v, x: v.x ?? x, y: v.y ?? y };
     });
-    return hydratePosition(gameType.id, list);
+    return hydratePosition(rules, list);
   };
 
   // ---------------------------------------------------------------- browse --
@@ -934,12 +784,13 @@ function registerPuzzleRoutes(app, {
         return res.status(400).send({ message: 'x and y are required' });
       }
 
-      const gameType = await loadGameTypeFor(puzzle);
-      if (!gameType) return res.status(400).send({ message: 'Puzzle has no game type' });
+      const rules = await loadRulesFor(puzzle);
+      if (!rules) return res.status(400).send({ message: 'Puzzle has no game type' });
+      const gameType = rules.game;
 
       const state = buildGameState({
-        position: await hydratePosition(puzzle.game_type_id, safeParse(puzzle.position, [])),
-        initial_pieces: await loadStartingRoster(gameType),
+        position: await hydratePosition(rules, safeParse(puzzle.position, [])),
+        initial_pieces: await loadStartingRoster(rules),
         side_to_move: puzzle.side_to_move,
         setup_move: safeParse(puzzle.setup_move),
         game_type_id: puzzle.game_type_id,
@@ -1029,7 +880,8 @@ function registerPuzzleRoutes(app, {
         return res.status(404).send({ message: 'Puzzle not found' });
       }
 
-      const gameType = await loadGameTypeFor(puzzle);
+      const rules = await loadRulesFor(puzzle);
+      const gameType = rules?.game;
       const stored = safeParse(puzzle.position, []) || [];
       const pieceIds = [...new Set(stored.map(p => Number(p.piece_id)).filter(Boolean))];
       let art = new Map();
@@ -1096,9 +948,17 @@ function registerPuzzleRoutes(app, {
        * game's rules for the expandable panel - so they never have to leave the
        * puzzle to find out how the game is won.
        */
-      const [[gameType]] = await db_pool.query(
-        'SELECT * FROM game_types WHERE id = ? LIMIT 1', [puzzle.game_type_id]
-      );
+      /*
+       * The rules the puzzle was BUILT under, not whatever the game says today.
+       * The rules panel has to describe the game the solver is about to be
+       * judged against, or it is describing a different puzzle.
+       */
+      const rules = await loadRulesFor(puzzle);
+      const gameType = rules?.game || null;
+      // True when the game has been edited since - the page says so rather than
+      // implying the current game.
+      out.rules_snapshotted = !!rules?.fromSnapshot;
+      out.rules_diverged_at = puzzle.rules_diverged_at || null;
       // The detail page shows who built it, beside the date.
       const [[creator]] = await db_pool.query(
         'SELECT username FROM users WHERE id = ? LIMIT 1', [puzzle.creator_id]
@@ -1129,7 +989,7 @@ function registerPuzzleRoutes(app, {
          * off and a king that can castle simply shows no dot for it.
          */
         const state = buildGameState({
-          position: await hydratePosition(puzzle.game_type_id, out.position),
+          position: await hydratePosition(rules, out.position),
           side_to_move: puzzle.side_to_move,
           setup_move: out.setup_move,
           game_type_id: puzzle.game_type_id,
@@ -1233,9 +1093,15 @@ function registerPuzzleRoutes(app, {
         return res.status(400).send({ message: 'A position and a move are required' });
       }
 
+      /*
+       * Live rules, deliberately. This serves the BUILDER, working on a puzzle
+       * that does not exist yet and so has no snapshot - and which should be
+       * built against the game as it is now, not as it once was.
+       */
+      const rules = await loadLiveRules(gameTypeId);
       const state = buildGameState({
-        position: await hydratePosition(gameTypeId, position),
-        initial_pieces: await loadStartingRoster(gameType),
+        position: await hydratePosition(rules, position),
+        initial_pieces: await loadStartingRoster(rules),
         side_to_move: Number(side_to_move) || 1,
         setup_move: setup_move || null,
         game_type_id: gameTypeId,
@@ -1473,13 +1339,20 @@ function registerPuzzleRoutes(app, {
       if (!puzzle) return res.status(404).send({ message: 'Puzzle not found' });
       if (!canEdit(puzzle, req.user)) return res.status(403).send({ message: 'This is not your puzzle' });
 
-      const gameType = await loadGameTypeFor(puzzle);
-      if (!gameType) return res.status(400).send({ message: 'Puzzle has no game type' });
+      /*
+       * Validation re-checks against the LIVE game, not the snapshot. Asking
+       * "does this puzzle still work?" of the rules it was verified under would
+       * always answer yes and tell nobody anything; the question worth asking is
+       * whether it still works against the game as it now stands.
+       */
+      const rules = await loadLiveRules(puzzle.game_type_id);
+      if (!rules) return res.status(400).send({ message: 'Puzzle has no game type' });
+      const gameType = rules.game;
 
       const hydrated = {
         ...puzzle,
-        position: await hydratePosition(puzzle.game_type_id, safeParse(puzzle.position, [])),
-        initial_pieces: await loadStartingRoster(gameType),
+        position: await hydratePosition(rules, safeParse(puzzle.position, [])),
+        initial_pieces: await loadStartingRoster(rules),
         setup_move: safeParse(puzzle.setup_move),
         solution_line: safeParse(puzzle.solution_line, []),
       };
@@ -1510,9 +1383,30 @@ function registerPuzzleRoutes(app, {
       if (!canEdit(puzzle, req.user)) return res.status(403).send({ message: 'This is not your puzzle' });
 
       const publish = req.body?.publish !== false;
+
+      /*
+       * Freeze the rules at the moment of publishing.
+       *
+       * Publishing is the point the puzzle stops being the author's private
+       * draft and becomes something other people will be judged against, so it
+       * is the right moment to fix what "correct" means. A draft deliberately
+       * gets none: it should track the game while it is still being built.
+       *
+       * Best-effort - a puzzle that publishes without a snapshot still works,
+       * it just falls back to live rules until the backfill catches it.
+       */
+      let snapshot = puzzle.rule_snapshot || null;
+      if (publish) {
+        try {
+          snapshot = await ensureSnapshot(db_pool, puzzle.game_type_id) || snapshot;
+        } catch (e) {
+          console.warn('[puzzle] could not snapshot rules on publish:', e.message);
+        }
+      }
+
       await db_pool.query(
-        'UPDATE puzzles SET is_draft = ?, published_at = ? WHERE id = ?',
-        [publish ? 0 : 1, publish ? new Date() : null, puzzle.id]
+        'UPDATE puzzles SET is_draft = ?, published_at = ?, rule_snapshot = ?, rules_diverged_at = NULL WHERE id = ?',
+        [publish ? 0 : 1, publish ? new Date() : null, snapshot, puzzle.id]
       );
       res.json({ message: publish ? 'Puzzle published' : 'Puzzle returned to draft', is_draft: publish ? 0 : 1 });
     } catch (err) {

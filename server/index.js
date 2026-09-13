@@ -3990,6 +3990,14 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
       game: { id: gameId, ...gameData, is_draft: isDraft, needs_name_review: gameEditNeedsNameReview }
     });
     _resyncAiRules(gameId);
+    /*
+     * Re-check this game's puzzles against the rules it now has. Each one that
+     * still works moves forward to the new rules; each one that does not stays
+     * on the rules it was built under and is marked, so it keeps playing rather
+     * than quietly becoming wrong. Backgrounded - it is thousands of engine
+     * calls on a game with many puzzles, and the save has already answered.
+     */
+    require('./puzzle-revalidate').revalidateInBackground(db_pool, gameId);
     // Clear any stale "starting position is decided" warning since the
     // content just passed validation. Drafts also clear (they're not visible
     // anyway, but keeps the column clean).

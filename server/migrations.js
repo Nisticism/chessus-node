@@ -791,6 +791,33 @@ tableMigrations.push(
       INDEX idx_discord_user (user_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
     description: "Create discord_players table (daily-puzzle progress for Discord players with no account)"
+  },
+  {
+    table: 'puzzle_rule_snapshots',
+    sql: `CREATE TABLE IF NOT EXISTS puzzle_rule_snapshots (
+      -- The fingerprint of the rules IS the id. Content-addressed, so identical
+      -- rules are stored once however many puzzles share them, and a new row
+      -- appears only when a game changes in a way that could change an answer.
+      -- Same hash as server/game-fingerprint.js produces, which is what makes
+      -- "has this game drifted?" a string comparison.
+      fingerprint CHAR(32) NOT NULL PRIMARY KEY,
+
+      -- Which game these rules were taken from. Informational: the payload is
+      -- self-contained, and the game may since have changed or gone.
+      game_type_id INT UNSIGNED NULL,
+
+      -- { game, pieces, placements } - everything the engine needs to judge a
+      -- move, with nothing pointing back at a live table.
+      payload MEDIUMTEXT NOT NULL,
+
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+      -- SET NULL rather than CASCADE: the whole point is that these outlive the
+      -- game they were taken from.
+      FOREIGN KEY (game_type_id) REFERENCES game_types(id) ON DELETE SET NULL,
+      INDEX idx_snapshot_game (game_type_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+    description: "Create puzzle_rule_snapshots (the frozen rules a puzzle was built under)"
   }
 );
 
@@ -1314,7 +1341,21 @@ const migrations = [
    * is filled in as usual and this is filled in too - the attempt belongs to the
    * account, and still happened on Discord.
    */
-  { table: 'puzzle_attempts', column: 'discord_user_id', sql: "ALTER TABLE puzzle_attempts ADD COLUMN discord_user_id VARCHAR(32) DEFAULT NULL", description: "The Discord snowflake behind an attempt played in the Discord activity." }
+  { table: 'puzzle_attempts', column: 'discord_user_id', sql: "ALTER TABLE puzzle_attempts ADD COLUMN discord_user_id VARCHAR(32) DEFAULT NULL", description: "The Discord snowflake behind an attempt played in the Discord activity." },
+
+  /*
+   * The rules this puzzle was built under.
+   *
+   * Nullable, and read with a fallback to the live game, so every puzzle that
+   * existed before this column keeps working while the backfill runs.
+   */
+  { table: 'puzzles', column: 'rule_snapshot', sql: "ALTER TABLE puzzles ADD COLUMN rule_snapshot CHAR(32) DEFAULT NULL", description: "The frozen rules a puzzle was verified against (puzzle_rule_snapshots)." },
+  /*
+   * Set when the game has changed since, and re-checking found the puzzle no
+   * longer works under the new rules. The puzzle keeps playing under its
+   * snapshot; this is what the interface reads to say so.
+   */
+  { table: 'puzzles', column: 'rules_diverged_at', sql: "ALTER TABLE puzzles ADD COLUMN rules_diverged_at DATETIME DEFAULT NULL", description: "When the game this puzzle came from changed in a way the puzzle does not survive." }
 ];
 
 // Ensure physical_board_requests table exists (may have been created after tableMigrations ran)
@@ -5137,6 +5178,50 @@ const runMigrations = async () => {
    * redeploy adds only what is genuinely new and never duplicates a game. A
    * puzzle the owner has since edited or deleted is left alone.
    */
+  /*
+   * Stop a deleted game taking its puzzles with it.
+   *
+   * puzzles.game_type_id was created ON DELETE CASCADE, which was right when a
+   * puzzle could not be played without its game. It can now: the rules travel
+   * with it in puzzle_rule_snapshots, so the reference is provenance rather
+   * than a dependency, and losing the game should cost the puzzle its link, not
+   * its existence.
+   *
+   * Done by hand rather than through the column list because it changes a
+   * constraint and the column's nullability, neither of which that list can
+   * express. Guarded on the current DELETE_RULE so a redeploy is a no-op.
+   */
+  try {
+    const [[fk]] = await db_pool.query(
+      `SELECT rc.CONSTRAINT_NAME AS name, rc.DELETE_RULE AS rule
+       FROM information_schema.REFERENTIAL_CONSTRAINTS rc
+       JOIN information_schema.KEY_COLUMN_USAGE k
+         ON k.CONSTRAINT_NAME = rc.CONSTRAINT_NAME
+        AND k.CONSTRAINT_SCHEMA = rc.CONSTRAINT_SCHEMA
+       WHERE rc.CONSTRAINT_SCHEMA = DATABASE()
+         AND k.TABLE_NAME = 'puzzles'
+         AND k.COLUMN_NAME = 'game_type_id'
+       LIMIT 1`
+    );
+    if (fk && fk.rule === 'CASCADE') {
+      await runMigration(
+        `ALTER TABLE puzzles DROP FOREIGN KEY \`${fk.name}\``,
+        'Drop the cascading game_type_id constraint on puzzles'
+      );
+      await runMigration(
+        'ALTER TABLE puzzles MODIFY COLUMN game_type_id INT UNSIGNED NULL',
+        'Allow a puzzle to outlive its game type'
+      );
+      await runMigration(
+        'ALTER TABLE puzzles ADD CONSTRAINT fk_puzzle_game_type '
+        + 'FOREIGN KEY (game_type_id) REFERENCES game_types(id) ON DELETE SET NULL',
+        'Deleting a game now orphans its puzzles rather than destroying them'
+      );
+    }
+  } catch (err) {
+    console.error('Error relaxing the puzzles -> game_types constraint:', err.message);
+  }
+
   try {
     await seedDailyPoolPuzzles();
   } catch (err) {
