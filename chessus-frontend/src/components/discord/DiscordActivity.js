@@ -25,8 +25,36 @@ import styles from "./discordactivity.module.scss";
  * remembered against a Discord id and never against a GridGrove account.
  */
 
+/*
+ * Everything this page fetches must be SAME-ORIGIN when it runs inside Discord.
+ *
+ * Discord sandboxes an activity behind a proxy at <app id>.discordsays.com and
+ * its CSP permits requests to that origin and almost nothing else. The rest of
+ * the site is built with REACT_APP_API_URL and REACT_APP_ASSET_URL baked in as
+ * absolute https://gridgrove.gg URLs, and every one of those is blocked here -
+ * silently, with no error the page can catch, which is why the first version
+ * sat on "Loading today's puzzle..." forever.
+ *
+ * Relative paths work, because the proxy forwards them to whatever the root URL
+ * mapping points at. So in the frame we drop the host and keep the path.
+ */
+const IN_DISCORD = typeof window !== 'undefined'
+  && new URLSearchParams(window.location.search).has('frame_id');
+
+/** Strip the host off an absolute URL, leaving the path the proxy can route. */
+const sameOrigin = (url) => {
+  if (!url) return url;
+  try { return new URL(url, window.location.origin).pathname; } catch (_) { return url; }
+};
+
+const API = IN_DISCORD ? sameOrigin(API_URL) : API_URL;
+
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";
-const resolveUrl = (p) => (!p ? null : (p.startsWith('http') ? p : `${ASSET_URL}${p}`));
+const resolveUrl = (p) => {
+  if (!p) return null;
+  if (IN_DISCORD) return sameOrigin(p.startsWith('http') ? p : `${ASSET_URL}${p}`);
+  return p.startsWith('http') ? p : `${ASSET_URL}${p}`;
+};
 
 /** Same precedence as everywhere else: a placement override, then the piece. */
 const imageFor = (placement) => {
@@ -105,15 +133,23 @@ export default function DiscordActivity() {
   );
 
   // -------------------------------------------------------------- loading --
+  /*
+   * The puzzle loads immediately, whatever the Discord handshake is doing.
+   *
+   * It used to wait for the handshake to settle so a signed-in player would not
+   * briefly see the anonymous version of their streak. That traded a cosmetic
+   * flicker for a total failure: a handshake that never settles - because
+   * authorize hangs, or the token exchange is blocked - left the page on
+   * "Loading today's puzzle..." with no error and no board.
+   *
+   * Playing anonymously is a supported path, so identity is layered on when and
+   * if it arrives. A board with no streak beats a spinner with no board.
+   */
   useEffect(() => {
-    // Wait for the handshake to settle either way, so a signed-in player does
-    // not briefly see the anonymous version of their own streak.
-    if (discord.status === 'connecting') return undefined;
-
     let cancelled = false;
     (async () => {
       try {
-        const { data } = await axios.get(`${API_URL}puzzles/daily`);
+        const { data } = await axios.get(`${API}puzzles/daily`);
         if (cancelled) return;
         setDaily(data);
         if (data?.puzzle?.position) {
@@ -127,9 +163,18 @@ export default function DiscordActivity() {
         if (!cancelled) setLoading(false);
       }
 
-      if (!discord.token) return;
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // Identity, separately, once Discord has vouched for someone. Failure here
+  // costs a streak, never the puzzle.
+  useEffect(() => {
+    if (!discord.token) return undefined;
+    let cancelled = false;
+    (async () => {
       try {
-        const { data } = await axios.get(`${API_URL}discord/me`, { headers: discordHeaders });
+        const { data } = await axios.get(`${API}discord/me`, { headers: discordHeaders });
         if (cancelled) return;
         setProgress(data);
         setAttempts(Number(data?.today?.attempts) || 0);
@@ -141,7 +186,7 @@ export default function DiscordActivity() {
       } catch (_) { /* progress is a nicety; the puzzle still plays */ }
     })();
     return () => { cancelled = true; };
-  }, [discord.status, discord.token, discordHeaders]);
+  }, [discord.token, discordHeaders]);
 
   const puzzle = daily?.puzzle || null;
   const boardWidth = puzzle?.board_width || 8;
@@ -174,7 +219,7 @@ export default function DiscordActivity() {
     const key = `${y},${x}`;
     if (hintCache.current.has(key)) return hintCache.current.get(key);
     try {
-      const { data } = await axios.get(`${API_URL}puzzles/${puzzle.id}/moves`, { params: { x, y } });
+      const { data } = await axios.get(`${API}puzzles/${puzzle.id}/moves`, { params: { x, y } });
       const moves = data?.moves || [];
       hintCache.current.set(key, moves);
       return moves;
@@ -216,7 +261,7 @@ export default function DiscordActivity() {
 
     try {
       const info = await axios.post(
-        `${API_URL}game-types/${puzzle.game_type_id}/puzzle-move-info`,
+        `${API}game-types/${puzzle.game_type_id}/puzzle-move-info`,
         {
           position: Object.values(board || {}),
           side_to_move: puzzle.side_to_move,
@@ -244,7 +289,7 @@ export default function DiscordActivity() {
 
       const moves = [...found, move];
       const { data } = await axios.post(
-        `${API_URL}puzzles/${puzzle.id}/solve`,
+        `${API}puzzles/${puzzle.id}/solve`,
         { moves },
         { headers: discordHeaders }
       );
@@ -421,7 +466,7 @@ export default function DiscordActivity() {
    */
   const requestLinkCode = useCallback(async () => {
     try {
-      const { data } = await axios.post(`${API_URL}discord/link-code`, {}, { headers: discordHeaders });
+      const { data } = await axios.post(`${API}discord/link-code`, {}, { headers: discordHeaders });
       setLinkCode(data.code);
     } catch (err) {
       setLinkCode(null);

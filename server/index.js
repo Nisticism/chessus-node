@@ -1518,7 +1518,12 @@ app.get("/api/users", async (req, res) => {
     const friendsOf = parseInt(req.query.friendsOf) || 0;
 
     // Validate sort parameters
-    const allowedSortFields = ['username', 'elo', 'last_active_at', 'id'];
+    /*
+     * puzzle_elo is separate from elo on purpose - one measures play against
+     * people, the other solving positions - so it gets its own sort rather than
+     * being folded into "Rating".
+     */
+    const allowedSortFields = ['username', 'elo', 'puzzle_elo', 'last_active_at', 'id'];
     const sortBy = allowedSortFields.includes(req.query.sortBy) ? req.query.sortBy : 'id';
     const sortOrder = req.query.sortOrder === 'asc' ? 'ASC' : 'DESC';
 
@@ -1543,7 +1548,13 @@ app.get("/api/users", async (req, res) => {
     // Build query strings
     const countQuery = `SELECT COUNT(*) as total FROM users u ${joinClause} ${whereSQL}`;
     // Get paginated users - exclude personal information (email, first_name, last_name)
-    const dataQuery = `SELECT u.id, u.username, u.role, u.profile_picture, u.elo, u.last_active_at FROM users u ${joinClause} ${whereSQL} ORDER BY u.${sortBy} ${sortOrder} LIMIT ? OFFSET ?`;
+    /*
+     * puzzles_solved travels with puzzle_elo so the list can tell a rating
+     * somebody earned from the default everybody starts on. A 1200 with no
+     * solves is not a rating, it is an initial value, and showing it as one
+     * would put unrated players above rated ones who have simply had a bad week.
+     */
+    const dataQuery = `SELECT u.id, u.username, u.role, u.profile_picture, u.elo, u.puzzle_elo, u.puzzles_solved, u.last_active_at FROM users u ${joinClause} ${whereSQL} ORDER BY u.${sortBy} ${sortOrder} LIMIT ? OFFSET ?`;
 
     // Get total count with filters and paginated data in parallel
     const [[countResult], [users]] = await Promise.all([

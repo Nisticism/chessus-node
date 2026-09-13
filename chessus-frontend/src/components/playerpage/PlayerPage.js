@@ -722,6 +722,17 @@ const PlayerPage = (props) => {
                     {playerPageUser?.elo ?? currentUser?.elo ?? 1000}
                   </div>
                 </div>
+                {/* Only once they have solved something. Everybody starts on the
+                    same number, and showing that as a rating would claim a
+                    standing nobody has earned yet. Kept separate from ELO
+                    because they measure different things - beating people, and
+                    reading positions. */}
+                {playerPageUser?.puzzles_solved > 0 && playerPageUser?.puzzle_elo != null && (
+                  <div className={styles["elo-display"]}>
+                    <div className={styles["elo-label"]}>Puzzle Rating</div>
+                    <div className={styles["elo-value"]}>{playerPageUser.puzzle_elo}</div>
+                  </div>
+                )}
                 {playerPageUser?.last_active_at && (
                   <div className={styles["last-active-display"]}>
                     <span className={styles["last-active-label"]}>Last Active:</span>

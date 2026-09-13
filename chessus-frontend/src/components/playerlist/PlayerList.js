@@ -48,6 +48,7 @@ const sortOptions = [
   { value: 'id', label: 'Newest Joined' },
   { value: 'username', label: 'Alphabetical' },
   { value: 'elo', label: 'Rating' },
+  { value: 'puzzle_elo', label: 'Puzzle Rating' },
   { value: 'last_active_at', label: 'Last Active' },
 ];
 
@@ -214,6 +215,16 @@ const PlayerList = () => {
                   <div className={styles["meta-row"]}>
                     <span className={styles["label"]}>Rating:</span>
                     <span style={{ fontWeight: '600', color: 'var(--accent-primary)' }}>{user.elo}</span>
+                  </div>
+                )}
+                {/* Only once they have actually solved something. Everybody
+                    starts on the same number, and showing that as a rating
+                    would rank people who have never solved a puzzle alongside
+                    people who have. */}
+                {user.puzzles_solved > 0 && user.puzzle_elo != null && (
+                  <div className={styles["meta-row"]}>
+                    <span className={styles["label"]}>Puzzle Rating:</span>
+                    <span style={{ fontWeight: '600', color: 'var(--accent-primary)' }}>{user.puzzle_elo}</span>
                   </div>
                 )}
                 {user.last_active_at && (
