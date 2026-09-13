@@ -5142,7 +5142,109 @@ const runMigrations = async () => {
   } catch (err) {
     console.error('Error seeding daily-pool puzzles:', err.message);
   }
+
+  /*
+   * Hand-picked pool decisions, from db/seeds/puzzle-pool-decisions.json.
+   *
+   * The sweep reproduces every auto_* row from the game data wherever it runs.
+   * It cannot reproduce a person's judgement - "keep this one", "this is #201
+   * under another name" - and those were made in the admin panel against one
+   * database. Carrying them up over a tunnel worked but left no record of what
+   * changed or when, so they ride along with the deploy instead, exactly as the
+   * puzzles do.
+   */
+  try {
+    await seedPoolDecisions();
+  } catch (err) {
+    console.error('Error seeding puzzle-pool decisions:', err.message);
+  }
 };
+
+/**
+ * Apply the committed pool decisions. Returns the number written.
+ *
+ * Never overwrites a decision already made ON THIS SERVER: somebody ruling in
+ * the production admin panel is looking at production, which is the more
+ * authoritative view, and a deploy silently reverting them would make the admin
+ * panel untrustworthy. The file is a floor, not an override.
+ */
+async function seedPoolDecisions() {
+  const fs = require('fs');
+  const path = require('path');
+  const seedPath = path.join(__dirname, '..', 'db', 'seeds', 'puzzle-pool-decisions.json');
+  if (!fs.existsSync(seedPath)) return 0;
+
+  let decisions;
+  try {
+    decisions = JSON.parse(fs.readFileSync(seedPath, 'utf8'));
+  } catch (err) {
+    console.error('[seed] puzzle-pool-decisions.json is not readable JSON:', err.message);
+    return 0;
+  }
+  if (!Array.isArray(decisions) || !decisions.length) return 0;
+
+  // The table arrives with this run's migrations; on a database old enough to
+  // lack it there is nothing to write to and nothing to worry about.
+  const [[hasTable]] = await db_pool.query(
+    "SELECT COUNT(*) AS n FROM information_schema.TABLES "
+    + "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'puzzle_pool'"
+  );
+  if (!Number(hasTable?.n)) return 0;
+
+  const [decided] = await db_pool.query(
+    "SELECT game_type_id FROM puzzle_pool WHERE status IN ('included','excluded')"
+  );
+  const alreadyDecided = new Set(decided.map((r) => Number(r.game_type_id)));
+
+  const [games] = await db_pool.query('SELECT id FROM game_types');
+  const haveGame = new Set(games.map((g) => Number(g.id)));
+
+  let written = 0;
+  let skippedMissing = 0;
+  let skippedLocal = 0;
+
+  for (const d of decisions) {
+    const id = Number(d.game_type_id);
+    if (!Number.isFinite(id)) continue;
+    if (d.status !== 'included' && d.status !== 'excluded') continue;
+    // A game that never reached this server. Not an error - there is simply
+    // nothing here to have an opinion about.
+    if (!haveGame.has(id)) { skippedMissing++; continue; }
+    if (alreadyDecided.has(id)) { skippedLocal++; continue; }
+
+    // duplicate_of is a foreign key; a pointer to a game this server lacks
+    // would fail the insert rather than degrade.
+    const dup = d.duplicate_of != null && haveGame.has(Number(d.duplicate_of))
+      ? Number(d.duplicate_of) : null;
+
+    await db_pool.query(
+      `INSERT INTO puzzle_pool
+         (game_type_id, status, exclusion_reason, duplicate_of,
+          similarity_score, similarity_kind, note, decided_at, swept_at)
+       VALUES (?,?,?,?,?,?,?,NOW(),NOW())
+       ON DUPLICATE KEY UPDATE
+         status = VALUES(status),
+         exclusion_reason = VALUES(exclusion_reason),
+         duplicate_of = VALUES(duplicate_of),
+         similarity_score = VALUES(similarity_score),
+         similarity_kind = VALUES(similarity_kind),
+         note = VALUES(note),
+         decided_at = NOW()`,
+      [
+        id, d.status, d.exclusion_reason || 'manual', dup,
+        d.similarity_score != null ? Number(d.similarity_score) : null,
+        d.similarity_kind || null,
+        d.note ? String(d.note).slice(0, 500) : null,
+      ]
+    );
+    written++;
+  }
+
+  if (written) console.log(`[seed] Applied ${written} hand-picked pool decision(s)`);
+  if (skippedMissing) console.log(`[seed] Skipped ${skippedMissing} decision(s) for games not on this server`);
+  if (skippedLocal) console.log(`[seed] Left ${skippedLocal} decision(s) already made here untouched`);
+  return written;
+}
 
 /**
  * Insert any seeded puzzle whose game does not already have one.

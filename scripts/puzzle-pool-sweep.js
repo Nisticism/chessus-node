@@ -87,6 +87,18 @@ const MANUAL_EXCLUSIONS = {
 function connectionConfig() {
   try {
     if (FORCE_LOCAL) throw new Error('--local');
+    /*
+     * Check for the file before asking for it. loadEnv() calls process.exit(1)
+     * when the tunnel config is missing rather than throwing, so the catch below
+     * cannot rescue it - and the config is gitignored, so it is missing on every
+     * deployed box. Without this guard, running the sweep ON the backend
+     * instance (where it needs no tunnel at all, because the database is right
+     * there) dies with "Missing config file" instead of falling through.
+     */
+    const fs = require('fs');
+    if (!fs.existsSync(path.join(ROOT, 'scripts/dev-db/.db-tunnel.env'))) {
+      throw new Error('no tunnel config');
+    }
     const { loadEnv } = require(path.join(ROOT, 'scripts/dev-db/_config'));
     const cfg = loadEnv();
     if (cfg.RDS_HOST && cfg.RDS_PASSWORD) {

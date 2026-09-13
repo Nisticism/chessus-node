@@ -1,0 +1,282 @@
+[
+  {
+    "game_type_id": 2,
+    "game_name": "Chess test",
+    "status": "excluded",
+    "exclusion_reason": "manual",
+    "duplicate_of": null,
+    "similarity_score": null,
+    "similarity_kind": null,
+    "note": "Test fixture, not a real game (two pieces)."
+  },
+  {
+    "game_type_id": 17,
+    "game_name": "Chess",
+    "status": "included",
+    "exclusion_reason": null,
+    "duplicate_of": 119,
+    "similarity_score": 60,
+    "similarity_kind": "same roster, different setup",
+    "note": null
+  },
+  {
+    "game_type_id": 18,
+    "game_name": "Capablanca Chess",
+    "status": "included",
+    "exclusion_reason": null,
+    "duplicate_of": 19,
+    "similarity_score": 60,
+    "similarity_kind": "same roster, different setup",
+    "note": null
+  },
+  {
+    "game_type_id": 19,
+    "game_name": "Gothic Chess",
+    "status": "excluded",
+    "exclusion_reason": "manual",
+    "duplicate_of": 18,
+    "similarity_score": 60,
+    "similarity_kind": "same roster, different setup",
+    "note": null
+  },
+  {
+    "game_type_id": 50,
+    "game_name": "Antichess",
+    "status": "included",
+    "exclusion_reason": null,
+    "duplicate_of": 416,
+    "similarity_score": 75,
+    "similarity_kind": "same name, similar roster",
+    "note": null
+  },
+  {
+    "game_type_id": 119,
+    "game_name": "Queenmate",
+    "status": "excluded",
+    "exclusion_reason": "manual",
+    "duplicate_of": 17,
+    "similarity_score": 60,
+    "similarity_kind": "same roster, different setup",
+    "note": null
+  },
+  {
+    "game_type_id": 125,
+    "game_name": "Knightmate",
+    "status": "excluded",
+    "exclusion_reason": "manual",
+    "duplicate_of": 17,
+    "similarity_score": 50,
+    "similarity_kind": "near-identical roster",
+    "note": null
+  },
+  {
+    "game_type_id": 163,
+    "game_name": "Chaturanga",
+    "status": "included",
+    "exclusion_reason": null,
+    "duplicate_of": 417,
+    "similarity_score": 40,
+    "similarity_kind": "same name only",
+    "note": null
+  },
+  {
+    "game_type_id": 191,
+    "game_name": "20 points to win Chess",
+    "status": "included",
+    "exclusion_reason": null,
+    "duplicate_of": 17,
+    "similarity_score": 35,
+    "similarity_kind": "same board, 3 rules differ (names)",
+    "note": null
+  },
+  {
+    "game_type_id": 197,
+    "game_name": "Mini Chess",
+    "status": "included",
+    "exclusion_reason": null,
+    "duplicate_of": 423,
+    "similarity_score": 40,
+    "similarity_kind": "same name only",
+    "note": null
+  },
+  {
+    "game_type_id": 205,
+    "game_name": "Chess with Different Armies (Colorbound Clobberers vs. Fabulous FIDEs)",
+    "status": "excluded",
+    "exclusion_reason": "manual",
+    "duplicate_of": null,
+    "similarity_score": null,
+    "similarity_kind": null,
+    "note": "Chess with Different Armies: keeping #201 only."
+  },
+  {
+    "game_type_id": 215,
+    "game_name": "Chess with Different Armies (Fabulous FIDEs vs. Remarkable Rookies)",
+    "status": "excluded",
+    "exclusion_reason": "manual",
+    "duplicate_of": null,
+    "similarity_score": null,
+    "similarity_kind": null,
+    "note": "Chess with Different Armies: keeping #201 only."
+  },
+  {
+    "game_type_id": 216,
+    "game_name": "Chess with Different Armies (Colorbound Clobberers vs. Remarkable Rookies)",
+    "status": "excluded",
+    "exclusion_reason": "manual",
+    "duplicate_of": null,
+    "similarity_score": null,
+    "similarity_kind": null,
+    "note": "Chess with Different Armies: keeping #201 only."
+  },
+  {
+    "game_type_id": 219,
+    "game_name": "Chess with Different Armies (Remarkable Rookies vs. Fabulous FIDEs)",
+    "status": "excluded",
+    "exclusion_reason": "manual",
+    "duplicate_of": null,
+    "similarity_score": null,
+    "similarity_kind": null,
+    "note": "Chess with Different Armies: keeping #201 only."
+  },
+  {
+    "game_type_id": 221,
+    "game_name": "Chess with Different Armies (Remarkable Rookies vs. Colorbound Clobberers)",
+    "status": "excluded",
+    "exclusion_reason": "manual",
+    "duplicate_of": null,
+    "similarity_score": null,
+    "similarity_kind": null,
+    "note": "Chess with Different Armies: keeping #201 only."
+  },
+  {
+    "game_type_id": 252,
+    "game_name": "Chess-25",
+    "status": "excluded",
+    "exclusion_reason": "manual",
+    "duplicate_of": 17,
+    "similarity_score": 35,
+    "similarity_kind": "same board, 2 rules differ (names)",
+    "note": null
+  },
+  {
+    "game_type_id": 313,
+    "game_name": "Fog in Los Alamos",
+    "status": "included",
+    "exclusion_reason": null,
+    "duplicate_of": 439,
+    "similarity_score": 35,
+    "similarity_kind": "same board, 3 rules differ (names)",
+    "note": null
+  },
+  {
+    "game_type_id": 348,
+    "game_name": "Chess",
+    "status": "excluded",
+    "exclusion_reason": "manual",
+    "duplicate_of": null,
+    "similarity_score": null,
+    "similarity_kind": null,
+    "note": "Duplicate of #17 Chess; differs only in draw dials."
+  },
+  {
+    "game_type_id": 413,
+    "game_name": "Fog of War",
+    "status": "excluded",
+    "exclusion_reason": "manual",
+    "duplicate_of": 17,
+    "similarity_score": 55,
+    "similarity_kind": "same board, 1 rule differs (names)",
+    "note": null
+  },
+  {
+    "game_type_id": 416,
+    "game_name": "Antichess",
+    "status": "excluded",
+    "exclusion_reason": "manual",
+    "duplicate_of": 50,
+    "similarity_score": 75,
+    "similarity_kind": "same name, similar roster",
+    "note": null
+  },
+  {
+    "game_type_id": 417,
+    "game_name": "Chaturanga",
+    "status": "excluded",
+    "exclusion_reason": "manual",
+    "duplicate_of": 163,
+    "similarity_score": 40,
+    "similarity_kind": "same name only",
+    "note": null
+  },
+  {
+    "game_type_id": 420,
+    "game_name": "Chess960",
+    "status": "included",
+    "exclusion_reason": null,
+    "duplicate_of": 17,
+    "similarity_score": 55,
+    "similarity_kind": "same board, 1 rule differs (names)",
+    "note": null
+  },
+  {
+    "game_type_id": 423,
+    "game_name": "Mini Chess",
+    "status": "excluded",
+    "exclusion_reason": "manual",
+    "duplicate_of": 197,
+    "similarity_score": 40,
+    "similarity_kind": "same name only",
+    "note": null
+  },
+  {
+    "game_type_id": 428,
+    "game_name": "Modern Forced Chess (Juego Forzado, c.1283)",
+    "status": "included",
+    "exclusion_reason": null,
+    "duplicate_of": 17,
+    "similarity_score": 35,
+    "similarity_kind": "same board, 3 rules differ (names)",
+    "note": null
+  },
+  {
+    "game_type_id": 439,
+    "game_name": "Los Alamos Fiddlesticks",
+    "status": "excluded",
+    "exclusion_reason": "manual",
+    "duplicate_of": 313,
+    "similarity_score": 35,
+    "similarity_kind": "same board, 3 rules differ (names)",
+    "note": null
+  },
+  {
+    "game_type_id": 476,
+    "game_name": "Big chess",
+    "status": "excluded",
+    "exclusion_reason": "manual",
+    "duplicate_of": 18,
+    "similarity_score": 55,
+    "similarity_kind": "same board, 1 rule differs (pieces)",
+    "note": null
+  },
+  {
+    "game_type_id": 477,
+    "game_name": "Untitled Draft",
+    "status": "excluded",
+    "exclusion_reason": "manual",
+    "duplicate_of": 476,
+    "similarity_score": 55,
+    "similarity_kind": "same board, 1 rule differs (pieces)",
+    "note": null
+  },
+  {
+    "game_type_id": 478,
+    "game_name": "HDM",
+    "status": "excluded",
+    "exclusion_reason": "manual",
+    "duplicate_of": 420,
+    "similarity_score": 55,
+    "similarity_kind": "same board, 1 rule differs (names)",
+    "note": null
+  }
+]
