@@ -260,29 +260,35 @@ const Forum = () => {
                 </div>
               }
             </div>
-            <div className={styles["forum-author-date"]}>
-            {currentForum.author_name && currentForum.author_name !== 'Anonymous' && currentForum.author_name !== 'User Deleted' ? (
-              <Link to={`/profile/${currentForum.author_name}`}>
-                <div className={styles["forum-username"]}>{ currentForum.author_name }</div>
-              </Link>
-            ) : (
-              <div className={styles["forum-username"]}>{ currentForum.author_name || 'User Deleted' }</div>
-            )}
-            <br/> {formatDateLegacy(currentForum.created_at)}</div>
-            {!currentForum.game_type_id && (
-              <div className={styles["forum-category-row"]}>
+            {/*
+              * Author, date and whatever the post belongs to - a game or a
+              * category - are one wrapping row. Author and date live in their own
+              * flex item so they are a single unbreakable unit: when the row runs
+              * out of width the game or category is the part that drops to its
+              * own line, and the two short pieces stay together.
+              */}
+            <div className={styles["forum-meta"]}>
+              <div className={styles["forum-author-date"]}>
+                {currentForum.author_name && currentForum.author_name !== 'Anonymous' && currentForum.author_name !== 'User Deleted' ? (
+                  <Link to={`/profile/${currentForum.author_name}`}>
+                    <div className={styles["forum-username"]}>{ currentForum.author_name }</div>
+                  </Link>
+                ) : (
+                  <div className={styles["forum-username"]}>{ currentForum.author_name || 'User Deleted' }</div>
+                )}
+                <span className={styles["forum-date"]}>{formatDateLegacy(currentForum.created_at)}</span>
+              </div>
+              {!currentForum.game_type_id && (
                 <span className={styles["category-pill"]}>
                   Category: {categoryLabel(currentForum.category)}
                 </span>
-              </div>
-            )}
-            {currentForum.game_type_id && (
-              <div className={styles["forum-game-link"]}>
-                <Link to={`/games/${currentForum.game_type_id}`}>
+              )}
+              {currentForum.game_type_id && (
+                <Link className={styles["forum-game-link"]} to={`/games/${currentForum.game_type_id}`}>
                   ♟ {currentForum.game_name || 'View Game'}
                 </Link>
-              </div>
-            )}
+              )}
+            </div>
             <div className={styles["forum-content"]}>{renderContent(currentForum.content)}</div>
             <div className={styles["likes-container"]}>
               {currentUser ? (

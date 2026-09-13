@@ -91,21 +91,64 @@
   text-align: left;
 }
 
+/*
+ * One row for author, date, and the game or category the post sits under.
+ *
+ * Wrapping does the responsive work rather than a breakpoint: the author and
+ * date are a single flex item, so the only place the row CAN break is before the
+ * game or category. That gives all three inline on a wide screen and the game on
+ * its own line on a narrow one, at whatever width the content actually needs
+ * rather than at a guessed pixel value.
+ */
+.forum-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  /* Row gap is smaller than the column gap: once it has wrapped, the game sits
+     under the author rather than floating a full 15px away. */
+  gap: 8px 15px;
+  margin: 8px 0 12px 0;
+}
+
 .forum-author-date {
   display: flex;
   align-items: center;
   gap: 15px;
+  min-width: 0;
   color: var(--text-dim);
   font-size: 0.95rem;
-  
+
   a {
     color: var(--text-info);
     text-decoration: none;
     font-weight: 600;
-    
+
     &:hover {
       color: var(--accent-primary-text);
     }
+  }
+}
+
+/* Keeps the date on the author's baseline. It used to follow a <br/>, which put
+   it on its own line and left the game link stranded beside neither. */
+.forum-date {
+  white-space: nowrap;
+}
+
+.forum-game-link {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-decoration: none;
+  color: var(--text-info);
+  background: rgba(var(--panel-card-border-rgb), 0.35);
+  border: 1px solid rgba(var(--panel-card-border-rgb), 0.82);
+
+  &:hover {
+    color: var(--accent-primary-text);
+    border-color: var(--accent-primary-text);
   }
 }
 
@@ -409,10 +452,6 @@
   }
 }
 
-
-.forum-category-row {
-  margin: 8px 0 12px 0;
-}
 
 .category-pill {
   display: inline-block;
