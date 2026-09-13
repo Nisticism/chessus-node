@@ -57,6 +57,8 @@
  * The position one ply back also supplies setup_move for free, which is what
  * makes en passant behave in the generated puzzles.
  */
+require('dotenv').config();
+
 const fs = require('fs');
 const path = require('path');
 const mysql = require('mysql2/promise');

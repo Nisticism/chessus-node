@@ -16,6 +16,8 @@
  * installer in server/migrations.js recomputes before attaching the puzzle to
  * anything - see server/game-fingerprint.js.
  */
+require('dotenv').config();
+
 const fs = require('fs');
 const path = require('path');
 const mysql = require('mysql2/promise');

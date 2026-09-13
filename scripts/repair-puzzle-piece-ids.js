@@ -25,6 +25,8 @@
  *
  * Generators are fixed separately so new puzzles carry ids that survive storage.
  */
+require('dotenv').config();
+
 const path = require('path');
 const mysql = require('mysql2/promise');
 

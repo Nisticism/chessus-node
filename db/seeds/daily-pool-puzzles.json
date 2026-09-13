@@ -1,5 +1,5 @@
 {
- "generated_at": "2026-09-12T22:00:32.044Z",
+ "generated_at": "2026-09-13T07:17:37.256Z",
  "note": "Snapshot of the puzzles GridGrove owns, exported by scripts/export-pool-puzzles.js. Installed by the seedDailyPoolPuzzles step in server/migrations.js, which verifies game_fingerprint first.",
  "puzzles": [
   {
@@ -1322,6 +1322,189 @@
    "validation_detail": null
   },
   {
+   "game_type_id": 65,
+   "game_name": "chess but i got rid of the queen",
+   "game_fingerprint": "3da0572e7b1b2a106bea839f31537a50",
+   "title": "Mate in two",
+   "description": null,
+   "position": [
+    {
+     "piece_id": 121,
+     "player_id": 1,
+     "x": 6,
+     "y": 4,
+     "piece_name": "king but buffed",
+     "ends_game_on_checkmate": true,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 5
+    },
+    {
+     "piece_id": 121,
+     "player_id": 1,
+     "x": 6,
+     "y": 7,
+     "piece_name": "king but buffed",
+     "ends_game_on_checkmate": true,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 15
+    },
+    {
+     "piece_id": 20,
+     "player_id": 2,
+     "x": 5,
+     "y": 7,
+     "piece_name": "Bishop",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 4
+    },
+    {
+     "piece_id": 121,
+     "player_id": 2,
+     "x": 7,
+     "y": 1,
+     "piece_name": "king but buffed",
+     "ends_game_on_checkmate": true,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 6
+    },
+    {
+     "piece_id": 121,
+     "player_id": 2,
+     "x": 4,
+     "y": 2,
+     "piece_name": "king but buffed",
+     "ends_game_on_checkmate": true,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 3
+    },
+    {
+     "piece_id": 15,
+     "player_id": 2,
+     "x": 1,
+     "y": 7,
+     "piece_name": "Rook",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 12
+    },
+    {
+     "piece_id": 21,
+     "player_id": 2,
+     "x": 1,
+     "y": 5,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 3
+    },
+    {
+     "piece_id": 21,
+     "player_id": 2,
+     "x": 0,
+     "y": 6,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 5
+    },
+    {
+     "piece_id": 21,
+     "player_id": 2,
+     "x": 3,
+     "y": 4,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 2
+    },
+    {
+     "piece_id": 21,
+     "player_id": 2,
+     "x": 2,
+     "y": 4,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 3
+    },
+    {
+     "piece_id": 20,
+     "player_id": 2,
+     "x": 2,
+     "y": 2,
+     "piece_name": "Bishop",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 1
+    }
+   ],
+   "side_to_move": 2,
+   "setup_move": {
+    "from": {
+     "x": 7,
+     "y": 6
+    },
+    "to": {
+     "x": 6,
+     "y": 7
+    }
+   },
+   "goal": "checkmate_in_1",
+   "goal_description": null,
+   "solution_line": [
+    {
+     "pieceId": "15_0_7",
+     "from": {
+      "x": 1,
+      "y": 7
+     },
+     "to": {
+      "x": 1,
+      "y": 6
+     }
+    },
+    {
+     "pieceId": "121_7_4",
+     "from": {
+      "x": 6,
+      "y": 7
+     },
+     "to": {
+      "x": 5,
+      "y": 7
+     }
+    },
+    {
+     "pieceId": "21_1_1",
+     "from": {
+      "x": 0,
+      "y": 6
+     },
+     "to": {
+      "x": 0,
+      "y": 7
+     },
+     "promotionChar": "q",
+     "promotionPieceId": "21_1_7",
+     "promotionPlayer": 2
+    }
+   ],
+   "solution_depth": 2,
+   "validation_detail": "Fairy-Stockfish proved a forced mate in 2; the site engine confirmed every move is legal."
+  },
+  {
    "game_type_id": 119,
    "game_name": "Queenmate",
    "game_fingerprint": "e37c0102877216dc8b86b372e6b0e539",
@@ -2531,6 +2714,221 @@
    "validation_detail": null
   },
   {
+   "game_type_id": 146,
+   "game_name": "chess with the most popular pieces",
+   "game_fingerprint": "66270e404f94a52ae5f11c0f460b2616",
+   "title": "Mate in two",
+   "description": null,
+   "position": [
+    {
+     "id": "16_0_1",
+     "piece_id": 16,
+     "player_id": 2,
+     "x": 1,
+     "y": 6,
+     "piece_name": "pengue",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 12
+    },
+    {
+     "id": "18_0_2",
+     "piece_id": 18,
+     "player_id": 2,
+     "x": 2,
+     "y": 1,
+     "piece_name": "Nom E Critter",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 8
+    },
+    {
+     "id": "19_0_3",
+     "piece_id": 19,
+     "player_id": 2,
+     "x": 1,
+     "y": 1,
+     "piece_name": "King",
+     "ends_game_on_checkmate": true,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 4
+    },
+    {
+     "id": "21_1_0",
+     "piece_id": 21,
+     "player_id": 2,
+     "x": 0,
+     "y": 3,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 1
+    },
+    {
+     "id": "15_7_0",
+     "piece_id": 15,
+     "player_id": 1,
+     "x": 6,
+     "y": 1,
+     "piece_name": "Rook",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 13
+    },
+    {
+     "id": "15_7_7",
+     "piece_id": 15,
+     "player_id": 1,
+     "x": 2,
+     "y": 4,
+     "piece_name": "Rook",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 5
+    },
+    {
+     "id": "16_7_6",
+     "piece_id": 16,
+     "player_id": 1,
+     "x": 6,
+     "y": 7,
+     "piece_name": "pengue",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "18_7_2",
+     "piece_id": 18,
+     "player_id": 1,
+     "x": 2,
+     "y": 7,
+     "piece_name": "Nom E Critter",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "18_7_5",
+     "piece_id": 18,
+     "player_id": 1,
+     "x": 5,
+     "y": 7,
+     "piece_name": "Nom E Critter",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "19_7_3",
+     "piece_id": 19,
+     "player_id": 1,
+     "x": 4,
+     "y": 7,
+     "piece_name": "King",
+     "ends_game_on_checkmate": true,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 5
+    },
+    {
+     "id": "21_6_0",
+     "piece_id": 21,
+     "player_id": 1,
+     "x": 0,
+     "y": 4,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 1
+    },
+    {
+     "id": "21_6_7",
+     "piece_id": 21,
+     "player_id": 1,
+     "x": 7,
+     "y": 1,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 4
+    },
+    {
+     "id": "26_6_4",
+     "piece_id": 26,
+     "player_id": 1,
+     "x": 3,
+     "y": 3,
+     "piece_name": "Tobby",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 3
+    }
+   ],
+   "side_to_move": 1,
+   "setup_move": {
+    "from": {
+     "x": 1,
+     "y": 7
+    },
+    "to": {
+     "x": 1,
+     "y": 6
+    }
+   },
+   "goal": "checkmate_in_1",
+   "goal_description": null,
+   "solution_line": [
+    {
+     "pieceId": "15_7_7",
+     "from": {
+      "x": 2,
+      "y": 4
+     },
+     "to": {
+      "x": 2,
+      "y": 1
+     }
+    },
+    {
+     "pieceId": "19_0_3",
+     "from": {
+      "x": 1,
+      "y": 1
+     },
+     "to": {
+      "x": 0,
+      "y": 2
+     }
+    },
+    {
+     "pieceId": "15_7_7",
+     "from": {
+      "x": 2,
+      "y": 1
+     },
+     "to": {
+      "x": 2,
+      "y": 2
+     }
+    }
+   ],
+   "solution_depth": 2,
+   "validation_detail": "Fairy-Stockfish proved a forced mate in 2; the site engine confirmed every move is legal."
+  },
+  {
    "game_type_id": 153,
    "game_name": "Jump Chess",
    "game_fingerprint": "ac221b520dbc2a19f0813ae59ea502d9",
@@ -3074,6 +3472,620 @@
    ],
    "solution_depth": 1,
    "validation_detail": null
+  },
+  {
+   "game_type_id": 163,
+   "game_name": "Chaturanga",
+   "game_fingerprint": "a86995ad056fcee537823713f35c131e",
+   "title": "Mate in four",
+   "description": null,
+   "position": [
+    {
+     "id": "183_7_0",
+     "piece_id": 183,
+     "player_id": 1,
+     "x": 7,
+     "y": 7,
+     "piece_name": "Rook",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 13
+    },
+    {
+     "id": "196_7_4",
+     "piece_id": 196,
+     "player_id": 1,
+     "x": 2,
+     "y": 7,
+     "piece_name": "King (Ancient)",
+     "ends_game_on_checkmate": true,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 9
+    },
+    {
+     "id": "183_0_0",
+     "piece_id": 183,
+     "player_id": 2,
+     "x": 6,
+     "y": 5,
+     "piece_name": "Rook",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 3
+    },
+    {
+     "id": "194_0_2",
+     "piece_id": 194,
+     "player_id": 2,
+     "x": 4,
+     "y": 2,
+     "piece_name": "Alfil",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 3
+    },
+    {
+     "id": "196_0_3",
+     "piece_id": 196,
+     "player_id": 2,
+     "x": 2,
+     "y": 5,
+     "piece_name": "King (Ancient)",
+     "ends_game_on_checkmate": true,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 13
+    },
+    {
+     "id": "192_0_4",
+     "piece_id": 192,
+     "player_id": 2,
+     "x": 2,
+     "y": 2,
+     "piece_name": "Ferz",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 2
+    },
+    {
+     "id": "194_0_5",
+     "piece_id": 194,
+     "player_id": 2,
+     "x": 5,
+     "y": 4,
+     "piece_name": "Alfil",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 2
+    },
+    {
+     "id": "184_0_6",
+     "piece_id": 184,
+     "player_id": 2,
+     "x": 4,
+     "y": 5,
+     "piece_name": "Knight",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 13
+    },
+    {
+     "id": "183_0_7",
+     "piece_id": 183,
+     "player_id": 2,
+     "x": 4,
+     "y": 6,
+     "piece_name": "Rook",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 10
+    },
+    {
+     "id": "191_6_0",
+     "piece_id": 191,
+     "player_id": 1,
+     "x": 0,
+     "y": 3,
+     "piece_name": "Pawn (Ancient)",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 3
+    },
+    {
+     "id": "191_6_2",
+     "piece_id": 191,
+     "player_id": 1,
+     "x": 2,
+     "y": 6,
+     "piece_name": "Pawn (Ancient)",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "191_1_0",
+     "piece_id": 191,
+     "player_id": 2,
+     "x": 0,
+     "y": 2,
+     "piece_name": "Pawn (Ancient)",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 1
+    },
+    {
+     "id": "191_1_1",
+     "piece_id": 191,
+     "player_id": 2,
+     "x": 1,
+     "y": 1,
+     "piece_name": "Pawn (Ancient)",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "191_1_2",
+     "piece_id": 191,
+     "player_id": 2,
+     "x": 2,
+     "y": 3,
+     "piece_name": "Pawn (Ancient)",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 2
+    },
+    {
+     "id": "191_1_5",
+     "piece_id": 191,
+     "player_id": 2,
+     "x": 5,
+     "y": 1,
+     "piece_name": "Pawn (Ancient)",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    }
+   ],
+   "side_to_move": 2,
+   "setup_move": {
+    "from": {
+     "x": 4,
+     "y": 7
+    },
+    "to": {
+     "x": 7,
+     "y": 7
+    }
+   },
+   "goal": "checkmate_in_1",
+   "goal_description": null,
+   "solution_line": [
+    {
+     "pieceId": "183_0_7",
+     "from": {
+      "x": 4,
+      "y": 6
+     },
+     "to": {
+      "x": 6,
+      "y": 6
+     }
+    },
+    {
+     "pieceId": "183_7_0",
+     "from": {
+      "x": 7,
+      "y": 7
+     },
+     "to": {
+      "x": 5,
+      "y": 7
+     }
+    },
+    {
+     "pieceId": "183_0_7",
+     "from": {
+      "x": 6,
+      "y": 6
+     },
+     "to": {
+      "x": 6,
+      "y": 7
+     }
+    },
+    {
+     "pieceId": "196_7_4",
+     "from": {
+      "x": 2,
+      "y": 7
+     },
+     "to": {
+      "x": 1,
+      "y": 7
+     }
+    },
+    {
+     "pieceId": "183_0_7",
+     "from": {
+      "x": 6,
+      "y": 7
+     },
+     "to": {
+      "x": 5,
+      "y": 7
+     }
+    },
+    {
+     "pieceId": "196_7_4",
+     "from": {
+      "x": 1,
+      "y": 7
+     },
+     "to": {
+      "x": 0,
+      "y": 6
+     }
+    },
+    {
+     "pieceId": "184_0_6",
+     "from": {
+      "x": 4,
+      "y": 5
+     },
+     "to": {
+      "x": 2,
+      "y": 6
+     }
+    }
+   ],
+   "solution_depth": 4,
+   "validation_detail": "Fairy-Stockfish proved a forced mate in 4; the site engine confirmed every move is legal."
+  },
+  {
+   "game_type_id": 164,
+   "game_name": "Buffed chess",
+   "game_fingerprint": "d09dbd7f08f9684161d6edf2166e0999",
+   "title": "Mate in four",
+   "description": null,
+   "position": [
+    {
+     "id": "203_6_0",
+     "piece_id": 203,
+     "player_id": 1,
+     "x": 1,
+     "y": 3,
+     "piece_name": "Buffed pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 3
+    },
+    {
+     "id": "203_6_2",
+     "piece_id": 203,
+     "player_id": 1,
+     "x": 2,
+     "y": 4,
+     "piece_name": "Buffed pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 2
+    },
+    {
+     "id": "203_6_4",
+     "piece_id": 203,
+     "player_id": 1,
+     "x": 3,
+     "y": 1,
+     "piece_name": "Buffed pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 4
+    },
+    {
+     "id": "203_6_5",
+     "piece_id": 203,
+     "player_id": 1,
+     "x": 5,
+     "y": 6,
+     "piece_name": "Buffed pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "203_6_7",
+     "piece_id": 203,
+     "player_id": 1,
+     "x": 7,
+     "y": 4,
+     "piece_name": "Buffed pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 1
+    },
+    {
+     "id": "195_7_0",
+     "piece_id": 195,
+     "player_id": 1,
+     "x": 0,
+     "y": 7,
+     "piece_name": "Buffed rook",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 2
+    },
+    {
+     "id": "193_7_2",
+     "piece_id": 193,
+     "player_id": 1,
+     "x": 3,
+     "y": 7,
+     "piece_name": "Buffed bishop",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 1
+    },
+    {
+     "id": "199_7_3",
+     "piece_id": 199,
+     "player_id": 1,
+     "x": 6,
+     "y": 5,
+     "piece_name": "Buffed queen",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 4
+    },
+    {
+     "id": "200_7_4",
+     "piece_id": 200,
+     "player_id": 1,
+     "x": 4,
+     "y": 7,
+     "piece_name": "Buffed king",
+     "ends_game_on_checkmate": true,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "193_7_5",
+     "piece_id": 193,
+     "player_id": 1,
+     "x": 5,
+     "y": 7,
+     "piece_name": "Buffed bishop",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "195_7_7",
+     "piece_id": 195,
+     "player_id": 1,
+     "x": 7,
+     "y": 7,
+     "piece_name": "Buffed rook",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "203_1_1",
+     "piece_id": 203,
+     "player_id": 2,
+     "x": 1,
+     "y": 1,
+     "piece_name": "Buffed pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "203_1_4",
+     "piece_id": 203,
+     "player_id": 2,
+     "x": 4,
+     "y": 2,
+     "piece_name": "Buffed pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 1
+    },
+    {
+     "id": "203_1_7",
+     "piece_id": 203,
+     "player_id": 2,
+     "x": 7,
+     "y": 3,
+     "piece_name": "Buffed pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 2
+    },
+    {
+     "id": "195_0_0",
+     "piece_id": 195,
+     "player_id": 2,
+     "x": 1,
+     "y": 0,
+     "piece_name": "Buffed rook",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 4
+    },
+    {
+     "id": "190_0_1",
+     "piece_id": 190,
+     "player_id": 2,
+     "x": 1,
+     "y": 2,
+     "piece_name": "Buffed knight",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 6
+    },
+    {
+     "id": "193_0_2",
+     "piece_id": 193,
+     "player_id": 2,
+     "x": 5,
+     "y": 1,
+     "piece_name": "Buffed bishop",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 3
+    },
+    {
+     "id": "200_0_4",
+     "piece_id": 200,
+     "player_id": 2,
+     "x": 3,
+     "y": 0,
+     "piece_name": "Buffed king",
+     "ends_game_on_checkmate": true,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 1
+    },
+    {
+     "id": "193_0_5",
+     "piece_id": 193,
+     "player_id": 2,
+     "x": 3,
+     "y": 6,
+     "piece_name": "Buffed bishop",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 5
+    }
+   ],
+   "side_to_move": 1,
+   "setup_move": {
+    "from": {
+     "x": 7,
+     "y": 2
+    },
+    "to": {
+     "x": 3,
+     "y": 6
+    }
+   },
+   "goal": "checkmate_in_1",
+   "goal_description": null,
+   "solution_line": [
+    {
+     "pieceId": "193_7_2",
+     "from": {
+      "x": 3,
+      "y": 7
+     },
+     "to": {
+      "x": 3,
+      "y": 6
+     }
+    },
+    {
+     "pieceId": "195_0_0",
+     "from": {
+      "x": 1,
+      "y": 0
+     },
+     "to": {
+      "x": 2,
+      "y": 1
+     }
+    },
+    {
+     "pieceId": "199_7_3",
+     "from": {
+      "x": 6,
+      "y": 5
+     },
+     "to": {
+      "x": 6,
+      "y": 3
+     }
+    },
+    {
+     "pieceId": "200_0_4",
+     "from": {
+      "x": 3,
+      "y": 0
+     },
+     "to": {
+      "x": 3,
+      "y": 1
+     }
+    },
+    {
+     "pieceId": "199_7_3",
+     "from": {
+      "x": 6,
+      "y": 3
+     },
+     "to": {
+      "x": 5,
+      "y": 1
+     }
+    },
+    {
+     "pieceId": "200_0_4",
+     "from": {
+      "x": 3,
+      "y": 1
+     },
+     "to": {
+      "x": 2,
+      "y": 0
+     }
+    },
+    {
+     "pieceId": "199_7_3",
+     "from": {
+      "x": 5,
+      "y": 1
+     },
+     "to": {
+      "x": 4,
+      "y": 0
+     }
+    }
+   ],
+   "solution_depth": 4,
+   "validation_detail": "Fairy-Stockfish proved a forced mate in 4; the site engine confirmed every move is legal."
   },
   {
    "game_type_id": 165,
@@ -3790,6 +4802,1933 @@
    "validation_detail": null
   },
   {
+   "game_type_id": 196,
+   "game_name": "BansheeVsRaven",
+   "game_fingerprint": "aaa9e97796ce38b038b42a7ef5389d7e",
+   "title": "Mate in four",
+   "description": null,
+   "position": [
+    {
+     "id": "21_6_0",
+     "piece_id": 21,
+     "player_id": 1,
+     "x": 0,
+     "y": 3,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 2
+    },
+    {
+     "id": "21_6_3",
+     "piece_id": 21,
+     "player_id": 1,
+     "x": 4,
+     "y": 5,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 1
+    },
+    {
+     "id": "21_6_5",
+     "piece_id": 21,
+     "player_id": 1,
+     "x": 5,
+     "y": 2,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 3
+    },
+    {
+     "id": "21_6_6",
+     "piece_id": 21,
+     "player_id": 1,
+     "x": 6,
+     "y": 5,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 1
+    },
+    {
+     "id": "21_6_7",
+     "piece_id": 21,
+     "player_id": 1,
+     "x": 7,
+     "y": 6,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "21_1_0",
+     "piece_id": 21,
+     "player_id": 2,
+     "x": 0,
+     "y": 1,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "21_1_1",
+     "piece_id": 21,
+     "player_id": 2,
+     "x": 0,
+     "y": 2,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 1
+    },
+    {
+     "id": "22_7_6",
+     "piece_id": 22,
+     "player_id": 1,
+     "x": 6,
+     "y": 3,
+     "piece_name": "Knight",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 8
+    },
+    {
+     "id": "15_0_0",
+     "piece_id": 15,
+     "player_id": 2,
+     "x": 3,
+     "y": 6,
+     "piece_name": "Rook",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 6
+    },
+    {
+     "id": "124_7_3",
+     "piece_id": 124,
+     "player_id": 1,
+     "x": 4,
+     "y": 1,
+     "piece_name": "Unicorn/Banshee",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 20
+    },
+    {
+     "id": "19_7_4",
+     "piece_id": 19,
+     "player_id": 1,
+     "x": 5,
+     "y": 5,
+     "piece_name": "King",
+     "ends_game_on_checkmate": true,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 4
+    },
+    {
+     "id": "19_0_4",
+     "piece_id": 19,
+     "player_id": 2,
+     "x": 7,
+     "y": 0,
+     "piece_name": "King",
+     "ends_game_on_checkmate": true,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 22
+    }
+   ],
+   "side_to_move": 1,
+   "setup_move": {
+    "from": {
+     "x": 6,
+     "y": 0
+    },
+    "to": {
+     "x": 7,
+     "y": 0
+    }
+   },
+   "goal": "checkmate_in_1",
+   "goal_description": null,
+   "solution_line": [
+    {
+     "pieceId": "22_7_6",
+     "from": {
+      "x": 6,
+      "y": 3
+     },
+     "to": {
+      "x": 5,
+      "y": 1
+     }
+    },
+    {
+     "pieceId": "19_0_4",
+     "from": {
+      "x": 7,
+      "y": 0
+     },
+     "to": {
+      "x": 7,
+      "y": 1
+     }
+    },
+    {
+     "pieceId": "124_7_3",
+     "from": {
+      "x": 4,
+      "y": 1
+     },
+     "to": {
+      "x": 5,
+      "y": 3
+     }
+    },
+    {
+     "pieceId": "19_0_4",
+     "from": {
+      "x": 7,
+      "y": 1
+     },
+     "to": {
+      "x": 6,
+      "y": 0
+     }
+    },
+    {
+     "pieceId": "22_7_6",
+     "from": {
+      "x": 5,
+      "y": 1
+     },
+     "to": {
+      "x": 7,
+      "y": 2
+     }
+    },
+    {
+     "pieceId": "19_0_4",
+     "from": {
+      "x": 6,
+      "y": 0
+     },
+     "to": {
+      "x": 5,
+      "y": 0
+     }
+    },
+    {
+     "pieceId": "124_7_3",
+     "from": {
+      "x": 5,
+      "y": 3
+     },
+     "to": {
+      "x": 6,
+      "y": 2
+     }
+    }
+   ],
+   "solution_depth": 4,
+   "validation_detail": "Fairy-Stockfish proved a forced mate in 4; the site engine confirmed every move is legal."
+  },
+  {
+   "game_type_id": 197,
+   "game_name": "Mini Chess",
+   "game_fingerprint": "42cd7fea6b1f89d8340e632bd2ca6168",
+   "title": "Mate in two",
+   "description": null,
+   "position": [
+    {
+     "id": "21_3_2",
+     "piece_id": 21,
+     "player_id": 1,
+     "x": 2,
+     "y": 3,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "21_3_3",
+     "piece_id": 21,
+     "player_id": 1,
+     "x": 3,
+     "y": 0,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 3
+    },
+    {
+     "id": "21_3_4",
+     "piece_id": 21,
+     "player_id": 1,
+     "x": 4,
+     "y": 3,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "19_4_3",
+     "piece_id": 19,
+     "player_id": 1,
+     "x": 3,
+     "y": 4,
+     "piece_name": "King",
+     "ends_game_on_checkmate": true,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "15_0_0",
+     "piece_id": 15,
+     "player_id": 2,
+     "x": 0,
+     "y": 0,
+     "piece_name": "Rook",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "22_0_1",
+     "piece_id": 22,
+     "player_id": 2,
+     "x": 1,
+     "y": 0,
+     "piece_name": "Knight",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "20_0_2",
+     "piece_id": 20,
+     "player_id": 2,
+     "x": 1,
+     "y": 3,
+     "piece_name": "Bishop",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 3
+    },
+    {
+     "id": "25_0_3",
+     "piece_id": 25,
+     "player_id": 2,
+     "x": 2,
+     "y": 1,
+     "piece_name": "Queen",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 2
+    },
+    {
+     "id": "19_0_4",
+     "piece_id": 19,
+     "player_id": 2,
+     "x": 4,
+     "y": 1,
+     "piece_name": "King",
+     "ends_game_on_checkmate": true,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 1
+    },
+    {
+     "id": "21_1_0",
+     "piece_id": 21,
+     "player_id": 2,
+     "x": 0,
+     "y": 1,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "21_1_4",
+     "piece_id": 21,
+     "player_id": 2,
+     "x": 3,
+     "y": 3,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 2
+    }
+   ],
+   "side_to_move": 2,
+   "setup_move": {
+    "from": {
+     "x": 3,
+     "y": 1
+    },
+    "to": {
+     "x": 3,
+     "y": 0
+    }
+   },
+   "goal": "checkmate_in_1",
+   "goal_description": null,
+   "solution_line": [
+    {
+     "pieceId": "22_0_1",
+     "from": {
+      "x": 1,
+      "y": 0
+     },
+     "to": {
+      "x": 2,
+      "y": 2
+     }
+    },
+    {
+     "pieceId": "19_4_3",
+     "from": {
+      "x": 3,
+      "y": 4
+     },
+     "to": {
+      "x": 3,
+      "y": 3
+     }
+    },
+    {
+     "pieceId": "25_0_3",
+     "from": {
+      "x": 2,
+      "y": 1
+     },
+     "to": {
+      "x": 4,
+      "y": 3
+     }
+    }
+   ],
+   "solution_depth": 2,
+   "validation_detail": "Fairy-Stockfish proved a forced mate in 2; the site engine confirmed every move is legal."
+  },
+  {
+   "game_type_id": 198,
+   "game_name": "Los Alamos Chess",
+   "game_fingerprint": "e4a23af581eaab717264f68783e03802",
+   "title": "Mate in four",
+   "description": null,
+   "position": [
+    {
+     "id": "196_5_3",
+     "piece_id": 196,
+     "player_id": 1,
+     "x": 5,
+     "y": 5,
+     "piece_name": "King (Ancient)",
+     "ends_game_on_checkmate": true,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 10
+    },
+    {
+     "id": "186_0_2",
+     "piece_id": 186,
+     "player_id": 2,
+     "x": 2,
+     "y": 4,
+     "piece_name": "Queen",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 12
+    },
+    {
+     "id": "196_0_3",
+     "piece_id": 196,
+     "player_id": 2,
+     "x": 2,
+     "y": 0,
+     "piece_name": "King (Ancient)",
+     "ends_game_on_checkmate": true,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 1
+    },
+    {
+     "id": "191_1_2",
+     "piece_id": 191,
+     "player_id": 2,
+     "x": 2,
+     "y": 2,
+     "piece_name": "Pawn (Ancient)",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 1
+    }
+   ],
+   "side_to_move": 2,
+   "setup_move": {
+    "from": {
+     "x": 4,
+     "y": 5
+    },
+    "to": {
+     "x": 5,
+     "y": 5
+    }
+   },
+   "goal": "checkmate_in_1",
+   "goal_description": null,
+   "solution_line": [
+    {
+     "pieceId": "196_0_3",
+     "from": {
+      "x": 2,
+      "y": 0
+     },
+     "to": {
+      "x": 3,
+      "y": 1
+     }
+    },
+    {
+     "pieceId": "196_5_3",
+     "from": {
+      "x": 5,
+      "y": 5
+     },
+     "to": {
+      "x": 4,
+      "y": 5
+     }
+    },
+    {
+     "pieceId": "196_0_3",
+     "from": {
+      "x": 3,
+      "y": 1
+     },
+     "to": {
+      "x": 4,
+      "y": 2
+     }
+    },
+    {
+     "pieceId": "196_5_3",
+     "from": {
+      "x": 4,
+      "y": 5
+     },
+     "to": {
+      "x": 5,
+      "y": 5
+     }
+    },
+    {
+     "pieceId": "196_0_3",
+     "from": {
+      "x": 4,
+      "y": 2
+     },
+     "to": {
+      "x": 3,
+      "y": 3
+     }
+    },
+    {
+     "pieceId": "196_5_3",
+     "from": {
+      "x": 5,
+      "y": 5
+     },
+     "to": {
+      "x": 4,
+      "y": 5
+     }
+    },
+    {
+     "pieceId": "186_0_2",
+     "from": {
+      "x": 2,
+      "y": 4
+     },
+     "to": {
+      "x": 4,
+      "y": 4
+     }
+    }
+   ],
+   "solution_depth": 4,
+   "validation_detail": "Fairy-Stockfish proved a forced mate in 4; the site engine confirmed every move is legal."
+  },
+  {
+   "game_type_id": 201,
+   "game_name": "Chess with Different Armies (Fabulous FIDEs vs. Colorbound Clobberers)",
+   "game_fingerprint": "55076f0ecf7ec051b57c291dc928dc1e",
+   "title": "Mate in four",
+   "description": null,
+   "position": [
+    {
+     "id": "182_6_0",
+     "piece_id": 182,
+     "player_id": 1,
+     "x": 0,
+     "y": 4,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 1
+    },
+    {
+     "id": "182_6_1",
+     "piece_id": 182,
+     "player_id": 1,
+     "x": 1,
+     "y": 6,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "182_6_5",
+     "piece_id": 182,
+     "player_id": 1,
+     "x": 5,
+     "y": 6,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "182_6_6",
+     "piece_id": 182,
+     "player_id": 1,
+     "x": 6,
+     "y": 6,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "183_7_0",
+     "piece_id": 183,
+     "player_id": 1,
+     "x": 0,
+     "y": 7,
+     "piece_name": "Rook",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "184_7_1",
+     "piece_id": 184,
+     "player_id": 1,
+     "x": 4,
+     "y": 3,
+     "piece_name": "Knight",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 3
+    },
+    {
+     "id": "185_7_2",
+     "piece_id": 185,
+     "player_id": 1,
+     "x": 2,
+     "y": 3,
+     "piece_name": "Bishop",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 5
+    },
+    {
+     "id": "187_7_4",
+     "piece_id": 187,
+     "player_id": 1,
+     "x": 4,
+     "y": 7,
+     "piece_name": "King",
+     "ends_game_on_checkmate": true,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "184_7_6",
+     "piece_id": 184,
+     "player_id": 1,
+     "x": 7,
+     "y": 3,
+     "piece_name": "Knight",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 9
+    },
+    {
+     "id": "183_7_7",
+     "piece_id": 183,
+     "player_id": 1,
+     "x": 6,
+     "y": 4,
+     "piece_name": "Rook",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 3
+    },
+    {
+     "id": "187_0_4",
+     "piece_id": 187,
+     "player_id": 2,
+     "x": 1,
+     "y": 1,
+     "piece_name": "King",
+     "ends_game_on_checkmate": true,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 6
+    },
+    {
+     "id": "182_1_0",
+     "piece_id": 182,
+     "player_id": 2,
+     "x": 0,
+     "y": 3,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 2
+    },
+    {
+     "id": "182_1_5",
+     "piece_id": 182,
+     "player_id": 2,
+     "x": 4,
+     "y": 2,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 1
+    }
+   ],
+   "side_to_move": 1,
+   "setup_move": {
+    "from": {
+     "x": 2,
+     "y": 0
+    },
+    "to": {
+     "x": 1,
+     "y": 1
+    }
+   },
+   "goal": "checkmate_in_1",
+   "goal_description": null,
+   "solution_line": [
+    {
+     "pieceId": "183_7_0",
+     "from": {
+      "x": 0,
+      "y": 7
+     },
+     "to": {
+      "x": 3,
+      "y": 7
+     }
+    },
+    {
+     "pieceId": "187_0_4",
+     "from": {
+      "x": 1,
+      "y": 1
+     },
+     "to": {
+      "x": 0,
+      "y": 2
+     }
+    },
+    {
+     "pieceId": "183_7_7",
+     "from": {
+      "x": 6,
+      "y": 4
+     },
+     "to": {
+      "x": 6,
+      "y": 0
+     }
+    },
+    {
+     "pieceId": "187_0_4",
+     "from": {
+      "x": 0,
+      "y": 2
+     },
+     "to": {
+      "x": 1,
+      "y": 1
+     }
+    },
+    {
+     "pieceId": "183_7_0",
+     "from": {
+      "x": 3,
+      "y": 7
+     },
+     "to": {
+      "x": 3,
+      "y": 1
+     }
+    },
+    {
+     "pieceId": "187_0_4",
+     "from": {
+      "x": 1,
+      "y": 1
+     },
+     "to": {
+      "x": 0,
+      "y": 2
+     }
+    },
+    {
+     "pieceId": "183_7_0",
+     "from": {
+      "x": 3,
+      "y": 1
+     },
+     "to": {
+      "x": 0,
+      "y": 1
+     }
+    }
+   ],
+   "solution_depth": 4,
+   "validation_detail": "Fairy-Stockfish proved a forced mate in 4; the site engine confirmed every move is legal."
+  },
+  {
+   "game_type_id": 202,
+   "game_name": "AND HE SACRAFICES...",
+   "game_fingerprint": "802abb0758fccdabece510a0d7c43928",
+   "title": "Mate in four",
+   "description": null,
+   "position": [
+    {
+     "id": "19_7_4",
+     "piece_id": 19,
+     "player_id": 1,
+     "x": 4,
+     "y": 6,
+     "piece_name": "King",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 3
+    },
+    {
+     "id": "15_7_7",
+     "piece_id": 15,
+     "player_id": 1,
+     "x": 5,
+     "y": 5,
+     "piece_name": "Rook",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 3
+    },
+    {
+     "id": "21_6_3",
+     "piece_id": 21,
+     "player_id": 1,
+     "x": 3,
+     "y": 6,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "21_6_4",
+     "piece_id": 21,
+     "player_id": 1,
+     "x": 5,
+     "y": 3,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 2
+    },
+    {
+     "id": "19_0_4",
+     "piece_id": 19,
+     "player_id": 2,
+     "x": 3,
+     "y": 0,
+     "piece_name": "King",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 2
+    },
+    {
+     "id": "15_0_5",
+     "piece_id": 15,
+     "player_id": 2,
+     "x": 2,
+     "y": 4,
+     "piece_name": "Rook",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 4
+    },
+    {
+     "id": "15_0_6",
+     "piece_id": 15,
+     "player_id": 2,
+     "x": 7,
+     "y": 1,
+     "piece_name": "Rook",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 2
+    },
+    {
+     "id": "21_1_2",
+     "piece_id": 21,
+     "player_id": 2,
+     "x": 1,
+     "y": 3,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 2
+    },
+    {
+     "id": "21_1_3",
+     "piece_id": 21,
+     "player_id": 2,
+     "x": 3,
+     "y": 1,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    }
+   ],
+   "side_to_move": 2,
+   "setup_move": {
+    "from": {
+     "x": 5,
+     "y": 6
+    },
+    "to": {
+     "x": 4,
+     "y": 6
+    }
+   },
+   "goal": "checkmate_in_1",
+   "goal_description": null,
+   "solution_line": [
+    {
+     "pieceId": "15_0_6",
+     "from": {
+      "x": 7,
+      "y": 1
+     },
+     "to": {
+      "x": 7,
+      "y": 4
+     }
+    },
+    {
+     "pieceId": "21_6_3",
+     "from": {
+      "x": 3,
+      "y": 6
+     },
+     "to": {
+      "x": 3,
+      "y": 4
+     }
+    },
+    {
+     "pieceId": "15_0_5",
+     "from": {
+      "x": 2,
+      "y": 4
+     },
+     "to": {
+      "x": 3,
+      "y": 4
+     }
+    },
+    {
+     "pieceId": "15_7_7",
+     "from": {
+      "x": 5,
+      "y": 5
+     },
+     "to": {
+      "x": 5,
+      "y": 7
+     }
+    },
+    {
+     "pieceId": "15_0_5",
+     "from": {
+      "x": 3,
+      "y": 4
+     },
+     "to": {
+      "x": 5,
+      "y": 4
+     }
+    },
+    {
+     "pieceId": "15_7_7",
+     "from": {
+      "x": 5,
+      "y": 7
+     },
+     "to": {
+      "x": 5,
+      "y": 4
+     }
+    },
+    {
+     "pieceId": "15_0_6",
+     "from": {
+      "x": 7,
+      "y": 4
+     },
+     "to": {
+      "x": 5,
+      "y": 4
+     }
+    }
+   ],
+   "solution_depth": 4,
+   "validation_detail": "Fairy-Stockfish proved a forced mate in 4; the site engine confirmed every move is legal."
+  },
+  {
+   "game_type_id": 203,
+   "game_name": "Boss fight",
+   "game_fingerprint": "f429328660bccb65abeb93908da16997",
+   "title": "Mate in three",
+   "description": null,
+   "position": [
+    {
+     "id": "21_6_0",
+     "piece_id": 21,
+     "player_id": 1,
+     "x": 0,
+     "y": 3,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 2
+    },
+    {
+     "id": "21_6_1",
+     "piece_id": 21,
+     "player_id": 1,
+     "x": 1,
+     "y": 6,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "21_6_2",
+     "piece_id": 21,
+     "player_id": 1,
+     "x": 2,
+     "y": 5,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 1
+    },
+    {
+     "id": "21_6_4",
+     "piece_id": 21,
+     "player_id": 1,
+     "x": 3,
+     "y": 3,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 2
+    },
+    {
+     "id": "21_6_5",
+     "piece_id": 21,
+     "player_id": 1,
+     "x": 5,
+     "y": 6,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "21_6_6",
+     "piece_id": 21,
+     "player_id": 1,
+     "x": 6,
+     "y": 6,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "21_6_7",
+     "piece_id": 21,
+     "player_id": 1,
+     "x": 7,
+     "y": 4,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 1
+    },
+    {
+     "id": "15_7_0",
+     "piece_id": 15,
+     "player_id": 1,
+     "x": 0,
+     "y": 7,
+     "piece_name": "Rook",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "22_7_1",
+     "piece_id": 22,
+     "player_id": 1,
+     "x": 1,
+     "y": 7,
+     "piece_name": "Knight",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "20_7_2",
+     "piece_id": 20,
+     "player_id": 1,
+     "x": 2,
+     "y": 7,
+     "piece_name": "Bishop",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "25_7_3",
+     "piece_id": 25,
+     "player_id": 1,
+     "x": 0,
+     "y": 1,
+     "piece_name": "Queen",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 3
+    },
+    {
+     "id": "19_7_4",
+     "piece_id": 19,
+     "player_id": 1,
+     "x": 4,
+     "y": 7,
+     "piece_name": "King",
+     "ends_game_on_checkmate": true,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "22_7_6",
+     "piece_id": 22,
+     "player_id": 1,
+     "x": 5,
+     "y": 5,
+     "piece_name": "Knight",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 1
+    },
+    {
+     "id": "15_7_7",
+     "piece_id": 15,
+     "player_id": 1,
+     "x": 7,
+     "y": 7,
+     "piece_name": "Rook",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "19_0_4",
+     "piece_id": 19,
+     "player_id": 2,
+     "x": 4,
+     "y": 0,
+     "piece_name": "King",
+     "ends_game_on_checkmate": true,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 3
+    },
+    {
+     "id": "203_1_5",
+     "piece_id": 203,
+     "player_id": 2,
+     "x": 5,
+     "y": 3,
+     "piece_name": "Buffed pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 2
+    },
+    {
+     "id": "203_1_6",
+     "piece_id": 203,
+     "player_id": 2,
+     "x": 6,
+     "y": 1,
+     "piece_name": "Buffed pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "203_1_7",
+     "piece_id": 203,
+     "player_id": 2,
+     "x": 7,
+     "y": 2,
+     "piece_name": "Buffed pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 1
+    }
+   ],
+   "side_to_move": 1,
+   "setup_move": {
+    "from": {
+     "x": 5,
+     "y": 2
+    },
+    "to": {
+     "x": 5,
+     "y": 3
+    }
+   },
+   "goal": "checkmate_in_1",
+   "goal_description": null,
+   "solution_line": [
+    {
+     "pieceId": "22_7_6",
+     "from": {
+      "x": 5,
+      "y": 5
+     },
+     "to": {
+      "x": 4,
+      "y": 3
+     }
+    },
+    {
+     "pieceId": "203_1_6",
+     "from": {
+      "x": 6,
+      "y": 1
+     },
+     "to": {
+      "x": 6,
+      "y": 2
+     }
+    },
+    {
+     "pieceId": "25_7_3",
+     "from": {
+      "x": 0,
+      "y": 1
+     },
+     "to": {
+      "x": 5,
+      "y": 1
+     }
+    },
+    {
+     "pieceId": "19_0_4",
+     "from": {
+      "x": 4,
+      "y": 0
+     },
+     "to": {
+      "x": 3,
+      "y": 0
+     }
+    },
+    {
+     "pieceId": "25_7_3",
+     "from": {
+      "x": 5,
+      "y": 1
+     },
+     "to": {
+      "x": 3,
+      "y": 1
+     }
+    }
+   ],
+   "solution_depth": 3,
+   "validation_detail": "Fairy-Stockfish proved a forced mate in 3; the site engine confirmed every move is legal."
+  },
+  {
+   "game_type_id": 206,
+   "game_name": "Chess with Different Armies (Colorbound Clobberers vs. Colorbound Clobberers)",
+   "game_fingerprint": "efecdb4f43e86fee2961a4ea3e0a0710",
+   "title": "Mate in four",
+   "description": null,
+   "position": [
+    {
+     "id": "187_7_4",
+     "piece_id": 187,
+     "player_id": 1,
+     "x": 4,
+     "y": 7,
+     "piece_name": "King",
+     "ends_game_on_checkmate": true,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 15
+    },
+    {
+     "id": "187_0_4",
+     "piece_id": 187,
+     "player_id": 2,
+     "x": 4,
+     "y": 3,
+     "piece_name": "King",
+     "ends_game_on_checkmate": true,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 5
+    },
+    {
+     "id": "277_0_2",
+     "piece_id": 277,
+     "player_id": 2,
+     "x": 4,
+     "y": 4,
+     "piece_name": "FAD",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 4
+    },
+    {
+     "id": "276_0_1",
+     "piece_id": 276,
+     "player_id": 2,
+     "x": 5,
+     "y": 2,
+     "piece_name": "Waffle",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 7
+    },
+    {
+     "id": "276_0_6",
+     "piece_id": 276,
+     "player_id": 2,
+     "x": 6,
+     "y": 0,
+     "piece_name": "Waffle",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "182_1_0",
+     "piece_id": 182,
+     "player_id": 2,
+     "x": 1,
+     "y": 4,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 2
+    },
+    {
+     "id": "182_1_2",
+     "piece_id": 182,
+     "player_id": 2,
+     "x": 2,
+     "y": 4,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 2
+    },
+    {
+     "id": "182_1_3",
+     "piece_id": 201,
+     "player_id": 2,
+     "x": 4,
+     "y": 6,
+     "piece_name": "Archbishop",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 1
+    }
+   ],
+   "side_to_move": 2,
+   "setup_move": {
+    "from": {
+     "x": 5,
+     "y": 7
+    },
+    "to": {
+     "x": 4,
+     "y": 7
+    }
+   },
+   "goal": "checkmate_in_1",
+   "goal_description": null,
+   "solution_line": [
+    {
+     "pieceId": "276_0_1",
+     "from": {
+      "x": 5,
+      "y": 2
+     },
+     "to": {
+      "x": 3,
+      "y": 4
+     }
+    },
+    {
+     "pieceId": "187_7_4",
+     "from": {
+      "x": 4,
+      "y": 7
+     },
+     "to": {
+      "x": 3,
+      "y": 6
+     }
+    },
+    {
+     "pieceId": "182_1_2",
+     "from": {
+      "x": 2,
+      "y": 4
+     },
+     "to": {
+      "x": 2,
+      "y": 5
+     }
+    },
+    {
+     "pieceId": "187_7_4",
+     "from": {
+      "x": 3,
+      "y": 6
+     },
+     "to": {
+      "x": 4,
+      "y": 7
+     }
+    },
+    {
+     "pieceId": "182_1_3",
+     "from": {
+      "x": 4,
+      "y": 6
+     },
+     "to": {
+      "x": 5,
+      "y": 5
+     }
+    },
+    {
+     "pieceId": "187_7_4",
+     "from": {
+      "x": 4,
+      "y": 7
+     },
+     "to": {
+      "x": 5,
+      "y": 7
+     }
+    },
+    {
+     "pieceId": "277_0_2",
+     "from": {
+      "x": 4,
+      "y": 4
+     },
+     "to": {
+      "x": 4,
+      "y": 6
+     }
+    }
+   ],
+   "solution_depth": 4,
+   "validation_detail": "Fairy-Stockfish proved a forced mate in 4; the site engine confirmed every move is legal."
+  },
+  {
+   "game_type_id": 218,
+   "game_name": "Chess with Different Armies (Remarkable Rookies vs. Remarkable Rookies)",
+   "game_fingerprint": "861530a0f16dad981437feda1881befa",
+   "title": "Mate in two",
+   "description": null,
+   "position": [
+    {
+     "id": "187_7_4",
+     "piece_id": 187,
+     "player_id": 1,
+     "x": 4,
+     "y": 7,
+     "piece_name": "King",
+     "ends_game_on_checkmate": true,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 2
+    },
+    {
+     "id": "198_7_3",
+     "piece_id": 198,
+     "player_id": 1,
+     "x": 4,
+     "y": 4,
+     "piece_name": "Chancellor",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 3
+    },
+    {
+     "id": "290_7_2",
+     "piece_id": 290,
+     "player_id": 1,
+     "x": 3,
+     "y": 6,
+     "piece_name": "Half-Duck",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 1
+    },
+    {
+     "id": "290_7_5",
+     "piece_id": 290,
+     "player_id": 1,
+     "x": 6,
+     "y": 6,
+     "piece_name": "Half-Duck",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 2
+    },
+    {
+     "id": "289_7_1",
+     "piece_id": 289,
+     "player_id": 1,
+     "x": 3,
+     "y": 7,
+     "piece_name": "Woody Rook",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 1
+    },
+    {
+     "id": "289_7_6",
+     "piece_id": 289,
+     "player_id": 1,
+     "x": 5,
+     "y": 7,
+     "piece_name": "Woody Rook",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 1
+    },
+    {
+     "id": "288_7_0",
+     "piece_id": 288,
+     "player_id": 1,
+     "x": 0,
+     "y": 7,
+     "piece_name": "Short Rook",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "288_7_7",
+     "piece_id": 288,
+     "player_id": 1,
+     "x": 7,
+     "y": 7,
+     "piece_name": "Short Rook",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "182_6_0",
+     "piece_id": 182,
+     "player_id": 1,
+     "x": 0,
+     "y": 5,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 1
+    },
+    {
+     "id": "182_6_1",
+     "piece_id": 182,
+     "player_id": 1,
+     "x": 1,
+     "y": 5,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 1
+    },
+    {
+     "id": "182_6_2",
+     "piece_id": 182,
+     "player_id": 1,
+     "x": 2,
+     "y": 6,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "182_6_6",
+     "piece_id": 182,
+     "player_id": 1,
+     "x": 6,
+     "y": 5,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 1
+    },
+    {
+     "id": "182_6_7",
+     "piece_id": 182,
+     "player_id": 1,
+     "x": 7,
+     "y": 4,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 2
+    },
+    {
+     "id": "187_0_4",
+     "piece_id": 187,
+     "player_id": 2,
+     "x": 3,
+     "y": 2,
+     "piece_name": "King",
+     "ends_game_on_checkmate": true,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 4
+    },
+    {
+     "id": "198_0_3",
+     "piece_id": 198,
+     "player_id": 2,
+     "x": 5,
+     "y": 2,
+     "piece_name": "Chancellor",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 4
+    },
+    {
+     "id": "290_0_5",
+     "piece_id": 290,
+     "player_id": 2,
+     "x": 4,
+     "y": 3,
+     "piece_name": "Half-Duck",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 2
+    },
+    {
+     "id": "289_0_1",
+     "piece_id": 289,
+     "player_id": 2,
+     "x": 1,
+     "y": 0,
+     "piece_name": "Woody Rook",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "289_0_6",
+     "piece_id": 289,
+     "player_id": 2,
+     "x": 6,
+     "y": 0,
+     "piece_name": "Woody Rook",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "288_0_0",
+     "piece_id": 288,
+     "player_id": 2,
+     "x": 0,
+     "y": 0,
+     "piece_name": "Short Rook",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "288_0_7",
+     "piece_id": 288,
+     "player_id": 2,
+     "x": 7,
+     "y": 0,
+     "piece_name": "Short Rook",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "182_1_0",
+     "piece_id": 182,
+     "player_id": 2,
+     "x": 0,
+     "y": 1,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "182_1_1",
+     "piece_id": 182,
+     "player_id": 2,
+     "x": 1,
+     "y": 1,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "182_1_2",
+     "piece_id": 182,
+     "player_id": 2,
+     "x": 2,
+     "y": 3,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 1
+    },
+    {
+     "id": "182_1_4",
+     "piece_id": 182,
+     "player_id": 2,
+     "x": 4,
+     "y": 1,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "182_1_5",
+     "piece_id": 182,
+     "player_id": 2,
+     "x": 5,
+     "y": 1,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "182_1_7",
+     "piece_id": 182,
+     "player_id": 2,
+     "x": 7,
+     "y": 3,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 1
+    }
+   ],
+   "side_to_move": 2,
+   "setup_move": {
+    "from": {
+     "x": 4,
+     "y": 6
+    },
+    "to": {
+     "x": 4,
+     "y": 4,
+     "isFirstMoveOnly": false
+    }
+   },
+   "goal": "checkmate_in_1",
+   "goal_description": null,
+   "solution_line": [
+    {
+     "pieceId": "198_0_3",
+     "from": {
+      "x": 5,
+      "y": 2
+     },
+     "to": {
+      "x": 4,
+      "y": 4
+     }
+    },
+    {
+     "pieceId": "290_7_2",
+     "from": {
+      "x": 3,
+      "y": 6
+     },
+     "to": {
+      "x": 4,
+      "y": 5
+     }
+    },
+    {
+     "pieceId": "290_0_5",
+     "from": {
+      "x": 4,
+      "y": 3
+     },
+     "to": {
+      "x": 4,
+      "y": 5
+     }
+    }
+   ],
+   "solution_depth": 2,
+   "validation_detail": "Fairy-Stockfish proved a forced mate in 2; the site engine confirmed every move is legal."
+  },
+  {
    "game_type_id": 224,
    "game_name": "Stationary King Chess",
    "game_fingerprint": "38bc129c60eeb01b7dbc68fa558f3598",
@@ -4131,6 +7070,241 @@
    "validation_detail": null
   },
   {
+   "game_type_id": 228,
+   "game_name": "Diana Chess",
+   "game_fingerprint": "938671d2746765c900bc94c3f407b080",
+   "title": "Mate in four",
+   "description": null,
+   "position": [
+    {
+     "id": "263_4_1",
+     "piece_id": 263,
+     "player_id": 1,
+     "x": 1,
+     "y": 2,
+     "piece_name": "Simple pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 2
+    },
+    {
+     "id": "263_4_3",
+     "piece_id": 263,
+     "player_id": 1,
+     "x": 3,
+     "y": 3,
+     "piece_name": "Simple pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 1
+    },
+    {
+     "id": "263_4_5",
+     "piece_id": 263,
+     "player_id": 1,
+     "x": 4,
+     "y": 2,
+     "piece_name": "Simple pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 2
+    },
+    {
+     "id": "263_1_0",
+     "piece_id": 263,
+     "player_id": 2,
+     "x": 0,
+     "y": 2,
+     "piece_name": "Simple pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 1
+    },
+    {
+     "id": "263_1_1",
+     "piece_id": 263,
+     "player_id": 2,
+     "x": 1,
+     "y": 1,
+     "piece_name": "Simple pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "19_5_3",
+     "piece_id": 19,
+     "player_id": 1,
+     "x": 2,
+     "y": 4,
+     "piece_name": "King",
+     "ends_game_on_checkmate": true,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 9
+    },
+    {
+     "id": "19_0_3",
+     "piece_id": 19,
+     "player_id": 2,
+     "x": 4,
+     "y": 1,
+     "piece_name": "King",
+     "ends_game_on_checkmate": true,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 4
+    },
+    {
+     "id": "15_0_0",
+     "piece_id": 15,
+     "player_id": 2,
+     "x": 0,
+     "y": 0,
+     "piece_name": "Rook",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "15_0_5",
+     "piece_id": 15,
+     "player_id": 2,
+     "x": 4,
+     "y": 5,
+     "piece_name": "Rook",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 9
+    },
+    {
+     "id": "20_0_1",
+     "piece_id": 20,
+     "player_id": 2,
+     "x": 1,
+     "y": 0,
+     "piece_name": "Bishop",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "22_0_2",
+     "piece_id": 22,
+     "player_id": 2,
+     "x": 2,
+     "y": 2,
+     "piece_name": "Knight",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 6
+    }
+   ],
+   "side_to_move": 2,
+   "setup_move": {
+    "from": {
+     "x": 1,
+     "y": 5
+    },
+    "to": {
+     "x": 2,
+     "y": 4
+    }
+   },
+   "goal": "checkmate_in_1",
+   "goal_description": null,
+   "solution_line": [
+    {
+     "pieceId": "20_0_1",
+     "from": {
+      "x": 1,
+      "y": 0
+     },
+     "to": {
+      "x": 4,
+      "y": 3
+     }
+    },
+    {
+     "pieceId": "263_4_3",
+     "from": {
+      "x": 3,
+      "y": 3
+     },
+     "to": {
+      "x": 2,
+      "y": 2
+     }
+    },
+    {
+     "pieceId": "15_0_0",
+     "from": {
+      "x": 0,
+      "y": 0
+     },
+     "to": {
+      "x": 3,
+      "y": 0
+     }
+    },
+    {
+     "pieceId": "263_4_3",
+     "from": {
+      "x": 2,
+      "y": 2
+     },
+     "to": {
+      "x": 1,
+      "y": 1
+     }
+    },
+    {
+     "pieceId": "15_0_0",
+     "from": {
+      "x": 3,
+      "y": 0
+     },
+     "to": {
+      "x": 3,
+      "y": 4
+     }
+    },
+    {
+     "pieceId": "19_5_3",
+     "from": {
+      "x": 2,
+      "y": 4
+     },
+     "to": {
+      "x": 2,
+      "y": 3
+     }
+    },
+    {
+     "pieceId": "15_0_5",
+     "from": {
+      "x": 4,
+      "y": 5
+     },
+     "to": {
+      "x": 2,
+      "y": 5
+     }
+    }
+   ],
+   "solution_depth": 4,
+   "validation_detail": "Fairy-Stockfish proved a forced mate in 4; the site engine confirmed every move is legal."
+  },
+  {
    "game_type_id": 231,
    "game_name": "Knightfall",
    "game_fingerprint": "dce9c53d64edd13984db05eb95a4f96f",
@@ -4381,6 +7555,421 @@
    ],
    "solution_depth": 1,
    "validation_detail": null
+  },
+  {
+   "game_type_id": 242,
+   "game_name": "A-CHESS",
+   "game_fingerprint": "68a564450765247b397b49adf4a2dbbb",
+   "title": "Mate in three",
+   "description": null,
+   "position": [
+    {
+     "id": "21_6_0",
+     "piece_id": 21,
+     "player_id": 1,
+     "x": 0,
+     "y": 4,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 2
+    },
+    {
+     "id": "21_6_4",
+     "piece_id": 21,
+     "player_id": 1,
+     "x": 4,
+     "y": 3,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 3
+    },
+    {
+     "id": "21_6_5",
+     "piece_id": 21,
+     "player_id": 1,
+     "x": 5,
+     "y": 6,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "29_7_3",
+     "piece_id": 29,
+     "player_id": 1,
+     "x": 1,
+     "y": 3,
+     "piece_name": "Archbishop",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 7
+    },
+    {
+     "id": "19_7_4",
+     "piece_id": 19,
+     "player_id": 1,
+     "x": 5,
+     "y": 3,
+     "piece_name": "King",
+     "ends_game_on_checkmate": true,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 7
+    },
+    {
+     "id": "22_7_6",
+     "piece_id": 22,
+     "player_id": 1,
+     "x": 2,
+     "y": 6,
+     "piece_name": "Knight",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 5
+    },
+    {
+     "id": "15_7_7",
+     "piece_id": 15,
+     "player_id": 1,
+     "x": 1,
+     "y": 1,
+     "piece_name": "Rook",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 5
+    },
+    {
+     "id": "21_1_4",
+     "piece_id": 21,
+     "player_id": 2,
+     "x": 4,
+     "y": 6,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 4
+    },
+    {
+     "id": "19_0_4",
+     "piece_id": 19,
+     "player_id": 2,
+     "x": 3,
+     "y": 0,
+     "piece_name": "King",
+     "ends_game_on_checkmate": true,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 5
+    }
+   ],
+   "side_to_move": 1,
+   "setup_move": {
+    "from": {
+     "x": 4,
+     "y": 5
+    },
+    "to": {
+     "x": 4,
+     "y": 6
+    }
+   },
+   "goal": "checkmate_in_1",
+   "goal_description": null,
+   "solution_line": [
+    {
+     "pieceId": "22_7_6",
+     "from": {
+      "x": 2,
+      "y": 6
+     },
+     "to": {
+      "x": 3,
+      "y": 4
+     }
+    },
+    {
+     "pieceId": "21_1_4",
+     "from": {
+      "x": 4,
+      "y": 6
+     },
+     "to": {
+      "x": 4,
+      "y": 7
+     },
+     "promotionChar": "n"
+    },
+    {
+     "pieceId": "22_7_6",
+     "from": {
+      "x": 3,
+      "y": 4
+     },
+     "to": {
+      "x": 2,
+      "y": 2
+     }
+    },
+    {
+     "pieceId": "19_0_4",
+     "from": {
+      "x": 3,
+      "y": 0
+     },
+     "to": {
+      "x": 4,
+      "y": 0
+     }
+    },
+    {
+     "pieceId": "29_7_3",
+     "from": {
+      "x": 1,
+      "y": 3
+     },
+     "to": {
+      "x": 3,
+      "y": 2
+     }
+    }
+   ],
+   "solution_depth": 3,
+   "validation_detail": "Fairy-Stockfish proved a forced mate in 3; the site engine confirmed every move is legal."
+  },
+  {
+   "game_type_id": 253,
+   "game_name": "Battle of the pawns",
+   "game_fingerprint": "beeccd5d12c7ad624fee13a4f6dea6b7",
+   "title": "Mate in three",
+   "description": null,
+   "position": [
+    {
+     "id": "21_6_0",
+     "piece_id": 21,
+     "player_id": 1,
+     "x": 0,
+     "y": 6,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "21_6_1",
+     "piece_id": 21,
+     "player_id": 1,
+     "x": 1,
+     "y": 5,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 1
+    },
+    {
+     "id": "21_6_4",
+     "piece_id": 21,
+     "player_id": 1,
+     "x": 4,
+     "y": 5,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 1
+    },
+    {
+     "id": "21_6_5",
+     "piece_id": 21,
+     "player_id": 1,
+     "x": 5,
+     "y": 3,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 2
+    },
+    {
+     "id": "334_7_0",
+     "piece_id": 334,
+     "player_id": 1,
+     "x": 7,
+     "y": 3,
+     "piece_name": "Turn-limited rook",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 5
+    },
+    {
+     "id": "337_7_4",
+     "piece_id": 337,
+     "player_id": 1,
+     "x": 6,
+     "y": 4,
+     "piece_name": "Turn-limited king",
+     "ends_game_on_checkmate": true,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 4
+    },
+    {
+     "id": "334_7_7",
+     "piece_id": 334,
+     "player_id": 1,
+     "x": 1,
+     "y": 1,
+     "piece_name": "Turn-limited rook",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 9
+    },
+    {
+     "id": "337_0_4",
+     "piece_id": 337,
+     "player_id": 2,
+     "x": 4,
+     "y": 0,
+     "piece_name": "Turn-limited king",
+     "ends_game_on_checkmate": true,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 13
+    },
+    {
+     "id": "334_0_7",
+     "piece_id": 334,
+     "player_id": 2,
+     "x": 2,
+     "y": 1,
+     "piece_name": "Turn-limited rook",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 6
+    },
+    {
+     "id": "21_1_0",
+     "piece_id": 21,
+     "player_id": 2,
+     "x": 0,
+     "y": 3,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 1
+    },
+    {
+     "id": "21_1_1",
+     "piece_id": 21,
+     "player_id": 2,
+     "x": 1,
+     "y": 2,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 1
+    },
+    {
+     "id": "21_1_4",
+     "piece_id": 21,
+     "player_id": 2,
+     "x": 4,
+     "y": 4,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 2
+    }
+   ],
+   "side_to_move": 1,
+   "setup_move": {
+    "from": {
+     "x": 2,
+     "y": 2
+    },
+    "to": {
+     "x": 2,
+     "y": 1
+    }
+   },
+   "goal": "checkmate_in_1",
+   "goal_description": null,
+   "solution_line": [
+    {
+     "pieceId": "334_7_7",
+     "from": {
+      "x": 1,
+      "y": 1
+     },
+     "to": {
+      "x": 2,
+      "y": 1
+     }
+    },
+    {
+     "pieceId": "337_0_4",
+     "from": {
+      "x": 4,
+      "y": 0
+     },
+     "to": {
+      "x": 3,
+      "y": 0
+     }
+    },
+    {
+     "pieceId": "334_7_7",
+     "from": {
+      "x": 2,
+      "y": 1
+     },
+     "to": {
+      "x": 6,
+      "y": 1
+     }
+    },
+    {
+     "pieceId": "337_0_4",
+     "from": {
+      "x": 3,
+      "y": 0
+     },
+     "to": {
+      "x": 2,
+      "y": 0
+     }
+    },
+    {
+     "pieceId": "334_7_0",
+     "from": {
+      "x": 7,
+      "y": 3
+     },
+     "to": {
+      "x": 7,
+      "y": 0
+     }
+    }
+   ],
+   "solution_depth": 3,
+   "validation_detail": "Fairy-Stockfish proved a forced mate in 3; the site engine confirmed every move is legal."
   },
   {
    "game_type_id": 254,
@@ -4921,6 +8510,209 @@
    "validation_detail": null
   },
   {
+   "game_type_id": 264,
+   "game_name": "Queens Fight",
+   "game_fingerprint": "e7d954d6d272a30e38a54c7a5cd4985c",
+   "title": "Mate in two",
+   "description": null,
+   "position": [
+    {
+     "id": "21_6_1",
+     "piece_id": 21,
+     "player_id": 1,
+     "x": 1,
+     "y": 2,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 3
+    },
+    {
+     "id": "21_6_6",
+     "piece_id": 21,
+     "player_id": 1,
+     "x": 6,
+     "y": 5,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 1
+    },
+    {
+     "id": "21_6_7",
+     "piece_id": 21,
+     "player_id": 1,
+     "x": 7,
+     "y": 4,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 1
+    },
+    {
+     "id": "22_7_6",
+     "piece_id": 22,
+     "player_id": 1,
+     "x": 2,
+     "y": 5,
+     "piece_name": "Knight",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 4
+    },
+    {
+     "id": "19_7_4",
+     "piece_id": 19,
+     "player_id": 1,
+     "x": 7,
+     "y": 5,
+     "piece_name": "King",
+     "ends_game_on_checkmate": true,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 4
+    },
+    {
+     "id": "21_1_3",
+     "piece_id": 21,
+     "player_id": 2,
+     "x": 3,
+     "y": 6,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 5
+    },
+    {
+     "id": "21_1_4",
+     "piece_id": 21,
+     "player_id": 2,
+     "x": 4,
+     "y": 5,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 4
+    },
+    {
+     "id": "21_1_5",
+     "piece_id": 21,
+     "player_id": 2,
+     "x": 6,
+     "y": 2,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 1
+    },
+    {
+     "id": "21_1_6",
+     "piece_id": 21,
+     "player_id": 2,
+     "x": 6,
+     "y": 1,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "21_1_7",
+     "piece_id": 21,
+     "player_id": 2,
+     "x": 7,
+     "y": 3,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 1
+    },
+    {
+     "id": "25_0_3",
+     "piece_id": 25,
+     "player_id": 2,
+     "x": 5,
+     "y": 6,
+     "piece_name": "Queen",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 5
+    },
+    {
+     "id": "19_0_4",
+     "piece_id": 19,
+     "player_id": 2,
+     "x": 1,
+     "y": 1,
+     "piece_name": "King",
+     "ends_game_on_checkmate": true,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 4
+    }
+   ],
+   "side_to_move": 2,
+   "setup_move": {
+    "from": {
+     "x": 6,
+     "y": 6
+    },
+    "to": {
+     "x": 7,
+     "y": 5
+    }
+   },
+   "goal": "checkmate_in_1",
+   "goal_description": null,
+   "solution_line": [
+    {
+     "pieceId": "25_0_3",
+     "from": {
+      "x": 5,
+      "y": 6
+     },
+     "to": {
+      "x": 6,
+      "y": 7
+     }
+    },
+    {
+     "pieceId": "21_6_6",
+     "from": {
+      "x": 6,
+      "y": 5
+     },
+     "to": {
+      "x": 6,
+      "y": 4
+     }
+    },
+    {
+     "pieceId": "21_1_7",
+     "from": {
+      "x": 7,
+      "y": 3
+     },
+     "to": {
+      "x": 6,
+      "y": 4
+     }
+    }
+   ],
+   "solution_depth": 2,
+   "validation_detail": "Fairy-Stockfish proved a forced mate in 2; the site engine confirmed every move is legal."
+  },
+  {
    "game_type_id": 269,
    "game_name": "Riders vs. Leapers (Major)",
    "game_fingerprint": "439a7532046d523f7acec1977add5c4a",
@@ -5363,6 +9155,303 @@
    ],
    "solution_depth": 1,
    "validation_detail": null
+  },
+  {
+   "game_type_id": 277,
+   "game_name": "Brother Wars",
+   "game_fingerprint": "22e8f33081b28e5d982b5efef2564855",
+   "title": "Mate in three",
+   "description": null,
+   "position": [
+    {
+     "id": "117_5_0",
+     "piece_id": 117,
+     "player_id": 1,
+     "x": 0,
+     "y": 2,
+     "piece_name": "Flavored Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 3
+    },
+    {
+     "id": "110_5_4",
+     "piece_id": 110,
+     "player_id": 1,
+     "x": 4,
+     "y": 5,
+     "piece_name": "Soldier",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "117_5_5",
+     "piece_id": 117,
+     "player_id": 1,
+     "x": 5,
+     "y": 4,
+     "piece_name": "Flavored Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 1
+    },
+    {
+     "id": "117_5_6",
+     "piece_id": 117,
+     "player_id": 1,
+     "x": 6,
+     "y": 5,
+     "piece_name": "Flavored Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "117_5_7",
+     "piece_id": 117,
+     "player_id": 1,
+     "x": 7,
+     "y": 3,
+     "piece_name": "Flavored Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 2
+    },
+    {
+     "id": "114_7_0",
+     "piece_id": 114,
+     "player_id": 1,
+     "x": 0,
+     "y": 6,
+     "piece_name": "Siege Tower",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 1
+    },
+    {
+     "id": "115_7_1",
+     "piece_id": 115,
+     "player_id": 1,
+     "x": 5,
+     "y": 2,
+     "piece_name": "Eagle",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 2
+    },
+    {
+     "id": "113_7_3",
+     "piece_id": 113,
+     "player_id": 1,
+     "x": 7,
+     "y": 5,
+     "piece_name": "Duke",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 3
+    },
+    {
+     "id": "96_7_4",
+     "piece_id": 96,
+     "player_id": 1,
+     "x": 4,
+     "y": 7,
+     "piece_name": "Flavored King",
+     "ends_game_on_checkmate": true,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "116_7_5",
+     "piece_id": 116,
+     "player_id": 1,
+     "x": 6,
+     "y": 3,
+     "piece_name": "Cardinal",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 4
+    },
+    {
+     "id": "114_7_7",
+     "piece_id": 114,
+     "player_id": 1,
+     "x": 1,
+     "y": 4,
+     "piece_name": "Siege Tower",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 5
+    },
+    {
+     "id": "96_0_4",
+     "piece_id": 96,
+     "player_id": 2,
+     "x": 5,
+     "y": 1,
+     "piece_name": "Flavored King",
+     "ends_game_on_checkmate": true,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 9
+    },
+    {
+     "id": "93_0_7",
+     "piece_id": 93,
+     "player_id": 2,
+     "x": 7,
+     "y": 0,
+     "piece_name": "Lancer",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "91_1_0",
+     "piece_id": 91,
+     "player_id": 2,
+     "x": 2,
+     "y": 2,
+     "piece_name": "Scout",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 1
+    },
+    {
+     "id": "91_1_1",
+     "piece_id": 91,
+     "player_id": 2,
+     "x": 0,
+     "y": 3,
+     "piece_name": "Scout",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 1
+    },
+    {
+     "id": "91_1_5",
+     "piece_id": 91,
+     "player_id": 2,
+     "x": 3,
+     "y": 3,
+     "piece_name": "Scout",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 2
+    },
+    {
+     "id": "91_1_6",
+     "piece_id": 91,
+     "player_id": 2,
+     "x": 5,
+     "y": 3,
+     "piece_name": "Scout",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 1
+    },
+    {
+     "id": "91_1_7",
+     "piece_id": 91,
+     "player_id": 2,
+     "x": 7,
+     "y": 1,
+     "piece_name": "Scout",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    }
+   ],
+   "side_to_move": 1,
+   "setup_move": {
+    "from": {
+     "x": 6,
+     "y": 0
+    },
+    "to": {
+     "x": 5,
+     "y": 1
+    }
+   },
+   "goal": "checkmate_in_1",
+   "goal_description": null,
+   "solution_line": [
+    {
+     "pieceId": "114_7_7",
+     "from": {
+      "x": 1,
+      "y": 4
+     },
+     "to": {
+      "x": 1,
+      "y": 1
+     }
+    },
+    {
+     "pieceId": "96_0_4",
+     "from": {
+      "x": 5,
+      "y": 1
+     },
+     "to": {
+      "x": 4,
+      "y": 2
+     }
+    },
+    {
+     "pieceId": "115_7_1",
+     "from": {
+      "x": 5,
+      "y": 2
+     },
+     "to": {
+      "x": 6,
+      "y": 1
+     }
+    },
+    {
+     "pieceId": "96_0_4",
+     "from": {
+      "x": 4,
+      "y": 2
+     },
+     "to": {
+      "x": 3,
+      "y": 2
+     }
+    },
+    {
+     "pieceId": "116_7_5",
+     "from": {
+      "x": 6,
+      "y": 3
+     },
+     "to": {
+      "x": 4,
+      "y": 1
+     }
+    }
+   ],
+   "solution_depth": 3,
+   "validation_detail": "Fairy-Stockfish proved a forced mate in 3; the site engine confirmed every move is legal."
   },
   {
    "game_type_id": 313,
@@ -6183,6 +10272,401 @@
    ],
    "solution_depth": 1,
    "validation_detail": null
+  },
+  {
+   "game_type_id": 317,
+   "game_name": "game",
+   "game_fingerprint": "feb76726357c46a938b3dd50bddf416c",
+   "title": "Mate in four",
+   "description": null,
+   "position": [
+    {
+     "id": "15_9_0",
+     "piece_id": 15,
+     "player_id": 1,
+     "x": 0,
+     "y": 1,
+     "piece_name": "Rook",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 3
+    },
+    {
+     "id": "21_8_1",
+     "piece_id": 21,
+     "player_id": 1,
+     "x": 1,
+     "y": 6,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 1
+    },
+    {
+     "id": "21_8_2",
+     "piece_id": 21,
+     "player_id": 1,
+     "x": 2,
+     "y": 8,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "21_8_3",
+     "piece_id": 21,
+     "player_id": 1,
+     "x": 3,
+     "y": 8,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "22_8_5",
+     "piece_id": 22,
+     "player_id": 1,
+     "x": 4,
+     "y": 6,
+     "piece_name": "Knight",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 1
+    },
+    {
+     "id": "21_8_6",
+     "piece_id": 21,
+     "player_id": 1,
+     "x": 6,
+     "y": 8,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "21_8_7",
+     "piece_id": 21,
+     "player_id": 1,
+     "x": 6,
+     "y": 7,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 1
+    },
+    {
+     "id": "21_8_8",
+     "piece_id": 21,
+     "player_id": 1,
+     "x": 8,
+     "y": 6,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 1
+    },
+    {
+     "id": "21_8_9",
+     "piece_id": 21,
+     "player_id": 1,
+     "x": 9,
+     "y": 7,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 1
+    },
+    {
+     "id": "15_9_9",
+     "piece_id": 15,
+     "player_id": 1,
+     "x": 7,
+     "y": 9,
+     "piece_name": "Rook",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 1
+    },
+    {
+     "id": "29_9_2",
+     "piece_id": 29,
+     "player_id": 1,
+     "x": 0,
+     "y": 4,
+     "piece_name": "Archbishop",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 7
+    },
+    {
+     "id": "30_9_8",
+     "piece_id": 30,
+     "player_id": 1,
+     "x": 4,
+     "y": 3,
+     "piece_name": "Chancellor",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 6
+    },
+    {
+     "id": "20_9_6",
+     "piece_id": 20,
+     "player_id": 1,
+     "x": 9,
+     "y": 6,
+     "piece_name": "Bishop",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 5
+    },
+    {
+     "id": "19_9_5",
+     "piece_id": 19,
+     "player_id": 1,
+     "x": 4,
+     "y": 9,
+     "piece_name": "King",
+     "ends_game_on_checkmate": true,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 1
+    },
+    {
+     "id": "15_0_0",
+     "piece_id": 15,
+     "player_id": 2,
+     "x": 1,
+     "y": 1,
+     "piece_name": "Rook",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 5
+    },
+    {
+     "id": "15_0_9",
+     "piece_id": 15,
+     "player_id": 2,
+     "x": 8,
+     "y": 1,
+     "piece_name": "Rook",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 2
+    },
+    {
+     "id": "30_0_1",
+     "piece_id": 30,
+     "player_id": 2,
+     "x": 1,
+     "y": 5,
+     "piece_name": "Chancellor",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 5
+    },
+    {
+     "id": "30_0_8",
+     "piece_id": 30,
+     "player_id": 2,
+     "x": 0,
+     "y": 0,
+     "piece_name": "Chancellor",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 10
+    },
+    {
+     "id": "21_1_2",
+     "piece_id": 21,
+     "player_id": 2,
+     "x": 2,
+     "y": 3,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 1
+    },
+    {
+     "id": "21_1_3",
+     "piece_id": 21,
+     "player_id": 2,
+     "x": 3,
+     "y": 1,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "21_1_6",
+     "piece_id": 21,
+     "player_id": 2,
+     "x": 6,
+     "y": 1,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "21_1_7",
+     "piece_id": 21,
+     "player_id": 2,
+     "x": 7,
+     "y": 2,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 1
+    },
+    {
+     "id": "21_1_8",
+     "piece_id": 21,
+     "player_id": 2,
+     "x": 8,
+     "y": 2,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 1
+    },
+    {
+     "id": "21_1_9",
+     "piece_id": 21,
+     "player_id": 2,
+     "x": 9,
+     "y": 1,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "29_0_2",
+     "piece_id": 29,
+     "player_id": 2,
+     "x": 6,
+     "y": 0,
+     "piece_name": "Archbishop",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 2
+    },
+    {
+     "id": "20_0_6",
+     "piece_id": 20,
+     "player_id": 2,
+     "x": 6,
+     "y": 4,
+     "piece_name": "Bishop",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 2
+    },
+    {
+     "id": "19_0_4",
+     "piece_id": 19,
+     "player_id": 2,
+     "x": 5,
+     "y": 0,
+     "piece_name": "King",
+     "ends_game_on_checkmate": true,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 1
+    }
+   ],
+   "side_to_move": 1,
+   "setup_move": {
+    "from": {
+     "x": 8,
+     "y": 0
+    },
+    "to": {
+     "x": 8,
+     "y": 1,
+     "isFirstMoveOnly": false
+    }
+   },
+   "goal": "checkmate_in_1",
+   "goal_description": null,
+   "solution_line": [
+    {
+     "pieceId": "29_9_2",
+     "from": {
+      "x": 0,
+      "y": 4
+     },
+     "to": {
+      "x": 2,
+      "y": 3
+     }
+    },
+    {
+     "pieceId": "30_0_1",
+     "from": {
+      "x": 1,
+      "y": 5
+     },
+     "to": {
+      "x": 2,
+      "y": 3
+     }
+    },
+    {
+     "pieceId": "15_9_0",
+     "from": {
+      "x": 0,
+      "y": 1
+     },
+     "to": {
+      "x": 0,
+      "y": 0
+     }
+    },
+    {
+     "pieceId": "15_0_0",
+     "from": {
+      "x": 1,
+      "y": 1
+     },
+     "to": {
+      "x": 1,
+      "y": 0
+     }
+    }
+   ],
+   "solution_depth": 2,
+   "validation_detail": "Fairy-Stockfish proved a forced mate in 4; the site engine confirmed every move is legal."
   },
   {
    "game_type_id": 341,
@@ -7067,6 +11551,205 @@
    "validation_detail": null
   },
   {
+   "game_type_id": 353,
+   "game_name": "Yuurei Chesu (幽霊チェス)",
+   "game_fingerprint": "0d8b23bdfc46180f7d26a62973611021",
+   "title": "Mate in four",
+   "description": null,
+   "position": [
+    {
+     "id": "20_7_2",
+     "piece_id": 20,
+     "player_id": 1,
+     "x": 4,
+     "y": 3,
+     "piece_name": "Bishop",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 3
+    },
+    {
+     "id": "25_7_3",
+     "piece_id": 25,
+     "player_id": 1,
+     "x": 3,
+     "y": 3,
+     "piece_name": "Queen",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 12
+    },
+    {
+     "id": "19_7_4",
+     "piece_id": 19,
+     "player_id": 1,
+     "x": 6,
+     "y": 7,
+     "piece_name": "King",
+     "ends_game_on_checkmate": true,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 2
+    },
+    {
+     "id": "19_0_4",
+     "piece_id": 19,
+     "player_id": 2,
+     "x": 1,
+     "y": 0,
+     "piece_name": "King",
+     "ends_game_on_checkmate": true,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 10
+    },
+    {
+     "id": "587_6_4",
+     "piece_id": 587,
+     "player_id": 1,
+     "x": 4,
+     "y": 5,
+     "piece_name": "No en passant Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 1
+    },
+    {
+     "id": "587_6_5",
+     "piece_id": 587,
+     "player_id": 1,
+     "x": 5,
+     "y": 6,
+     "piece_name": "No en passant Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "587_6_6",
+     "piece_id": 587,
+     "player_id": 1,
+     "x": 6,
+     "y": 4,
+     "piece_name": "No en passant Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 2
+    },
+    {
+     "id": "587_1_2",
+     "piece_id": 587,
+     "player_id": 2,
+     "x": 2,
+     "y": 1,
+     "piece_name": "No en passant Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    }
+   ],
+   "side_to_move": 1,
+   "setup_move": {
+    "from": {
+     "x": 2,
+     "y": 0
+    },
+    "to": {
+     "x": 1,
+     "y": 0
+    }
+   },
+   "goal": "checkmate_in_1",
+   "goal_description": null,
+   "solution_line": [
+    {
+     "pieceId": "25_7_3",
+     "from": {
+      "x": 3,
+      "y": 3
+     },
+     "to": {
+      "x": 2,
+      "y": 2
+     }
+    },
+    {
+     "pieceId": "19_0_4",
+     "from": {
+      "x": 1,
+      "y": 0
+     },
+     "to": {
+      "x": 0,
+      "y": 1
+     }
+    },
+    {
+     "pieceId": "587_6_6",
+     "from": {
+      "x": 6,
+      "y": 4
+     },
+     "to": {
+      "x": 6,
+      "y": 3
+     }
+    },
+    {
+     "pieceId": "19_0_4",
+     "from": {
+      "x": 0,
+      "y": 1
+     },
+     "to": {
+      "x": 1,
+      "y": 0
+     }
+    },
+    {
+     "pieceId": "25_7_3",
+     "from": {
+      "x": 2,
+      "y": 2
+     },
+     "to": {
+      "x": 2,
+      "y": 1
+     }
+    },
+    {
+     "pieceId": "19_0_4",
+     "from": {
+      "x": 1,
+      "y": 0
+     },
+     "to": {
+      "x": 0,
+      "y": 0
+     }
+    },
+    {
+     "pieceId": "25_7_3",
+     "from": {
+      "x": 2,
+      "y": 1
+     },
+     "to": {
+      "x": 1,
+      "y": 0
+     }
+    }
+   ],
+   "solution_depth": 4,
+   "validation_detail": "Fairy-Stockfish proved a forced mate in 4; the site engine confirmed every move is legal."
+  },
+  {
    "game_type_id": 355,
    "game_name": "Yuurei Chesu 幽霊チェス 5x5",
    "game_fingerprint": "2cca14a17fea73e093d53cca0de7940d",
@@ -7675,6 +12358,799 @@
    "validation_detail": null
   },
   {
+   "game_type_id": 401,
+   "game_name": "Game With Bisasam",
+   "game_fingerprint": "2f5398f497745b7ad0f360a51b306bc2",
+   "title": "Mate in four",
+   "description": null,
+   "position": [
+    {
+     "id": "21_6_0",
+     "piece_id": 21,
+     "player_id": 1,
+     "x": 0,
+     "y": 6,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "21_6_1",
+     "piece_id": 21,
+     "player_id": 1,
+     "x": 1,
+     "y": 6,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "21_6_2",
+     "piece_id": 21,
+     "player_id": 1,
+     "x": 2,
+     "y": 6,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "21_6_3",
+     "piece_id": 21,
+     "player_id": 1,
+     "x": 3,
+     "y": 5,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 1
+    },
+    {
+     "id": "21_6_5",
+     "piece_id": 21,
+     "player_id": 1,
+     "x": 5,
+     "y": 6,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "21_6_6",
+     "piece_id": 21,
+     "player_id": 1,
+     "x": 6,
+     "y": 5,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 1
+    },
+    {
+     "id": "21_6_7",
+     "piece_id": 21,
+     "player_id": 1,
+     "x": 7,
+     "y": 6,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "19_7_4",
+     "piece_id": 19,
+     "player_id": 1,
+     "x": 4,
+     "y": 7,
+     "piece_name": "King",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": true,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "21_6_4",
+     "piece_id": 21,
+     "player_id": 1,
+     "x": 4,
+     "y": 6,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "643_7_3",
+     "piece_id": 643,
+     "player_id": 1,
+     "x": 7,
+     "y": 4,
+     "piece_name": "Bisasam",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 6
+    },
+    {
+     "id": "20_7_2",
+     "piece_id": 20,
+     "player_id": 1,
+     "x": 6,
+     "y": 3,
+     "piece_name": "Bishop",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": true,
+     "hasMoved": true,
+     "moveCount": 1
+    },
+    {
+     "id": "20_7_5",
+     "piece_id": 20,
+     "player_id": 1,
+     "x": 7,
+     "y": 5,
+     "piece_name": "Bishop",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": true,
+     "hasMoved": true,
+     "moveCount": 1
+    },
+    {
+     "id": "22_7_6",
+     "piece_id": 22,
+     "player_id": 1,
+     "x": 6,
+     "y": 7,
+     "piece_name": "Knight",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": true,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "22_7_1",
+     "piece_id": 22,
+     "player_id": 1,
+     "x": 1,
+     "y": 7,
+     "piece_name": "Knight",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": true,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "15_7_7",
+     "piece_id": 15,
+     "player_id": 1,
+     "x": 7,
+     "y": 7,
+     "piece_name": "Rook",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": true,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "15_7_0",
+     "piece_id": 15,
+     "player_id": 1,
+     "x": 0,
+     "y": 7,
+     "piece_name": "Rook",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": true,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "21_1_0",
+     "piece_id": 21,
+     "player_id": 2,
+     "x": 0,
+     "y": 1,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "21_1_1",
+     "piece_id": 21,
+     "player_id": 2,
+     "x": 1,
+     "y": 1,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "21_1_2",
+     "piece_id": 21,
+     "player_id": 2,
+     "x": 2,
+     "y": 2,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 1
+    },
+    {
+     "id": "21_1_3",
+     "piece_id": 21,
+     "player_id": 2,
+     "x": 3,
+     "y": 3,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 2
+    },
+    {
+     "id": "21_1_5",
+     "piece_id": 21,
+     "player_id": 2,
+     "x": 5,
+     "y": 1,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "21_1_4",
+     "piece_id": 21,
+     "player_id": 2,
+     "x": 4,
+     "y": 1,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "20_0_2",
+     "piece_id": 20,
+     "player_id": 2,
+     "x": 4,
+     "y": 2,
+     "piece_name": "Bishop",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": true,
+     "hasMoved": true,
+     "moveCount": 3
+    },
+    {
+     "id": "20_0_5",
+     "piece_id": 20,
+     "player_id": 2,
+     "x": 5,
+     "y": 0,
+     "piece_name": "Bishop",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": true,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "22_0_6",
+     "piece_id": 22,
+     "player_id": 2,
+     "x": 5,
+     "y": 2,
+     "piece_name": "Knight",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": true,
+     "hasMoved": true,
+     "moveCount": 3
+    },
+    {
+     "id": "22_0_1",
+     "piece_id": 22,
+     "player_id": 2,
+     "x": 1,
+     "y": 0,
+     "piece_name": "Knight",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": true,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "15_0_0",
+     "piece_id": 15,
+     "player_id": 2,
+     "x": 0,
+     "y": 0,
+     "piece_name": "Rook",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": true,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "19_0_3",
+     "piece_id": 19,
+     "player_id": 2,
+     "x": 3,
+     "y": 0,
+     "piece_name": "King",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": true,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "25_0_4",
+     "piece_id": 25,
+     "player_id": 2,
+     "x": 4,
+     "y": 0,
+     "piece_name": "Queen",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    }
+   ],
+   "side_to_move": 1,
+   "setup_move": {
+    "from": {
+     "x": 2,
+     "y": 0
+    },
+    "to": {
+     "x": 4,
+     "y": 2
+    }
+   },
+   "goal": "checkmate_in_1",
+   "goal_description": null,
+   "solution_line": [
+    {
+     "pieceId": "20_7_5",
+     "from": {
+      "x": 7,
+      "y": 5
+     },
+     "to": {
+      "x": 4,
+      "y": 2
+     }
+    },
+    {
+     "pieceId": "20_0_5",
+     "from": {
+      "x": 5,
+      "y": 0
+     },
+     "to": {
+      "x": 6,
+      "y": 1
+     }
+    },
+    {
+     "pieceId": "643_7_3",
+     "from": {
+      "x": 7,
+      "y": 4
+     },
+     "to": {
+      "x": 1,
+      "y": 4
+     }
+    },
+    {
+     "pieceId": "21_1_0",
+     "from": {
+      "x": 0,
+      "y": 1
+     },
+     "to": {
+      "x": 0,
+      "y": 3
+     }
+    },
+    {
+     "pieceId": "643_7_3",
+     "from": {
+      "x": 1,
+      "y": 4
+     },
+     "to": {
+      "x": 1,
+      "y": 2
+     }
+    },
+    {
+     "pieceId": "21_1_5",
+     "from": {
+      "x": 5,
+      "y": 1
+     },
+     "to": {
+      "x": 4,
+      "y": 2
+     }
+    },
+    {
+     "pieceId": "643_7_3",
+     "from": {
+      "x": 1,
+      "y": 2
+     },
+     "to": {
+      "x": 0,
+      "y": 0
+     }
+    }
+   ],
+   "solution_depth": 4,
+   "validation_detail": "Fairy-Stockfish proved a forced mate in 4; the site engine confirmed every move is legal."
+  },
+  {
+   "game_type_id": 402,
+   "game_name": "Melee Chess",
+   "game_fingerprint": "41cd2b50d9d7534bfa11763f899a84d3",
+   "title": "Mate in two",
+   "description": null,
+   "position": [
+    {
+     "id": "22_4_0",
+     "piece_id": 22,
+     "player_id": 1,
+     "x": 1,
+     "y": 2,
+     "piece_name": "Knight",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 1
+    },
+    {
+     "id": "25_4_1",
+     "piece_id": 25,
+     "player_id": 1,
+     "x": 1,
+     "y": 4,
+     "piece_name": "Queen",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "19_4_2",
+     "piece_id": 19,
+     "player_id": 1,
+     "x": 4,
+     "y": 2,
+     "piece_name": "King",
+     "ends_game_on_checkmate": true,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 4
+    },
+    {
+     "id": "19_0_2",
+     "piece_id": 19,
+     "player_id": 2,
+     "x": 0,
+     "y": 1,
+     "piece_name": "King",
+     "ends_game_on_checkmate": true,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 2
+    },
+    {
+     "id": "15_0_4",
+     "piece_id": 15,
+     "player_id": 2,
+     "x": 2,
+     "y": 1,
+     "piece_name": "Rook",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 3
+    },
+    {
+     "id": "21_1_1",
+     "piece_id": 21,
+     "player_id": 2,
+     "x": 1,
+     "y": 1,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "21_1_4",
+     "piece_id": 21,
+     "player_id": 2,
+     "x": 4,
+     "y": 1,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "20_0_0",
+     "piece_id": 20,
+     "player_id": 2,
+     "x": 0,
+     "y": 0,
+     "piece_name": "Bishop",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    }
+   ],
+   "side_to_move": 1,
+   "setup_move": {
+    "from": {
+     "x": 1,
+     "y": 0
+    },
+    "to": {
+     "x": 0,
+     "y": 1
+    }
+   },
+   "goal": "checkmate_in_1",
+   "goal_description": null,
+   "solution_line": [
+    {
+     "pieceId": "25_4_1",
+     "from": {
+      "x": 1,
+      "y": 4
+     },
+     "to": {
+      "x": 0,
+      "y": 3
+     }
+    },
+    {
+     "pieceId": "19_0_2",
+     "from": {
+      "x": 0,
+      "y": 1
+     },
+     "to": {
+      "x": 1,
+      "y": 0
+     }
+    },
+    {
+     "pieceId": "25_4_1",
+     "from": {
+      "x": 0,
+      "y": 3
+     },
+     "to": {
+      "x": 0,
+      "y": 0
+     }
+    }
+   ],
+   "solution_depth": 2,
+   "validation_detail": "Fairy-Stockfish proved a forced mate in 2; the site engine confirmed every move is legal."
+  },
+  {
+   "game_type_id": 403,
+   "game_name": "Chaturaji",
+   "game_fingerprint": "15b46e59a5686c558246441bd65c2589",
+   "title": "Mate in four",
+   "description": null,
+   "position": [
+    {
+     "id": "649_6_0",
+     "piece_id": 653,
+     "player_id": 1,
+     "x": 4,
+     "y": 0,
+     "piece_name": "Rook",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 1
+    },
+    {
+     "id": "649_6_1",
+     "piece_id": 649,
+     "player_id": 1,
+     "x": 1,
+     "y": 1,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 5
+    },
+    {
+     "id": "649_6_2",
+     "piece_id": 653,
+     "player_id": 1,
+     "x": 6,
+     "y": 3,
+     "piece_name": "Rook",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 2
+    },
+    {
+     "id": "646_7_1",
+     "piece_id": 646,
+     "player_id": 1,
+     "x": 5,
+     "y": 7,
+     "piece_name": "Knight",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 12
+    },
+    {
+     "id": "649_1_5",
+     "piece_id": 649,
+     "player_id": 2,
+     "x": 5,
+     "y": 6,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 5
+    },
+    {
+     "id": "655_7_3",
+     "piece_id": 655,
+     "player_id": 1,
+     "x": 1,
+     "y": 3,
+     "piece_name": "King",
+     "ends_game_on_checkmate": true,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 9
+    },
+    {
+     "id": "655_0_4",
+     "piece_id": 655,
+     "player_id": 2,
+     "x": 2,
+     "y": 6,
+     "piece_name": "King",
+     "ends_game_on_checkmate": true,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 18
+    }
+   ],
+   "side_to_move": 1,
+   "setup_move": {
+    "from": {
+     "x": 3,
+     "y": 5
+    },
+    "to": {
+     "x": 2,
+     "y": 6
+    }
+   },
+   "goal": "checkmate_in_1",
+   "goal_description": null,
+   "solution_line": [
+    {
+     "pieceId": "649_6_2",
+     "from": {
+      "x": 6,
+      "y": 3
+     },
+     "to": {
+      "x": 5,
+      "y": 3
+     }
+    },
+    {
+     "pieceId": "655_0_4",
+     "from": {
+      "x": 2,
+      "y": 6
+     },
+     "to": {
+      "x": 1,
+      "y": 5
+     }
+    },
+    {
+     "pieceId": "649_6_2",
+     "from": {
+      "x": 5,
+      "y": 3
+     },
+     "to": {
+      "x": 5,
+      "y": 6
+     }
+    },
+    {
+     "pieceId": "655_0_4",
+     "from": {
+      "x": 1,
+      "y": 5
+     },
+     "to": {
+      "x": 2,
+      "y": 5
+     }
+    },
+    {
+     "pieceId": "649_6_0",
+     "from": {
+      "x": 4,
+      "y": 0
+     },
+     "to": {
+      "x": 4,
+      "y": 5
+     }
+    },
+    {
+     "pieceId": "655_0_4",
+     "from": {
+      "x": 2,
+      "y": 5
+     },
+     "to": {
+      "x": 3,
+      "y": 4
+     }
+    },
+    {
+     "pieceId": "649_6_2",
+     "from": {
+      "x": 5,
+      "y": 6
+     },
+     "to": {
+      "x": 3,
+      "y": 6
+     }
+    }
+   ],
+   "solution_depth": 4,
+   "validation_detail": "Fairy-Stockfish proved a forced mate in 4; the site engine confirmed every move is legal."
+  },
+  {
    "game_type_id": 406,
    "game_name": "Grasshopper VS Chess",
    "game_fingerprint": "2311c1ae3d25abc7e8e45d09bcc52986",
@@ -8239,6 +13715,256 @@
    ],
    "solution_depth": 1,
    "validation_detail": null
+  },
+  {
+   "game_type_id": 420,
+   "game_name": "Chess960",
+   "game_fingerprint": "c0f174b3e4f190f36b961a85315bfb1e",
+   "title": "Mate in four",
+   "description": null,
+   "position": [
+    {
+     "id": "649_6_0",
+     "piece_id": 649,
+     "player_id": 1,
+     "x": 0,
+     "y": 4,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 1
+    },
+    {
+     "id": "649_6_1",
+     "piece_id": 649,
+     "player_id": 1,
+     "x": 1,
+     "y": 6,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "649_6_2",
+     "piece_id": 649,
+     "player_id": 1,
+     "x": 2,
+     "y": 1,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 5
+    },
+    {
+     "id": "649_6_4",
+     "piece_id": 649,
+     "player_id": 1,
+     "x": 4,
+     "y": 3,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 2
+    },
+    {
+     "id": "649_6_5",
+     "piece_id": 649,
+     "player_id": 1,
+     "x": 4,
+     "y": 5,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 1
+    },
+    {
+     "id": "649_6_6",
+     "piece_id": 649,
+     "player_id": 1,
+     "x": 7,
+     "y": 2,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 4
+    },
+    {
+     "id": "653_7_0",
+     "piece_id": 653,
+     "player_id": 1,
+     "x": 3,
+     "y": 2,
+     "piece_name": "Rook",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 6
+    },
+    {
+     "id": "655_7_4",
+     "piece_id": 655,
+     "player_id": 1,
+     "x": 3,
+     "y": 4,
+     "piece_name": "King",
+     "ends_game_on_checkmate": true,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 3
+    },
+    {
+     "id": "655_0_4",
+     "piece_id": 655,
+     "player_id": 2,
+     "x": 4,
+     "y": 0,
+     "piece_name": "King",
+     "ends_game_on_checkmate": true,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 9
+    },
+    {
+     "id": "653_0_7",
+     "piece_id": 653,
+     "player_id": 2,
+     "x": 2,
+     "y": 5,
+     "piece_name": "Rook",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 9
+    },
+    {
+     "id": "649_1_0",
+     "piece_id": 649,
+     "player_id": 2,
+     "x": 0,
+     "y": 3,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 2
+    },
+    {
+     "id": "649_1_7",
+     "piece_id": 649,
+     "player_id": 2,
+     "x": 7,
+     "y": 1,
+     "piece_name": "Pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    }
+   ],
+   "side_to_move": 1,
+   "setup_move": {
+    "from": {
+     "x": 2,
+     "y": 7
+    },
+    "to": {
+     "x": 2,
+     "y": 5
+    }
+   },
+   "goal": "checkmate_in_1",
+   "goal_description": null,
+   "solution_line": [
+    {
+     "pieceId": "655_7_4",
+     "from": {
+      "x": 3,
+      "y": 4
+     },
+     "to": {
+      "x": 2,
+      "y": 5
+     }
+    },
+    {
+     "pieceId": "655_0_4",
+     "from": {
+      "x": 4,
+      "y": 0
+     },
+     "to": {
+      "x": 4,
+      "y": 1
+     }
+    },
+    {
+     "pieceId": "649_6_2",
+     "from": {
+      "x": 2,
+      "y": 1
+     },
+     "to": {
+      "x": 2,
+      "y": 0
+     },
+     "promotionChar": "n",
+     "promotionPieceId": "653_7_0",
+     "promotionPlayer": null
+    },
+    {
+     "pieceId": "655_0_4",
+     "from": {
+      "x": 4,
+      "y": 1
+     },
+     "to": {
+      "x": 5,
+      "y": 1
+     }
+    },
+    {
+     "pieceId": "649_6_2",
+     "from": {
+      "x": 2,
+      "y": 0
+     },
+     "to": {
+      "x": 2,
+      "y": 1
+     }
+    },
+    {
+     "pieceId": "655_0_4",
+     "from": {
+      "x": 5,
+      "y": 1
+     },
+     "to": {
+      "x": 5,
+      "y": 0
+     }
+    },
+    {
+     "pieceId": "653_7_0",
+     "from": {
+      "x": 3,
+      "y": 2
+     },
+     "to": {
+      "x": 3,
+      "y": 0
+     }
+    }
+   ],
+   "solution_depth": 4,
+   "validation_detail": "Fairy-Stockfish proved a forced mate in 4; the site engine confirmed every move is legal."
   },
   {
    "game_type_id": 426,
@@ -10641,9 +16367,221 @@
    "validation_detail": null
   },
   {
+   "game_type_id": 470,
+   "game_name": "barkhousing",
+   "game_fingerprint": "dd640e7f3c2216ae0e86a7886f52c044",
+   "title": "Mate in four",
+   "description": null,
+   "position": [
+    {
+     "id": "739_6_4",
+     "piece_id": 739,
+     "player_id": 1,
+     "x": 3,
+     "y": 5,
+     "piece_name": "laaf",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 1
+    },
+    {
+     "id": "256_7_1",
+     "piece_id": 256,
+     "player_id": 1,
+     "x": 2,
+     "y": 6,
+     "piece_name": "Wazir",
+     "ends_game_on_checkmate": true,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 2
+    },
+    {
+     "id": "20_7_4",
+     "piece_id": 20,
+     "player_id": 1,
+     "x": 4,
+     "y": 5,
+     "piece_name": "Bishop",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 7
+    },
+    {
+     "id": "20_0_2",
+     "piece_id": 20,
+     "player_id": 2,
+     "x": 1,
+     "y": 3,
+     "piece_name": "Bishop",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 4
+    },
+    {
+     "id": "256_0_5",
+     "piece_id": 256,
+     "player_id": 2,
+     "x": 5,
+     "y": 1,
+     "piece_name": "Wazir",
+     "ends_game_on_checkmate": true,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 1
+    },
+    {
+     "id": "308_0_6",
+     "piece_id": 308,
+     "player_id": 2,
+     "x": 0,
+     "y": 6,
+     "piece_name": "General",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 10
+    },
+    {
+     "id": "738_1_4",
+     "piece_id": 738,
+     "player_id": 2,
+     "x": 4,
+     "y": 1,
+     "piece_name": "sideways pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    },
+    {
+     "id": "738_1_5",
+     "piece_id": 738,
+     "player_id": 2,
+     "x": 5,
+     "y": 2,
+     "piece_name": "sideways pawn",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": true,
+     "moveCount": 1
+    },
+    {
+     "id": "645_1_6",
+     "piece_id": 645,
+     "player_id": 2,
+     "x": 6,
+     "y": 1,
+     "piece_name": "Dababba",
+     "ends_game_on_checkmate": false,
+     "ends_game_on_capture": false,
+     "hasMoved": false,
+     "moveCount": 0
+    }
+   ],
+   "side_to_move": 2,
+   "setup_move": {
+    "from": {
+     "x": 2,
+     "y": 7
+    },
+    "to": {
+     "x": 2,
+     "y": 6,
+     "isFirstMoveOnly": false
+    }
+   },
+   "goal": "checkmate_in_1",
+   "goal_description": null,
+   "solution_line": [
+    {
+     "pieceId": "308_0_6",
+     "from": {
+      "x": 0,
+      "y": 6
+     },
+     "to": {
+      "x": 1,
+      "y": 4
+     }
+    },
+    {
+     "pieceId": "256_7_1",
+     "from": {
+      "x": 2,
+      "y": 6
+     },
+     "to": {
+      "x": 1,
+      "y": 6
+     }
+    },
+    {
+     "pieceId": "20_0_2",
+     "from": {
+      "x": 1,
+      "y": 3
+     },
+     "to": {
+      "x": 3,
+      "y": 5
+     }
+    },
+    {
+     "pieceId": "20_7_4",
+     "from": {
+      "x": 4,
+      "y": 5
+     },
+     "to": {
+      "x": 2,
+      "y": 7
+     }
+    },
+    {
+     "pieceId": "308_0_6",
+     "from": {
+      "x": 1,
+      "y": 4
+     },
+     "to": {
+      "x": 2,
+      "y": 6
+     }
+    },
+    {
+     "pieceId": "256_7_1",
+     "from": {
+      "x": 1,
+      "y": 6
+     },
+     "to": {
+      "x": 0,
+      "y": 6
+     }
+    },
+    {
+     "pieceId": "20_0_2",
+     "from": {
+      "x": 3,
+      "y": 5
+     },
+     "to": {
+      "x": 2,
+      "y": 4
+     }
+    }
+   ],
+   "solution_depth": 4,
+   "validation_detail": "Fairy-Stockfish proved a forced mate in 4; the site engine confirmed every move is legal."
+  },
+  {
    "game_type_id": 476,
-   "game_name": "Capablanca Chess - testing veto chess",
-   "game_fingerprint": "b73b3f5f6988d2c54d2d3de499e1794e",
+   "game_name": "Big chess",
+   "game_fingerprint": "b6a02a247a13bac2efdb67ebf680fa2d",
    "title": "Mate in one",
    "description": null,
    "position": [

@@ -50,6 +50,8 @@
  * whole game to reach a fresh position, which is why a game that yields nothing
  * on its own can still produce a puzzle.
  */
+require('dotenv').config();
+
 const path = require('path');
 const mysql = require('mysql2/promise');
 

@@ -36,6 +36,17 @@
  * `excluded` was set by a person, and re-running this only refreshes the
  * auto_* and review rows around it.
  */
+/*
+ * Load .env before anything reads process.env.
+ *
+ * Without this, running the script directly on a server picks up the hardcoded
+ * fallbacks in connectionConfig() and fails with "Access denied for user
+ * 'root'@'localhost'" - which reads like a credentials problem rather than a
+ * script that never looked at the credentials file. PM2 gets its environment
+ * from ecosystem.config.js; a plain `node scripts/...` gets nothing.
+ */
+require('dotenv').config();
+
 const crypto = require('crypto');
 const mysql = require('mysql2/promise');
 const path = require('path');
