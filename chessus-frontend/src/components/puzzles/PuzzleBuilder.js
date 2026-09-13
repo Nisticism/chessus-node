@@ -675,6 +675,54 @@ const PuzzleBuilder = () => {
     setCheckResult(null);
   }, [mode, selected, placements, solutionBoard, nextSide, lineFull, sideToMove, recordPly]);
 
+  /*
+   * Whether each step has been done, and what follows it.
+   *
+   * The three tabs were always a sequence - you cannot record a last move before
+   * there are pieces to move, and the solution is played from the position the
+   * first two describe - but nothing said so. They looked like three independent
+   * views, so it was possible to open the builder, land on Arrange, and have no
+   * idea that two more steps were waiting.
+   *
+   * The ticks state it without a tutorial: a step with a tick is finished, and
+   * the Next button is the obvious way forward.
+   */
+  const stepDone = {
+    arrange: Object.keys(placements).length > 0,
+    setup: !!setupMove,
+    solution: solutionLine.length > 0,
+  };
+  const STEPS = ['arrange', 'setup', 'solution'];
+  const STEP_LABELS = {
+    arrange: 'Arrange the position',
+    setup: 'Their last move',
+    solution: 'Set the solution',
+  };
+  const nextStep = STEPS[STEPS.indexOf(mode) + 1] || null;
+
+  /*
+   * Why Next is refused, or null when it is not.
+   *
+   * Said as a sentence rather than by disabling the button silently: a disabled
+   * control that will not say what it wants is the most frustrating thing a form
+   * can do, so the button stays live and explains itself on the way past.
+   */
+  const nextBlockedBecause = (() => {
+    if (mode === 'arrange' && !stepDone.arrange) {
+      return 'Put at least one piece on the board first.';
+    }
+    if (mode === 'setup' && !stepDone.setup) {
+      return 'Record their last move first — click the piece they just moved, then the square it came from.';
+    }
+    return null;
+  })();
+
+  const goToStep = (step) => {
+    setMode(step);
+    setSelected(null);
+    setCheckResult(null);
+  };
+
   const body = () => ({
     title: title.trim() || null,
     description: description.trim() || null,
@@ -689,7 +737,27 @@ const PuzzleBuilder = () => {
   });
 
   const save = async ({ publish = false } = {}) => {
+    /*
+     * Their last move is required rather than optional.
+     *
+     * It was optional, and the cost was invisible: without it the engine has no
+     * previous move to look at, so no pawn has just double-stepped and en passant
+     * cannot be legal in any puzzle built without one. A creator who left it
+     * blank got a position that quietly could not express a whole class of
+     * answer, and nothing told them. Asking for it is cheaper than explaining
+     * that.
+     */
+    if (!setupMove) {
+      setMode('setup');
+      setCheckResult({
+        tone: 'warn',
+        text: 'Record their last move first — click the piece Player '
+          + `${sideToMove === 1 ? 2 : 1} just moved, then the square it came from.`,
+      });
+      return null;
+    }
     if (!solutionLine.length) {
+      setMode('solution');
       setCheckResult({ tone: 'warn', text: 'Record the solution first: switch to "Set the solution" and play the move.' });
       return null;
     }
@@ -832,25 +900,19 @@ const PuzzleBuilder = () => {
           that stranded empty space beside skinny boards. */}
       <div className={styles["toolbar"]}>
         <div className={styles["mode-tabs"]}>
-          <button
-            className={mode === 'arrange' ? styles["tab-active"] : styles["tab"]}
-            onClick={() => { setMode('arrange'); setSelected(null); }}
-          >
-            1. Arrange the position
-          </button>
-          <button
-            className={mode === 'setup' ? styles["tab-active"] : styles["tab"]}
-            onClick={() => { setMode('setup'); setSelected(null); }}
-          >
-            2. Their last move
-            {setupMove && <span className={styles["tab-tick"]}> ✓</span>}
-          </button>
-          <button
-            className={mode === 'solution' ? styles["tab-active"] : styles["tab"]}
-            onClick={() => { setMode('solution'); setSelected(null); }}
-          >
-            3. Set the solution
-          </button>
+          {STEPS.map((step, i) => (
+            <button
+              key={step}
+              className={mode === step ? styles["tab-active"] : styles["tab"]}
+              onClick={() => goToStep(step)}
+            >
+              {i + 1}. {STEP_LABELS[step]}
+              {/* A tick on every step, not just the one that happened to have it.
+                  Three tabs where only the middle one could ever show a mark read
+                  as a quirk of that step rather than as progress. */}
+              {stepDone[step] && <span className={styles["tab-tick"]}> ✓</span>}
+            </button>
+          ))}
         </div>
         <div className={styles["board-actions"]}>
           <button className={styles["btn-secondary"]} onClick={() => { setPlacements(startingPlacements); setSolutionLine([]); setSelected(null); }}>
@@ -867,13 +929,34 @@ const PuzzleBuilder = () => {
           : mode === 'setup'
           ? (setupMove
             ? `Their last move: (${setupMove.from.x}, ${setupMove.from.y}) → (${setupMove.to.x}, ${setupMove.to.y}). Record a different one, or clear it.`
-            : `Click the piece Player ${sideToMove === 1 ? 2 : 1} just moved, then the square it came from. This is optional — but without it no piece can capture en passant, because nothing has just double-stepped.`)
+            : `Click the piece Player ${sideToMove === 1 ? 2 : 1} just moved, then the square it came from. Required: without it the engine has no previous move to look at, so nothing has just double-stepped and no piece can ever capture en passant.`)
           : (lineFull
             ? `That is ${MAX_MOVES_PER_SIDE} moves each — as long as a solution can be.`
             : (nextIsSolver
               ? `Play your move ${nextMoveNumber}: click the Player ${nextSide} piece, then where it goes.`
               : `Now play the reply you expect from Player ${nextSide} — the board carries on from there. Leave it here if your move ${Math.ceil(nextPlyIndex / 2)} is the whole answer.`))}
       </p>
+
+      {/* Forward, one step at a time.
+          Only on the first two steps: the third ends at Save and Publish, and a
+          Next button there would point at nothing. */}
+      {nextStep && (
+        <div className={styles["step-nav"]}>
+          <button
+            type="button"
+            className={styles["btn-next"]}
+            onClick={() => {
+              if (nextBlockedBecause) {
+                setCheckResult({ tone: 'warn', text: nextBlockedBecause });
+                return;
+              }
+              goToStep(nextStep);
+            }}
+          >
+            Next: {STEP_LABELS[nextStep]} →
+          </button>
+        </div>
+      )}
 
       <div className={styles["layout"]}>
         {/* A DEFINITE width, not max-width. useBoardViewport measures this column

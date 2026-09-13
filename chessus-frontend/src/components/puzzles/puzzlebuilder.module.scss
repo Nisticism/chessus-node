@@ -139,6 +139,30 @@
   margin: 0 0 12px;
 }
 
+/* Forward through the three steps. Right-aligned, where a "next" lives. */
+.step-nav {
+  display: flex;
+  justify-content: flex-end;
+  margin: 0 0 14px;
+}
+
+.btn-next {
+  padding: 9px 18px;
+  border-radius: 6px;
+  border: 1px solid rgba(var(--gold-rgb, 212, 175, 55), 0.55);
+  background: rgba(var(--gold-rgb, 212, 175, 55), 0.12);
+  color: var(--text-heading);
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+
+  &:hover {
+    background: rgba(var(--gold-rgb, 212, 175, 55), 0.22);
+    border-color: rgba(var(--gold-rgb, 212, 175, 55), 0.8);
+  }
+}
+
 /* Sized square-by-square from useBoardViewport, so extreme aspect ratios fit
    and can be zoomed instead of overflowing. */
 .board {
