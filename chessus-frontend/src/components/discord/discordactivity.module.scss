@@ -131,8 +131,22 @@
 }
 
 /* --------------------------------------------------------- the verdict -- */
+/*
+ * The state classes here are prefixed `v-` rather than sharing names with the
+ * square states above, which is not a stylistic choice. `.wrong` is both "this
+ * square was the wrong guess" (an inset 3px ring, meant for a board square) and
+ * "the answer was wrong" (a line of text). A CSS module scopes by file, not by
+ * element, so the paragraph was picking up the square's ring and drawing it as a
+ * border across the full width of the frame.
+ */
 .verdict {
-  margin: 0;
+  /* Centred as a block of its own width, so the background is the size of the
+     sentence rather than the width of the activity. */
+  width: fit-content;
+  max-width: 100%;
+  margin: 0 auto;
+  padding: 7px 14px;
+  border-radius: 8px;
   text-align: center;
   font-size: 0.88rem;
   font-weight: 600;
@@ -140,13 +154,16 @@
   flex-direction: column;
   align-items: center;
   gap: 6px;
+  /* Discord's own raised-surface colour, so a verdict reads as part of the
+     client rather than as an alert pasted over it. */
+  background: #2b2d31;
 }
 
-.solved   { color: #3ba55d; }
-.continue { color: #5865f2; }
-.wrong,
-.error    { color: #e8a44c; }
-.handoff  { color: #b5bac1; }
+.v-solved   { color: #3ba55d; }
+.v-continue { color: #5865f2; }
+.v-wrong,
+.v-error    { color: #e8a44c; }
+.v-handoff  { color: #b5bac1; }
 
 /* The link offer sits above the footer, not in it: it is an invitation rather
    than a status line, and it disappears for good once taken. */

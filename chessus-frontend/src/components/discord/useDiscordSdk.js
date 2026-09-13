@@ -72,13 +72,34 @@ export default function useDiscordSdk() {
          * Anything beyond these would mean asking a player to grant more
          * access than solving a puzzle warrants.
          */
-        const { code } = await sdk.commands.authorize({
+        const request = {
           client_id: clientId,
           response_type: 'code',
           state: '',
-          prompt: 'none',
           scope: ['identify', 'rpc.activities.write'],
-        });
+        };
+
+        /*
+         * Silently first, then ask.
+         *
+         * `prompt: 'none'` tells Discord not to show the consent screen - which
+         * is what makes the second and every later launch silent. But it does
+         * not fall back to asking when there is no grant to reuse: it THROWS.
+         *
+         * Only the silent form used to be attempted, so anyone who had not yet
+         * consented - which is everyone, the first time, and everyone again
+         * whenever a scope is added - got a thrown error, no token, and a
+         * session recorded as anonymous. The consent screen was never actually
+         * offered, so that state could not resolve itself on a later launch
+         * either. Asking once, only when the silent attempt fails, is what makes
+         * the grant exist in the first place.
+         */
+        let code;
+        try {
+          ({ code } = await sdk.commands.authorize({ ...request, prompt: 'none' }));
+        } catch (needsConsent) {
+          ({ code } = await sdk.commands.authorize(request));
+        }
 
         /*
          * The code is swapped for a token ON THE SERVER. The exchange needs the

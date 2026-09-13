@@ -181,7 +181,13 @@ export default function DiscordActivity() {
         // Opening on a puzzle they already finished should say so, not offer it
         // again as though today had not happened.
         if (data?.today?.solved) {
-          setVerdict({ status: 'solved', text: 'You solved this one already.' });
+          const tries = Number(data?.today?.attempts) || 0;
+          setVerdict({
+            status: 'solved',
+            text: tries > 0
+              ? `Solved in ${tries} ${tries === 1 ? 'try' : 'tries'}.`
+              : 'You solved this one already.',
+          });
         }
       } catch (_) { /* progress is a nicety; the puzzle still plays */ }
     })();
@@ -301,6 +307,20 @@ export default function DiscordActivity() {
       pieceId: mover?.id || `${mover?.piece_id}_${fy}_${fx}`,
     };
 
+    /*
+     * Move the piece now, ask the server afterwards.
+     *
+     * The round trip is a move-info call and a solve call, and waiting for both
+     * before anything happened left the piece sitting under the cursor for long
+     * enough to read as a dropped input - the same flash the live games had
+     * before they moved optimistically. The board is a guess until the server
+     * answers; `before` is what it is a guess AGAINST, so every outcome below
+     * rebuilds from that rather than from the guess, and a rejected move puts
+     * the piece back.
+     */
+    const before = board;
+    setBoard((prev) => applyMove(prev, move));
+
     try {
       const info = await axios.post(
         `${API}game-types/${puzzle.game_type_id}/puzzle-move-info`,
@@ -319,6 +339,7 @@ export default function DiscordActivity() {
        * a piece for them.
        */
       if (info?.data?.promotes) {
+        setBoard(before);
         setVerdict({ status: 'handoff', text: 'That move promotes — finish it on the site.' });
         setBusy(false);
         return;
@@ -337,10 +358,17 @@ export default function DiscordActivity() {
       );
 
       if (data.solved) {
-        setBoard((prev) => applyMove(prev, move, data.solution?.[found.length]));
+        // From `before`, not from the optimistic board: the authoritative version
+        // carries the promotion piece, and applying it on top of the guess would
+        // play the move twice.
+        setBoard(applyMove(before, move, data.solution?.[found.length]));
         setFound(moves);
-        setVerdict({ status: 'solved', text: 'Solved.' });
-        setAttempts((n) => n + 1);
+        const tries = attempts + 1;
+        setVerdict({
+          status: 'solved',
+          text: `Solved in ${tries} ${tries === 1 ? 'try' : 'tries'}.`,
+        });
+        setAttempts(tries);
         if (data.discord) setProgress((p) => ({ ...(p || {}), player: { ...(p?.player || {}), ...data.discord } }));
       } else if (data.status === 'continue') {
         /*
@@ -348,8 +376,8 @@ export default function DiscordActivity() {
          * reply, so the board shows the position the next move starts from.
          */
         setFound(moves);
-        setBoard((prev) => {
-          const after = applyMove(prev, move);
+        setBoard(() => {
+          const after = applyMove(before, move);
           return data.reply ? applyMove(after, data.reply) : after;
         });
         hintCache.current = new Map();
@@ -376,11 +404,13 @@ export default function DiscordActivity() {
         }
       }
     } catch (_) {
+      // Nothing was judged, so the guess has to come back off the board.
+      setBoard(before);
       setVerdict({ status: 'error', text: 'Could not submit that move.' });
     } finally {
       setBusy(false);
     }
-  }, [puzzle, busy, finished, board, found, daily, discordHeaders]);
+  }, [puzzle, busy, finished, board, found, daily, discordHeaders, attempts]);
 
   // ----------------------------------------------------------- interaction --
   const squareAt = useCallback((clientX, clientY) => {
@@ -585,7 +615,7 @@ export default function DiscordActivity() {
       </div>
 
       {verdict && (
-        <p className={`${styles["verdict"]} ${styles[verdict.status] || ''}`}>
+        <p className={`${styles["verdict"]} ${styles[`v-${verdict.status}`] || ''}`}>
           {verdict.text}
           {verdict.status === 'handoff' && (
             <button type="button" className={styles["link-btn"]} onClick={openOnSite}>
