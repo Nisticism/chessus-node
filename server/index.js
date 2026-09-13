@@ -4025,6 +4025,71 @@ app.delete("/api/games/:gameId", authenticateToken, async (req, res) => {
       }
     }
     
+    /*
+     * Puzzles built on this game.
+     *
+     * puzzles.game_type_id cascades on delete, and daily_puzzles.puzzle_id
+     * cascades after it - so deleting a game silently takes its puzzles AND any
+     * day they were scheduled for, and the home page just says "no puzzle today"
+     * with nothing anywhere explaining why.
+     *
+     * Two different situations, treated differently, because they are not the
+     * same loss:
+     *
+     *   Scheduled as a daily puzzle. GridGrove owns the seeded puzzles, and a
+     *   scheduled day is a commitment to everybody who opens the site that
+     *   morning. That is not the game creator's to revoke as a side effect, so
+     *   this is refused outright and needs an admin to unschedule first. A
+     *   creator who wants out of the rotation has allow_daily, which costs
+     *   nobody a day.
+     *
+     *   Published but unscheduled. The creator's call, but not a silent one:
+     *   they are told the number and have to ask again.
+     */
+    const [[puzzleCounts]] = await db_pool.query(
+      `SELECT
+         COUNT(*) AS published,
+         COALESCE(SUM(p.creator_id <> ?), 0) AS notMine
+       FROM puzzles p
+       WHERE p.game_type_id = ? AND p.is_draft = 0`,
+      [userId, gameId]
+    ).catch(() => [[{ published: 0, notMine: 0 }]]);
+
+    const [[scheduled]] = await db_pool.query(
+      `SELECT COUNT(*) AS n
+       FROM daily_puzzles d
+       WHERE d.game_type_id = ? AND d.puzzle_date >= CURDATE()`,
+      [gameId]
+    ).catch(() => [[{ n: 0 }]]);
+
+    if (Number(scheduled?.n) > 0) {
+      return res.status(409).send({
+        message: Number(scheduled.n) === 1
+          ? 'This game has a puzzle scheduled as an upcoming Puzzle of the Day, so it cannot be deleted yet.'
+          : `This game has ${scheduled.n} puzzles scheduled as upcoming Puzzles of the Day, so it cannot be deleted yet.`,
+        reason: 'daily_puzzle_scheduled',
+        scheduledDays: Number(scheduled.n),
+        // Said plainly, because the answer is not obvious from the refusal.
+        hint: 'An admin can unschedule those days, after which the game can be deleted. '
+          + 'To stop future puzzles from this game being chosen without deleting anything, '
+          + 'turn off "allow in the daily rotation" on the puzzles themselves.',
+      });
+    }
+
+    const publishedPuzzles = Number(puzzleCounts?.published) || 0;
+    if (publishedPuzzles > 0 && req.body?.deletePuzzles !== true) {
+      return res.status(409).send({
+        message: publishedPuzzles === 1
+          ? 'Deleting this game will also delete the 1 published puzzle built on it.'
+          : `Deleting this game will also delete the ${publishedPuzzles} published puzzles built on it.`,
+        reason: 'published_puzzles',
+        puzzleCount: publishedPuzzles,
+        // Puzzles somebody else made on this game are the reason to be sure.
+        othersPuzzleCount: Number(puzzleCounts?.notMine) || 0,
+        hint: 'Send deletePuzzles: true to confirm.',
+      });
+    }
+
     // Delete all related records first (in order of dependencies)
     // Delete game instances/matches that use this game type
     await db_pool.query("DELETE FROM games WHERE game_type_id = ?", [gameId]);

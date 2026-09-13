@@ -3072,7 +3072,44 @@ const GameTypeView = () => {
       await dispatch(deleteGame(gameId));
       navigate('/create/games');
     } catch (error) {
-      alert('Failed to delete game: ' + (error.response?.data?.message || error.message || error));
+      const data = error.response?.data;
+
+      /*
+       * The server refuses a delete that would take puzzles with it, and says
+       * which kind of refusal it is. A puzzle scheduled as a Puzzle of the Day
+       * is not the creator's to withdraw by deleting the game, so that one is
+       * final here; published-but-unscheduled puzzles are theirs, and only need
+       * asking about once.
+       */
+      if (data?.reason === 'daily_puzzle_scheduled') {
+        alert(`${data.message}
+
+${data.hint || ''}`);
+        return;
+      }
+
+      if (data?.reason === 'published_puzzles') {
+        const others = Number(data.othersPuzzleCount) || 0;
+        const extra = others
+          ? `
+
+${others} of them ${others === 1 ? 'was' : 'were'} made by somebody else.`
+          : '';
+        if (!window.confirm(`${data.message}${extra}
+
+Delete the game and its puzzles anyway?`)) {
+          return;
+        }
+        try {
+          await dispatch(deleteGame(gameId, true));
+          navigate('/create/games');
+        } catch (err2) {
+          alert('Failed to delete game: ' + (err2.response?.data?.message || err2.message || err2));
+        }
+        return;
+      }
+
+      alert('Failed to delete game: ' + (data?.message || error.message || error));
     }
   };
 

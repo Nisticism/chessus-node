@@ -153,11 +153,23 @@ export const updateGame = (gameId, gameData) => async (dispatch) => {
   }
 };
 
-export const deleteGame = (gameId) => async (dispatch) => {
+/**
+ * Delete a game.
+ *
+ * @param {number}  gameId
+ * @param {boolean} deletePuzzles Confirm that published puzzles built on this
+ *   game go with it. The server refuses with 409 and a count until this is
+ *   true, so the loss is never a surprise - and refuses outright, whatever is
+ *   passed, while one of those puzzles is scheduled as an upcoming Puzzle of
+ *   the Day.
+ */
+export const deleteGame = (gameId, deletePuzzles = false) => async (dispatch) => {
   try {
     const response = await axios.delete(
       API_URL + "games/" + gameId,
-      { headers: authHeader() }
+      // DELETE carries a body here, which axios spells `data`. Sending it as
+      // the second argument would make it the config object instead.
+      { headers: authHeader(), data: { deletePuzzles } }
     );
     
     dispatch({

@@ -126,7 +126,38 @@ const GameList = () => {
       }, 100);
     } catch (error) {
       console.error("Error deleting game:", error);
-      setAlertMessage("Failed to delete game: " + (error.response?.data?.message || error.message));
+      const data = error.response?.data;
+
+      /*
+       * The server refuses a delete that would take puzzles with it. A puzzle
+       * scheduled as a Puzzle of the Day is not the creator's to withdraw by
+       * deleting the game; published-but-unscheduled ones are theirs, and only
+       * need asking about once. Both arrive as 409 with a `reason`.
+       */
+      if (data?.reason === 'published_puzzles'
+          && window.confirm(`${data.message}
+
+Delete the game and its puzzles anyway?`)) {
+        try {
+          await dispatch(deleteGame(gameToDelete.id, true));
+          setShowDeleteModal(false);
+          setGameToDelete(null);
+          setAlertMessage(`Successfully deleted "${gameToDelete.game_name}"`);
+          setAlertType('success');
+          setShowAlert(true);
+        } catch (err2) {
+          setAlertMessage("Failed to delete game: " + (err2.response?.data?.message || err2.message));
+          setAlertType('error');
+          setShowAlert(true);
+        }
+        setIsDeleting(false);
+        return;
+      }
+
+      setAlertMessage(
+        (data?.message || `Failed to delete game: ${error.message}`)
+        + (data?.hint ? ` ${data.hint}` : '')
+      );
       setAlertType('error');
       setShowAlert(true);
     } finally {
