@@ -32,6 +32,20 @@ git lfs pull
 
 echo "[deploy] Building frontend..."
 cd chessus-frontend
+
+# Install BEFORE building.
+#
+# This step used to be missing, and the failure it caused is a bad one: a deploy
+# that adds a frontend dependency dies with "Module not found: Can't resolve
+# '<package>'", which reads like a broken import rather than an uninstalled
+# package. npm install is close to a no-op when the lockfile has not moved, and
+# a minute of it beats a deploy that only fails for whoever pulls next.
+if ! npm install > /tmp/chessus-frontend-install.log 2>&1; then
+  echo "[deploy] Frontend dependency install failed:"
+  tail -40 /tmp/chessus-frontend-install.log
+  exit 1
+fi
+
 # Build quietly: the CRA build prints a long per-chunk gzip size table and any
 # lint warnings on success, which clutters the deploy output. Capture it to a
 # log and only surface it if the build actually fails.
