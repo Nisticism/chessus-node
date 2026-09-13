@@ -164,7 +164,18 @@ function registerDiscordRoutes(app, { db_pool }) {
    */
   app.get('/api/discord/me', optionalDiscord, async (req, res) => {
     try {
-      if (!req.discord) return res.json({ player: null });
+      /*
+       * One line per launch, either way. This is the endpoint that proves
+       * whether a Discord identity actually reached the server, and the
+       * anonymous case is the one that needed saying - it is the shape every
+       * "progress was not saved" report has taken.
+       */
+      if (!req.discord) {
+        console.warn('[discord] /me called with no usable identity'
+          + ` (header ${req.get('X-Discord-Token') ? 'present but rejected' : 'absent'})`);
+        return res.json({ player: null });
+      }
+      console.log(`[discord] /me identified ${req.discord.id} (${req.discord.username || 'no name'})`);
 
       const [[row]] = await db_pool.query(
         `SELECT current_streak, best_streak, total_solved, total_attempts,

@@ -163,6 +163,16 @@ async function exchangeCode(code) {
    * client has no way to tell a live token from a dead one except by using it
    * and failing, which costs the player a prompt at the worst moment.
    */
+  /*
+   * The success side of the handshake, said out loud.
+   *
+   * Only failures were logged, so "the activity never ran" and "the activity ran
+   * fine" produced exactly the same silence - which is not a distinction a log
+   * should leave to guesswork. This fires at most once per launch.
+   */
+  console.log('[discord] token exchange ok'
+    + ` (expires_in=${Number(body.expires_in) || 'unknown'})`);
+
   return {
     access_token: body.access_token,
     expires_in: Number(body.expires_in) || null,
