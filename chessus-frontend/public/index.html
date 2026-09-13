@@ -41,11 +41,24 @@
     <title>GridGrove - Create and Play Strategy Games</title>
 
     <!-- Structured data: crawlers read this even without executing JavaScript. -->
+    <!--
+      `alternateName` is the former name of the project, and it is here on
+      purpose rather than as a leftover. It is the schema.org field for exactly
+      this - a name an entity is also known by - so a search engine can connect
+      someone searching "squarestrat" to this site. It is structured data, read
+      by machines and shown to nobody, which is the difference between this and
+      hidden keyword text: the latter is a spam signal and would do harm.
+
+      The real work is done by the 301 from squarestrat.com, which passes the old
+      domain's link equity here. Keep that redirect and the registration; this
+      field only helps the entity match.
+    -->
     <script type="application/ld+json">
       {
         "@context": "https://schema.org",
         "@type": "WebSite",
         "name": "GridGrove",
+        "alternateName": "SquareStrat",
         "url": "https://gridgrove.gg/",
         "description": "GridGrove lets you create custom strategy games with your own pieces, rules, and boards, then play them online against friends or the computer in real time."
       }
@@ -55,6 +68,7 @@
         "@context": "https://schema.org",
         "@type": "Organization",
         "name": "GridGrove",
+        "alternateName": "SquareStrat",
         "url": "https://gridgrove.gg/",
         "logo": "https://gridgrove.gg/logo512.png"
       }
