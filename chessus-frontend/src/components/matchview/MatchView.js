@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useParams, useNavigate, useLocation, Link } from "react-router-dom";
+import { hasProfile, playerLabel } from "../../helpers/player-identity";
 import { useSelector } from "react-redux";
 import axios from "axios";
 import styles from "./matchview.module.scss";
@@ -656,10 +657,13 @@ const MatchView = () => {
             <span className={styles["player-name"]}>{player?.username || "Computer"}</span>
           ) : player?.id == null ? (
             <span className={styles["player-name"]}>{player?.username || "Guest"}</span>
-          ) : (
-            <Link to={`/profile/${player?.username}`} className={styles["player-name"]}>
-              {player?.username || "Guest"}
+          ) : hasProfile(player) ? (
+            <Link to={`/profile/${player.username}`} className={styles["player-name"]}>
+              {player.username}
             </Link>
+          ) : (
+            // A guest: an "anon_<hex>" id, so there is no profile to link to.
+            <span className={styles["player-name"]}>{playerLabel(player)}</span>
           )}
           {player?.id !== 'bot' && player?.elo && (
             <span className={styles["player-elo"]}>ELO: {player.elo}</span>

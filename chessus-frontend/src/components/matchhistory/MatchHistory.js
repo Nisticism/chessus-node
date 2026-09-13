@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
+import { hasProfile, playerLabel } from "../../helpers/player-identity";
 import axios from "axios";
 import styles from "./matchhistory.module.scss";
 import API_URL from "../../global/global";
@@ -228,12 +229,12 @@ const MatchHistory = ({ userId, username }) => {
                   {/* Player 1 */}
                   {player1 && (
                     <>
-                      {player1.id != null && player1.id !== 'bot' && !game.isBotGame ? (
+                      {hasProfile(player1) && !game.isBotGame ? (
                         <Link to={`/profile/${player1.username}`} className={styles["opponent-name-link"]} onClick={(e) => e.stopPropagation()}>
                           {player1.username}
                         </Link>
                       ) : (
-                        <span className={styles["opponent-name"]}>{player1.username || (player1.isBot ? player1.username : 'Guest')}</span>
+                        <span className={styles["opponent-name"]}>{playerLabel(player1)}</span>
                       )}
                       {!player1.isBot && !player1.isGuest && (
                         <span className={styles["opponent-elo"]}>({player1.elo || "?"})</span>
@@ -247,12 +248,12 @@ const MatchHistory = ({ userId, username }) => {
                   {/* Player 2 */}
                   {player2 && (
                     <>
-                      {player2.id != null && player2.id !== 'bot' && !game.isBotGame ? (
+                      {hasProfile(player2) && !game.isBotGame ? (
                         <Link to={`/profile/${player2.username}`} className={styles["opponent-name-link"]} onClick={(e) => e.stopPropagation()}>
                           {player2.username}
                         </Link>
                       ) : (
-                        <span className={styles["opponent-name"]}>{player2.username || (player2.isBot ? player2.username : 'Guest')}</span>
+                        <span className={styles["opponent-name"]}>{playerLabel(player2)}</span>
                       )}
                       {!player2.isBot && !player2.isGuest && (
                         <span className={styles["opponent-elo"]}>({player2.elo || "?"})</span>

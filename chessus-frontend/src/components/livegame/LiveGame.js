@@ -16,6 +16,7 @@
 import React, { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from "react";
 import { useParams, useNavigate, useLocation, Link } from "react-router-dom";
 import { useSelector, useDispatch } from "react-redux";
+import { hasProfile, playerLabel } from "../../helpers/player-identity";
 import axios from "axios";
 import authHeader from "../../services/auth-header";
 import { useSocket } from "../../contexts/SocketContext";
@@ -542,12 +543,24 @@ const LiveGame = () => {
 
   // Fit-to-container sizing + zoom for the live board. Reserves vertical space for
   // the clocks/captured rows so the board fits without pushing the page.
+  /*
+   * The column holding the board and everything stacked with it - the clocks
+   * above and below, and the actions panel. Handed to the viewport hook so the
+   * board is sized against what is actually on the page rather than against a
+   * fixed allowance, which is what let the actions panel push the bottom of the
+   * board off the screen.
+   */
+  const boardStackRef = useRef(null);
+
   const boardVpHook = useBoardViewport({
     boardWidth: gameState?.gameType?.board_width,
     boardHeight: gameState?.gameType?.board_height,
     fitMaxSquare: windowWidth > 1200 ? 140 : 76,
     maxSquare: windowWidth > 1200 ? 220 : 140,
-    maxHeight: () => Math.max(300, windowHeight - 172),
+    // Was `windowHeight - 172`: a guess at the chrome, made before the actions
+    // panel existed and wrong as soon as it did.
+    maxHeight: 'viewport',
+    fitBelowRef: boardStackRef,
     insetW: showBoardNotation ? 30 : 8,
     insetH: showBoardNotation ? 26 : 8,
   });
@@ -3115,9 +3128,15 @@ const LiveGame = () => {
               )}
             </>
           ) : (
-            <Link to={`/profile/${player?.username}`} className={styles["player-name-link"]} onClick={(e) => e.stopPropagation()}>
-              {player?.username}
+            hasProfile(player) ? (
+            <Link to={`/profile/${player.username}`} className={styles["player-name-link"]} onClick={(e) => e.stopPropagation()}>
+              {player.username}
             </Link>
+            ) : (
+              // A guest. Their id is an "anon_<hex>" string, not a users row, so
+              // there is no profile behind the name they typed.
+              <span className={styles["player-name-plain"]}>{playerLabel(player)}</span>
+            )
           )}
           {player && player.id === currentPlayer?.id && (
             <span className={styles["board-clock-you"]}> (You)</span>
@@ -7079,7 +7098,7 @@ const LiveGame = () => {
                   {renderPlayerClock(bottomPlayer, { isTop: false })}
                 </div>
               )}
-              <div className={styles["board-stack"]}>
+              <div className={styles["board-stack"]} ref={boardStackRef}>
               {!actionsBeside && renderPlayerClock(topPlayer, { isTop: true })}
               <div style={boardVpHook.frameStyle}>
               {moveError && (

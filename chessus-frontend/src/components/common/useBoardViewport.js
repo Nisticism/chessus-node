@@ -32,9 +32,24 @@ export default function useBoardViewport({
   fitMaxSquare,
   // Never shrink squares below this even for extreme boards (keeps them visible).
   minSquare = 6,
-  // Height budget (px) for the fit calc. Number, () => number, or 'square'
-  // (height budget = measured width). Defaults to a fraction of the viewport height.
+  // Height budget (px) for the fit calc. Number, () => number, 'square' (height
+  // budget = measured width), or 'viewport' (measured - see fitBelowRef).
+  // Defaults to a fraction of the viewport height.
   maxHeight,
+  /*
+   * For maxHeight: 'viewport'. An element that has to stay visible along with
+   * the board - in a live game, the stack holding the clocks and the actions
+   * panel. Everything between the bottom of the board and the bottom of this
+   * element is reserved, whatever it happens to be, so a panel that grows does
+   * not push the board off the screen.
+   *
+   * Without it the budget was a guess: a hardcoded number of pixels for "the
+   * chrome", which stopped being true the moment the chrome changed.
+   */
+  fitBelowRef,
+  // Breathing room under the reserved content, so the board does not sit flush
+  // against the bottom edge of the window.
+  fitGap = 16,
   // Extra px reserved inside the viewport for coordinate labels / borders.
   insetW = 0,
   insetH = 0,
@@ -77,7 +92,35 @@ export default function useBoardViewport({
     const measure = () => {
       const w = target.clientWidth || 0;
       const mh = maxHeightRef.current;
-      const h = mh === 'square' ? w : resolveNum(mh, defaultHeight());
+      let h;
+      if (mh === 'square') {
+        h = w;
+      } else if (mh === 'viewport') {
+        /*
+         * What is left of the window once everything that must be on screen
+         * beside the board has taken its share.
+         *
+         * Measured document-relative (rect.top + scrollY) rather than from the
+         * live viewport rect: a rect alone moves as the page scrolls, so the
+         * board would resize itself while somebody scrolled past it. Adding the
+         * scroll offset asks the scroll-independent question - "with the page at
+         * the top, how much room is there" - which is the one worth answering.
+         */
+        const frame = target.getBoundingClientRect();
+        const scrollY = typeof window !== 'undefined' ? window.scrollY || 0 : 0;
+        const topOfFrame = frame.top + scrollY;
+        const floor = fitBelowRef && fitBelowRef.current;
+        // A delta between two rects, so this part needs no scroll correction.
+        const below = floor
+          ? Math.max(0, floor.getBoundingClientRect().bottom - frame.bottom)
+          : 0;
+        const winH = typeof window !== 'undefined' ? window.innerHeight : 800;
+        h = winH - topOfFrame - below - fitGap;
+      } else {
+        h = resolveNum(mh, defaultHeight());
+      }
+      // Never collapse to nothing while the page is still settling.
+      h = Math.max(200, h);
       setAvailW((prev) => (Math.abs(prev - w) > 0.5 ? w : prev));
       setAvailH((prev) => (Math.abs(prev - h) > 0.5 ? h : prev));
     };
@@ -86,13 +129,15 @@ export default function useBoardViewport({
     if (typeof ResizeObserver !== 'undefined') {
       ro = new ResizeObserver(measure);
       ro.observe(target);
+      const floor = fitBelowRef && fitBelowRef.current;
+      if (floor && floor !== target) ro.observe(floor);
     }
     window.addEventListener('resize', measure);
     return () => {
       if (ro) ro.disconnect();
       window.removeEventListener('resize', measure);
     };
-  }, [enabled, node, defaultHeight]);
+  }, [enabled, node, defaultHeight, fitBelowRef, fitGap]);
 
   // Fit square = the largest square that shows the whole board in the container.
   const fitSquare = useMemo(() => {
