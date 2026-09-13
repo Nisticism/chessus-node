@@ -446,7 +446,6 @@ const PuzzlesPanel = () => {
       )}
       <div className={styles["section-header"]}>
         <h2>Puzzle of the Day</h2>
-        <p>One position, every day — and as many more as you want after it.</p>
       </div>
 
       <div className={`${styles["split"]} ${styles[`shape-${shape}`]}`}>
