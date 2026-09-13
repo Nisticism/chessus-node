@@ -574,8 +574,8 @@ const PuzzlesPanel = () => {
             </li>
             <li>
               <strong>Build your own.</strong> Everyone can create up to{' '}
-              {FREE_PUZZLES_PER_GAME} puzzles for each game. Silver Supporters can build
-              as many as they like, for any game they've created.
+              {FREE_PUZZLES_PER_GAME} puzzles for each game they've created. Silver Supporters can build
+              as many as they like.
             </li>
             <li>
               <strong>Any game, any pieces.</strong> A puzzle can come from any game on
