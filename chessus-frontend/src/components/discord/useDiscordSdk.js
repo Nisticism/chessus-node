@@ -17,7 +17,77 @@ import API_URL from "../../global/global";
  * the server will trade for a user id when it wants one. It is enough to say
  * "this is the same person who played yesterday", which is what a streak needs,
  * and it is not a GridGrove session and cannot become one.
+ *
+ * ── Two things this file got wrong before, both worth naming ───────────────
+ *
+ * 1. AUTHENTICATE WAS TREATED AS PART OF SIGNING IN. The token was fetched,
+ *    then `authenticate` was awaited, and only then was any state set - so a
+ *    throw from `authenticate` landed in the outer catch and discarded a
+ *    perfectly good access token. Every such player was recorded as anonymous
+ *    and nothing they solved was saved.
+ *
+ *    They are separate things. The ACCESS TOKEN is identity: the server trades
+ *    it for a user id, and that is all progress needs. `authenticate` opens the
+ *    RPC session, which only buys presence (setActivity). Losing the second must
+ *    not cost the first, so the token is committed the moment it exists and the
+ *    RPC handshake is attempted afterwards, best effort.
+ *
+ * 2. AUTHORIZE WAS CALLED TWICE. `prompt: 'none'` was assumed to throw when
+ *    there was no grant to reuse, with a second call as the fallback - so when
+ *    the first call did what the SDK actually documents ("if the user does not
+ *    yet have a valid token for all scopes requested, this command will open an
+ *    OAuth modal") the player got the modal twice.
+ *
+ *    The way to not be asked is to already hold a valid token, which is what the
+ *    cache below is for - not to ask more cleverly.
  */
+
+/*
+ * Where the token is kept between launches.
+ *
+ * The scopes are part of the key on purpose. Discord will re-prompt when the
+ * scopes change anyway, so a cached token from a previous set is worthless -
+ * keying by them means adding a scope invalidates the cache by construction,
+ * rather than leaving a stale token to fail in a confusing way later.
+ */
+const SCOPES = ['identify', 'rpc.activities.write'];
+const tokenKey = (clientId) => `gg:discord:token:${clientId}:${SCOPES.join(',')}`;
+
+/*
+ * Treat a token as expired well before it really is. A token that dies
+ * mid-puzzle costs the solve; one re-authorised a minute early costs nothing.
+ */
+const EXPIRY_MARGIN_MS = 5 * 60 * 1000;
+
+function readCachedToken(clientId) {
+  try {
+    const raw = window.localStorage.getItem(tokenKey(clientId));
+    if (!raw) return null;
+    const { access_token: accessToken, expires_at: expiresAt } = JSON.parse(raw);
+    if (typeof accessToken !== 'string' || !accessToken) return null;
+    // No expiry recorded means an older entry; treat it as usable and let a
+    // rejection sort it out rather than forcing everyone through a new prompt.
+    if (expiresAt && Date.now() > expiresAt - EXPIRY_MARGIN_MS) return null;
+    return accessToken;
+  } catch (_) {
+    // Storage can be unavailable (a locked-down client, private mode). Not
+    // having a cache is the normal path, not an error.
+    return null;
+  }
+}
+
+function writeCachedToken(clientId, accessToken, expiresInSeconds) {
+  try {
+    window.localStorage.setItem(tokenKey(clientId), JSON.stringify({
+      access_token: accessToken,
+      expires_at: expiresInSeconds ? Date.now() + expiresInSeconds * 1000 : null,
+    }));
+  } catch (_) { /* a cache that cannot be written is just a cache miss */ }
+}
+
+function clearCachedToken(clientId) {
+  try { window.localStorage.removeItem(tokenKey(clientId)); } catch (_) { /* ignore */ }
+}
 
 /**
  * @returns {{
@@ -53,72 +123,74 @@ export default function useDiscordSdk() {
     let cancelled = false;
     const sdk = new DiscordSDK(clientId);
 
+    /*
+     * Ask Discord for consent and swap the code for a token.
+     *
+     * This is the ONLY path that can show the player a modal, and it runs only
+     * when there is no usable token already - which after the first launch is
+     * the uncommon case.
+     */
+    const authorizeFresh = async () => {
+      const { code } = await sdk.commands.authorize({
+        client_id: clientId,
+        response_type: 'code',
+        state: '',
+        scope: SCOPES,
+      });
+      /*
+       * The code is swapped for a token ON THE SERVER. The exchange needs the
+       * client secret, and a secret shipped to an iframe is a published secret.
+       */
+      const { data } = await axios.post(`${API_URL}discord/token`, { code });
+      if (!data?.access_token) throw new Error('Discord returned no access token');
+      writeCachedToken(clientId, data.access_token, data.expires_in);
+      return data.access_token;
+    };
+
     (async () => {
       try {
         await sdk.ready();
 
-        /*
-         * Two scopes, and no more.
-         *
-         *   identify              a user id and display name, which is all a
-         *                         streak needs.
-         *   rpc.activities.write  lets the activity set the player's PRESENCE
-         *                         - see setActivity in DiscordActivity.js, and
-         *                         read the note there about what it does not
-         *                         do. Optional in practice: dismissing the
-         *                         prompt costs presence and a streak, never
-         *                         the puzzle.
-         *
-         * Anything beyond these would mean asking a player to grant more
-         * access than solving a puzzle warrants.
-         */
-        const request = {
-          client_id: clientId,
-          response_type: 'code',
-          state: '',
-          scope: ['identify', 'rpc.activities.write'],
-        };
+        const cached = readCachedToken(clientId);
+        let token = cached || await authorizeFresh();
+        if (cancelled) return;
 
         /*
-         * Silently first, then ask.
-         *
-         * `prompt: 'none'` tells Discord not to show the consent screen - which
-         * is what makes the second and every later launch silent. But it does
-         * not fall back to asking when there is no grant to reuse: it THROWS.
-         *
-         * Only the silent form used to be attempted, so anyone who had not yet
-         * consented - which is everyone, the first time, and everyone again
-         * whenever a scope is added - got a thrown error, no token, and a
-         * session recorded as anonymous. The consent screen was never actually
-         * offered, so that state could not resolve itself on a later launch
-         * either. Asking once, only when the silent attempt fails, is what makes
-         * the grant exist in the first place.
+         * Identity is settled. Commit it before anything else can fail - this is
+         * what progress needs, and it must not depend on the RPC handshake below.
          */
-        let code;
+        setState({ status: 'ready', sdk, token, user: null, error: null });
+
+        /*
+         * The RPC session, which is what setActivity needs. Best effort.
+         *
+         * A CACHED token that is refused here is a token Discord no longer
+         * accepts - revoked, or expired earlier than it claimed - so the cache is
+         * dropped and consent asked for once. A FRESH token refused here is a
+         * working token and a failed RPC handshake, which costs presence and
+         * nothing else, so it is logged and the puzzle carries on.
+         */
         try {
-          ({ code } = await sdk.commands.authorize({ ...request, prompt: 'none' }));
-        } catch (needsConsent) {
-          ({ code } = await sdk.commands.authorize(request));
+          const auth = await sdk.commands.authenticate({ access_token: token });
+          if (cancelled) return;
+          setState({ status: 'ready', sdk, token, user: auth?.user || null, error: null });
+        } catch (rpcErr) {
+          if (cancelled) return;
+          if (!cached) {
+            console.warn('[discord] authenticate failed; presence is off but the token is good:', rpcErr?.message);
+            return;
+          }
+          clearCachedToken(clientId);
+          token = await authorizeFresh();
+          if (cancelled) return;
+          setState({ status: 'ready', sdk, token, user: null, error: null });
+          try {
+            const auth = await sdk.commands.authenticate({ access_token: token });
+            if (!cancelled) setState({ status: 'ready', sdk, token, user: auth?.user || null, error: null });
+          } catch (againErr) {
+            console.warn('[discord] authenticate failed on a fresh token:', againErr?.message);
+          }
         }
-
-        /*
-         * The code is swapped for a token ON THE SERVER. The exchange needs the
-         * client secret, and a secret shipped to an iframe is a published
-         * secret.
-         */
-        const { data } = await axios.post(`${API_URL}discord/token`, { code });
-        if (cancelled) return;
-
-        const auth = await sdk.commands.authenticate({ access_token: data.access_token });
-        if (cancelled) return;
-
-        setState({
-          status: 'ready',
-          sdk,
-          token: data.access_token,
-          user: auth?.user || null,
-          error: null,
-        });
       } catch (err) {
         if (cancelled) return;
         /*
@@ -126,6 +198,7 @@ export default function useDiscordSdk() {
          * playing anonymously - no streak, no record - rather than showing an
          * error where a board should be.
          */
+        clearCachedToken(clientId);
         setState({
           status: 'error', sdk, token: null, user: null,
           error: err?.message || 'Could not sign in with Discord.',

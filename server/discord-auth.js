@@ -75,7 +75,13 @@ async function identify(accessToken) {
     return null;
   }
 
-  if (!res.ok) return null;
+  if (!res.ok) {
+    // A token Discord refuses. Logged because the visible symptom - progress
+    // quietly not saving - is indistinguishable from playing anonymously, and
+    // this is the line that tells the two apart.
+    console.warn(`[discord] identify rejected a token: ${res.status}`);
+    return null;
+  }
 
   let body;
   try { body = await res.json(); } catch (_) { return null; }
@@ -150,7 +156,17 @@ async function exchangeCode(code) {
     err.status = 502;
     throw err;
   }
-  return { access_token: body.access_token };
+  /*
+   * expires_in travels with the token so the activity can cache it and stop
+   * asking for consent on every launch. It is a lifetime in seconds, not a
+   * secret - Discord documents it as part of the response - and without it the
+   * client has no way to tell a live token from a dead one except by using it
+   * and failing, which costs the player a prompt at the worst moment.
+   */
+  return {
+    access_token: body.access_token,
+    expires_in: Number(body.expires_in) || null,
+  };
 }
 
 /**

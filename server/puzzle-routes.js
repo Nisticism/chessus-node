@@ -1783,6 +1783,14 @@ function registerPuzzleRoutes(app, {
 
           if (discordId) {
             discordProgress = await recordDiscordAttempt(db_pool, req.discord, opts);
+            /*
+             * Said out loud because the failure this replaced was silent: an
+             * attempt that reached here anonymously looked exactly like one that
+             * never arrived, and nothing in the logs told them apart. One line
+             * per solve is cheap; a week of guessing was not.
+             */
+            console.log(`[discord] recorded attempt on puzzle ${puzzle.id} for ${discordId}`
+              + ` (solved=${solved}, daily=${opts.isDaily}, streak=${discordProgress?.current_streak ?? '?'})`);
           } else if (userId) {
             /*
              * A solve on the WEBSITE by somebody whose account is linked.
