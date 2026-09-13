@@ -2,15 +2,31 @@
 /*
  * Post today's puzzle to a Discord channel.
  *
- * There is no bot here and there does not need to be one. A channel webhook is
- * a URL the server owner creates in Discord's own channel settings; anything
- * that can POST to it can post to the channel. No application, no token, no
- * gateway connection, no process to keep alive - just a request from cron.
+ * There are two ways to post, and the script picks whichever is configured.
  *
- * The one thing a plain webhook cannot do is send INTERACTIVE components, so
- * there is no "solve it here" button on the message. It can send a LINK button,
- * which is all this needs: the link opens the activity (inside Discord) or the
- * puzzle page (outside it), and the playing happens there.
+ * WEBHOOK (the original, and still the fallback). A channel webhook is a URL the
+ * server owner creates in Discord's own channel settings; anything that can POST
+ * to it can post to the channel. No application, no token, no gateway
+ * connection, no process to keep alive - just a request from cron. Its one
+ * limitation is the button: Discord's rule is that "non-application-owned
+ * webhooks cannot send interactive components", so the best a webhook can do is
+ * a LINK button, which Discord always renders grey with a ↗.
+ *
+ * AS THE APP (when DISCORD_BOT_TOKEN and DISCORD_CHANNEL_ID are set). Posting
+ * through POST /channels/{id}/messages with a bot token makes the message the
+ * application's own, and an application's message may carry a real button - one
+ * with a custom_id rather than a URL. Clicking it reaches
+ * /api/discord/interactions, which answers LAUNCH_ACTIVITY, so the activity
+ * opens in place instead of the player being bounced through a link.
+ *
+ * That is the only difference. Same embed, same board, same channel. The bot
+ * needs View Channel and Send Messages in the target channel and nothing else -
+ * it never reads messages and never connects to the gateway.
+ *
+ * ON THE BUTTON COLOUR. Discord does not allow one. Buttons have six fixed
+ * styles and no hex field, so "GridGrove green" is not on offer; style 3
+ * (Success) is Discord's green and the closest thing to the site's #26655a,
+ * which is why it is the default here. DISCORD_BUTTON_STYLE overrides it.
  *
  * The board is UPLOADED with the message rather than linked. Linking would mean
  * Discord fetching the image from our server, which in turn would mean the
@@ -28,11 +44,18 @@
  *   node scripts/discord-daily-post.js --save board.png # write the image out
  *
  * Environment:
- *   DISCORD_WEBHOOK_URL   Required unless --webhook is given.
+ *   DISCORD_WEBHOOK_URL   Required unless --webhook is given, or unless posting
+ *                         as the app (below).
  *   DISCORD_POST_SITE_URL Where to read the puzzle and board from. Falls back
  *                         to SITE_URL, then to localhost. Overridden by --site.
- *   DISCORD_APP_ID        Optional. When set, the button deep-links to the
- *                         activity instead of the website.
+ *   DISCORD_APP_ID        Optional. When set, the LINK button deep-links to the
+ *                         activity instead of the website. Not needed for the
+ *                         real button - that launches the activity by itself.
+ *   DISCORD_BOT_TOKEN     Optional. With DISCORD_CHANNEL_ID, posts as the app
+ *   DISCORD_CHANNEL_ID    and the button becomes a real one. Both or neither.
+ *   DISCORD_BUTTON_STYLE  Optional, default 3 (green). 1 blurple, 2 grey,
+ *                         3 green, 4 red. Ignored for the webhook's link button,
+ *                         which Discord forces to style 5.
  */
 
 require('dotenv').config();
@@ -78,6 +101,41 @@ const PUBLIC = String(
 ).replace(/\/+$/, '');
 const APP_ID = process.env.DISCORD_APP_ID || null;
 
+/*
+ * Posting as the application, which is what makes a real button possible.
+ *
+ * Both or neither: a token with no channel has nowhere to post and a channel
+ * with no token cannot authenticate, and silently falling back to the webhook in
+ * either case would hide a half-finished configuration behind a post that still
+ * looked fine. `--webhook` forces the webhook path regardless, so a test run can
+ * still be aimed somewhere harmless.
+ */
+const BOT_TOKEN = process.env.DISCORD_BOT_TOKEN || null;
+const CHANNEL_ID = process.env.DISCORD_CHANNEL_ID || null;
+const AS_APP = !arg('webhook', null) && !!(BOT_TOKEN && CHANNEL_ID);
+
+if (!!BOT_TOKEN !== !!CHANNEL_ID) {
+  console.warn('[discord] Only one of DISCORD_BOT_TOKEN / DISCORD_CHANNEL_ID is set.'
+    + ' Both are needed to post as the app; using the webhook instead.');
+}
+
+/*
+ * The custom_id the button carries, taken from the endpoint that answers it
+ * rather than written out again here. The string is a contract between the two
+ * halves, and a typo in either would produce a button that looks perfect and
+ * does nothing.
+ */
+const { PLAY_DAILY_ID } = require('../server/discord-interactions');
+
+/*
+ * Discord buttons have six fixed styles and no colour field, so the site's
+ * #26655a cannot be used. 3 is Discord's green, which is the nearest thing.
+ */
+const BUTTON_STYLE = (() => {
+  const raw = parseInt(process.env.DISCORD_BUTTON_STYLE, 10);
+  return [1, 2, 3, 4].includes(raw) ? raw : 3;
+})();
+
 // GridGrove's green, so the embed's left edge reads as ours in a busy channel.
 const EMBED_COLOUR = 0x26655a;
 // The uploaded board's filename. The embed refers to it by this name.
@@ -99,8 +157,9 @@ function prettyDate(key) {
 }
 
 (async () => {
-  if (!WEBHOOK && !DRY) {
-    console.error('[discord] DISCORD_WEBHOOK_URL is not set. Nothing to post to.');
+  if (!WEBHOOK && !AS_APP && !DRY) {
+    console.error('[discord] Nothing to post to. Set DISCORD_WEBHOOK_URL, or set'
+      + ' DISCORD_BOT_TOKEN and DISCORD_CHANNEL_ID to post as the app.');
     process.exit(1);
   }
 
@@ -132,8 +191,12 @@ function prettyDate(key) {
   const moveWord = depth === 1 ? 'one move' : `${depth} moves`;
 
   const message = {
-    // A webhook posts as itself, so it is named here rather than in Discord.
-    username: 'GridGrove',
+    /*
+     * A webhook posts as itself, so it is named here. Posting as the app takes
+     * its name and avatar from the application instead, and Discord rejects a
+     * `username` on that endpoint - so the field is only set on the webhook path.
+     */
+    ...(AS_APP ? {} : { username: 'GridGrove' }),
     embeds: [{
       title: puzzle.title || 'Puzzle of the Day',
       url: puzzleUrl,
@@ -161,13 +224,31 @@ function prettyDate(key) {
       },
     }],
     components: [{
-      type: 1,          // action row
-      components: [{
-        type: 2,        // button
-        style: 5,       // link - the only kind a plain webhook may send
-        label: 'Play now',
-        url: playUrl,
-      }],
+      type: 1,            // action row
+      components: [AS_APP
+        /*
+         * A real button. custom_id instead of url, which is what makes it
+         * interactive - and interactive is exactly what a non-application
+         * webhook may not send, so this shape is only reachable on the bot path.
+         * The click lands on /api/discord/interactions and is answered with
+         * LAUNCH_ACTIVITY.
+         */
+        ? {
+          type: 2,
+          style: BUTTON_STYLE,
+          label: 'Play now',
+          custom_id: PLAY_DAILY_ID,
+        }
+        /*
+         * The fallback. Style 5 is the only kind a plain channel webhook may
+         * send, and Discord renders it grey with a ↗ whatever else is asked for.
+         */
+        : {
+          type: 2,
+          style: 5,
+          label: 'Play now',
+          url: playUrl,
+        }],
     }],
   };
 
@@ -201,12 +282,15 @@ function prettyDate(key) {
     console.log(png
       ? `[discord] Would upload ${IMAGE_NAME} (${png.length} bytes).`
       : '[discord] Would post with no image.');
-    if (!WEBHOOK) console.log('[discord] No webhook configured - this was a dry run only.');
+    console.log(AS_APP
+      ? `[discord] Would post as the app to channel ${CHANNEL_ID}, with an interactive button (style ${BUTTON_STYLE}).`
+      : '[discord] Would post through the webhook, with a link button.');
+    if (!WEBHOOK && !AS_APP) console.log('[discord] Nothing configured to post to - this was a dry run only.');
     return;
   }
 
-  if (!WEBHOOK) {
-    console.error('[discord] No webhook. Set DISCORD_WEBHOOK_URL or pass --webhook <url>.');
+  if (!WEBHOOK && !AS_APP) {
+    console.error('[discord] Nothing to post to. Set DISCORD_WEBHOOK_URL or pass --webhook <url>.');
     process.exit(1);
   }
 
@@ -221,33 +305,54 @@ function prettyDate(key) {
   }
 
   /*
-   * ?with_components=true, or the button silently does not appear.
+   * Where this goes, and what it may carry.
    *
+   * As the app: the channel's own messages endpoint, authenticated with the bot
+   * token. Components are native there, so there is no query parameter to
+   * remember and an interactive button is allowed.
+   *
+   * As a webhook: ?with_components=true, or the button silently does not appear.
    * Discord's wording is that the parameter decides "whether to respect the
-   * components field of the request" - so without it the array is dropped
-   * rather than rejected, and the message posts looking fine with no button on
-   * it. That is exactly what happened on the first real post.
-   *
-   * A plain channel webhook may only send NON-interactive components even with
-   * this set, which is why the button is style 5 (a link). An interactive
-   * button would need an application-owned webhook and somewhere to receive the
-   * interaction, and the link is all this needs anyway.
+   * components field of the request" - so without it the array is dropped rather
+   * than rejected, and the message posts looking fine with no button on it. That
+   * is exactly what happened on the first real post. Even with it set, a plain
+   * channel webhook may only send NON-interactive components, which is why that
+   * path's button is a style 5 link.
    */
-  const target = WEBHOOK + (WEBHOOK.includes('?') ? '&' : '?') + 'with_components=true';
+  const target = AS_APP
+    ? `https://discord.com/api/v10/channels/${CHANNEL_ID}/messages`
+    : WEBHOOK + (WEBHOOK.includes('?') ? '&' : '?') + 'with_components=true';
 
   const post = await fetch(target, {
     method: 'POST',
     // No Content-Type header: fetch sets it, with the multipart boundary.
+    headers: AS_APP ? { Authorization: `Bot ${BOT_TOKEN}` } : undefined,
     body: form,
     signal: AbortSignal.timeout(30000),
   });
 
   if (!post.ok) {
     const detail = await post.text().catch(() => '');
-    console.error(`[discord] Webhook rejected the post (${post.status}): ${detail.slice(0, 300)}`);
+    const who = AS_APP ? 'Discord rejected the post' : 'Webhook rejected the post';
+    console.error(`[discord] ${who} (${post.status}): ${detail.slice(0, 300)}`);
+    /*
+     * The two failures worth naming, because the status alone sends you looking
+     * in the wrong place: 403 on the bot path is almost always the bot not being
+     * in the server, or lacking View Channel / Send Messages on that channel -
+     * not a bad token, which is 401.
+     */
+    if (AS_APP && post.status === 403) {
+      console.error('[discord] 403 here usually means the bot is not in the server, or cannot'
+        + ` see or post in channel ${CHANNEL_ID}. Check View Channel and Send Messages.`);
+    }
+    if (AS_APP && post.status === 401) {
+      console.error('[discord] 401 means DISCORD_BOT_TOKEN is wrong. It is the BOT token from'
+        + ' the Bot tab, not the client secret.');
+    }
     process.exit(1);
   }
-  console.log(`[discord] Posted "${puzzle.title || puzzle.id}" for ${date}.`);
+  console.log(`[discord] Posted "${puzzle.title || puzzle.id}" for ${date}`
+    + (AS_APP ? ' as the app, with an interactive button.' : ' through the webhook.'));
 })().catch((err) => {
   console.error('[discord] Failed to post:', err.message);
   process.exit(1);

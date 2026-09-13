@@ -409,12 +409,49 @@ Switching the handler to `APP_HANDLER` sends the click to us instead:
 1. **Set `DISCORD_PUBLIC_KEY`** (step 4) and restart the API. Without it the
    endpoint answers 503 and every Launch click shows Discord's red error.
 
+   It is the **Public Key** on General Information — 64 hex characters — not the
+   client secret and not the application id. To check what the process will
+   actually see, on the server (this prints the shape, never the key):
+
+   ```bash
+   cd /home/ec2-user/chessus-node && node -e "require('dotenv').config(); const k=(process.env.DISCORD_PUBLIC_KEY||'').trim(); console.log('present:', !!k, 'length:', k.length, 'usable:', /^[0-9a-fA-F]{64}\$/.test(k))"
+   ```
+
+   `present: false` means it is not in `/home/ec2-user/chessus-node/.env` at all —
+   check you edited that file and not the frontend's. Then:
+
+   ```bash
+   pm2 restart chessus-node --update-env
+   ```
+
+   A malformed key logs `[discord] DISCORD_PUBLIC_KEY is not 64 hex characters`
+   on the first interaction; a missing one logs nothing, which is why the check
+   above is worth running rather than reading the logs.
+
 2. **Save the Interactions Endpoint URL** in the Developer Portal under General
    Information:
 
    ```
-   https://your-host/api/discord/interactions
+   https://gridgrove.gg/api/discord/interactions
    ```
+
+   That is the API's public origin — the same host the site itself runs on, not
+   a separate api. subdomain. (`squarestrat.com` redirects here, and Discord will
+   not follow a redirect, so use `gridgrove.gg` directly.)
+
+   **Check it answers before pasting it into the portal.** Discord's error message
+   does not distinguish "wrong URL" from "right URL, misconfigured server":
+
+   ```bash
+   curl -i -X POST https://gridgrove.gg/api/discord/interactions \
+     -H 'Content-Type: application/json' --data '{"type":1}'
+   ```
+
+   - `401 invalid request signature` — correct. The endpoint is live and rejecting
+     an unsigned request, which is exactly what it should do. Paste the URL.
+   - `503 Discord interactions are not configured` — `DISCORD_PUBLIC_KEY` is not
+     reaching the process. Fix that first; Discord cannot verify a 503.
+   - `404` / HTML — wrong host, or the deploy has not picked up the new code.
 
    Discord POSTs a PING to it before it will accept the URL, and refuses the URL
    if the signature check does not also *reject* a bad signature. Both are
@@ -447,6 +484,64 @@ Discord sends deliberately invalid signatures as a routine check and will remove
 your endpoint (and email you) if one is ever accepted, so `server/discord-
 interactions.js` treats the rejection path as the load-bearing one. Do not
 loosen it.
+
+### 9. A real button on the daily post
+
+The daily post's button is grey with a ↗ because a plain channel webhook may only
+send link buttons — Discord's rule is that "non-application-owned webhooks cannot
+send interactive components". A coloured button carries a `custom_id` instead of
+a URL, and only the application itself may send one.
+
+So the post has to come from the app rather than from the webhook. That needs a
+bot token — not because there is a bot doing anything, but because the token is
+how a request proves it is the application. Nothing connects to the gateway and
+nothing reads messages.
+
+**This requires step 8.** The button's click goes to the interactions endpoint; a
+button posted with no endpoint to answer it fails visibly when someone presses it.
+
+1. **Bot tab → Reset Token**, and copy it. This is not the client secret.
+
+2. **Invite the bot** to the server with the `bot` scope and just two permissions,
+   View Channel and Send Messages:
+
+   ```
+   https://discord.com/oauth2/authorize?client_id=<DISCORD_APP_ID>&scope=bot&permissions=3072
+   ```
+
+3. **Copy the channel id** — right-click the channel → Copy Channel ID. (Needs
+   Developer Mode on, under Settings → Advanced.)
+
+4. **Add both to `.env`:**
+
+   ```
+   DISCORD_BOT_TOKEN=…
+   DISCORD_CHANNEL_ID=…
+   DISCORD_BUTTON_STYLE=3     # optional: 3 green (default), 1 blurple, 2 grey, 4 red
+   ```
+
+   Both or neither. With only one set the script says so and uses the webhook.
+
+5. **Check it before it posts for real:**
+
+   ```bash
+   node scripts/discord-daily-post.js --dry-run
+   ```
+
+   It prints the message and says which path it would take. Look for "as the app,
+   with an interactive button".
+
+`DISCORD_WEBHOOK_URL` can stay where it is — it becomes the fallback, and
+`--webhook <url>` still forces it for a test post to a throwaway channel.
+
+**On the colour.** Discord buttons have six fixed styles and no hex field, so the
+site's `#26655a` is not available. Style 3 is Discord's green and the closest
+thing to it; that is the default. The others are blurple, grey and red.
+
+The message now posts under the **application's** name and avatar rather than the
+webhook's, so set those in the portal (General Information) if the bot is still
+called something else — the webhook's `username: 'GridGrove'` override is not
+allowed on this endpoint and is dropped.
 
 ---
 
