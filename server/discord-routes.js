@@ -262,6 +262,29 @@ function registerDiscordRoutes(app, { db_pool }) {
   });
 
   /*
+   * Why the activity's handshake failed, from the activity itself.
+   *
+   * The handshake runs entirely in an iframe inside the Discord client, so when
+   * it goes wrong the only witness is a console nobody can reach. Three rounds
+   * of this integration were spent guessing at a failure that would have named
+   * itself in one line, which is what this endpoint is for.
+   *
+   * Unauthenticated by necessity - a handshake that failed has no token to
+   * present - so it is deliberately boring: it writes one truncated line to the
+   * log, returns nothing, stores nothing, and is covered by the general /api/
+   * rate limit. Everything it accepts is clamped before it reaches the log.
+   */
+  app.post('/api/discord/diag', (req, res) => {
+    // Collapses any whitespace, newlines included, so one report stays one log
+    // line and cannot forge extra ones.
+    const clamp = (v, n) => String(v == null ? '' : v).split(/\s+/).join(' ').slice(0, n);
+    const stage = clamp(req.body?.stage, 40) || 'unknown';
+    const message = clamp(req.body?.message, 300);
+    console.warn(`[discord] activity handshake failed at "${stage}": ${message}`);
+    res.status(204).end();
+  });
+
+  /*
    * The streak board.
    *
    * Public, because it is a scoreboard, and it only ever carries what Discord

@@ -104,9 +104,39 @@ export default function useDiscordSdk() {
   });
 
   useEffect(() => {
+    /*
+     * Tell the server what went wrong, because nothing else can.
+     *
+     * The handshake runs in an iframe inside the Discord client, where the
+     * console is unreachable - so a failure here is invisible except as
+     * "progress was not saved", which is what it looked like for three rounds.
+     * Fire-and-forget: a report that fails is not worth a second failure.
+     */
+    const report = (stage, message) => {
+      try {
+        axios.post(`${API_URL}discord/diag`, { stage, message: String(message || '') })
+          .catch(() => {});
+      } catch (_) { /* never let reporting break the activity */ }
+    };
+
     const params = new URLSearchParams(window.location.search);
     if (!params.get('frame_id')) {
-      // A normal browser tab. Not an error, just not Discord.
+      /*
+       * A normal browser tab. Not an error, just not Discord - so this is the
+       * quiet path for every ordinary visitor and must stay silent.
+       *
+       * The exception worth hearing about: running INSIDE an iframe with no
+       * frame_id. That is not a browser tab, it is an activity whose URL did not
+       * carry the parameter the whole handshake keys off - and it would look
+       * exactly like the symptom being chased, a board that plays fine and saves
+       * nothing.
+       */
+      const framed = (() => {
+        try { return window.self !== window.top; } catch (_) { return true; }
+      })();
+      if (framed) {
+        report('no-frame-id', `framed but no frame_id; search="${window.location.search}"`);
+      }
       setState({ status: 'outside', sdk: null, token: null, user: null, error: null });
       return undefined;
     }
@@ -131,6 +161,7 @@ export default function useDiscordSdk() {
      * the uncommon case.
      */
     const authorizeFresh = async () => {
+      stage = 'authorize';
       const { code } = await sdk.commands.authorize({
         client_id: clientId,
         response_type: 'code',
@@ -141,11 +172,15 @@ export default function useDiscordSdk() {
        * The code is swapped for a token ON THE SERVER. The exchange needs the
        * client secret, and a secret shipped to an iframe is a published secret.
        */
+      stage = 'token-exchange';
       const { data } = await axios.post(`${API_URL}discord/token`, { code });
       if (!data?.access_token) throw new Error('Discord returned no access token');
       writeCachedToken(clientId, data.access_token, data.expires_in);
       return data.access_token;
     };
+
+    // Which step we are on, so a failure reports where and not only what.
+    let stage = 'ready';
 
     (async () => {
       try {
@@ -199,6 +234,7 @@ export default function useDiscordSdk() {
          * error where a board should be.
          */
         clearCachedToken(clientId);
+        report(stage, err?.message || String(err));
         setState({
           status: 'error', sdk, token: null, user: null,
           error: err?.message || 'Could not sign in with Discord.',
