@@ -5,6 +5,23 @@ import styles from "./changelog.module.scss";
 const changelogData = [
   {
     date: "September 13, 2026",
+    title: "Building puzzles",
+    items: [
+      "You can delete your own puzzles. There is a bin next to each one in the list under the builder. It asks first, and tells you how many attempts will go with it — deleting a puzzle people have played removes their attempts too.",
+      "The builder now refuses an illegal move as you record it, and says why. Before, it accepted whatever two squares you clicked and only told you when you pressed Check — which meant hearing “your move 5 cannot be played” once the whole line was written, with no way to tell which piece was the problem. The reason now arrives on the click that caused it.",
+      "That check is the same one the checker runs, so a line the builder accepted cannot fail validation for being illegal.",
+    ],
+  },
+  {
+    date: "September 13, 2026",
+    title: "Fixes",
+    items: [
+      "On a forum post, the author, the date, and the game or category now sit on one line instead of being scattered across three. On a narrow screen the author and date stay together and the game or category drops to its own line.",
+      "Launching the GridGrove activity in Discord no longer posts Discord's own “Game Invitation” card to the channel. That card was written by Discord rather than by us, and nothing the app knew about the puzzle could reach it.",
+    ],
+  },
+  {
+    date: "September 13, 2026",
     title: "Puzzle of the Day",
     items: [
       "There is now one puzzle a day, on the home page, and it is the same puzzle for everybody. You can play it straight from the home page — drag a piece or click it and click where it goes — or open it on its own page for the full board.",
