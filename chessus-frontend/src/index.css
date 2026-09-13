@@ -31,6 +31,18 @@ code {
   
   --font-family: 'Manrope', sans-serif;
   --page-gutter: 50px; /* sitewide page side padding; 20px below 1050px (see media query above) */
+
+  /*
+   * The dropdown arrow, defined once.
+   *
+   * Nine stylesheets had their own copy of this data URI in three different
+   * greys and two different triangle geometries, and a dozen more left the
+   * select on the browser's native control - which Chrome draws as a thin
+   * chevron, so the site had two different arrows depending on which page you
+   * were on. A custom property is the one way to share a value across CSS
+   * modules without an import in every file.
+   */
+  --select-arrow: url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23999' d='M6 8L0 0h12z'/%3E%3C/svg%3E");
   --background-color: #e2ffda;
   --nav-background: #082c51;
   --dark-blue-text: #09325a;
@@ -530,4 +542,22 @@ body {
   background-color: #4a3a1c;
   color: #ffcc6b;
   border: 1px solid #ffaa44;
+}
+/*
+ * Every <select> gets the site's solid triangle instead of the browser's own
+ * control, which differs per platform and is a chevron in Chrome.
+ *
+ * A bare element selector on purpose: specificity 0,0,1 loses to any module
+ * class, so the stylesheets that already draw their own arrow are untouched and
+ * keep their own padding. This only reaches the selects nobody had styled.
+ */
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: var(--select-arrow);
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  /* Room for the arrow plus a gap, so an option's text never runs under it. */
+  padding-right: 34px;
 }

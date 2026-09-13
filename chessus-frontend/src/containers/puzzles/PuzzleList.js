@@ -129,9 +129,9 @@ const PuzzleList = () => {
   const totalPages = Math.max(1, Math.ceil(total / PER_PAGE));
 
   return (
-    <div className="container">
-      <header className="jumbotron">
-        <h3 className={styles["page-title"]}>Puzzles</h3>
+    <div className={styles["page"]}>
+      <header className={styles["page-header"]}>
+        <h1 className={styles["page-title"]}>Puzzles</h1>
         <p className={styles["page-sub"]}>
           Every published puzzle, from every game on the site. Free to solve — no account needed,
           and signing in builds a puzzle rating.

@@ -7,16 +7,45 @@
  * no return.
  */
 
+/*
+ * The page shell.
+ *
+ * This used Bootstrap's `container` and `jumbotron` class names, and the project
+ * has no Bootstrap - so they styled nothing and the content ran to both edges of
+ * the window with no gutter. The rest of the site puts `40px var(--page-gutter)`
+ * on the page's own root, which is what this now does.
+ */
+.page {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 40px var(--page-gutter);
+  /* Nothing inside may widen the page. A long game name in a chip, or a wide
+     grid track, would otherwise scroll the whole document sideways. */
+  overflow-x: hidden;
+}
+
+.page-header {
+  /* Clear of the navbar, which sits directly above with no spacing of its own. */
+  margin-bottom: 28px;
+}
+
 .page-title {
-  margin: 0 0 6px 0;
-  color: var(--text-heading);
+  margin: 0 0 8px 0;
+  font-size: 2.8rem;
+  color: var(--accent-primary-text);
+  line-height: 1.15;
 }
 
 .page-sub {
   margin: 0;
   color: var(--text-secondary);
-  font-size: 0.95rem;
+  font-size: 1.05rem;
   max-width: 62ch;
+}
+
+@media (max-width: 700px) {
+  .page-title { font-size: 2rem; }
+  .page-sub { font-size: 0.98rem; }
 }
 
 /* ------------------------------------------------------------- filters -- */
@@ -97,15 +126,21 @@
 }
 
 .filter-select {
-  padding: 8px 10px;
-  background: var(--bg-dark);
+  /* Right padding leaves room for the arrow plus a gap. The global `select`
+     rule in index.css supplies the triangle itself, but its padding-right
+     loses to this shorthand, so the space is reserved here. */
+  padding: 8px 34px 8px 10px;
+  background-color: var(--bg-dark);
   border: 1px solid var(--panel-card-border);
   border-radius: 8px;
   color: var(--text-bright);
   font-family: inherit;
   font-size: 0.9rem;
+  cursor: pointer;
   /* A game name can be long; the row must not stretch because of one. */
   max-width: 220px;
+
+  &:focus { outline: none; border-color: rgba(var(--gold-rgb, 212, 175, 55), 0.6); }
 }
 
 .sort-pills {
@@ -166,8 +201,10 @@
 .grid {
   display: grid;
   /* auto-fill rather than auto-fit: with one or two results, auto-fit would
-     stretch a card across the whole page. */
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+     stretch a card across the whole page.
+     min() so the track can go below 260px on a narrow phone instead of forcing
+     the grid wider than the screen. */
+  grid-template-columns: repeat(auto-fill, minmax(min(260px, 100%), 1fr));
   gap: 14px;
   margin-bottom: 28px;
 }
@@ -176,6 +213,9 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
+  /* A grid item's automatic minimum size is its content, so a long title would
+     push the track wider than its share and overflow the row. */
+  min-width: 0;
   padding: 14px 16px;
   background: linear-gradient(135deg, var(--panel-bg-start) 0%, var(--panel-bg-end) 100%);
   border: 1px solid var(--panel-card-border);
@@ -196,6 +236,8 @@
   flex-direction: column;
   align-items: flex-start;
   gap: 4px;
+  min-width: 0;
+  max-width: 100%;
   padding: 0;
   border: none;
   background: none;
@@ -209,6 +251,10 @@
   font-weight: 700;
   color: var(--text-heading);
   line-height: 1.3;
+  /* index.css sets `overflow-wrap: anywhere` globally, but the flex item still
+     needs a zero minimum before that can take effect. */
+  min-width: 0;
+  max-width: 100%;
 }
 
 .card-goal {
