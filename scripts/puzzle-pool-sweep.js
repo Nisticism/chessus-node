@@ -41,6 +41,7 @@ const mysql = require('mysql2/promise');
 const path = require('path');
 const ROOT = path.join(__dirname, '..');
 const compat = require(path.join(ROOT, 'server/ai/fairy-stockfish-compat'));
+const translator = require(path.join(ROOT, 'server/ai/fairy-stockfish-translator'));
 
 const WRITE = process.argv.includes('--write');
 // Force the ordinary DB_* environment even when the tunnel config is present.
@@ -48,6 +49,15 @@ const FORCE_LOCAL = process.argv.includes('--local');
 
 // Widest the board may be relative to its height (or the other way round) and
 // still sit comfortably in half the home page. 3:2.
+/*
+ * Fairy-Stockfish's hard board limits, measured rather than assumed: feeding
+ * the engine the same variant at descending sizes, 12x10 loads and 12x12 does
+ * not. They are compile-time constants in the WASM build, so no INI can get
+ * around them and no puzzle can be generated for a bigger board.
+ */
+const FS_MAX_FILES = 12;
+const FS_MAX_RANKS = 10;
+
 const MAX_BOARD_ASPECT = 1.5;
 
 // Distinct piece types a game needs, overall AND for each player.
@@ -199,6 +209,55 @@ const canon = (v) => {
     const r = compat.checkCompatibility(g, defs, pls);
     if (r.reasons.some(x => !x.safeToIgnore)) {
       excluded.push({ id: g.id, name: g.game_name, reason: 'fairy_stockfish' });
+      continue;
+    }
+
+    /*
+     * checkCompatibility is a heuristic over the rule columns. It is fast and it
+     * is usually right, but it does not TRY the translation - so a game whose
+     * rules are all fine can still contain one piece with no Betza equivalent,
+     * pass the check, sit in the pool, and never be generatable.
+     *
+     * Three such games were doing exactly that, showing up in the "no puzzle
+     * yet" list forever:
+     *
+     *   #173  12x12, past what the engine can represent at all
+     *   #412  AltKing - "the king that never moves", so no moves to express
+     *   #480  Power Knight - a capture ratio with no movement ratio
+     *
+     * So the translation is actually attempted here. It costs one call per game
+     * and turns "we think this will work" into "this does".
+     */
+    const bw = Number(g.board_width) || 0;
+    const bh = Number(g.board_height) || 0;
+    if (bw > FS_MAX_FILES || bh > FS_MAX_RANKS) {
+      excluded.push({
+        id: g.id, name: g.game_name, reason: 'board_too_big_for_engine',
+        note: `${bw}x${bh} exceeds Fairy-Stockfish's ${FS_MAX_FILES}x${FS_MAX_RANKS} limit`,
+      });
+      continue;
+    }
+
+    const charMap = translator.buildCharMap(defs, pls);
+    const built = charMap ? translator.buildVariantINI(g, defs, pls, charMap) : null;
+    if (!built) {
+      /*
+       * Name the piece that did it. "Untranslatable" on its own sends whoever
+       * reads this back to the database to work out which of six pieces was the
+       * problem, and the answer is already here.
+       */
+      const blockers = defs
+        .filter((d) => {
+          try { return !translator.pieceToBetza(d); } catch (_) { return true; }
+        })
+        .map((d) => d.piece_name)
+        .filter(Boolean);
+      excluded.push({
+        id: g.id, name: g.game_name, reason: 'fairy_stockfish_untranslatable',
+        note: blockers.length
+          ? `no Betza equivalent for: ${blockers.join(', ')}`
+          : 'the variant definition could not be built',
+      });
       continue;
     }
     // Excluded for now: the validator cannot yet judge "every royal must be
@@ -468,10 +527,17 @@ const canon = (v) => {
       extra.duplicate_of ?? null,
       extra.similarity_score ?? null,
       extra.similarity_kind ?? null,
+      /*
+       * Only the auto rows reach here - add() has already returned for anything
+       * a human ruled on - so writing the note cannot clobber somebody's
+       * reasoning. VARCHAR(500), so a game with a lot of odd pieces is trimmed
+       * rather than throwing.
+       */
+      extra.note ? String(extra.note).slice(0, 500) : null,
     ]);
   };
 
-  for (const e of excluded) add(e.id, 'auto_excluded', { exclusion_reason: e.reason });
+  for (const e of excluded) add(e.id, 'auto_excluded', { exclusion_reason: e.reason, note: e.note });
   for (const d of autoDropped) {
     add(d.id, 'auto_excluded', {
       exclusion_reason: 'duplicate',
@@ -501,14 +567,15 @@ const canon = (v) => {
   if (upserts.length) {
     await write.query(
       `INSERT INTO puzzle_pool
-         (game_type_id, status, exclusion_reason, duplicate_of, similarity_score, similarity_kind, swept_at)
-       VALUES ${upserts.map(() => '(?,?,?,?,?,?,NOW())').join(',')}
+         (game_type_id, status, exclusion_reason, duplicate_of, similarity_score, similarity_kind, note, swept_at)
+       VALUES ${upserts.map(() => '(?,?,?,?,?,?,?,NOW())').join(',')}
        ON DUPLICATE KEY UPDATE
          status = VALUES(status),
          exclusion_reason = VALUES(exclusion_reason),
          duplicate_of = VALUES(duplicate_of),
          similarity_score = VALUES(similarity_score),
          similarity_kind = VALUES(similarity_kind),
+         note = VALUES(note),
          swept_at = NOW()`,
       upserts.flat()
     );
