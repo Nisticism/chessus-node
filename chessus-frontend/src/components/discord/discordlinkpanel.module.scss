@@ -1,50 +1,52 @@
-/* The Discord link panel on the account page.
-   Takes the site's own theme variables rather than Discord's colours - unlike
-   the activity, this renders inside GridGrove and should look like it. */
-.panel {
-  background: var(--panel-card-bg, #1b1f2a);
-  border: 2px solid var(--panel-card-border, #2a3040);
-  border-radius: 8px;
-  padding: 18px 20px;
+/* The Discord row inside the profile's Connected Accounts card.
+   The row and label classes come from the card itself, so this only styles the
+   parts the other rows do not have: the code input, the buttons and the
+   messages. Nothing here should fight the card it sits in. */
+.row {
   display: flex;
   flex-direction: column;
+  gap: 6px;
+}
+
+.linked {
+  display: flex;
+  align-items: center;
   gap: 10px;
-  margin-top: 20px;
+  flex-wrap: wrap;
 }
 
-.title {
-  margin: 0;
-  font-size: 1.05rem;
-  color: var(--accent-vivid, var(--accent-primary-text, #5fd0a4));
-}
-
-.body {
-  margin: 0;
-  font-size: 0.9rem;
-  color: var(--text-dim, #9aa4b2);
-  line-height: 1.5;
+.name {
+  font-weight: 600;
+  color: var(--accent-primary, #5fd0a4);
+  word-break: break-all;
 }
 
 .streak {
-  margin: 0;
-  font-size: 0.95rem;
-  color: var(--text-main, #e7eae7);
+  font-size: 0.82rem;
+  color: var(--text-dim, #9aa4b2);
 }
 
-.muted { color: var(--text-dim, #9aa4b2); font-weight: 400; }
+.unlinked { display: flex; flex-direction: column; gap: 8px; }
+
+.body {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--text-dim, #9aa4b2);
+  line-height: 1.45;
+}
 
 .form { display: flex; gap: 8px; flex-wrap: wrap; }
 
 /* Monospace and wide-tracked: this is a code being transcribed from another
    screen, so every character has to be individually legible. */
 .input {
-  flex: 1 1 140px;
+  flex: 1 1 120px;
   min-width: 0;
   font-family: ui-monospace, Consolas, monospace;
-  font-size: 1rem;
+  font-size: 0.95rem;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  padding: 8px 10px;
+  padding: 6px 9px;
   border-radius: 6px;
   border: 1px solid var(--panel-card-border, #2a3040);
   background: var(--input-bg, #11141c);
@@ -52,36 +54,36 @@
 }
 
 .input:focus-visible {
-  outline: 2px solid var(--accent-vivid, #5fd0a4);
+  outline: 2px solid var(--accent-primary, #5fd0a4);
   outline-offset: 1px;
 }
 
 .primary {
-  padding: 8px 16px;
+  padding: 6px 14px;
   border: 0;
   border-radius: 6px;
-  background: var(--accent-vivid, #5fd0a4);
+  background: var(--accent-primary, #5fd0a4);
   color: #0b1410;
   font-weight: 700;
+  font-size: 0.85rem;
   cursor: pointer;
 }
 
 .primary:disabled { opacity: 0.5; cursor: default; }
 
 .ghost {
-  align-self: flex-start;
-  padding: 6px 14px;
+  padding: 4px 11px;
   border-radius: 6px;
   border: 1px solid var(--panel-card-border, #2a3040);
   background: none;
   color: var(--text-dim, #9aa4b2);
   font: inherit;
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   cursor: pointer;
 }
 
 .ghost:hover { color: var(--text-main, #e7eae7); }
 
-.message { margin: 0; font-size: 0.88rem; }
+.message { margin: 0; font-size: 0.82rem; }
 .ok  { color: #5fd0a4; }
 .bad { color: #e8a44c; }

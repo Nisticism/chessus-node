@@ -19,8 +19,17 @@ import styles from "./discordlinkpanel.module.scss";
  *
  * Only ever shown on your own profile. Linking is not something anyone should
  * be able to start from somebody else's page.
+ *
+ * Renders as a ROW inside the profile's Connected Accounts card rather than a
+ * card of its own - it is literally a connected account, and it sat oddly as a
+ * separate block beside the ratings. The caller passes its own row and label
+ * classes so this matches the Chess.com and Lichess rows beside it instead of
+ * carrying a second, nearly-identical set of styles.
+ *
+ * @param {string} [itemClass]  The card's row class.
+ * @param {string} [labelClass] The card's label class.
  */
-export default function DiscordLinkPanel() {
+export default function DiscordLinkPanel({ itemClass = '', labelClass = '' }) {
   const [linked, setLinked] = useState(null);
   const [loading, setLoading] = useState(true);
   const [code, setCode] = useState('');
@@ -89,34 +98,28 @@ export default function DiscordLinkPanel() {
   if (loading) return null;
 
   return (
-    <div className={styles["panel"]}>
-      <h3 className={styles["title"]}>Discord</h3>
+    <div className={`${itemClass} ${styles["row"]}`}>
+      <span className={labelClass}>Discord</span>
 
       {linked ? (
-        <>
-          <p className={styles["body"]}>
-            Linked to <strong>{linked.username || linked.discord_user_id}</strong>.
-            Solving the daily puzzle in Discord now counts towards your puzzle rating,
-            and solving it here counts towards your streak.
-          </p>
+        <div className={styles["linked"]}>
+          <span className={styles["name"]}>{linked.username || linked.discord_user_id}</span>
           {linked.current_streak > 0 && (
-            <p className={styles["streak"]}>
-              <strong>{linked.current_streak}</strong> day streak
-              {linked.best_streak > linked.current_streak && (
-                <span className={styles["muted"]}> · best {linked.best_streak}</span>
-              )}
-            </p>
+            <span className={styles["streak"]}>
+              {linked.current_streak} day streak
+              {linked.best_streak > linked.current_streak && ` · best ${linked.best_streak}`}
+            </span>
           )}
           <button type="button" className={styles["ghost"]} onClick={unlink} disabled={busy}>
             Unlink
           </button>
-        </>
+        </div>
       ) : (
-        <>
+        <div className={styles["unlinked"]}>
           <p className={styles["body"]}>
-            Play the daily puzzle in Discord and link it here, and your solves there
-            will move your puzzle rating. In the GridGrove Discord activity, press
-            <em> Link a GridGrove account</em> and enter the code it gives you.
+            Solve the daily puzzle in Discord and it counts towards your puzzle
+            rating. In the activity, press <em>Link a GridGrove account</em> and
+            enter the code here.
           </p>
           <form className={styles["form"]} onSubmit={submit}>
             <input
@@ -133,7 +136,7 @@ export default function DiscordLinkPanel() {
               {busy ? 'Linking…' : 'Link'}
             </button>
           </form>
-        </>
+        </div>
       )}
 
       {message && (

@@ -99,6 +99,12 @@ const PlayerPage = (props) => {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   // const [postDeleteUsername, setPostDeleteUsername] = useState("");
   const playerPageUser = useSelector((state) => state.authReducer.playerPage);
+  /*
+   * Whether this is your own profile, at render scope. Several sections need it
+   * and the existing check was buried inside a data-loading effect.
+   */
+  const isOwnProfilePage = !!(currentUser && playerPageUser
+    && Number(currentUser.id) === Number(playerPageUser.id));
   
   const navigate = useNavigate();
   const location = useLocation();
@@ -710,11 +716,6 @@ const PlayerPage = (props) => {
                   </div>
                 )}
               </div>
-              {/* Only on your own profile: linking is not something anyone
-                  should be able to start from somebody else's page. */}
-              {currentUser && playerPageUser && currentUser.id === playerPageUser.id && (
-                <DiscordLinkPanel />
-              )}
               <div className={styles["profile-stats"]}>
                 <div className={styles["elo-display"]}>
                   <div className={styles["elo-label"]}>ELO Rating</div>
@@ -819,7 +820,10 @@ const PlayerPage = (props) => {
                 wrapperClassName={styles["info-card"]}
               />
 
-              {(playerPageUser?.chess_com_username || playerPageUser?.lichess_username || playerPageUser?.twitch_channel) && (
+              {/* Also on your own profile with nothing connected yet - otherwise
+                  there is nowhere to connect the first thing from. */}
+              {(playerPageUser?.chess_com_username || playerPageUser?.lichess_username
+                || playerPageUser?.twitch_channel || isOwnProfilePage) && (
                 <div className={styles["info-card"]}>
                   <h2 className={styles["card-title"]}>Connected Accounts</h2>
                   <div className={styles["info-grid"]}>
@@ -864,6 +868,21 @@ const PlayerPage = (props) => {
                           {playerPageUser.twitch_channel}
                         </a>
                       </div>
+                    )}
+                    {/*
+                      * Your own profile only.
+                      *
+                      * The other three are usernames on public sites the person
+                      * chose to advertise. A Discord link is not that - it is an
+                      * account connection, and publishing somebody's Discord
+                      * identity is a decision they have not been asked to make.
+                      * So this is a control you operate, not a badge others read.
+                      */}
+                    {isOwnProfilePage && (
+                      <DiscordLinkPanel
+                        itemClass={styles["info-item"]}
+                        labelClass={styles["info-label"]}
+                      />
                     )}
                   </div>
                 </div>
