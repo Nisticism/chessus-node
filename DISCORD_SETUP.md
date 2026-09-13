@@ -113,10 +113,41 @@ cron and points you at systemd timers instead. Two ways forward.
 
 **Option A — a systemd timer (what AWS recommends).** No packages to install,
 the timezone goes in the schedule itself, and `journalctl` keeps the output.
+Every command below is run on the **backend** instance, over SSH.
 
-`/etc/systemd/system/gridgrove-puzzle-post.service`:
+**1. Find where node actually is.** A systemd unit does not read your shell
+profile, so the path in the unit has to be literal. If you installed node with
+nvm it will not be `/usr/bin/node`.
 
-```ini
+```bash
+command -v node
+```
+
+**2. Check the webhook is configured.** This prints the variable name only, never
+the value, so it is safe to run with someone watching:
+
+```bash
+cd /home/ec2-user/chessus-node && grep -o '^DISCORD_WEBHOOK_URL' .env
+```
+
+If that prints nothing, add the line to `.env` before going further.
+
+**3. Run it by hand once.** Nothing is scheduled yet — this is just proving the
+command works before wrapping it in a unit:
+
+```bash
+cd /home/ec2-user/chessus-node && DISCORD_POST_SITE_URL=http://localhost:3001 node scripts/discord-daily-post.js
+```
+
+You should see `[discord] Posted "…" for YYYY-MM-DD.` and the message should
+appear in your channel. **Do not continue until this works** — everything after
+this point only controls *when* this exact command runs.
+
+**4. Write the service unit.** `$(command -v node)` is substituted as you run
+this, so the path from step 1 is baked in automatically:
+
+```bash
+sudo tee /etc/systemd/system/gridgrove-puzzle-post.service > /dev/null <<EOF
 [Unit]
 Description=Post the GridGrove daily puzzle to Discord
 After=network-online.target
@@ -125,81 +156,85 @@ After=network-online.target
 Type=oneshot
 User=ec2-user
 WorkingDirectory=/home/ec2-user/chessus-node
-
-# Read the puzzle and the board from the API on this same box. The image is
-# uploaded with the message rather than linked, so Discord never fetches
-# anything from us and localhost is a perfectly good source.
 Environment=DISCORD_POST_SITE_URL=http://localhost:3001
-
-# What goes in the LINKS, which is a different question - those have to be
-# clickable from Discord. Already set in .env; repeated here so the unit does
-# not depend on which variables happen to be exported.
 Environment=SITE_URL=https://gridgrove.gg
-
-ExecStart=/usr/bin/node scripts/discord-daily-post.js
+ExecStart=$(command -v node) scripts/discord-daily-post.js
+EOF
 ```
 
-`DISCORD_WEBHOOK_URL` comes from the repo-root `.env`, which the script loads
-itself via `dotenv` — it does not need to be repeated here, and should not be,
-since unit files are world-readable.
+`DISCORD_WEBHOOK_URL` is deliberately absent — the script reads `.env` itself,
+and unit files are world-readable.
 
-`/etc/systemd/system/gridgrove-puzzle-post.timer`:
+**5. Write the timer unit.** Change `09:00:00` to whatever hour you want, and
+the zone to `America/Chicago`, `America/Denver` or `America/Los_Angeles` if you
+are not Eastern:
 
-```ini
+```bash
+sudo tee /etc/systemd/system/gridgrove-puzzle-post.timer > /dev/null <<'EOF'
 [Unit]
 Description=Post the GridGrove daily puzzle every morning
 
 [Timer]
 OnCalendar=*-*-* 09:00:00 America/New_York
-# If the box was asleep or rebooting at 9, post as soon as it is back.
 Persistent=true
 
 [Install]
 WantedBy=timers.target
+EOF
 ```
 
-**Check where node actually is first.** If you installed it with nvm it will not
-be at `/usr/bin/node`, and a systemd unit does not read your shell profile, so
-the path has to be literal:
+`Persistent=true` means that if the box was rebooting at 9am, it posts as soon
+as it is back rather than skipping the day.
 
-```bash
-which node
-```
-
-Put whatever that prints in `ExecStart=`.
-
-Check the schedule parses before enabling it — this prints the next few times it
-will fire, so you can see the timezone was understood:
+**6. Check the schedule parses.** This prints the next three times it would fire,
+so you can see the timezone was understood before committing to it:
 
 ```bash
 systemd-analyze calendar '*-*-* 09:00:00 America/New_York' --iterations=3
 ```
 
-Then:
+**7. Turn it on.**
 
 ```bash
 sudo systemctl daemon-reload
 sudo systemctl enable --now gridgrove-puzzle-post.timer
+```
+
+**8. Confirm it is scheduled.** `NEXT` should read tomorrow morning (or today, if
+it is still before 9am):
+
+```bash
 systemctl list-timers gridgrove-puzzle-post.timer
 ```
 
-To read what it did, or to fire it by hand:
+**9. Fire it once through systemd**, to prove the unit works and not just the
+command:
 
 ```bash
-journalctl -u gridgrove-puzzle-post.service -n 50
 sudo systemctl start gridgrove-puzzle-post.service
+journalctl -u gridgrove-puzzle-post.service -n 20 --no-pager
 ```
 
-That last command is worth running once straight after setting it up — it posts
-immediately, which tells you the unit works without waiting until morning.
+That posts immediately. If it works here it will work at 9am.
 
-**Option B — install cron.** If you would rather use a crontab:
+### Changing or removing it later
+
+```bash
+sudo systemctl edit --full gridgrove-puzzle-post.timer   # change the time
+sudo systemctl daemon-reload && sudo systemctl restart gridgrove-puzzle-post.timer
+sudo systemctl disable --now gridgrove-puzzle-post.timer # stop posting
+```
+
+**Option B — install cron.** If you would rather use a crontab, do steps 1–3
+above first, then:
 
 ```bash
 sudo dnf install -y cronie
 sudo systemctl enable --now crond
 crontab -e
 ```
+
+Paste this into the editor that opens (`CRON_TZ` must be the first line):
 
 ```
 CRON_TZ=America/New_York

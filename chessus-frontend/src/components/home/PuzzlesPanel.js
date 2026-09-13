@@ -562,12 +562,10 @@ const PuzzlesPanel = () => {
 
         {/* ------------------------------------------------- the standing -- */}
         <div className={styles["about"]}>
-          <h3 className={styles["about-title"]}>One a day isn’t the limit</h3>
+          <h3 className={styles["about-title"]}>Puzzles on GridGrove</h3>
           <p>
-            Every puzzle on the site is free to solve, as many as you like, signed in or
-            not. Each one is a position from a game somebody built here — so the pieces
-            do whatever that game says they do, and the rules are on the page if you
-            have never played it.
+            Every puzzle on the site is free to solve, and one a day isn't the limit. Some of them are built from actual games played on the site, so the positions are realistic and varied.  Others
+            were created by hand to provide unique challenges.
           </p>
 
           <ul className={styles["points"]}>
@@ -578,11 +576,11 @@ const PuzzlesPanel = () => {
             <li>
               <strong>Build your own.</strong> Everyone can create up to{' '}
               {FREE_PUZZLES_PER_GAME} puzzles for each game. Silver Supporters can build
-              as many as they like, for any game.
+              as many as they like, for any game they've created.
             </li>
             <li>
               <strong>Any game, any pieces.</strong> A puzzle can come from any game on
-              the site, so the answer is rarely the one you expect.
+              the site, so finding the answer might depend on knowing the rules and the typical patterns of the game.
             </li>
           </ul>
 
