@@ -382,6 +382,33 @@
   gap: 8px;
 }
 
+/* Row plus its delete control. The row takes the space; the bin stays square. */
+.puzzle-row-wrap {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.puzzle-row-delete {
+  flex: 0 0 auto;
+  width: 42px;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--text-secondary);
+  background: var(--bg-dark);
+  border: 1px solid var(--panel-card-border);
+  border-radius: 6px;
+
+  &:hover:not(:disabled) {
+    color: #fff;
+    border-color: rgba(220, 80, 80, 0.8);
+    background: rgba(220, 80, 80, 0.18);
+  }
+
+  &:disabled { cursor: default; opacity: 0.5; }
+}
+
 .puzzle-row {
   display: flex;
   flex-direction: column;

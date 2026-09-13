@@ -15,7 +15,7 @@
  */
 const {
   validatePuzzle, moveKey, GOALS, GOAL_DEFS, MECHANICAL_GOALS, VALIDATION,
-  goalsForGameType, describeGoal, buildGameState, playLine,
+  goalsForGameType, describeGoal, buildGameState, playLine, applyPly,
 } = require('./puzzle-validation');
 const {
   getPromotionOptions, checkPromotionEligibility, getAllLegalMovesForPlayer,
@@ -1099,13 +1099,21 @@ function registerPuzzleRoutes(app, {
        * built against the game as it is now, not as it once was.
        */
       const rules = await loadLiveRules(gameTypeId);
-      const state = buildGameState({
+      /*
+       * Built twice, because the legality probe below APPLIES the move and the
+       * engine mutates the pieces it is given. Sharing one state would leave the
+       * promotion and castling questions being asked of a board where the move
+       * had already happened. Neither build touches the database - the rules are
+       * already loaded and hydration is a map over the placements.
+       */
+      const makeState = async () => buildGameState({
         position: await hydratePosition(rules, position),
         initial_pieces: await loadStartingRoster(rules),
         side_to_move: Number(side_to_move) || 1,
         setup_move: setup_move || null,
         game_type_id: gameTypeId,
       }, gameType);
+      const state = await makeState();
 
       const fromX = Number(move.from.x); const fromY = Number(move.from.y);
       const toX = Number(move.to.x); const toY = Number(move.to.y);
@@ -1130,14 +1138,57 @@ function registerPuzzleRoutes(app, {
         partnerName: state.pieces.find(p => p.id === castleMove.castlingWith)?.piece_name || null,
       } : null;
 
+      /*
+       * Is the move actually legal?
+       *
+       * The builder used to record whatever two squares were clicked, with only
+       * an "is it your turn" check in front of it. So an illegal ply could sit in
+       * a line until the creator pressed Check, which reported it as "your move 5
+       * cannot be played" - five moves after the mistake, naming the ply number
+       * and nothing else. A creator who has just captured a piece the game says
+       * is uncapturable has no way to guess that from the ply number.
+       *
+       * Asked through applyPly, which is the same call playLine makes for every
+       * ply of the checker. Going through the engine rather than the enumerated
+       * move list is deliberate: enumeration is blind to en passant (see the note
+       * in puzzle-validation.js), so a list-membership test would reject a legal
+       * move the checker then accepts - the builder and the checker have to agree
+       * or this endpoint has only moved the confusion earlier.
+       *
+       * A move that promotes comes back "not ok, needs a promotion choice". That
+       * is not illegality - the choice is what the caller is about to be asked
+       * for - so it counts as legal here.
+       */
+      let isLegal = true;
+      let illegalReason = null;
+      try {
+        const probe = await applyPly(await makeState(), { ...move, from: { x: fromX, y: fromY }, to: { x: toX, y: toY } });
+        if (!probe.ok && !probe.needsPromotionChoice) {
+          isLegal = false;
+          illegalReason = probe.reason || 'that move is not legal here';
+        }
+      } catch (err) {
+        /*
+         * An engine that threw is a bug in the engine, not a verdict on the move.
+         * Reporting "illegal" would block a creator from recording a move that may
+         * be perfectly fine, so this stays permissive and is logged instead.
+         */
+        console.error('POST /api/game-types/:id/puzzle-move-info probe:', err);
+      }
+
       // Ask the same question a live game asks, about the destination square.
       const eligibility = await checkPromotionEligibility(mover, { x: toX, y: toY }, state);
       if (!eligibility || !eligibility.eligible) {
-        return res.json({ promotes: false, skipped: !!eligibility?.skipped, options: [], castling });
+        return res.json({
+          promotes: false, skipped: !!eligibility?.skipped, options: [], castling,
+          legal: isLegal, reason: illegalReason,
+        });
       }
       res.json({
         promotes: true,
         castling,
+        legal: isLegal,
+        reason: illegalReason,
         options: (eligibility.options || []).map(o => ({
           id: o.id ?? o.piece_id,
           piece_name: o.piece_name,

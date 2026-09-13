@@ -439,6 +439,46 @@ const PuzzleBuilder = () => {
 
   useEffect(() => { refreshPuzzleList(); }, [refreshPuzzleList]);
 
+  /*
+   * Delete a puzzle from the list.
+   *
+   * The endpoint has existed since puzzles did; nothing ever called it, so a
+   * creator's only way to get rid of a puzzle was to ask someone with database
+   * access. Confirmed first because it cannot be undone, and the confirmation
+   * says whether anyone has played it - deleting a draft nobody has seen and
+   * deleting a published puzzle with attempts against it are different decisions,
+   * and the attempts go with it either way.
+   */
+  const [deletingId, setDeletingId] = useState(null);
+
+  const deletePuzzle = useCallback(async (pz) => {
+    const played = Number(pz.attempt_count) || 0;
+    const warning = played > 0
+      ? `\n\n${played} attempt${played === 1 ? '' : 's'} against it will be deleted too, and it will vanish from anyone's history.`
+      : '';
+    // eslint-disable-next-line no-restricted-globals, no-alert
+    if (!window.confirm(`Delete "${pz.title || 'Untitled puzzle'}" permanently?${warning}`)) return;
+
+    setDeletingId(pz.id);
+    try {
+      await axios.delete(`${API_URL}puzzles/${pz.id}`, { headers: authHeader() });
+      await refreshPuzzleList();
+      /*
+       * If the puzzle being edited is the one just deleted, the builder is now
+       * pointed at a row that does not exist. Back to a fresh puzzle on the same
+       * game rather than leaving a form that cannot be saved.
+       */
+      if (Number(pz.id) === Number(savedId)) navigate(`/games/${gameId}/puzzles/new`);
+    } catch (err) {
+      setCheckResult({
+        tone: 'warn',
+        text: err?.response?.data?.message || 'Could not delete that puzzle.',
+      });
+    } finally {
+      setDeletingId(null);
+    }
+  }, [refreshPuzzleList, savedId, gameId, navigate]);
+
   const positionArray = useMemo(
     () => Object.entries(placements).map(([k, v]) => {
       const [y, x] = k.split(',').map(Number);
@@ -470,6 +510,23 @@ const PuzzleBuilder = () => {
         { position: positionArray, side_to_move: sideToMove, setup_move: setupMove, move: ply },
         { headers: authHeader() }
       );
+      /*
+       * Illegal moves are refused here rather than recorded and caught later.
+       *
+       * The server judges this with the same engine call the checker uses, so a
+       * ply that would have failed validation cannot get into the line at all -
+       * and the reason arrives now, next to the piece that caused it, instead of
+       * as "your move 5 cannot be played" once the line is finished.
+       */
+      if (data?.legal === false) {
+        setCheckResult({
+          tone: 'warn',
+          text: data.reason
+            ? `That move is not legal: ${data.reason}.`
+            : 'That move is not legal in this position.',
+        });
+        return;
+      }
       if (data?.castling) {
         move = {
           ...move,
@@ -485,8 +542,9 @@ const PuzzleBuilder = () => {
       }
     } catch (_) {
       /*
-       * The lookup is an improvement, not a gate. If it fails the ply is still
-       * recorded; validation will catch a missing promotion choice and say so.
+       * A FAILED lookup is still not a gate - only an explicit `legal: false` is.
+       * If the request never got an answer the ply is recorded as before, and
+       * validation catches a missing promotion choice or an illegal move then.
        */
     }
     setSolutionLine((prev) => [...prev, move]);
@@ -1163,25 +1221,39 @@ const PuzzleBuilder = () => {
           </p>
           <div className={styles["puzzle-list-rows"]}>
             {pagedPuzzles.pageItems.map((pz) => (
-              <button
-                type="button"
-                key={pz.id}
-                className={`${styles["puzzle-row"]}${Number(pz.id) === Number(savedId) ? ` ${styles["puzzle-row-current"]}` : ''}`}
-                onClick={() => navigate(`/games/${gameId}/puzzles/${pz.id}/edit`)}
-              >
-                <span className={styles["puzzle-row-title"]}>
-                  {!!pz.is_draft && <span className={styles["draft-tag"]}>DRAFT</span>}
-                  {pz.title || 'Untitled puzzle'}
-                </span>
-                <span className={styles["puzzle-row-meta"]}>
-                  {pz.goal === 'checkmate_in_1'
-                    ? 'Checkmate in 1'
-                    : (pz.goal_description || (pz.goal === 'win_material' ? 'Win material' : 'Find the move'))}
-                  {pz.solution_depth > 1 && <> · {pz.solution_depth} moves</>}
-                  {puzzleListStaff && pz.creator_username && <> · by {pz.creator_username}</>}
-                  {pz.attempt_count > 0 && <> · {pz.solve_count}/{pz.attempt_count} solved</>}
-                </span>
-              </button>
+              // The row and the delete control are siblings rather than nested:
+              // a button inside a button is invalid, and the two clicks mean
+              // opposite things.
+              <div className={styles["puzzle-row-wrap"]} key={pz.id}>
+                <button
+                  type="button"
+                  className={`${styles["puzzle-row"]}${Number(pz.id) === Number(savedId) ? ` ${styles["puzzle-row-current"]}` : ''}`}
+                  onClick={() => navigate(`/games/${gameId}/puzzles/${pz.id}/edit`)}
+                >
+                  <span className={styles["puzzle-row-title"]}>
+                    {!!pz.is_draft && <span className={styles["draft-tag"]}>DRAFT</span>}
+                    {pz.title || 'Untitled puzzle'}
+                  </span>
+                  <span className={styles["puzzle-row-meta"]}>
+                    {pz.goal === 'checkmate_in_1'
+                      ? 'Checkmate in 1'
+                      : (pz.goal_description || (pz.goal === 'win_material' ? 'Win material' : 'Find the move'))}
+                    {pz.solution_depth > 1 && <> · {pz.solution_depth} moves</>}
+                    {puzzleListStaff && pz.creator_username && <> · by {pz.creator_username}</>}
+                    {pz.attempt_count > 0 && <> · {pz.solve_count}/{pz.attempt_count} solved</>}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className={styles["puzzle-row-delete"]}
+                  title={`Delete "${pz.title || 'Untitled puzzle'}"`}
+                  aria-label={`Delete "${pz.title || 'Untitled puzzle'}"`}
+                  disabled={deletingId === pz.id}
+                  onClick={() => deletePuzzle(pz)}
+                >
+                  {deletingId === pz.id ? '…' : '🗑'}
+                </button>
+              </div>
             ))}
           </div>
           <ListPager {...pagedPuzzles} label="puzzles" />
