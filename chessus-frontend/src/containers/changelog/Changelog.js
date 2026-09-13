@@ -4,6 +4,54 @@ import styles from "./changelog.module.scss";
 
 const changelogData = [
   {
+    date: "September 13, 2026",
+    title: "Puzzle of the Day",
+    items: [
+      "There is now one puzzle a day, on the home page, and it is the same puzzle for everybody. You can play it straight from the home page — drag a piece or click it and click where it goes — or open it on its own page for the full board.",
+      "The day is fixed to the date rather than picked when you ask, so everybody in every time zone gets the same puzzle, and yesterday's is still yesterday's.",
+      "Puzzles are drawn from a curated set of games rather than every game on the site. Games get left out for honest reasons — a board too far from square to draw next to the text, too few different pieces to make a position interesting, or rules the checker cannot yet judge — and the reason is recorded rather than guessed at.",
+      "The difficulty is mixed on purpose. Mate in one is about a quarter of them; most are two moves, with some threes and the occasional four.",
+      "Free accounts can now create 3 puzzles per game instead of none. Silver and Gold supporters can make as many as they like.",
+    ],
+  },
+  {
+    date: "September 13, 2026",
+    title: "Puzzles now use the rules your games actually have",
+    items: [
+      "Castling works in puzzles exactly as it does in a game, including the castling partner and the distance your game sets.",
+      "En passant works. A puzzle can now start with the opponent's last move already played, which is what makes the capture legal — without that there is no move to capture past, so the position could never ask for it.",
+      "Promotion works, including custom promotion lists. If a move promotes you are asked what to promote to, from your game's own options, and choosing a different piece is not counted as a different answer.",
+      "Points-based games, mandatory capture, and fog of war are all supported. If a game hides enemy pieces, its puzzles hide them too.",
+      "Puzzles can now be about something other than checkmate: stalemating the opponent, leaving them with no legal moves, losing all your pieces where that wins, promoting, controlling squares, or reaching a points target. The goal is written into the puzzle's description so you know what you are aiming at.",
+      "The puzzle page has a rules section you can expand. Most people meeting a puzzle have never played the game it came from, so the rules that matter are on the page rather than a click away.",
+      "A piece that is not on one of its game's own starting squares no longer gets first-move privileges — a pawn placed mid-board cannot open with a double step.",
+    ],
+  },
+  {
+    date: "September 13, 2026",
+    title: "The daily puzzle in Discord",
+    items: [
+      "The daily puzzle is posted to the GridGrove Discord each morning, with the board drawn out and a link to play it.",
+      "There is also a GridGrove activity inside Discord: a real board you drag pieces on, in the Discord client, without leaving the conversation.",
+      "You do not need a GridGrove account to play it. Sign in with Discord and your solves build a streak; play signed out and it works exactly the same, it just does not remember you.",
+      "Attempts count the same wherever you play them — on the site or in Discord — and if you have a GridGrove account linked, solving in Discord still moves your puzzle rating.",
+      "A puzzle that needs a promotion, or a long line, hands off to the website rather than squeezing a piece chooser into a small frame.",
+    ],
+  },
+  {
+    date: "September 13, 2026",
+    title: "Puzzle fixes",
+    items: [
+      "Fixed castling never being offered as a legal move. Anything that asked for a player's legal moves — puzzles, move hints, the bot — got a list with castling quietly missing from it.",
+      "Fixed 30 puzzles that could not be solved at all. Their stored answer referred to each piece by where it originally stood, while the board referred to it by where it now stands, so the correct move was rejected as wrong. All of them have been repaired.",
+      "Fixed a mate-in-one puzzle rejecting a correct answer, reported for the September 12th puzzle.",
+      "Fixed the board on the home page sitting small in the middle of a much wider frame on large screens. It now fills the space it is given.",
+      "The byline under a puzzle now reads “puzzle by” rather than just “by”, so it is clear who made the puzzle rather than who made the game.",
+      "Deleting a game no longer silently deletes the puzzles built on it. If any of them is scheduled as an upcoming Puzzle of the Day the deletion is refused outright, and otherwise you are told how many puzzles would go with it before anything happens.",
+      "The game detail page now opens with Show Details already on.",
+    ],
+  },
+  {
     date: "September 9, 2026",
     title: "Tournaments can now actually be played",
     items: [
