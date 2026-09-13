@@ -411,6 +411,20 @@ const PuzzleSolver = () => {
     setBusy(true);
     setLastTry(move);
     const attemptLine = [...playedMoves, move];
+
+    /*
+     * Move the piece now, ask the server afterwards - the same way the live
+     * games and the Discord activity already work.
+     *
+     * Waiting for the round trip left the piece under the cursor long enough to
+     * read as a dropped input. The board is a guess until the server answers;
+     * `before` is what it is a guess against, so every branch below rebuilds
+     * from that rather than layering onto the guess, and anything the server
+     * rejects puts the piece back.
+     */
+    const before = placements;
+    setPlacements((prev) => applyPly(prev, move));
+
     try {
       const { data } = await axios.post(
         `${API_URL}puzzles/${puzzleId}/solve`,
@@ -425,8 +439,10 @@ const PuzzleSolver = () => {
 
       if (data.status === 'continue') {
         // Right so far: play the move, then the answer the creator wrote for it.
+        // From `before`, not from the optimistic board - the move is already on
+        // that one, and applying it again would play it twice.
         setPlayedMoves(attemptLine);
-        setPlacements((prev) => applyPly(applyPly(prev, move), data.reply));
+        setPlacements(applyPly(applyPly(before, move), data.reply));
         setLastTry(data.reply || move);
         setOutcome('continue');
         return;
@@ -435,22 +451,27 @@ const PuzzleSolver = () => {
         const line = data.solution || attemptLine;
         setPlayedMoves(attemptLine);
         // Everything from here to the end of the line: this move, plus any
-        // reply the creator wrote after it.
-        setPlacements((prev) => line.slice(playedMoves.length * 2).reduce(applyPly, prev));
+        // reply the creator wrote after it. Replayed onto `before` so the
+        // authoritative version of this move - promotion piece included -
+        // replaces the guess rather than stacking on top of it.
+        setPlacements(line.slice(playedMoves.length * 2).reduce(applyPly, before));
         setSolution(line);
         setOutcome('solved');
         return;
       }
-      // Off the line. The board stays where it is, so they can try again from
-      // the same position.
+      // Off the line. The guess comes back off, so they try again from the same
+      // position they were looking at.
+      setPlacements(before);
       setAttempts((n) => n + 1);
       setOutcome('wrong');
     } catch (err) {
+      // Nothing was judged, so the guess must not stay on the board.
+      setPlacements(before);
       setError(err?.response?.data?.message || 'Could not submit that move');
     } finally {
       setBusy(false);
     }
-  }, [puzzleId, startedAt, playedMoves]);
+  }, [puzzleId, startedAt, playedMoves, placements]);
 
   const reveal = useCallback(async () => {
     setBusy(true);
