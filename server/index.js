@@ -281,10 +281,24 @@ const puzzleValidateLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+// Required here rather than beside the other Discord routes because both the
+// rate-limiter exemption below and the raw-body mount further down need its
+// INTERACTIONS_PATH, and a hardcoded copy of that path in either place would be
+// a silent 429 or a signature failure the day it is renamed.
+const discordInteractions = require('./discord-interactions');
+
 // Apply general rate limiting to all routes EXCEPT /api/admin/* (admin endpoints
 // are already gated by authenticateAdmin and the dashboard can poll heavily)
 app.use('/api/', (req, res, next) => {
   if (req.path.startsWith('/admin/')) return next();
+  /*
+   * Discord's interactions arrive from a handful of Discord IPs shared by every
+   * server GridGrove is in, so a 500-per-15-minutes per-IP ceiling would be a
+   * ceiling on the whole integration - and answering Discord with a 429 risks it
+   * dropping the endpoint. It carries its own, much higher limit instead; see
+   * discord-interactions.js.
+   */
+  if (`/api${req.path}` === discordInteractions.INTERACTIONS_PATH) return next();
   return generalLimiter(req, res, next);
 });
 
@@ -368,6 +382,11 @@ async function notifyMentionedUsers(text, senderId, senderName, contextTitle, ac
 // route must receive the raw bytes BEFORE express.json() runs. Both express.raw
 // and express.json set req._body, so express.json below will skip this path.
 app.use('/api/stripe-webhook', express.raw({ type: 'application/json' }));
+
+// Discord signs each interaction over the EXACT bytes it sent, so this route
+// needs the same treatment as the Stripe webhook above: raw bytes, mounted
+// before express.json, which then skips the path because req._body is already set.
+app.use(discordInteractions.INTERACTIONS_PATH, discordInteractions.interactionsRawBody);
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
@@ -7306,6 +7325,15 @@ require('./puzzle-routes').registerPuzzleRoutes(app, {
  * same daily puzzle through the same solver.
  */
 require('./discord-routes').registerDiscordRoutes(app, { db_pool });
+
+/*
+ * The inbound direction: Discord POSTing a click here and waiting to be told
+ * what to do about it. Registered separately from the routes above because it is
+ * a different trust model - no GridGrove session, no Discord access token, just a
+ * signature over the raw body (mounted near express.json) that has to hold up on
+ * its own. See discord-interactions.js.
+ */
+discordInteractions.registerDiscordInteractionRoutes(app);
 
 /*
  * Linking a Discord id to this account.

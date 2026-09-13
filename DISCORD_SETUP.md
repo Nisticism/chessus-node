@@ -333,6 +333,8 @@ worse than one that never offered that platform.
 DISCORD_CLIENT_ID=…
 DISCORD_CLIENT_SECRET=…
 DISCORD_APP_ID=…          # same as the client id; used by the daily post's button
+DISCORD_PUBLIC_KEY=…      # 64 hex chars, from General Information. Interactions
+                          # are refused with 503 without it — see step 7.
 ```
 
 `chessus-frontend/.env` (or your build environment):
@@ -390,6 +392,61 @@ claim it and serve their own page as your activity.
 
 In Discord, join a voice channel in your test server and pick GridGrove from the
 activity shelf.
+
+### 8. Take over the Launch click
+
+Skip this and everything still works — you just live with Discord's own olive
+"Game Invitation" card every time somebody launches the activity.
+
+That card is not ours. Discord auto-creates an **Entry Point command** for every
+app with an activity (the `⠿ Launch` you see in a channel), and its default
+handler is `DISCORD_LAUNCH_ACTIVITY`, which means Discord opens the activity and
+posts that message — in their words, "without coordinating with the app". No
+amount of presence or metadata reaches it, because the app is never asked.
+
+Switching the handler to `APP_HANDLER` sends the click to us instead:
+
+1. **Set `DISCORD_PUBLIC_KEY`** (step 4) and restart the API. Without it the
+   endpoint answers 503 and every Launch click shows Discord's red error.
+
+2. **Save the Interactions Endpoint URL** in the Developer Portal under General
+   Information:
+
+   ```
+   https://your-host/api/discord/interactions
+   ```
+
+   Discord POSTs a PING to it before it will accept the URL, and refuses the URL
+   if the signature check does not also *reject* a bad signature. Both are
+   verified locally by:
+
+   ```bash
+   node scripts/discord-interactions-selftest.js
+   ```
+
+   It generates its own keypair, so it needs no Discord and no deploy.
+
+3. **Flip the handler.** The field is not in the portal UI at all, only over the
+   API, so there is a script:
+
+   ```bash
+   node scripts/discord-entry-point.js                 # show the current handler
+   node scripts/discord-entry-point.js --app-handler   # route clicks to us
+   ```
+
+   It uses the client id and secret from `.env` via the client-credentials grant.
+   No bot token, and no bot user has to be added to the app.
+
+   To hand it back to Discord: `--discord-handler`.
+
+**Order matters.** `--app-handler` with no working endpoint means every Launch
+click gets "this application did not respond", which looks like a broken activity
+rather than a missing setting. Save the URL first.
+
+Discord sends deliberately invalid signatures as a routine check and will remove
+your endpoint (and email you) if one is ever accepted, so `server/discord-
+interactions.js` treats the rejection path as the load-bearing one. Do not
+loosen it.
 
 ---
 
