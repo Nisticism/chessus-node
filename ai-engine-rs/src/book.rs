@@ -6,7 +6,7 @@
 //!
 //! On checkpoint the trainer aggregates `book.jsonl` into `book.json`:
 //!   {
-//!     "format": "squarestrat-book-v1",
+//!     "format": "gridgrove-book-v1",
 //!     "ply_limit": 20,
 //!     "positions": {
 //!       "<sig>": {
@@ -188,7 +188,9 @@ pub fn aggregate_book(out_dir: &Path) -> Result<()> {
         .collect();
 
     let doc = BookDoc {
-        format: "squarestrat-book-v1",
+        // Renamed with the project. Write-only - nothing parses it back, and
+        // older books in ai-training/ still carry "squarestrat-book-v1".
+        format: "gridgrove-book-v1",
         ply_limit: BOOK_PLY_LIMIT,
         positions,
     };

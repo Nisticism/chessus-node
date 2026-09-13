@@ -1123,7 +1123,7 @@ fn write_event(w: &mut impl Write, ev: &ProgressEvent) -> Result<()> {
 fn write_placeholder_model(path: &PathBuf, games: u32) -> Result<()> {
     let mut f = File::create(path)?;
     let body = serde_json::json!({
-        "format": "squarestrat-ai-v0",
+        "format": "gridgrove-ai-v0",
         "games_played": games,
         "note": "Phase-1 scaffold model. Replace with neural-net weights in phase 2."
     });

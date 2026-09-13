@@ -1,7 +1,7 @@
 console.log('[AI] ai-engine loaded -- threat-first build (getTacticalCandidates active)');
 
 /**
- * AI Engine for SquareStrat
+ * AI Engine for GridGrove
  * 
  * Uses minimax with alpha-beta pruning and heuristic evaluation.
  * Works with ANY game variant by reading rules from game state at runtime.

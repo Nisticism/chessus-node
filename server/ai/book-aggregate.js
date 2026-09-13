@@ -6,7 +6,7 @@
  * be present. Output format is identical:
  *
  *   {
- *     "format": "squarestrat-book-v1",
+ *     "format": "gridgrove-book-v1",
  *     "ply_limit": 20,
  *     "positions": {
  *       "<sig>": { "moves": [{mv, w, l, d}], "total": N }
@@ -20,7 +20,16 @@
 const fs = require('fs');
 const path = require('path');
 
-const FORMAT = 'squarestrat-book-v1';
+/*
+ * The identifier written into every book file.
+ *
+ * Renamed from 'squarestrat-book-v1' when the project took its current name.
+ * Books generated before that carry the old string, and that is harmless: the
+ * field is written and never read back - nothing here or in the Rust engine
+ * parses it. If a reader is ever added it must accept BOTH, because the
+ * ai-training directory is full of files carrying the old one.
+ */
+const FORMAT = 'gridgrove-book-v1';
 const PLY_LIMIT = 20;
 
 /**

@@ -22,7 +22,16 @@ const trainerClient = require('./trainer-client');
 const _cache = new Map();
 const CACHE_TTL_MS = 60_000;
 
-const BOOK_FORMAT = 'squarestrat-book-v1';
+/*
+ * The identifier written into every book file.
+ *
+ * Renamed from 'squarestrat-book-v1' when the project took its current name.
+ * Books generated before that carry the old string, and that is harmless: the
+ * field is written and never read back - nothing here or in the Rust engine
+ * parses it. If a reader is ever added it must accept BOTH, because the
+ * ai-training directory is full of files carrying the old one.
+ */
+const BOOK_FORMAT = 'gridgrove-book-v1';
 const BOOK_PLY_LIMIT = 20;
 
 function _emptyBook() {

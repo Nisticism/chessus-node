@@ -2,7 +2,7 @@
 name = "ai-engine-rs"
 version = "1.3.0"
 edition = "2021"
-description = "Self-play training and inference engine for SquareStrat games"
+description = "Self-play training and inference engine for GridGrove games"
 license = "Proprietary"
 
 [[bin]]

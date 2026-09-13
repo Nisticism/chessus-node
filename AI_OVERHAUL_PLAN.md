@@ -1,6 +1,6 @@
 # AI Overhaul Plan
 
-A self-play, machine-learning-driven AI for SquareStrat games. Built as an
+A self-play, machine-learning-driven AI for GridGrove games. Built as an
 external Rust process so it cannot crash the Node game server, with rules
 loaded directly from the live database (so any custom variant — not just
 chess — can be trained the same way).

@@ -1,4 +1,4 @@
-//! ai-engine: SquareStrat self-play training and inference.
+//! ai-engine: GridGrove self-play training and inference.
 //!
 //! This binary is launched by the Node game server as a subprocess. It never
 //! shares an address space with Node, so even an OOM or panic here cannot
@@ -20,7 +20,7 @@ mod simul;
 #[command(
     name = "ai-engine",
     version,
-    about = "SquareStrat self-play trainer & inference engine"
+    about = "GridGrove self-play trainer & inference engine"
 )]
 struct Cli {
     #[command(subcommand)]

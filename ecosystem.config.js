@@ -1,5 +1,9 @@
 /**
- * PM2 ecosystem file for the Chessus / SquareStrat backend.
+ * PM2 ecosystem file for the GridGrove backend.
+ *
+ * The pm2 app is still named chessus-node, as is the repo and the database.
+ * Those are live identifiers - renaming them would orphan the saved pm2 process
+ * and the connection strings - so only the prose moved to the current name.
  *
  * Why this exists:
  *   On small EC2 instances V8 auto-sizes the old-space heap to ~256 MB,
