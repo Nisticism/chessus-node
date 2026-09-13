@@ -737,7 +737,7 @@ const MatchView = () => {
             disabled={!canCreatePuzzles(currentUser)}
             title={canCreatePuzzles(currentUser)
               ? 'Open the puzzle builder with this position'
-              : 'Building puzzles is a Silver Supporter perk — solving them is free for everyone'}
+              : 'Sign in to build a puzzle from this position — solving them is free for everyone'}
             onClick={!canCreatePuzzles(currentUser) ? undefined : () => navigate(`/games/${match.gameTypeId}/puzzles/new`, {
               state: {
                 fromMatch: {
@@ -754,7 +754,7 @@ const MatchView = () => {
           >
             🧩 Create puzzle from this position
             {!canCreatePuzzles(currentUser) && (
-              <span className={styles["banner-puzzle-perk"]}>Silver Supporter perk</span>
+              <span className={styles["banner-puzzle-perk"]}>Sign in to build</span>
             )}
           </button>
         )}

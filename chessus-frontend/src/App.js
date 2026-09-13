@@ -69,7 +69,7 @@ const About = lazy(() => import("./containers/about/About"));
 const Tutorial = lazy(() => import("./containers/tutorial/Tutorial"));
 const InfoHub = lazy(() => import("./containers/infohub/InfoHub"));
 const Announcements = lazy(() => import("./containers/announcements/Announcements"));
-const AnnouncementDetail = lazy(() => import("./containers/announcements/AnnouncementDetail"));const PhysicalBoardRequest = lazy(() => import('./components/physicalboard/PhysicalBoardRequest'));const PuzzleBuilder = lazy(() => import('./components/puzzles/PuzzleBuilder'));const PuzzleSolver = lazy(() => import('./components/puzzles/PuzzleSolver'));const AiAnalysis = lazy(() => import("./containers/ai-analysis/AiAnalysis"));const Changelog = lazy(() => import("./containers/changelog/Changelog"));
+const AnnouncementDetail = lazy(() => import("./containers/announcements/AnnouncementDetail"));const PhysicalBoardRequest = lazy(() => import('./components/physicalboard/PhysicalBoardRequest'));const PuzzleBuilder = lazy(() => import('./components/puzzles/PuzzleBuilder'));const PuzzleSolver = lazy(() => import('./components/puzzles/PuzzleSolver'));const AiAnalysis = lazy(() => import("./containers/ai-analysis/AiAnalysis"));const Changelog = lazy(() => import("./containers/changelog/Changelog"));const DiscordActivity = lazy(() => import('./components/discord/DiscordActivity'));
 
 function App() {
 
@@ -174,6 +174,39 @@ function App() {
     window.scrollTo(0, 0);
 
   }, [location, dispatch]);
+
+  /*
+   * The Discord activity renders on its own.
+   *
+   * Discord loads it in a small bare iframe, where the site navbar and footer
+   * would eat most of the height and lead nowhere useful - every link in them
+   * opens a page that cannot be navigated to from inside the frame. So this
+   * skips the chrome entirely rather than trying to squeeze into it.
+   *
+   * Two ways in, and the second is the one that matters in production:
+   *
+   *   /discord          - for opening it directly, which is how it gets tested.
+   *   ?frame_id=...     - what Discord itself does. There is NO "activity URL"
+   *                       setting in the developer portal; an activity is always
+   *                       loaded at the ROOT of the proxied domain, so the root
+   *                       has to recognise Discord and hand it the activity
+   *                       rather than the home page. `frame_id` is the parameter
+   *                       Discord always adds, and is the only reliable signal.
+   */
+  const inDiscordFrame = new URLSearchParams(location.search).has('frame_id');
+  if (inDiscordFrame || location.pathname.startsWith('/discord')) {
+    return (
+      <ChunkErrorBoundary>
+        <Suspense fallback={<div style={{ minHeight: '60vh' }} />}>
+          {/* Every path, because Discord loads the root and a reload inside
+              the frame can land anywhere. */}
+          <Routes>
+            <Route path="*" element={<DiscordActivity />} />
+          </Routes>
+        </Suspense>
+      </ChunkErrorBoundary>
+    );
+  }
 
   return (
     <SocketProvider>

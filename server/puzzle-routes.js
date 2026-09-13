@@ -13,7 +13,29 @@
  *  - Feedback is critique addressed to the creator. It cannot unpublish a puzzle
  *    or mark it invalid, and it requires a written message.
  */
-const { validatePuzzle, moveKey, GOALS, VALIDATION } = require('./puzzle-validation');
+const {
+  validatePuzzle, moveKey, GOALS, GOAL_DEFS, MECHANICAL_GOALS, VALIDATION,
+  goalsForGameType, describeGoal, buildGameState, playLine,
+} = require('./puzzle-validation');
+const {
+  getPromotionOptions, checkPromotionEligibility, getAllLegalMovesForPlayer,
+} = require('./game-socket');
+const { summariseRules } = require('./game-rules-summary');
+const { renderPuzzle } = require('./puzzle-image');
+
+/*
+ * Where uploaded piece art lives. Same rule index.js uses: an explicit
+ * UPLOADS_DIR (a mounted volume in production) or the repo-relative folder, so
+ * a deployment that has never set the variable keeps working.
+ */
+const UPLOADS_BASE = process.env.UPLOADS_DIR
+  ? require('path').resolve(process.env.UPLOADS_DIR)
+  : require('path').join(__dirname, '../uploads');
+const { optionalDiscord } = require('./discord-auth');
+const { recordDiscordAttempt } = require('./discord-routes');
+const {
+  createDailyPuzzle, DAILY_REQUIREMENTS, DAILY_DISCRETION,
+} = require('./daily-puzzle');
 const {
   rateAttempt, scoreAttempt, foldSolverIntoPuzzleRating, isRatingPublic,
   PUZZLE_ELO_DEFAULT, MIN_SOLVERS_FOR_PUBLIC_RATING,
@@ -83,13 +105,26 @@ function sanitizeLine(raw) {
   return { line: list };
 }
 
+/*
+ * Pool requirements, mirrored from scripts/puzzle-pool-sweep.js. Duplicated
+ * deliberately and kept small: the sweep owns the expensive duplicate
+ * comparison, this owns the cheap per-game checks the API needs at request time.
+ */
+const POOL_MAX_BOARD_ASPECT = 1.5;
+const POOL_MIN_PIECE_TYPES = 3;
+
 const MAX_TITLE = 120;
 const MAX_DESCRIPTION = 2000;
 const MAX_FEEDBACK = 2000;
 const MIN_FEEDBACK = 10;
 
-function registerPuzzleRoutes(app, { db_pool, dbHelpers, authenticateToken, optionalAuthenticate, hasAdminRole, canCreatePuzzles }) {
+function registerPuzzleRoutes(app, {
+  db_pool, dbHelpers, authenticateToken, optionalAuthenticate, hasAdminRole,
+  canCreatePuzzles, puzzleCreateAllowance, PUZZLE_FREE_PER_GAME, PUZZLE_DAILY_CAP,
+  puzzleValidateLimiter,
+}) {
   const isStaff = (user) => hasAdminRole(user?.role);
+  const dailyPuzzle = createDailyPuzzle({ db_pool });
 
   /**
    * Rows go out without the answer unless the caller is entitled to it, and
@@ -122,6 +157,56 @@ function registerPuzzleRoutes(app, { db_pool, dbHelpers, authenticateToken, opti
   const canEdit = (puzzle, user) => !!user && (puzzle.creator_id === user.id || isStaff(user));
 
   /**
+   * Every square a piece STARTS on in this game type, as "pieceId:player:y,x".
+   *
+   * Built from the game's own opening position, which is the only thing that can
+   * answer "is this piece where it began?" - and that question is what decides
+   * whether its first-move-only movement is still available.
+   */
+  const startingSquareIndex = async (gameTypeId) => {
+    const [[row]] = await db_pool.query(
+      'SELECT pieces_string FROM game_types WHERE id = ? LIMIT 1', [gameTypeId]
+    );
+    const parsed = safeParse(row?.pieces_string, null);
+    const out = new Set();
+    if (!parsed || typeof parsed !== 'object') return out;
+    for (const [key, v] of Object.entries(parsed)) {
+      const [ky, kx] = String(key).split(',').map(Number);
+      const x = Number(v.x ?? kx);
+      const y = Number(v.y ?? ky);
+      const player = Number(v.player_id ?? v.player_number ?? 1);
+      out.add(`${Number(v.piece_id)}:${player}:${y},${x}`);
+    }
+    return out;
+  };
+
+  /**
+   * Has this piece moved yet?
+   *
+   * A puzzle has no history, so this is inferred from geography: a piece standing
+   * on one of ITS OWN starting squares for this game type is treated as unmoved;
+   * a piece anywhere else has obviously moved to get there.
+   *
+   * That inference is what makes first-move-only movement behave. Without it
+   * every piece counted as unmoved, so a pawn halfway up the board still offered
+   * its double step and a king that had clearly walked could still castle - and
+   * the extra phantom moves quietly broke the uniqueness check, because a
+   * defender was credited with escapes it does not have.
+   *
+   * An explicit flag on the placement still wins, so a position that needs to say
+   * "this rook has moved even though it is home" can, once there is a way to set
+   * it. The geography is the default, not a rule.
+   */
+  const movedState = (placement, pieceId, player, startingSquares) => {
+    if (placement.hasMoved !== undefined && placement.hasMoved !== null) {
+      const moved = !!placement.hasMoved;
+      return { hasMoved: moved, moveCount: Number(placement.moveCount) || (moved ? 1 : 0) };
+    }
+    const home = startingSquares.has(`${pieceId}:${player}:${Number(placement.y)},${Number(placement.x)}`);
+    return { hasMoved: !home, moveCount: home ? 0 : (Number(placement.moveCount) || 1) };
+  };
+
+  /**
    * Turn a stored position into pieces the move engine understands.
    *
    * A puzzle stores placements in the same compact shape as a game type's
@@ -133,7 +218,34 @@ function registerPuzzleRoutes(app, { db_pool, dbHelpers, authenticateToken, opti
    * piece IN A GAME TYPE, so it rides on the placement, not on the piece row.
    * Lose it and the engine sees no royal piece, nothing is ever check, and a
    * mate puzzle silently reports as unsolvable rather than erroring.
+   *
+   * It is not the only one. Everything in JUNCTION_OVERRIDES is configured per
+   * placement in the game wizard, not on the piece: which pieces a pawn may
+   * promote to, whether this copy promotes at all, whether it can be captured
+   * en passant, who it castles with. Merging only the two royal flags left a
+   * puzzle playing a subtly different piece from the one in the live game -
+   * most visibly for custom promotion, where the curated promotion list simply
+   * did not arrive and every promotable piece offered the default set instead.
+   *
+   * The row is matched on (piece_id, player_number) so a game that configures
+   * one side's copy differently keeps that difference, falling back to any row
+   * for the piece when a side-specific one does not exist.
    */
+  const JUNCTION_OVERRIDES = [
+    'ends_game_on_checkmate', 'ends_game_on_capture',
+    'manual_castling_partners', 'castling_partner_left_key', 'castling_partner_right_key',
+    'castling_distance', 'can_control_squares', 'can_en_passant',
+    'can_fire_over_allies', 'can_fire_over_enemies',
+    'promotion_pieces_override', 'disable_promotion',
+    'can_promote_to_checkmate', 'limit_promote_checkmate_to_original',
+    'can_promote_to_capture', 'limit_promote_capture_to_original',
+    'capture_points_gain', 'capture_points_loss',
+    'cannot_move_outside_zone', 'cannot_be_captured', 'is_neutral',
+    'hit_points', 'attack_damage', 'hp_regen', 'burn_damage', 'burn_duration',
+    'trample', 'trample_radius', 'ghostwalk', 'die_on_capture',
+    'die_on_capture_grants_win', 'attack_radius',
+  ];
+
   const hydratePosition = async (gameTypeId, placements) => {
     const list = Array.isArray(placements) ? placements : [];
     if (!list.length) return [];
@@ -145,18 +257,27 @@ function registerPuzzleRoutes(app, { db_pool, dbHelpers, authenticateToken, opti
     );
     const byId = new Map(rows.map((r) => [Number(r.id), r]));
 
-    // Fall back to the junction flags when a placement did not carry them.
-    const [flagRows] = await db_pool.query(
-      `SELECT piece_id, ends_game_on_checkmate, ends_game_on_capture
-       FROM game_type_pieces WHERE game_type_id = ?`, [gameTypeId]
+    const [junctionRows] = await db_pool.query(
+      'SELECT * FROM game_type_pieces WHERE game_type_id = ?', [gameTypeId]
     );
-    const flagById = new Map(flagRows.map((r) => [Number(r.piece_id), r]));
+    // Keyed by piece and side, with a piece-only fallback for the common case
+    // where both sides share one configuration.
+    const junctionBySide = new Map();
+    const junctionByPiece = new Map();
+    for (const r of junctionRows) {
+      junctionBySide.set(`${Number(r.piece_id)}:${Number(r.player_number)}`, r);
+      if (!junctionByPiece.has(Number(r.piece_id))) junctionByPiece.set(Number(r.piece_id), r);
+    }
 
-    return list.map((p, i) => {
-      const def = toEngineFields(byId.get(Number(p.piece_id)) || {});
-      const fallback = flagById.get(Number(p.piece_id)) || {};
+    const startingSquares = await startingSquareIndex(gameTypeId);
+
+    return list.map((p) => {
+      const pieceId = Number(p.piece_id);
+      const def = toEngineFields(byId.get(pieceId) || {});
       const player = Number(p.player_id ?? p.team ?? 1);
-      return {
+      const junction = junctionBySide.get(`${pieceId}:${player}`) || junctionByPiece.get(pieceId) || {};
+
+      const merged = {
         ...def,
         // Board identity, not the piece-definition id.
         id: p.id || `${p.piece_id}_${p.y}_${p.x}`,
@@ -165,15 +286,53 @@ function registerPuzzleRoutes(app, { db_pool, dbHelpers, authenticateToken, opti
         y: Number(p.y),
         player_id: player,
         team: player,
-        ends_game_on_checkmate: p.ends_game_on_checkmate ?? fallback.ends_game_on_checkmate ?? false,
-        ends_game_on_capture: p.ends_game_on_capture ?? fallback.ends_game_on_capture ?? false,
+        player_number: player,
+        ...movedState(p, pieceId, player, startingSquares),
       };
+
+      /*
+       * The placement's own value wins where the author set one; otherwise the
+       * game type's configuration applies; otherwise the piece keeps its own.
+       *
+       * NULL means "not overridden", not "off". Most junction columns are null
+       * for most rows - Chess's pawn carries can_en_passant on the PIECE and
+       * null in every junction row - so treating null as a value silently turns
+       * the flag off and en passant quietly stops existing.
+       */
+      for (const col of JUNCTION_OVERRIDES) {
+        if (p[col] != null) merged[col] = p[col];
+        else if (junction[col] != null) merged[col] = junction[col];
+      }
+      return merged;
     });
   };
 
   const loadGameTypeFor = async (puzzle) => {
     const [[gt]] = await db_pool.query('SELECT * FROM game_types WHERE id = ? LIMIT 1', [puzzle.game_type_id]);
     return gt || null;
+  };
+
+  /**
+   * The game type's OPENING position, hydrated the same way a puzzle position is.
+   *
+   * This is what the engine means by initialPieces, and promotion needs it: the
+   * menu of what a piece may become is built from the piece types the game
+   * started with, so a queen that has already been captured is still an option.
+   * A puzzle position is a handful of pieces and makes a terrible substitute -
+   * a pawn one square from promoting with only kings left would be offered
+   * nothing, and the promotion would be skipped without a word.
+   */
+  const loadStartingRoster = async (gameType) => {
+    if (!gameType?.pieces_string) return [];
+    const parsed = safeParse(gameType.pieces_string, null);
+    if (!parsed || typeof parsed !== 'object') return [];
+    // pieces_string is keyed "y,x"; the placements carry their own x/y for the
+    // ones that were written with them.
+    const list = Object.entries(parsed).map(([key, v]) => {
+      const [y, x] = String(key).split(',').map(Number);
+      return { ...v, x: v.x ?? x, y: v.y ?? y };
+    });
+    return hydratePosition(gameType.id, list);
   };
 
   // ---------------------------------------------------------------- browse --
@@ -311,6 +470,610 @@ function registerPuzzleRoutes(app, { db_pool, dbHelpers, authenticateToken, opti
   // optionalAuthenticate, not authenticateToken: anyone may read a published
   // puzzle, but the creator has to be recognised or they cannot open their own
   // draft and never get their own solution back.
+  /*
+   * ROUTE ORDER MATTERS HERE. These literal paths must be registered BEFORE
+   * '/api/puzzles/:id', or Express matches "daily" as an id, parseInt gives NaN
+   * and the home page is told there is no puzzle today - which is exactly what
+   * happened.
+   */
+  /*
+   * The daily puzzle, for the home page.
+   *
+   * Deliberately does NOT include the position or the solution - the card is a
+   * hook, and the puzzle is played on its own page where the solve endpoint can
+   * do its job. `?date=` reads a past day; future days are refused so the queue
+   * cannot be read ahead.
+   */
+  app.get('/api/puzzles/daily', optionalAuthenticate, async (req, res) => {
+    try {
+      const today = dailyPuzzle.todayKey();
+      let date = /^\d{4}-\d{2}-\d{2}$/.test(req.query.date || '') ? req.query.date : today;
+
+      /*
+       * ?preview=N walks N days FORWARD, for checking the card against boards of
+       * different shapes without waiting a day per board.
+       *
+       * Development only. On production the queue is not readable ahead - part of
+       * the point of scheduling is that tomorrow's puzzle is not spoilable - so
+       * this is refused there even with the parameter present.
+       */
+      const preview = parseInt(req.query.preview, 10);
+      if (Number.isFinite(preview) && preview > 0) {
+        if (process.env.NODE_ENV === 'production') {
+          return res.status(403).send({ message: 'Previewing future puzzles is disabled here' });
+        }
+        date = dailyPuzzle.addDays(today, Math.min(preview, dailyPuzzle.HORIZON_DAYS));
+      } else if (date > today) {
+        return res.status(400).send({ message: 'That day has not happened yet' });
+      }
+
+      const row = await dailyPuzzle.forDate(date);
+      if (!row) {
+        // No puzzle scheduled is a normal state, not an error - the queue can
+        // legitimately be empty while there is nothing verified to put in it.
+        return res.json({ date, puzzle: null, solvedByYou: false });
+      }
+
+      let solvedByYou = false;
+      if (req.user?.id) {
+        const [[hit]] = await db_pool.query(
+          'SELECT 1 AS n FROM puzzle_attempts WHERE puzzle_id = ? AND user_id = ? AND solved = 1 LIMIT 1',
+          [row.puzzle_id, req.user.id]
+        );
+        solvedByYou = !!hit;
+      }
+
+      /*
+       * The position travels with the card so the home page can DRAW the puzzle.
+       * That is the whole draw for a passer-by - a block of text about puzzles
+       * is not one - and showing the position gives nothing away: the solution
+       * is the secret, and it stays on the server as it does everywhere else.
+       *
+       * Only what the board needs to paint a square: who is on it and what it
+       * looks like.
+       */
+      const stored = safeParse(row.position, []) || [];
+      const pieceIds = [...new Set(stored.map(p => Number(p.piece_id)).filter(Boolean))];
+      let art = new Map();
+      if (pieceIds.length) {
+        const [pieceRows] = await db_pool.query(
+          `SELECT id, piece_name, image_location FROM pieces WHERE id IN (${pieceIds.map(() => '?').join(',')})`,
+          pieceIds
+        );
+        art = new Map(pieceRows.map(r => [Number(r.id), r]));
+      }
+      const position = stored.map((pl) => {
+        const def = art.get(Number(pl.piece_id)) || {};
+        return {
+          piece_id: pl.piece_id,
+          player_id: Number(pl.player_id ?? pl.team ?? 1),
+          x: Number(pl.x),
+          y: Number(pl.y),
+          piece_name: pl.piece_name || def.piece_name || null,
+          image_url: pl.image_url || null,
+          image_location: pl.image_location || def.image_location || null,
+        };
+      });
+
+      const ratingPublic = isRatingPublic(row);
+      res.json({
+        date,
+        solvedByYou,
+        puzzle: {
+          id: row.puzzle_id,
+          game_type_id: row.game_type_id,
+          game_name: row.game_name,
+          board_width: row.board_width,
+          board_height: row.board_height,
+          position,
+          title: row.title,
+          description: row.description,
+          goal: row.goal,
+          goal_label: GOAL_DEFS[row.goal]?.label || null,
+          side_to_move: row.side_to_move,
+          solution_depth: row.solution_depth,
+          creator_username: row.creator_username,
+          attempt_count: row.attempt_count,
+          solve_count: row.solve_count,
+          rating: ratingPublic ? row.rating : null,
+          rating_sample_count: ratingPublic ? row.rating_sample_count : null,
+        },
+      });
+    } catch (err) {
+      // A missing daily_puzzles table (migration not yet run) should leave the
+      // home page working, not break it.
+      if (err?.code === 'ER_NO_SUCH_TABLE') return res.json({ date: null, puzzle: null, solvedByYou: false });
+      console.error('GET /api/puzzles/daily:', err);
+      res.status(500).send({ message: 'Failed to load the daily puzzle' });
+    }
+  });
+
+  /*
+   * What it takes to be the daily puzzle.
+   *
+   * Public, and served from the same module the scheduler uses, so the list a
+   * creator reads is the list actually being applied. A requirements page that
+   * has drifted from the query behind it is worse than none.
+   */
+  app.get('/api/puzzles/daily/requirements', async (req, res) => {
+    res.json({ requirements: DAILY_REQUIREMENTS, discretion: DAILY_DISCRETION });
+  });
+
+  // ------------------------------------------------------------ admin ----
+  /*
+   * The scheduled queue, for the admin dashboard: what is lined up, what is
+   * eligible but unscheduled, and where the queue runs dry.
+   */
+  app.get('/api/admin/daily-puzzles', authenticateToken, async (req, res) => {
+    try {
+      if (!isStaff(req.user)) return res.status(403).send({ message: 'Admins only' });
+      const [rows] = await db_pool.query(
+        `SELECT d.puzzle_date, d.puzzle_id, d.game_type_id, d.scheduled_at,
+                p.title, p.goal, p.validation_status, p.rating, p.solution_depth,
+                p.allow_daily, p.is_draft, p.moderation_status,
+                gt.game_name, gt.board_width, gt.board_height,
+                u.username AS creator_username,
+                s.username AS scheduled_by_username
+         FROM daily_puzzles d
+         JOIN puzzles p ON p.id = d.puzzle_id
+         JOIN game_types gt ON gt.id = d.game_type_id
+         LEFT JOIN users u ON u.id = p.creator_id
+         LEFT JOIN users s ON s.id = d.scheduled_by
+         WHERE d.puzzle_date >= CURDATE() - INTERVAL 7 DAY
+         ORDER BY d.puzzle_date`
+      );
+      const [[poolCounts]] = await db_pool.query(
+        `SELECT
+           SUM(status IN ('auto_included','included')) AS in_pool,
+           SUM(status = 'review') AS awaiting,
+           SUM(status IN ('auto_excluded','excluded')) AS excluded_count
+         FROM puzzle_pool`
+      );
+      res.json({
+        today: dailyPuzzle.todayKey(),
+        horizonDays: dailyPuzzle.HORIZON_DAYS,
+        scheduled: rows,
+        eligibleUnscheduled: await dailyPuzzle.eligibleCount(),
+        pool: poolCounts,
+      });
+    } catch (err) {
+      if (err?.code === 'ER_NO_SUCH_TABLE') {
+        return res.json({ scheduled: [], eligibleUnscheduled: 0, pool: null, migrationPending: true });
+      }
+      console.error('GET /api/admin/daily-puzzles:', err);
+      res.status(500).send({ message: 'Failed to load the daily puzzle queue' });
+    }
+  });
+
+  /*
+   * The review queue: games the sweep could not decide about on its own.
+   *
+   * A `review` row means the sweep found a game too similar to another to
+   * auto-include, but not similar enough to drop without asking. Those games sit
+   * OUT of the rotation until somebody rules on them, which is the safe default
+   * but useless without somewhere to do the ruling - hence this.
+   *
+   * Each row comes back paired with the game it resembles, what the sweep matched
+   * on, and how many usable puzzles each side already has - because "which of
+   * these two do I keep" is much easier to answer when you can see that one of
+   * them has a verified puzzle ready and the other has none.
+   */
+  app.get('/api/admin/puzzle-pool/review', authenticateToken, async (req, res) => {
+    try {
+      if (!isStaff(req.user)) return res.status(403).send({ message: 'Admins only' });
+      const [rows] = await db_pool.query(
+        `SELECT pp.game_type_id, pp.status, pp.duplicate_of,
+                pp.similarity_score, pp.similarity_kind, pp.note,
+                gt.game_name, gt.board_width, gt.board_height,
+                other.game_name AS other_name,
+                other.board_width AS other_width, other.board_height AS other_height,
+                (SELECT COUNT(*) FROM games g WHERE g.game_type_id = pp.game_type_id) AS plays,
+                (SELECT COUNT(*) FROM games g WHERE g.game_type_id = pp.duplicate_of) AS other_plays,
+                (SELECT COUNT(*) FROM puzzles p
+                  WHERE p.game_type_id = pp.game_type_id
+                    AND p.is_draft = 0 AND p.validation_status = 'valid') AS ready_puzzles,
+                (SELECT COUNT(*) FROM puzzles p
+                  WHERE p.game_type_id = pp.duplicate_of
+                    AND p.is_draft = 0 AND p.validation_status = 'valid') AS other_ready_puzzles
+         FROM puzzle_pool pp
+         JOIN game_types gt ON gt.id = pp.game_type_id
+         LEFT JOIN game_types other ON other.id = pp.duplicate_of
+         WHERE pp.status = 'review'
+         ORDER BY pp.similarity_score DESC, pp.game_type_id`
+      );
+      res.json({ review: rows });
+    } catch (err) {
+      if (err?.code === 'ER_NO_SUCH_TABLE') return res.json({ review: [], migrationPending: true });
+      console.error('GET /api/admin/puzzle-pool/review:', err);
+      res.status(500).send({ message: 'Failed to load the review queue' });
+    }
+  });
+
+  /*
+   * Rule on one game. `included` and `excluded` are the human statuses, which
+   * the sweep never overwrites - so a decision made here is permanent until
+   * somebody changes it here again.
+   */
+  app.put('/api/admin/puzzle-pool/:gameTypeId', authenticateToken, async (req, res) => {
+    try {
+      if (!isStaff(req.user)) return res.status(403).send({ message: 'Admins only' });
+      const gameTypeId = parseInt(req.params.gameTypeId, 10);
+      const status = String(req.body?.status || '');
+      if (!['included', 'excluded'].includes(status)) {
+        return res.status(400).send({ message: "status must be 'included' or 'excluded'" });
+      }
+      const note = (req.body?.note || '').slice(0, 500) || null;
+      const [result] = await db_pool.query(
+        `UPDATE puzzle_pool
+         SET status = ?, note = ?, decided_by = ?, decided_at = NOW(),
+             exclusion_reason = CASE WHEN ? = 'excluded' THEN 'manual' ELSE NULL END
+         WHERE game_type_id = ?`,
+        [status, note, req.user.id, status, gameTypeId]
+      );
+      if (!result.affectedRows) return res.status(404).send({ message: 'That game is not in the pool table' });
+      res.json({ message: status === 'included' ? 'Added to the pool' : 'Kept out of the pool' });
+    } catch (err) {
+      console.error('PUT /api/admin/puzzle-pool/:id:', err);
+      res.status(500).send({ message: 'Failed to record that decision' });
+    }
+  });
+
+  /*
+   * Bring new games into the pool.
+   *
+   * Games are made all the time, and the pool has to notice. Rather than
+   * re-deriving the whole sweep here (that lives in scripts/puzzle-pool-sweep.js,
+   * where the duplicate detection belongs), this handles the case the sweep was
+   * built for but cannot see on its own: a game that now has a usable puzzle, is
+   * not already ruled on, and passes the Fairy-Stockfish, board-shape and
+   * piece-variety requirements.
+   *
+   * Deliberately conservative. It only ever ADDS `auto_included` rows for games
+   * with no row at all, so it can never overturn a human decision, never
+   * resurrect something the sweep excluded, and never needs the duplicate
+   * comparison - a brand new game that happens to duplicate an existing one is
+   * caught the next time the full sweep runs.
+   */
+  app.post('/api/admin/puzzle-pool/refresh', authenticateToken, async (req, res) => {
+    try {
+      if (!isStaff(req.user)) return res.status(403).send({ message: 'Admins only' });
+
+      // Games with at least one ready puzzle and no pool row yet.
+      const [candidates] = await db_pool.query(
+        `SELECT gt.*
+         FROM game_types gt
+         WHERE gt.is_draft = 0
+           AND NOT EXISTS (SELECT 1 FROM puzzle_pool pp WHERE pp.game_type_id = gt.id)
+           AND EXISTS (
+             SELECT 1 FROM puzzles p
+             WHERE p.game_type_id = gt.id
+               AND p.is_draft = 0
+               AND p.validation_status = 'valid'
+               AND p.allow_daily = 1
+           )`
+      );
+
+      const added = [];
+      const rejected = [];
+      for (const gt of candidates) {
+        const [placements] = await db_pool.query(
+          'SELECT * FROM game_type_pieces WHERE game_type_id = ?', [gt.id]
+        );
+        const reason = poolRejectionReason(gt, placements, await piecesFor(placements));
+        if (reason) { rejected.push({ id: gt.id, name: gt.game_name, reason }); continue; }
+        await db_pool.query(
+          `INSERT INTO puzzle_pool (game_type_id, status, swept_at)
+           VALUES (?, 'auto_included', NOW())
+           ON DUPLICATE KEY UPDATE swept_at = NOW()`,
+          [gt.id]
+        );
+        added.push({ id: gt.id, name: gt.game_name });
+      }
+
+      res.json({
+        message: added.length
+          ? `Added ${added.length} game(s) to the pool.`
+          : 'No new games qualified.',
+        added,
+        rejected,
+        considered: candidates.length,
+      });
+    } catch (err) {
+      if (err?.code === 'ER_NO_SUCH_TABLE') {
+        return res.status(400).send({ message: 'The puzzle_pool table does not exist yet.' });
+      }
+      console.error('POST /api/admin/puzzle-pool/refresh:', err);
+      res.status(500).send({ message: 'Failed to refresh the pool' });
+    }
+  });
+
+  /** Piece rows for a set of placements, keyed by id. */
+  const piecesFor = async (placements) => {
+    const ids = [...new Set(placements.map(p => Number(p.piece_id)).filter(Boolean))];
+    if (!ids.length) return new Map();
+    const [rows] = await db_pool.query(
+      `SELECT * FROM pieces WHERE id IN (${ids.map(() => '?').join(',')})`, ids
+    );
+    return new Map(rows.map(r => [Number(r.id), r]));
+  };
+
+  /**
+   * Why this game cannot be in the pool, or null if it can.
+   *
+   * The same three requirements the sweep applies, minus the duplicate check -
+   * see the note on the refresh route above for why that one is left out here.
+   */
+  const poolRejectionReason = (gameType, placements, pieceById) => {
+    if (!placements.length) return 'no pieces placed';
+
+    const defs = [...new Set(placements.map(p => Number(p.piece_id)).filter(Boolean))]
+      .map(id => pieceById.get(id)).filter(Boolean);
+    const compat = require('./ai/fairy-stockfish-compat')
+      .checkCompatibility(gameType, defs, placements);
+    if (compat.reasons.some(r => !r.safeToIgnore)) return 'rules Fairy-Stockfish cannot express';
+
+    if (gameType.mate_condition_requires_all) return 'mate_condition_requires_all is not judged yet';
+
+    const w = Number(gameType.board_width) || 0;
+    const h = Number(gameType.board_height) || 0;
+    if (!w || !h) return 'no board size';
+    if (Math.max(w, h) / Math.min(w, h) > POOL_MAX_BOARD_ASPECT) {
+      return `board is ${w}x${h}, further from square than 3:2`;
+    }
+
+    const kinds = (rows) => new Set(rows.map(x => x.piece_id).filter(Boolean)).size;
+    const perSide = [1, 2].map(sd =>
+      kinds(placements.filter(x => Number(x.player_number) === sd)));
+    if (kinds(placements) < POOL_MIN_PIECE_TYPES || perSide.some(n => n < POOL_MIN_PIECE_TYPES)) {
+      return `only ${kinds(placements)} piece type(s) (p1 ${perSide[0]}, p2 ${perSide[1]})`;
+    }
+    return null;
+  };
+
+  /** Put a specific puzzle on a specific day, replacing whatever was there. */
+  app.put('/api/admin/daily-puzzles/:date', authenticateToken, async (req, res) => {
+    try {
+      if (!isStaff(req.user)) return res.status(403).send({ message: 'Admins only' });
+      const date = String(req.params.date || '');
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        return res.status(400).send({ message: 'Use a YYYY-MM-DD date' });
+      }
+      const puzzleId = parseInt(req.body?.puzzle_id, 10);
+      const puzzle = await loadPuzzle(puzzleId);
+      if (!puzzle) return res.status(404).send({ message: 'Puzzle not found' });
+      if (puzzle.is_draft) return res.status(400).send({ message: 'That puzzle is still a draft' });
+
+      /*
+       * An admin may override the automatic requirements - that is the point of
+       * being able to schedule by hand - but not the creator's own opt-out. If
+       * somebody asked not to be featured, being an admin is not a reason to
+       * overrule them.
+       */
+      if (!puzzle.allow_daily) {
+        return res.status(400).send({
+          message: 'That puzzle\'s creator has opted out of the daily rotation.',
+        });
+      }
+
+      await db_pool.query(
+        `INSERT INTO daily_puzzles (puzzle_date, puzzle_id, game_type_id, scheduled_by)
+         VALUES (?,?,?,?)
+         ON DUPLICATE KEY UPDATE
+           puzzle_id = VALUES(puzzle_id),
+           game_type_id = VALUES(game_type_id),
+           scheduled_by = VALUES(scheduled_by),
+           scheduled_at = NOW()`,
+        [date, puzzle.id, puzzle.game_type_id, req.user.id]
+      );
+      res.json({ message: `Scheduled for ${date}`, puzzle_date: date, puzzle_id: puzzle.id });
+    } catch (err) {
+      if (err?.code === 'ER_DUP_ENTRY') {
+        return res.status(409).send({ message: 'That puzzle has already had a day.' });
+      }
+      console.error('PUT /api/admin/daily-puzzles/:date:', err);
+      res.status(500).send({ message: 'Failed to schedule that puzzle' });
+    }
+  });
+
+  /** Take a day out of the queue. The puzzle itself is untouched. */
+  app.delete('/api/admin/daily-puzzles/:date', authenticateToken, async (req, res) => {
+    try {
+      if (!isStaff(req.user)) return res.status(403).send({ message: 'Admins only' });
+      const date = String(req.params.date || '');
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        return res.status(400).send({ message: 'Use a YYYY-MM-DD date' });
+      }
+      const [result] = await db_pool.query('DELETE FROM daily_puzzles WHERE puzzle_date = ?', [date]);
+      if (!result.affectedRows) return res.status(404).send({ message: 'Nothing was scheduled for that day' });
+      res.json({ message: `Cleared ${date}` });
+    } catch (err) {
+      console.error('DELETE /api/admin/daily-puzzles/:date:', err);
+      res.status(500).send({ message: 'Failed to clear that day' });
+    }
+  });
+
+  /** Top the queue back up to the horizon. */
+  app.post('/api/admin/daily-puzzles/fill', authenticateToken, async (req, res) => {
+    try {
+      if (!isStaff(req.user)) return res.status(403).send({ message: 'Admins only' });
+      const result = await dailyPuzzle.fillQueue({ scheduledBy: req.user.id });
+      res.json({
+        message: result.scheduled.length
+          ? `Scheduled ${result.scheduled.length} day(s), through ${result.filledThrough}.`
+          : 'Nothing to schedule — no eligible puzzles are waiting.',
+        ...result,
+      });
+    } catch (err) {
+      console.error('POST /api/admin/daily-puzzles/fill:', err);
+      res.status(500).send({ message: 'Failed to fill the queue' });
+    }
+  });
+
+  /*
+   * Where can this piece go?
+   *
+   * The solver page computes its own dots from the shared client engine, which
+   * needs the full piece definitions - far too much JSON to ship to the home
+   * page for one puzzle. So the home board asks instead: one small request per
+   * piece clicked, answered by the same engine that will judge the move.
+   *
+   * This gives nothing away. It is the reachability of one piece, which is what
+   * the board would show anyway; the ANSWER is which of those moves is right,
+   * and that stays on the server.
+   */
+  app.get('/api/puzzles/:id/moves', optionalAuthenticate, async (req, res) => {
+    try {
+      const puzzle = await loadPuzzle(parseInt(req.params.id, 10));
+      if (!puzzle) return res.status(404).send({ message: 'Puzzle not found' });
+      if (puzzle.is_draft && !canEdit(puzzle, req.user || null)) {
+        return res.status(404).send({ message: 'Puzzle not found' });
+      }
+      const x = Number(req.query.x);
+      const y = Number(req.query.y);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) {
+        return res.status(400).send({ message: 'x and y are required' });
+      }
+
+      const gameType = await loadGameTypeFor(puzzle);
+      if (!gameType) return res.status(400).send({ message: 'Puzzle has no game type' });
+
+      const state = buildGameState({
+        position: await hydratePosition(puzzle.game_type_id, safeParse(puzzle.position, [])),
+        initial_pieces: await loadStartingRoster(gameType),
+        side_to_move: puzzle.side_to_move,
+        setup_move: safeParse(puzzle.setup_move),
+        game_type_id: puzzle.game_type_id,
+      }, gameType);
+
+      const piece = state.pieces.find(p => Number(p.x) === x && Number(p.y) === y);
+      if (!piece) return res.json({ moves: [] });
+      const side = Number(piece.team ?? piece.player_id);
+
+      /*
+       * Any piece, not just the side to move - the solver page shows a piece's
+       * raw reachability on hover whoever owns it, and this exists so the home
+       * board can do the same. Seeing where an enemy piece could go is part of
+       * reading the position, and gives nothing away: the answer is WHICH move
+       * is right, and that stays on the server.
+       */
+      state.currentTurn = side;
+      const all = getAllLegalMovesForPlayer(state, side) || [];
+      const occupied = new Set(state.pieces.map(p => `${p.y},${p.x}`));
+      const moves = all
+        .filter(m => m.from.x === x && m.from.y === y)
+        .map(m => ({
+          x: m.to.x,
+          y: m.to.y,
+          isCapture: occupied.has(`${m.to.y},${m.to.x}`),
+          isCastling: !!m.isCastling,
+        }));
+
+      /*
+       * En passant is never enumerated by the move generator (it cannot see the
+       * target), so it is added here the way the validator adds it - otherwise a
+       * pawn that CAN take en passant shows no dot on the square where it lands
+       * and the right answer looks illegal.
+       */
+      const ept = state.enPassantTarget;
+      if (ept?.captureSquare && piece.can_en_passant) {
+        const victim = state.pieces.find(p => p.id === ept.pieceId);
+        if (victim && Number(victim.team ?? victim.player_id) !== side
+            && piece.piece_id === victim.piece_id
+            && piece.y === victim.y && Math.abs(piece.x - victim.x) === 1) {
+          moves.push({ x: ept.captureSquare.x, y: ept.captureSquare.y, isCapture: true, isEnPassant: true });
+        }
+      }
+      res.json({ moves });
+    } catch (err) {
+      console.error('GET /api/puzzles/:id/moves:', err);
+      res.status(500).send({ message: "Failed to work out that piece's moves" });
+    }
+  });
+
+  /*
+   * The position as a PNG.
+   *
+   * For anywhere that cannot run the board component: a Discord channel post, a
+   * link preview, an email. It shows exactly what the web board shows before a
+   * solver touches anything - the position and the setup move - so it gives no
+   * more away than the home page card does.
+   *
+   * Cached per (puzzle, board colours) for a day. The daily puzzle is one image
+   * for everybody who sees the post, and re-composing it per request would make
+   * a channel of a few hundred people expensive for no reason.
+   */
+  const imageCache = new Map();
+  const IMAGE_TTL_MS = 24 * 60 * 60 * 1000;
+  const IMAGE_CACHE_MAX = 64;
+
+  app.get('/api/puzzles/:id/image.png', async (req, res) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      const light = typeof req.query.light === 'string' ? req.query.light.slice(0, 9) : '';
+      const dark = typeof req.query.dark === 'string' ? req.query.dark.slice(0, 9) : '';
+      const flip = req.query.flip === '1';
+      const key = `${id}|${light}|${dark}|${flip ? 1 : 0}`;
+
+      const hit = imageCache.get(key);
+      if (hit && hit.expires > Date.now()) {
+        res.set('Content-Type', 'image/png');
+        res.set('Cache-Control', 'public, max-age=86400');
+        return res.send(hit.png);
+      }
+
+      const puzzle = await loadPuzzle(id);
+      // A draft has no public image, however it is asked for. This endpoint is
+      // unauthenticated on purpose - Discord's proxy fetches it, not a browser
+      // with a session - so "published" is the whole access rule.
+      if (!puzzle || puzzle.is_draft || !puzzle.published_at) {
+        return res.status(404).send({ message: 'Puzzle not found' });
+      }
+
+      const gameType = await loadGameTypeFor(puzzle);
+      const stored = safeParse(puzzle.position, []) || [];
+      const pieceIds = [...new Set(stored.map(p => Number(p.piece_id)).filter(Boolean))];
+      let art = new Map();
+      if (pieceIds.length) {
+        const [pieceRows] = await db_pool.query(
+          `SELECT id, piece_name, image_location FROM pieces WHERE id IN (${pieceIds.map(() => '?').join(',')})`,
+          pieceIds
+        );
+        art = new Map(pieceRows.map(r => [Number(r.id), r]));
+      }
+
+      const png = await renderPuzzle({
+        boardWidth: gameType?.board_width,
+        boardHeight: gameType?.board_height,
+        position: stored.map((pl) => {
+          const def = art.get(Number(pl.piece_id)) || {};
+          return {
+            x: pl.x, y: pl.y,
+            player_id: Number(pl.player_id ?? pl.team ?? 1),
+            piece_name: pl.piece_name || def.piece_name || null,
+            image_url: pl.image_url || null,
+            image_location: pl.image_location || def.image_location || null,
+          };
+        }),
+        uploadsBase: UPLOADS_BASE,
+        lightColor: light || undefined,
+        darkColor: dark || undefined,
+        highlight: safeParse(puzzle.setup_move) || null,
+        // The solver looks at the board from the side they are playing.
+        flip: flip || Number(puzzle.side_to_move) === 2,
+      });
+
+      imageCache.set(key, { png, expires: Date.now() + IMAGE_TTL_MS });
+      while (imageCache.size > IMAGE_CACHE_MAX) imageCache.delete(imageCache.keys().next().value);
+
+      res.set('Content-Type', 'image/png');
+      res.set('Cache-Control', 'public, max-age=86400');
+      res.send(png);
+    } catch (err) {
+      console.error('GET /api/puzzles/:id/image.png:', err);
+      res.status(500).send({ message: 'Could not draw that puzzle' });
+    }
+  });
+
   app.get('/api/puzzles/:id', optionalAuthenticate, async (req, res) => {
     try {
       const puzzle = await loadPuzzle(parseInt(req.params.id, 10));
@@ -326,10 +1089,199 @@ function registerPuzzleRoutes(app, { db_pool, dbHelpers, authenticateToken, opti
       const out = publicPuzzle(puzzle, { includeSolution, includeRating: includeSolution });
       out.position = safeParse(puzzle.position, []);
       out.setup_move = safeParse(puzzle.setup_move);
+
+      /*
+       * A solver may never have played this game. Everything they need to make
+       * sense of the puzzle travels with it: what they are looking for, and the
+       * game's rules for the expandable panel - so they never have to leave the
+       * puzzle to find out how the game is won.
+       */
+      const [[gameType]] = await db_pool.query(
+        'SELECT * FROM game_types WHERE id = ? LIMIT 1', [puzzle.game_type_id]
+      );
+      // The detail page shows who built it, beside the date.
+      const [[creator]] = await db_pool.query(
+        'SELECT username FROM users WHERE id = ? LIMIT 1', [puzzle.creator_id]
+      );
+      out.creator_username = creator?.username || null;
+
+      out.goal_text = describeGoal(puzzle, gameType);
+      out.goal_label = GOAL_DEFS[puzzle.goal]?.label || null;
+      if (gameType) {
+        out.game_name = gameType.game_name;
+        // Fog is a rule of the game, so a puzzle in a fog game is played in fog.
+        out.fog_of_war = !!gameType.fog_of_war;
+        out.permanent_fog_reveal = !!gameType.permanent_fog_reveal;
+        out.hide_enemy_pieces = !!gameType.hide_enemy_pieces;
+        out.rules = summariseRules(gameType);
+
+        /*
+         * Three things the client cannot work out for itself, all derived from
+         * one authoritative build of the position:
+         *
+         *  - the en passant target, which depends on whether the setup move was
+         *    a first-move double step for that particular piece;
+         *  - hasMoved, inferred from the game's own starting squares;
+         *  - castling partner IDS, resolved from the game type's partner keys.
+         *
+         * The solver's board draws its move dots with the shared client engine,
+         * and that engine reads exactly these fields off each piece. Leave them
+         * off and a king that can castle simply shows no dot for it.
+         */
+        const state = buildGameState({
+          position: await hydratePosition(puzzle.game_type_id, out.position),
+          side_to_move: puzzle.side_to_move,
+          setup_move: out.setup_move,
+          game_type_id: puzzle.game_type_id,
+        }, gameType);
+        out.en_passant_target = state.enPassantTarget || null;
+
+        const bySquare = new Map(state.pieces.map(p => [`${p.y},${p.x}`, p]));
+        out.position = out.position.map((pl) => {
+          const engine = bySquare.get(`${Number(pl.y)},${Number(pl.x)}`);
+          if (!engine) return pl;
+          return {
+            ...pl,
+            id: engine.id,
+            hasMoved: !!engine.hasMoved,
+            moveCount: Number(engine.moveCount) || 0,
+            can_castle: !!engine.can_castle,
+            castling_distance: engine.castling_distance ?? null,
+            castling_partner_left_id: engine.castling_partner_left_id ?? null,
+            castling_partner_right_id: engine.castling_partner_right_id ?? null,
+          };
+        });
+      }
       res.json({ puzzle: out });
     } catch (err) {
       console.error('GET /api/puzzles/:id:', err);
       res.status(500).send({ message: 'Failed to load puzzle' });
+    }
+  });
+
+  /*
+   * Which goals this game can offer, for the builder's dropdown. Derived from
+   * the game's own win conditions rather than a fixed list, so a creator is
+   * never offered "stalemate the opponent" in a game with no stalemate rule.
+   */
+  /*
+   * How many puzzles this account may still build for this game.
+   *
+   * The builder asks so it can say "2 of your 3 free puzzles left for this game"
+   * rather than letting someone arrange a whole position and then refusing the
+   * save. The server still enforces it on create - this is for the message.
+   */
+  app.get('/api/game-types/:gameTypeId/puzzle-allowance', authenticateToken, async (req, res) => {
+    try {
+      const gameTypeId = parseInt(req.params.gameTypeId, 10);
+      const allowance = await puzzleCreateAllowance(req.user.id, gameTypeId);
+      res.json(allowance);
+    } catch (err) {
+      console.error('GET /api/game-types/:id/puzzle-allowance:', err);
+      res.status(500).send({ message: 'Failed to check your puzzle allowance' });
+    }
+  });
+
+  app.get('/api/game-types/:gameTypeId/puzzle-goals', async (req, res) => {
+    try {
+      const [[gameType]] = await db_pool.query(
+        'SELECT * FROM game_types WHERE id = ? LIMIT 1', [parseInt(req.params.gameTypeId, 10)]
+      );
+      if (!gameType) return res.status(404).send({ message: 'Game type not found' });
+      res.json({
+        goals: goalsForGameType(gameType).map(g => ({
+          ...g,
+          help: GOAL_DEFS[g.value].describe(gameType, {}),
+        })),
+        rules: summariseRules(gameType),
+        fog_of_war: !!gameType.fog_of_war,
+        hide_enemy_pieces: !!gameType.hide_enemy_pieces,
+      });
+    } catch (err) {
+      console.error('GET /api/game-types/:id/puzzle-goals:', err);
+      res.status(500).send({ message: 'Failed to load puzzle goals' });
+    }
+  });
+
+  /*
+   * Everything the client needs to know about a move it is about to record.
+   *
+   * Two questions, one round trip, because both have the same answer shape: the
+   * client can see WHERE a piece is going but not what that means.
+   *
+   *  - Does it promote, and into what? The options depend on per-placement
+   *    promotion overrides, on which piece types the game started with, and on
+   *    cross-player and neutral promotion targets.
+   *  - Is it a castle? A king sliding two squares is only castling if the
+   *    partner is there, unmoved, with a clear path and no square under attack.
+   *    The engine already answers that when it enumerates moves; asking it is
+   *    far safer than re-deriving "was that two squares sideways" on the client.
+   *
+   * Returns { promotes: false, castling: null } for an ordinary move, so callers
+   * can ask about every move without special-casing.
+   */
+  app.post('/api/game-types/:gameTypeId/puzzle-move-info', optionalAuthenticate, async (req, res) => {
+    try {
+      const gameTypeId = parseInt(req.params.gameTypeId, 10);
+      const [[gameType]] = await db_pool.query(
+        'SELECT * FROM game_types WHERE id = ? LIMIT 1', [gameTypeId]
+      );
+      if (!gameType) return res.status(404).send({ message: 'Game type not found' });
+
+      const { position, side_to_move, setup_move, move } = req.body || {};
+      if (!Array.isArray(position) || !move?.from || !move?.to) {
+        return res.status(400).send({ message: 'A position and a move are required' });
+      }
+
+      const state = buildGameState({
+        position: await hydratePosition(gameTypeId, position),
+        initial_pieces: await loadStartingRoster(gameType),
+        side_to_move: Number(side_to_move) || 1,
+        setup_move: setup_move || null,
+        game_type_id: gameTypeId,
+      }, gameType);
+
+      const fromX = Number(move.from.x); const fromY = Number(move.from.y);
+      const toX = Number(move.to.x); const toY = Number(move.to.y);
+      const mover = state.pieces.find(p => Number(p.x) === fromX && Number(p.y) === fromY);
+      if (!mover) return res.json({ promotes: false, options: [], castling: null });
+
+      const moverSide = Number(mover.team ?? mover.player_id);
+
+      /*
+       * Castling, taken straight from the enumerated legal moves rather than
+       * pattern-matched. Partners were resolved in buildGameState, so a move that
+       * comes back flagged isCastling carries the partner id and the direction
+       * that validateAndApplyMove will expect to see echoed back.
+       */
+      const legal = getAllLegalMovesForPlayer(state, moverSide) || [];
+      const castleMove = legal.find(m =>
+        m.from.x === fromX && m.from.y === fromY && m.to.x === toX && m.to.y === toY && m.isCastling);
+      const castling = castleMove ? {
+        isCastling: true,
+        castlingWith: castleMove.castlingWith,
+        castlingDirection: castleMove.castlingDirection,
+        partnerName: state.pieces.find(p => p.id === castleMove.castlingWith)?.piece_name || null,
+      } : null;
+
+      // Ask the same question a live game asks, about the destination square.
+      const eligibility = await checkPromotionEligibility(mover, { x: toX, y: toY }, state);
+      if (!eligibility || !eligibility.eligible) {
+        return res.json({ promotes: false, skipped: !!eligibility?.skipped, options: [], castling });
+      }
+      res.json({
+        promotes: true,
+        castling,
+        options: (eligibility.options || []).map(o => ({
+          id: o.id ?? o.piece_id,
+          piece_name: o.piece_name,
+          image_location: o.image_location,
+          player: o.player ?? null,
+        })),
+      });
+    } catch (err) {
+      console.error('POST /api/game-types/:id/puzzle-move-info:', err);
+      res.status(500).send({ message: 'Failed to inspect that move' });
     }
   });
 
@@ -340,24 +1292,36 @@ function registerPuzzleRoutes(app, { db_pool, dbHelpers, authenticateToken, opti
       const [[gameType]] = await db_pool.query('SELECT * FROM game_types WHERE id = ? LIMIT 1', [gameTypeId]);
       if (!gameType) return res.status(404).send({ message: 'Game type not found' });
 
-      // Authoring is the Silver perk; solving stays open to everyone.
-      if (!(await canCreatePuzzles(req.user.id))) {
+      /*
+       * Free accounts get a real go at this - PUZZLE_FREE_PER_GAME puzzles for
+       * this game - and supporters get the run of it, under a daily ceiling that
+       * exists for scripts rather than for people. The allowance says which
+       * limit was hit, so the message can be specific instead of "no".
+       */
+      const allowance = await puzzleCreateAllowance(req.user.id, gameTypeId);
+      if (!allowance.allowed) {
         return res.status(403).send({
-          message: 'Building puzzles is a Silver Supporter perk. Solving them is free for everyone.',
-          requiresSupporter: true,
+          message: allowance.reason,
+          requiresSupporter: !!allowance.requiresSupporter,
+          allowance,
         });
       }
 
       const {
         title, description, position, side_to_move, setup_move,
-        goal, goal_description, solution_line,
+        goal, goal_description, solution_line, allow_daily,
       } = req.body || {};
 
       if (!Array.isArray(position) || position.length === 0) {
         return res.status(400).send({ message: 'A puzzle needs a starting position' });
       }
-      const goalValue = Object.values(GOALS).includes(goal) ? goal : GOALS.CHECKMATE_IN_1;
-      if (goalValue !== GOALS.CHECKMATE_IN_1 && !String(goal_description || '').trim()) {
+      /*
+       * A mechanical goal describes itself - describeGoal writes the sentence
+       * the solver reads - so only the goals the server cannot score need the
+       * creator to say what they are aiming for.
+       */
+      const goalValue = GOAL_DEFS[goal] ? goal : GOALS.CHECKMATE_IN_1;
+      if (!MECHANICAL_GOALS.has(goalValue) && !String(goal_description || '').trim()) {
         return res.status(400).send({
           message: 'Tell the solver what they are aiming for (e.g. "win the rook")',
         });
@@ -368,8 +1332,8 @@ function registerPuzzleRoutes(app, { db_pool, dbHelpers, authenticateToken, opti
       const [result] = await db_pool.query(
         `INSERT INTO puzzles
           (game_type_id, creator_id, title, description, position, side_to_move, setup_move,
-           goal, goal_description, solution_line, solution_depth, is_draft)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,1)`,
+           goal, goal_description, solution_line, solution_depth, allow_daily, is_draft)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1)`,
         [
           gameTypeId, req.user.id,
           (title || '').slice(0, MAX_TITLE) || null,
@@ -382,6 +1346,8 @@ function registerPuzzleRoutes(app, { db_pool, dbHelpers, authenticateToken, opti
           JSON.stringify(line),
           // Depth is what the solver has to find, so it counts their moves only.
           solverPlies(line).length,
+          // Opted in unless the creator said otherwise.
+          allow_daily === false ? 0 : 1,
         ]
       );
       const created = await loadPuzzle(result.insertId);
@@ -409,7 +1375,8 @@ function registerPuzzleRoutes(app, { db_pool, dbHelpers, authenticateToken, opti
       if (b.position !== undefined) set('position', JSON.stringify(b.position));
       if (b.side_to_move !== undefined) set('side_to_move', b.side_to_move === 2 ? 2 : 1);
       if (b.setup_move !== undefined) set('setup_move', b.setup_move ? JSON.stringify(b.setup_move) : null);
-      if (b.goal !== undefined && Object.values(GOALS).includes(b.goal)) set('goal', b.goal);
+      if (b.goal !== undefined && GOAL_DEFS[b.goal]) set("goal", b.goal);
+      if (b.allow_daily !== undefined) set('allow_daily', b.allow_daily ? 1 : 0);
       if (b.goal_description !== undefined) set('goal_description', (b.goal_description || '').slice(0, 255) || null);
       if (b.hide_rating !== undefined) set('hide_rating', b.hide_rating ? 1 : 0);
       if (b.solution_line !== undefined) {
@@ -452,12 +1419,14 @@ function registerPuzzleRoutes(app, { db_pool, dbHelpers, authenticateToken, opti
       if (!canEdit(puzzle, req.user)) {
         return res.status(403).send({ message: 'You can only duplicate your own puzzles' });
       }
-      // Duplicating creates a puzzle, so it needs the same permission creating
-      // one does - otherwise this is a way around the supporter gate.
-      if (!isStaff(req.user) && !(await canCreatePuzzles(req.user.id))) {
+      // Duplicating writes a new row, so it spends the same allowance as building
+      // one from scratch - otherwise the cap is one click away from meaningless.
+      const dupAllowance = await puzzleCreateAllowance(req.user.id, puzzle.game_type_id);
+      if (!isStaff(req.user) && !dupAllowance.allowed) {
         return res.status(403).send({
-          message: 'Building puzzles is a Silver Supporter perk. Solving them is free for everyone.',
-          requiresSupporter: true,
+          message: dupAllowance.reason,
+          requiresSupporter: !!dupAllowance.requiresSupporter,
+          allowance: dupAllowance,
         });
       }
 
@@ -498,7 +1467,7 @@ function registerPuzzleRoutes(app, { db_pool, dbHelpers, authenticateToken, opti
   // -------------------------------------------------------------- validate --
   // Advisory. Reports what the server can work out and stores it, but never
   // refuses anything - a mate puzzle with two answers is still a puzzle.
-  app.post('/api/puzzles/:id/validate', authenticateToken, async (req, res) => {
+  app.post('/api/puzzles/:id/validate', puzzleValidateLimiter, authenticateToken, async (req, res) => {
     try {
       const puzzle = await loadPuzzle(parseInt(req.params.id, 10));
       if (!puzzle) return res.status(404).send({ message: 'Puzzle not found' });
@@ -510,6 +1479,8 @@ function registerPuzzleRoutes(app, { db_pool, dbHelpers, authenticateToken, opti
       const hydrated = {
         ...puzzle,
         position: await hydratePosition(puzzle.game_type_id, safeParse(puzzle.position, [])),
+        initial_pieces: await loadStartingRoster(gameType),
+        setup_move: safeParse(puzzle.setup_move),
         solution_line: safeParse(puzzle.solution_line, []),
       };
       const result = await validatePuzzle(hydrated, gameType);
@@ -556,7 +1527,14 @@ function registerPuzzleRoutes(app, { db_pool, dbHelpers, authenticateToken, opti
   // optionalAuthenticate so guests can solve, but a signed-in solver's attempt
   // is recorded against them - without it every attempt lands as anonymous and
   // nobody has a puzzle history.
-  app.post('/api/puzzles/:id/solve', optionalAuthenticate, async (req, res) => {
+  /*
+   * `optionalDiscord` runs alongside `optionalAuthenticate`, not instead of it.
+   * The two answer different questions - "which GridGrove account is this" and
+   * "which Discord person is this" - and a player in the activity who also has
+   * an account is both at once: the attempt rates their account AND continues
+   * their Discord streak.
+   */
+  app.post('/api/puzzles/:id/solve', optionalAuthenticate, optionalDiscord, async (req, res) => {
     try {
       const puzzle = await loadPuzzle(parseInt(req.params.id, 10));
       if (!puzzle) return res.status(404).send({ message: 'Puzzle not found' });
@@ -592,6 +1570,10 @@ function registerPuzzleRoutes(app, { db_pool, dbHelpers, authenticateToken, opti
       const scorePct = Math.round(score * 100);
 
       const userId = req.user?.id || null;
+      // Where this attempt was played. Only a token Discord itself vouched for
+      // can set it to 'discord'; the client cannot claim the surface.
+      const discordId = req.discord?.id || null;
+      const source = discordId ? 'discord' : 'web';
       let ratingChange = null;
       let ratingNote = null;
 
@@ -599,10 +1581,12 @@ function registerPuzzleRoutes(app, { db_pool, dbHelpers, authenticateToken, opti
         // Nothing to rate, and a half-played line is not worth a row.
         if (terminal) {
           await db_pool.query(
-            `INSERT INTO puzzle_attempts (puzzle_id, user_id, moves, solved, duration_ms, score)
-             VALUES (?,?,?,?,?,?)`,
+            `INSERT INTO puzzle_attempts
+               (puzzle_id, user_id, moves, solved, duration_ms, score, source, discord_user_id)
+             VALUES (?,?,?,?,?,?,?,?)`,
             [puzzle.id, null, JSON.stringify(submitted), solved ? 1 : 0,
-             Number.isFinite(req.body?.duration_ms) ? req.body.duration_ms : null, scorePct]
+             Number.isFinite(req.body?.duration_ms) ? req.body.duration_ms : null, scorePct,
+             source, discordId]
           );
         }
       } else {
@@ -634,11 +1618,12 @@ function registerPuzzleRoutes(app, { db_pool, dbHelpers, authenticateToken, opti
             await db_pool.query(
               `INSERT INTO puzzle_attempts
                  (puzzle_id, user_id, moves, solved, duration_ms, rated_attempt,
-                  rating_before, rating_after, score, state)
-               VALUES (?,?,?,?,?,1,?,?,?,?)`,
+                  rating_before, rating_after, score, state, source, discord_user_id)
+               VALUES (?,?,?,?,?,1,?,?,?,?,?,?)`,
               [puzzle.id, userId, JSON.stringify(submitted), solved ? 1 : 0,
                Number.isFinite(req.body?.duration_ms) ? req.body.duration_ms : null,
-               result.before, result.after, scorePct, terminal ? null : 'in_progress']
+               result.before, result.after, scorePct, terminal ? null : 'in_progress',
+               source, discordId]
             );
             await db_pool.query(
               'UPDATE users SET puzzle_elo = puzzle_elo + ? WHERE id = ?', [result.delta, userId]
@@ -689,10 +1674,12 @@ function registerPuzzleRoutes(app, { db_pool, dbHelpers, authenticateToken, opti
         } else if (terminal) {
           // A retry after their rated attempt closed. Recorded, never rated.
           await db_pool.query(
-            `INSERT INTO puzzle_attempts (puzzle_id, user_id, moves, solved, duration_ms, score)
-             VALUES (?,?,?,?,?,?)`,
+            `INSERT INTO puzzle_attempts
+               (puzzle_id, user_id, moves, solved, duration_ms, score, source, discord_user_id)
+             VALUES (?,?,?,?,?,?,?,?)`,
             [puzzle.id, userId, JSON.stringify(submitted), solved ? 1 : 0,
-             Number.isFinite(req.body?.duration_ms) ? req.body.duration_ms : null, scorePct]
+             Number.isFinite(req.body?.duration_ms) ? req.body.duration_ms : null, scorePct,
+             source, discordId]
           );
           ratingNote = 'Only your first attempt at a puzzle affects your rating.';
         }
@@ -714,6 +1701,32 @@ function registerPuzzleRoutes(app, { db_pool, dbHelpers, authenticateToken, opti
           if ((prev?.n || 0) <= 1) {
             await db_pool.query('UPDATE users SET puzzles_solved = puzzles_solved + 1 WHERE id = ?', [userId]);
           }
+        }
+      }
+
+      /*
+       * The Discord player's own record: streak, totals, and today's state.
+       *
+       * Deliberately outside the rating code above. A Discord streak and a
+       * GridGrove rating measure different things - turning up, and playing
+       * well - so a player with both gets both, and a player with neither
+       * account still gets the streak.
+       */
+      let discordProgress = null;
+      if (discordId && terminal) {
+        try {
+          const date = dailyPuzzle.todayKey();
+          const todayRow = await dailyPuzzle.forDate(date);
+          discordProgress = await recordDiscordAttempt(db_pool, req.discord, {
+            solved,
+            isDaily: Number(todayRow?.puzzle_id) === Number(puzzle.id),
+            date,
+            yesterday: dailyPuzzle.addDays(date, -1),
+          });
+        } catch (e) {
+          // A streak is a nicety. Losing it must not lose the solve, which is
+          // already written by this point.
+          console.warn('[discord] could not record progress:', e.message);
         }
       }
 
@@ -747,6 +1760,8 @@ function registerPuzzleRoutes(app, { db_pool, dbHelpers, authenticateToken, opti
         solution: solved || revealed ? line : undefined,
         rating: ratingChange,
         ratingNote: ratingChange ? null : (userId ? ratingNote : null),
+        // Only present for the Discord activity; the website ignores it.
+        discord: discordProgress,
       });
     } catch (err) {
       console.error('POST /api/puzzles/:id/solve:', err);

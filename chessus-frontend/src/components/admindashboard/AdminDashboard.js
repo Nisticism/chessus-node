@@ -10,6 +10,7 @@ import { formatDateTime, parseServerDate } from "../../helpers/date-formatter";
 import AiTrainingPanel from "./AiTrainingPanel";
 import FairyStockfishPanel from "./FairyStockfishPanel";
 import TrafficPanel from "./TrafficPanel";
+import DailyPuzzlePanel from "./DailyPuzzlePanel";
 import ConfirmDeleteModal from "../common/ConfirmDeleteModal";
 import ToggleSwitch from "../common/ToggleSwitch";
 import NumberInput from "../common/NumberInput";
@@ -283,6 +284,8 @@ const AdminDashboard = () => {
     } else if (activeTab === 'fairy-stockfish') {
       // FairyStockfishPanel manages its own data fetching; nothing to do here.
       setLoading(false);
+    } else if (activeTab === 'daily-puzzle') {
+      // DailyPuzzlePanel manages its own data fetching.
     } else if (activeTab === 'traffic') {
       // TrafficPanel manages its own data fetching.
       setLoading(false);
@@ -3951,6 +3954,12 @@ const AdminDashboard = () => {
           Fairy Stockfish
         </button>
         <button
+          className={`${styles["tab"]} ${activeTab === "daily-puzzle" ? styles["active"] : ""}`}
+          onClick={() => handleTabChange("daily-puzzle")}
+        >
+          Puzzle of the Day
+        </button>
+        <button
           className={`${styles["tab"]} ${activeTab === "ai-analysis-requests" ? styles["active"] : ""}`}
           onClick={() => handleTabChange("ai-analysis-requests")}
         >
@@ -3996,7 +4005,7 @@ const AdminDashboard = () => {
       </div>
 
       <div className={styles["content"]}>
-        {(activeTab !== 'server-stats' && activeTab !== 'ai-training' && activeTab !== 'initial-state' && activeTab !== 'ai-analysis-requests' && activeTab !== 'poll' && activeTab !== 'user-growth' && activeTab !== 'physical-board-requests' && activeTab !== 'feature-todo' && activeTab !== 'fairy-stockfish' && activeTab !== 'traffic' && loading) || (activeTab === 'featured' && featuredLoading) || (activeTab === 'settings' && settingsLoading) ? (
+        {(activeTab !== 'server-stats' && activeTab !== 'ai-training' && activeTab !== 'initial-state' && activeTab !== 'ai-analysis-requests' && activeTab !== 'poll' && activeTab !== 'user-growth' && activeTab !== 'physical-board-requests' && activeTab !== 'feature-todo' && activeTab !== 'fairy-stockfish' && activeTab !== 'daily-puzzle' && activeTab !== 'traffic' && loading) || (activeTab === 'featured' && featuredLoading) || (activeTab === 'settings' && settingsLoading) ? (
           <div className={styles["loading"]}>Loading...</div>
         ) : (
           <>
@@ -4017,6 +4026,7 @@ const AdminDashboard = () => {
             {activeTab === "server-stats" && renderServerStatsTab()}
             {activeTab === "ai-training" && <AiTrainingPanel initialAnalysisGameTypeId={aiPanelInitialGameTypeId} />}
             {activeTab === "fairy-stockfish" && <FairyStockfishPanel />}
+            {activeTab === "daily-puzzle" && <DailyPuzzlePanel />}
             {activeTab === "ai-analysis-requests" && renderAiAnalysisRequestsTab()}
             {activeTab === "initial-state" && renderInitialStateTab()}
             {activeTab === "poll" && renderPollTab()}

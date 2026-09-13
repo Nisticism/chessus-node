@@ -7,7 +7,6 @@ import authHeader from "../../services/auth-header";
 import { getGameById } from "../../actions/games";
 import { getPieceById } from "../../actions/pieces";
 import { useDispatch } from "react-redux";
-import { canCreatePuzzles } from "../../helpers/supporterTiers";
 import InfoTooltip from "../piecewizard/InfoTooltip";
 import ListPager, { usePagedList } from "../common/ListPager";
 import useBoardViewport from "../common/useBoardViewport";
@@ -29,11 +28,18 @@ import styles from "./puzzlebuilder.module.scss";
  * this piece do" always comes from one place.
  */
 
-const GOALS = [
-  { value: 'checkmate_in_1', label: 'Checkmate in 1', help: 'The only goal the server can check for you. It will tell you if another move also mates.' },
-  { value: 'win_material', label: 'Win material', help: 'Say what the solver should win, e.g. "win the rook".' },
-  { value: 'specific_move', label: 'Find this exact move', help: 'The answer is the move you record, whatever the reason.' },
-  { value: 'custom', label: 'Something else', help: 'Describe the goal in your own words.' },
+/*
+ * The goals on offer come from the SERVER, not from a list here, because which
+ * goals make sense depends on the game: "stalemate the opponent" is not a puzzle
+ * in a game with no stalemate rule, and a game with no royal piece has no
+ * checkmate to find. Until they load, this is what a game is assumed to allow -
+ * the two the server accepts for every game type.
+ */
+const FALLBACK_GOALS = [
+  { value: 'checkmate_in_1', label: 'Checkmate', mechanical: true, help: 'Find the move that delivers checkmate.' },
+  { value: 'win_material', label: 'Win material', mechanical: false, help: 'Say what the solver should win, e.g. "win the rook".' },
+  { value: 'specific_move', label: 'Find this exact move', mechanical: false, help: 'The answer is the move you record, whatever the reason.' },
+  { value: 'custom', label: 'Something else', mechanical: false, help: 'Describe the goal in your own words.' },
 ];
 
 // Declared locally, as everywhere else in the app - global.js does not export it.
@@ -83,7 +89,7 @@ const PuzzleBuilder = () => {
   const [placements, setPlacements] = useState({});
   const [startingPlacements, setStartingPlacements] = useState({});
 
-  const [mode, setMode] = useState('arrange');   // 'arrange' | 'solution'
+  const [mode, setMode] = useState('arrange');   // 'arrange' | 'setup' | 'solution'
   const [selected, setSelected] = useState(null); // "y,x" of the held piece
   /*
    * The solution is a flat list of plies that ALTERNATES, starting with the side
@@ -104,8 +110,34 @@ const PuzzleBuilder = () => {
   const [goal, setGoal] = useState('checkmate_in_1');
   const [goalDescription, setGoalDescription] = useState('');
   const [hideRating, setHideRating] = useState(false);
+  /*
+   * Whether this puzzle may be picked as a daily one. On by default: being
+   * chosen is a compliment rather than an imposition, and most creators want it.
+   * Declining is one click and needs nobody's permission.
+   */
+  const [allowDaily, setAllowDaily] = useState(true);
+  const [dailyInfo, setDailyInfo] = useState(null);      // requirements, lazily fetched
+  const [dailyModalOpen, setDailyModalOpen] = useState(false);
 
   const [pieceDataMap, setPieceDataMap] = useState({});
+
+  /*
+   * Which goals this game can offer, and its rules, both from the server. The
+   * rules travel with the puzzle so a solver who has never played the game can
+   * read them without leaving the page; they are shown here too so the creator
+   * sees exactly what the solver will see.
+   */
+  const [goalOptions, setGoalOptions] = useState(FALLBACK_GOALS);
+  const [gameRules, setGameRules] = useState(null);
+
+  /*
+   * A promotion that is waiting on the creator to say what the piece becomes.
+   * Shape: { ply, options } - the ply is held OUT of the line until they choose,
+   * because a ply recorded without the choice would be validated against a board
+   * where the promotion never happened.
+   */
+  const [pendingPromotion, setPendingPromotion] = useState(null);
+
   const [checkResult, setCheckResult] = useState(null);
   const [busy, setBusy] = useState(false);
   const [savedId, setSavedId] = useState(puzzleId ? Number(puzzleId) : null);
@@ -119,7 +151,13 @@ const PuzzleBuilder = () => {
   const [myPuzzles, setMyPuzzles] = useState([]);
   const [puzzleListStaff, setPuzzleListStaff] = useState(false);
 
-  const allowed = canCreatePuzzles(currentUser);
+  /*
+   * Everyone signed in may build; how MANY depends on the account. The server is
+   * what enforces it - this only decides what the page says, and it asks rather
+   * than guessing, because the free allowance is per game and counted from rows.
+   */
+  const allowed = !!currentUser;
+  const [allowance, setAllowance] = useState(null);
 
   const boardWidth = game?.board_width || 8;
   const boardHeight = game?.board_height || 8;
@@ -251,6 +289,7 @@ const PuzzleBuilder = () => {
         setGoal(p.goal || 'checkmate_in_1');
         setGoalDescription(p.goal_description || '');
         setHideRating(!!p.hide_rating);
+        setAllowDaily(p.allow_daily === undefined ? true : !!p.allow_daily);
         if (p.setup_move) setSetupMove(p.setup_move);
         if (Array.isArray(p.solution_line)) setSolutionLine(p.solution_line.filter(Boolean));
       } catch (err) {
@@ -259,6 +298,50 @@ const PuzzleBuilder = () => {
     })();
     return () => { cancelled = true; };
   }, [puzzleId]);
+
+  // How many puzzles this account may still build for this game.
+  useEffect(() => {
+    if (!gameId || !currentUser) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await axios.get(
+          `${API_URL}game-types/${gameId}/puzzle-allowance`, { headers: authHeader() }
+        );
+        if (!cancelled) setAllowance(data);
+      } catch (_) { /* the server still enforces it on save */ }
+    })();
+    return () => { cancelled = true; };
+  }, [gameId, currentUser]);
+
+  // Which goals this game can offer, and the rules the solver will be shown.
+  useEffect(() => {
+    if (!gameId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await axios.get(`${API_URL}game-types/${gameId}/puzzle-goals`);
+        if (cancelled) return;
+        if (Array.isArray(data?.goals) && data.goals.length) setGoalOptions(data.goals);
+        if (data?.rules) setGameRules(data.rules);
+      } catch (_) {
+        /* the fallback list still lets a puzzle be built */
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [gameId]);
+
+  /*
+   * A goal loaded from an existing draft may not be in this game's list (the
+   * game's win conditions can change under a saved puzzle). Falling back to the
+   * first offered goal beats rendering a select with no matching option, which
+   * silently shows the wrong one.
+   */
+  useEffect(() => {
+    if (!goalOptions.length) return;
+    if (goalOptions.some((g) => g.value === goal)) return;
+    setGoal(goalOptions[0].value);
+  }, [goalOptions, goal]);
 
   // Piece definitions for anything on the board, so images survive a placement
   // written against an old asset host.
@@ -305,6 +388,31 @@ const PuzzleBuilder = () => {
         x: ply.to.x,
         y: ply.to.y,
       };
+
+      /*
+       * Castling moves two pieces. The partner jumps to the far side of the
+       * square the king landed on, which is what the engine does when it applies
+       * the move - so the preview has to do it too, or every ply after a castle
+       * is recorded against a board with a rook still sitting in the corner.
+       */
+      if (ply.isCastling && ply.castlingWith) {
+        // Board keys are "y,x", and a placement that has not moved yet has no
+        // explicit id - it is identified by the one the server derives from
+        // where it stands, which is `${piece_id}_${y}_${x}`.
+        const partnerKey = Object.keys(next).find((key) => {
+          const pc = next[key];
+          if (!pc) return false;
+          if (pc.id) return pc.id === ply.castlingWith;
+          const [ky, kx] = key.split(',');
+          return `${pc.piece_id}_${ky}_${kx}` === ply.castlingWith;
+        });
+        if (partnerKey) {
+          const partner = next[partnerKey];
+          const px = ply.castlingDirection === 'left' ? ply.to.x + 1 : ply.to.x - 1;
+          delete next[partnerKey];
+          next[keyOf(px, ply.to.y)] = { ...partner, x: px, y: ply.to.y };
+        }
+      }
     }
     return next;
   }, [placements, solutionLine]);
@@ -339,10 +447,123 @@ const PuzzleBuilder = () => {
     [placements]
   );
 
+  /*
+   * Record a ply, asking the server first what the move actually is.
+   *
+   * Neither question can be answered here. Promotion options depend on the
+   * game's per-placement overrides, on the pieces the game started with, and on
+   * cross-player targets. Castling depends on whether the partner is present and
+   * unmoved with a clear, unattacked path - which is a thing the move engine
+   * knows and a pair of board clicks does not. A king sliding two squares is not
+   * automatically a castle, and the engine is the only honest judge of that.
+   *
+   * A promoting ply is held back until the piece is chosen, rather than recorded
+   * and patched afterwards: a ply with no choice on it would be validated
+   * against a board where the promotion never happened.
+   */
+  const recordPly = useCallback(async (ply) => {
+    setCheckResult(null);
+    let move = ply;
+    try {
+      const { data } = await axios.post(
+        `${API_URL}game-types/${gameId}/puzzle-move-info`,
+        { position: positionArray, side_to_move: sideToMove, setup_move: setupMove, move: ply },
+        { headers: authHeader() }
+      );
+      if (data?.castling) {
+        move = {
+          ...move,
+          isCastling: true,
+          castlingWith: data.castling.castlingWith,
+          castlingDirection: data.castling.castlingDirection,
+          castlingPartnerName: data.castling.partnerName || null,
+        };
+      }
+      if (data?.promotes && Array.isArray(data.options) && data.options.length) {
+        setPendingPromotion({ ply: move, options: data.options });
+        return;
+      }
+    } catch (_) {
+      /*
+       * The lookup is an improvement, not a gate. If it fails the ply is still
+       * recorded; validation will catch a missing promotion choice and say so.
+       */
+    }
+    setSolutionLine((prev) => [...prev, move]);
+  }, [gameId, positionArray, sideToMove, setupMove]);
+
+  /*
+   * The requirements come from the server rather than being written out here,
+   * because they are generated from the same module the scheduler uses. A list
+   * that has drifted from the rule being applied is worse than no list.
+   */
+  const loadDailyRequirements = useCallback(async () => {
+    if (dailyInfo) return;
+    try {
+      const { data } = await axios.get(`${API_URL}puzzles/daily/requirements`);
+      setDailyInfo(data);
+    } catch (_) {
+      setDailyInfo({ error: true });
+    }
+  }, [dailyInfo]);
+
+  const choosePromotion = useCallback((option) => {
+    setPendingPromotion((pending) => {
+      if (!pending) return null;
+      setSolutionLine((prev) => [...prev, {
+        ...pending.ply,
+        promotionPieceId: option.id,
+        // Cross-player and neutral promotion: the piece may not stay yours.
+        ...(option.player != null ? { promotionPlayer: option.player } : {}),
+      }]);
+      return null;
+    });
+  }, []);
+
   const handleSquareClick = useCallback((x, y) => {
     const k = keyOf(x, y);
     // Arranging edits the starting position; recording plays forward from it.
     const here = (mode === 'solution' ? solutionBoard : placements)[k];
+
+    /*
+     * Setup mode records the move that LED INTO the position - the opponent's
+     * last move. It is what gives the puzzle its en passant rights: a pawn can
+     * only be taken en passant on the move right after its double step, so
+     * without knowing what just happened the engine has to answer "no piece can
+     * capture en passant here", every time.
+     *
+     * The piece is already standing on its destination, so the two clicks are
+     * the piece first and the square it came from second - which is how anyone
+     * would point at it, and avoids asking for a move whose start square is
+     * occupied by the piece that is about to leave it.
+     */
+    if (mode === 'setup') {
+      if (!selected) {
+        if (!here) {
+          setCheckResult({ tone: 'warn', text: 'Click the piece your opponent just moved.' });
+          return;
+        }
+        if (Number(here.player_id) === Number(sideToMove)) {
+          setCheckResult({
+            tone: 'warn',
+            text: `That is your own piece. Click the piece Player ${sideToMove === 1 ? 2 : 1} just moved.`,
+          });
+          return;
+        }
+        setSelected(k);
+        return;
+      }
+      if (selected === k) { setSelected(null); return; }
+      if (placements[k]) {
+        setCheckResult({ tone: 'warn', text: 'A piece cannot have come from an occupied square.' });
+        return;
+      }
+      const [ty, tx] = selected.split(',').map(Number);
+      setSetupMove({ from: { x, y }, to: { x: tx, y: ty } });
+      setSelected(null);
+      setCheckResult({ tone: 'ok', text: 'Last move recorded. En passant will be judged from it.' });
+      return;
+    }
 
     if (mode === 'arrange') {
       if (selected === k) {
@@ -387,14 +608,14 @@ const PuzzleBuilder = () => {
     if (selected === k) { setSelected(null); return; }
     const [fy, fx] = selected.split(',').map(Number);
     const mover = solutionBoard[selected];
-    setSolutionLine((prev) => [...prev, {
+    recordPly({
       from: { x: fx, y: fy },
       to: { x, y },
       pieceId: mover?.id || `${mover?.piece_id}_${fy}_${fx}`,
-    }]);
+    });
     setSelected(null);
     setCheckResult(null);
-  }, [mode, selected, placements, solutionBoard, nextSide, lineFull]);
+  }, [mode, selected, placements, solutionBoard, nextSide, lineFull, sideToMove, recordPly]);
 
   const body = () => ({
     title: title.trim() || null,
@@ -405,6 +626,7 @@ const PuzzleBuilder = () => {
     goal_description: goalDescription.trim() || null,
     setup_move: setupMove,
     hide_rating: hideRating,
+    allow_daily: allowDaily,
     solution_line: solutionLine,
   });
 
@@ -468,8 +690,31 @@ const PuzzleBuilder = () => {
       <div className={styles["builder-page"]}>
         <div className={styles["locked"]}>
           <h1>Puzzle Builder</h1>
-          <p>Building puzzles is a Silver Supporter perk. Solving them is free for everyone.</p>
-          <button className={styles["btn"]} onClick={() => navigate('/donate')}>Support the site</button>
+          <p>Sign in to build puzzles. Solving them is free for everyone, account or not.</p>
+          <button className={styles["btn"]} onClick={() => navigate('/login')}>Sign in</button>
+        </div>
+      </div>
+    );
+  }
+
+  /*
+   * Out of allowance, and not already editing something. Editing an existing
+   * puzzle is never blocked by a creation limit - the row already exists, and
+   * locking someone out of their own draft would be a strange way to sell a
+   * subscription.
+   */
+  if (allowance && !allowance.allowed && !savedId) {
+    return (
+      <div className={styles["builder-page"]}>
+        <div className={styles["locked"]}>
+          <h1>Puzzle Builder</h1>
+          <p>{allowance.reason}</p>
+          {allowance.requiresSupporter && (
+            <button className={styles["btn"]} onClick={() => navigate('/donate')}>Support the site</button>
+          )}
+          <button className={styles["btn-secondary"]} onClick={() => navigate(`/games/${gameId}`)}>
+            Back to the game
+          </button>
         </div>
       </div>
     );
@@ -488,8 +733,10 @@ const PuzzleBuilder = () => {
       const isLight = (x + y) % 2 === 0;
       const isSelected = selected === k;
       // Highlight the move just recorded, so the line reads as you build it.
-      const isFrom = !!lastPly && lastPly.from.x === x && lastPly.from.y === y;
-      const isTo = !!lastPly && lastPly.to.x === x && lastPly.to.y === y;
+      // In setup mode that is the opponent's last move instead.
+      const shown = mode === 'setup' ? setupMove : lastPly;
+      const isFrom = !!shown && shown.from.x === x && shown.from.y === y;
+      const isTo = !!shown && shown.to.x === x && shown.to.y === y;
       squares.push(
         <div
           key={k}
@@ -534,10 +781,17 @@ const PuzzleBuilder = () => {
             1. Arrange the position
           </button>
           <button
+            className={mode === 'setup' ? styles["tab-active"] : styles["tab"]}
+            onClick={() => { setMode('setup'); setSelected(null); }}
+          >
+            2. Their last move
+            {setupMove && <span className={styles["tab-tick"]}> ✓</span>}
+          </button>
+          <button
             className={mode === 'solution' ? styles["tab-active"] : styles["tab"]}
             onClick={() => { setMode('solution'); setSelected(null); }}
           >
-            2. Set the solution
+            3. Set the solution
           </button>
         </div>
         <div className={styles["board-actions"]}>
@@ -552,6 +806,10 @@ const PuzzleBuilder = () => {
       <p className={styles["mode-hint"]}>
         {mode === 'arrange'
           ? 'Click a piece then an empty square to move it. Click a piece twice to take it off the board.'
+          : mode === 'setup'
+          ? (setupMove
+            ? `Their last move: (${setupMove.from.x}, ${setupMove.from.y}) → (${setupMove.to.x}, ${setupMove.to.y}). Record a different one, or clear it.`
+            : `Click the piece Player ${sideToMove === 1 ? 2 : 1} just moved, then the square it came from. This is optional — but without it no piece can capture en passant, because nothing has just double-stepped.`)
           : (lineFull
             ? `That is ${MAX_MOVES_PER_SIDE} moves each — as long as a solution can be.`
             : (nextIsSolver
@@ -610,14 +868,25 @@ const PuzzleBuilder = () => {
           <label className={styles["field"]}>
             <span>
               Goal
-              <InfoTooltip text={GOALS.find((g) => g.value === goal)?.help || ''} />
+              <InfoTooltip text={goalOptions.find((g) => g.value === goal)?.help || ''} />
             </span>
             <select value={goal} onChange={(e) => setGoal(e.target.value)}>
-              {GOALS.map((g) => <option key={g.value} value={g.value}>{g.label}</option>)}
+              {goalOptions.map((g) => (
+                <option key={g.value} value={g.value}>
+                  {g.label}{g.mechanical ? '' : ' (you judge it)'}
+                </option>
+              ))}
             </select>
           </label>
+          {/* The sentence the solver will read. A mechanical goal writes its
+              own, so the creator can see there is nothing left to explain. */}
+          {!!goalOptions.find((g) => g.value === goal)?.help && (
+            <p className={styles["goal-preview"]}>
+              Solvers will be told: <em>{goalOptions.find((g) => g.value === goal).help}</em>
+            </p>
+          )}
 
-          {goal !== 'checkmate_in_1' && (
+          {!goalOptions.find((g) => g.value === goal)?.mechanical && (
             <label className={styles["field"]}>
               <span>What should the solver do?</span>
               <input
@@ -637,6 +906,56 @@ const PuzzleBuilder = () => {
             </span>
           </label>
 
+          {/*
+            * The daily rotation. Opted in by default, with the way out sitting
+            * right next to the invitation rather than buried somewhere else -
+            * an opt-out that is hard to find is not really an opt-out.
+            */}
+          <label className={styles["checkbox-field"]}>
+            <input
+              type="checkbox"
+              checked={allowDaily}
+              onChange={(e) => setAllowDaily(e.target.checked)}
+            />
+            <span>Let this puzzle be picked as a Puzzle of the Day</span>
+          </label>
+          {allowDaily && (
+            <p className={styles["daily-cta"]}>
+              Want this featured as the Puzzle of the Day?{' '}
+              <button
+                type="button"
+                className={styles["link-btn"]}
+                onClick={() => { setDailyModalOpen(true); loadDailyRequirements(); }}
+              >
+                See what it takes
+              </button>
+            </p>
+          )}
+
+          {/* What led into the position. Shown outside setup mode too, because
+              it silently decides whether en passant is on the table. */}
+          {!!allowance && allowance.perGameLimit != null && (
+            <p className={styles["allowance-note"]}>
+              {Math.max(0, allowance.perGameLimit - allowance.perGameUsed)} of your{' '}
+              {allowance.perGameLimit} free puzzles left for this game.{' '}
+              <button className={styles["link-btn"]} onClick={() => navigate('/donate')}>
+                Supporters build as many as they like
+              </button>
+            </p>
+          )}
+
+          <div className={styles["setup-readout"]}>
+            <strong>Their last move:</strong>{' '}
+            {setupMove ? (
+              <>
+                ({setupMove.from.x}, {setupMove.from.y}) → ({setupMove.to.x}, {setupMove.to.y})
+                <button className={styles["link-btn"]} onClick={() => setSetupMove(null)}>clear</button>
+              </>
+            ) : (
+              <em>not set — en passant will not be possible</em>
+            )}
+          </div>
+
           <div className={styles["solution-readout"]}>
             <strong>Solution:</strong>{' '}
             {!solutionLine.length && <em>not set yet</em>}
@@ -654,6 +973,17 @@ const PuzzleBuilder = () => {
                           : `Their reply ${Math.floor(i / 2) + 1}`}
                       </span>
                       ({ply.from.x}, {ply.from.y}) → ({ply.to.x}, {ply.to.y})
+                      {!!ply.isCastling && (
+                        <span className={styles["ply-castle"]}>
+                          {' '}castles {ply.castlingDirection}
+                          {ply.castlingPartnerName ? ` with the ${ply.castlingPartnerName}` : ''}
+                        </span>
+                      )}
+                      {!!ply.promotionPieceId && (
+                        <span className={styles["ply-promo"]}>
+                          {' '}= {pieceDataMap[ply.promotionPieceId]?.piece_name || `piece #${ply.promotionPieceId}`}
+                        </span>
+                      )}
                     </li>
                   ))}
                 </ol>
@@ -698,11 +1028,128 @@ const PuzzleBuilder = () => {
             your call.
           </p>
 
+          {/* The same rules panel the solver gets, so the creator can see what
+              a stranger to this game will be told about it. */}
+          {!!gameRules?.groups?.length && (
+            <details className={styles["rules-panel"]}>
+              <summary>What solvers will see about this game’s rules</summary>
+              {gameRules.groups.map((g) => (
+                <div key={g.title} className={styles["rules-group"]}>
+                  <h4>{g.title}</h4>
+                  <ul>
+                    {g.items.map((it) => (
+                      <li key={it.label}><strong>{it.label}.</strong> {it.detail}</li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </details>
+          )}
+
           <button className={styles["link-btn"]} onClick={() => navigate(`/games/${gameId}`)}>
             ← Back to {game?.game_name || 'the game'}
           </button>
         </div>
       </div>
+
+      {/* What it takes to be the Puzzle of the Day. */}
+      {dailyModalOpen && (
+        <div
+          className={styles["promo-backdrop"]}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Puzzle of the Day requirements"
+          onClick={(e) => { if (e.target === e.currentTarget) setDailyModalOpen(false); }}
+        >
+          <div className={`${styles["promo-dialog"]} ${styles["daily-dialog"]}`}>
+            <h3>Puzzle of the Day</h3>
+            <p>
+              One puzzle is featured on the home page each day. Any published puzzle can
+              be picked — there is nothing to enter and nothing to apply for. This is what
+              makes a puzzle a candidate:
+            </p>
+
+            {!dailyInfo && <p className={styles["daily-loading"]}>Loading the requirements…</p>}
+            {dailyInfo?.error && (
+              <p className={styles["daily-loading"]}>
+                Could not load the requirements just now. They are also on the puzzle page.
+              </p>
+            )}
+
+            {!!dailyInfo?.requirements && (
+              <ul className={styles["daily-reqs"]}>
+                {dailyInfo.requirements.map((r) => (
+                  <li key={r.key}>
+                    <strong>{r.label}</strong>
+                    <span>{r.detail}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            {!!dailyInfo?.discretion && (
+              <p className={styles["daily-discretion"]}>{dailyInfo.discretion}</p>
+            )}
+
+            <p className={styles["daily-optout"]}>
+              You can opt any puzzle out at any time with the checkbox above — it stays
+              solvable either way, it just will not be featured.
+            </p>
+
+            <button className={styles["btn"]} onClick={() => setDailyModalOpen(false)}>
+              Got it
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/*
+        * Promotion. The move is not in the line yet - it goes in only once the
+        * creator says what the piece becomes, so a half-recorded promotion can
+        * never be saved. Cancelling drops the move rather than recording it
+        * without a choice.
+        */}
+      {!!pendingPromotion && (
+        <div
+          className={styles["promo-backdrop"]}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Choose what this piece promotes to"
+        >
+          <div className={styles["promo-dialog"]}>
+            <h3>What does it become?</h3>
+            <p>
+              That move reaches a promotion square. Pick the piece — the solver will
+              have to pick the same one.
+            </p>
+            <div className={styles["promo-options"]}>
+              {pendingPromotion.options.map((o) => {
+                const src = imageFor(
+                  { piece_id: o.id, image_location: o.image_location, player_id: o.player ?? nextSide },
+                  pieceDataMap
+                );
+                return (
+                  <button
+                    key={`${o.id}:${o.player ?? 'own'}`}
+                    className={styles["promo-option"]}
+                    onClick={() => choosePromotion(o)}
+                  >
+                    {src
+                      ? <img src={src} alt="" draggable={false} />
+                      : <span className={styles["piece-fallback"]}>{(o.piece_name || '?').charAt(0)}</span>}
+                    <span>{o.piece_name}</span>
+                    {o.player === 0 && <em>neutral</em>}
+                    {o.player != null && o.player !== 0 && <em>Player {o.player}</em>}
+                  </button>
+                );
+              })}
+            </div>
+            <button className={styles["btn-secondary"]} onClick={() => setPendingPromotion(null)}>
+              Cancel this move
+            </button>
+          </div>
+        </div>
+      )}
 
       {myPuzzles.length > 0 && (
         <div className={styles["puzzle-list"]}>

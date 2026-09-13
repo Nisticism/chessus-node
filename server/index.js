@@ -262,6 +262,25 @@ const registerLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+/*
+ * Puzzle validation is the expensive puzzle endpoint, and the only one worth
+ * protecting on compute grounds: it enumerates every legal move in the position
+ * and hits the database for promotion options on each one. On a big board with a
+ * lot of pieces that is hundreds of engine calls and queries per request.
+ *
+ * Creating a puzzle, by contrast, writes one small row - which is why the
+ * creation limits elsewhere are about flooding the browsable list, not about
+ * load. 40 an hour is far more than authoring needs (a creator checks a puzzle a
+ * handful of times while building it) and far less than a script would want.
+ */
+const puzzleValidateLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 40,
+  message: { message: "That is a lot of puzzle checks. Try again in a little while." },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 // Apply general rate limiting to all routes EXCEPT /api/admin/* (admin endpoints
 // are already gated by authenticateAdmin and the dashboard can poll heavily)
 app.use('/api/', (req, res, next) => {
@@ -2743,18 +2762,98 @@ const canUseCustomBoardColors = async (userId) => {
   return parseFloat(row.total_donations || 0) >= BOARD_COLOR_MIN_DONATION;
 };
 
-// Building puzzles is a Silver Supporter perk (Gold and staff included).
-// SOLVING them is open to everyone - the gate is on authorship, not access.
+/*
+ * Who may BUILD puzzles, and how many.
+ *
+ * SOLVING is open to everyone and always will be - the gate is on authorship,
+ * not access. Authorship is shaped by two different worries, and they want two
+ * different limits:
+ *
+ *  - The supporter question. Everyone gets a real taste (three puzzles per game,
+ *    which is enough to build something you are proud of), and supporters get
+ *    the run of it. A hard zero for free accounts made the feature invisible to
+ *    the people most likely to pay for it.
+ *
+ *  - The abuse question, which is NOT about how many rows exist. A puzzle is a
+ *    small blob of JSON; ten thousand of them is a few megabytes. What actually
+ *    costs something is validation, which enumerates every legal move and hits
+ *    the database for promotion options on each one - so that is rate-limited
+ *    separately, at the endpoint. What a creation cap buys is protection against
+ *    a script flooding the browsable list and the daily rotation, and for that a
+ *    DAILY ceiling is the honest tool: nobody hand-authors twenty good puzzles
+ *    in a day, and a bot that wants to needs twenty days.
+ */
 const PUZZLE_CREATE_MIN_DONATION = 5;   // Silver
-const canCreatePuzzles = async (userId) => {
-  if (!userId) return false;
+const PUZZLE_FREE_PER_GAME = 3;         // Free accounts, per game type
+const PUZZLE_DAILY_CAP = 20;            // Everyone, including supporters
+
+/**
+ * May this user add a puzzle to this game right now?
+ *
+ * @returns {{allowed: boolean, reason: string|null, tier: string,
+ *            perGameLimit: number|null, perGameUsed: number,
+ *            dailyLimit: number, dailyUsed: number}}
+ */
+const puzzleCreateAllowance = async (userId, gameTypeId = null) => {
+  const deny = (reason) => ({
+    allowed: false, reason, tier: 'anonymous',
+    perGameLimit: PUZZLE_FREE_PER_GAME, perGameUsed: 0,
+    dailyLimit: PUZZLE_DAILY_CAP, dailyUsed: 0,
+  });
+  if (!userId) return deny('Sign in to build puzzles.');
+
   const [[row]] = await db_pool.query(
     'SELECT total_donations, role FROM users WHERE id = ?', [userId]
   );
-  if (!row) return false;
-  if (hasAdminRole(row.role)) return true;
-  return parseFloat(row.total_donations || 0) >= PUZZLE_CREATE_MIN_DONATION;
+  if (!row) return deny('Sign in to build puzzles.');
+
+  const staff = hasAdminRole(row.role);
+  const supporter = staff || parseFloat(row.total_donations || 0) >= PUZZLE_CREATE_MIN_DONATION;
+  const tier = staff ? 'staff' : (supporter ? 'supporter' : 'free');
+
+  // The daily ceiling applies to everyone; staff are exempt so a moderator can
+  // seed or repair a batch without tripping over a limit meant for scripts.
+  const [[{ n: dailyUsed }]] = await db_pool.query(
+    'SELECT COUNT(*) AS n FROM puzzles WHERE creator_id = ? AND created_at >= NOW() - INTERVAL 1 DAY',
+    [userId]
+  );
+
+  let perGameUsed = 0;
+  if (!supporter && gameTypeId) {
+    const [[{ n }]] = await db_pool.query(
+      'SELECT COUNT(*) AS n FROM puzzles WHERE creator_id = ? AND game_type_id = ?',
+      [userId, gameTypeId]
+    );
+    perGameUsed = n;
+  }
+
+  const base = {
+    tier,
+    perGameLimit: supporter ? null : PUZZLE_FREE_PER_GAME,
+    perGameUsed,
+    dailyLimit: PUZZLE_DAILY_CAP,
+    dailyUsed,
+  };
+
+  if (!staff && dailyUsed >= PUZZLE_DAILY_CAP) {
+    return {
+      ...base, allowed: false,
+      reason: `That is ${PUZZLE_DAILY_CAP} puzzles today, which is the daily limit for everyone. Come back tomorrow.`,
+    };
+  }
+  if (!supporter && gameTypeId && perGameUsed >= PUZZLE_FREE_PER_GAME) {
+    return {
+      ...base, allowed: false,
+      reason: `You have built ${PUZZLE_FREE_PER_GAME} puzzles for this game, which is the free limit. `
+        + 'Silver Supporters can build as many as they like, for any game.',
+      requiresSupporter: true,
+    };
+  }
+  return { ...base, allowed: true, reason: null };
 };
+
+/** Kept for callers that only need the yes/no. */
+const canCreatePuzzles = async (userId) => (await puzzleCreateAllowance(userId)).allowed;
 
 const PIECE_SOUND_MIN_DONATION = 5;   // Silver
 const PIECE_SOUND_SLOTS = {
@@ -7110,7 +7209,19 @@ require('./puzzle-routes').registerPuzzleRoutes(app, {
   optionalAuthenticate,
   hasAdminRole,
   canCreatePuzzles,
+  puzzleCreateAllowance,
+  PUZZLE_FREE_PER_GAME,
+  PUZZLE_DAILY_CAP,
+  puzzleValidateLimiter,
 });
+
+/*
+ * The Discord activity's own two endpoints: the OAuth token exchange, and the
+ * streak record for a player with no GridGrove account. Everything else the
+ * activity does goes through the puzzle routes above, unchanged - it plays the
+ * same daily puzzle through the same solver.
+ */
+require('./discord-routes').registerDiscordRoutes(app, { db_pool });
 
 const posts = [{
   username: 'NewAccount',

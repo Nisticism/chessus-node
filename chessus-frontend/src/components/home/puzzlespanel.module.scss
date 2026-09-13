@@ -1,0 +1,407 @@
+/*
+ * The home page's puzzle block.
+ *
+ * Sits inside .home-container like every other section - no max-width and no
+ * gutter of its own, so it lines up with the sections above and below it rather
+ * than being a narrower island. Type comes off the same scale as the rest of the
+ * page (2.2rem section heading, 1.1rem section lead, 1rem body).
+ *
+ * Both halves share a height because the grid stretches them: the board decides
+ * how tall the row is, and the text half fills it. That only works because the
+ * pool sweep keeps boards further from square than 3:2 out of the rotation.
+ */
+.puzzles-section {
+  margin-bottom: 60px;
+}
+
+.section-header {
+  text-align: center;
+  margin-bottom: 30px;
+
+  h2 {
+    font-size: 2.2rem;
+    color: var(--accent-vivid, var(--accent-primary-text));
+    margin: 0 0 10px 0;
+  }
+
+  p {
+    font-size: 1.1rem;
+    color: var(--text-dim);
+    margin: 0;
+  }
+}
+
+/*
+ * The split is driven by the BOARD'S SHAPE, not by a fixed 50/50.
+ *
+ * The puzzle is the reason anyone stops on this section, so it takes the larger
+ * share at every shape: 60% as a floor, more when the board is wider than it is
+ * tall. The text beside it is a caption, not an equal partner.
+ *
+ * The three classes are set from the board's aspect ratio in PuzzlesPanel, so
+ * the breakpoints are RATIOS rather than pixel widths and hold for any board the
+ * pool can contain.
+ */
+.split {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);   // 60 / 40
+  gap: 40px;
+  align-items: stretch;
+  width: 100%;
+}
+
+// Wider than 5:4 - the board earns more than its 60% floor.
+.shape-wide {
+  grid-template-columns: minmax(0, 7fr) minmax(0, 3fr);   // 70 / 30
+}
+
+// Roughly square - the 60% floor.
+.shape-square {
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+}
+
+/*
+ * Taller than 4:5. Still 60% of the row - the floor applies at every shape -
+ * but the board itself is centred inside that column and capped by height, so a
+ * tall board occupies less of the width without the column shrinking around it.
+ */
+.shape-tall {
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+}
+
+.daily,
+.about {
+  background: linear-gradient(135deg, var(--panel-bg-start) 0%, var(--panel-bg-end) 100%);
+  border: 2px solid var(--panel-card-border);
+  border-radius: 8px;
+  box-shadow: var(--shadow-card);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+/* ----------------------------------------------------------- the board -- */
+/* The board fills its column. Sizing comes from useBoardViewport, the same hook
+   the solver and builder use; this just gives it the whole width to work with
+   and centres whatever it decides on. */
+.board-frame {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+
+.grabbable { cursor: pointer; }
+
+
+/* The piece being dragged, drawn at the cursor. Pointer-transparent so it
+   cannot swallow the pointerup that drops it. */
+.drag-piece {
+  position: fixed;
+  pointer-events: none;
+  z-index: 40;
+  object-fit: contain;
+  translate: -50% -50%;
+}
+
+.picked {
+  box-shadow: inset 0 0 0 3px #5fd0a4;
+}
+
+.piece-letter {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.85);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+
+/* ------------------------------------------------------------ the copy -- */
+.daily-info {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  /* Pushes the button to the foot of the card so the two calls to action line
+     up across the gap however tall the board turned out. */
+  flex: 1 1 auto;
+}
+
+.date {
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--gold, #d4af37);
+}
+
+.daily-title,
+.about-title {
+  margin: 0;
+  font-size: 1.3rem;
+  line-height: 1.3;
+  color: var(--text-heading);
+  text-wrap: balance;
+}
+
+.solved-tick {
+  margin-left: 8px;
+  color: #5fd0a4;
+  font-size: 1rem;
+}
+
+.turn {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-heading);
+  text-align: center;
+}
+
+/* A swatch in the player's own colour reads faster than the words alone. */
+.turn-p1,
+.turn-p2 {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  flex: 0 0 auto;
+}
+
+.turn-p1 { background: #f0f0f0; }
+.turn-p2 { background: #202020; }
+
+.daily-game {
+  margin: 0;
+  font-size: 0.95rem;
+  color: var(--text-dim);
+
+  a { color: var(--gold, #d4af37); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+}
+
+.daily-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip {
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.muted {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.6;
+  color: var(--text-dim);
+}
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  justify-content: center;
+  flex: 1 1 auto;
+  text-align: center;
+
+  h3 { margin: 0; font-size: 1.3rem; color: var(--text-heading); }
+  .btn-secondary { align-self: center; }
+}
+
+.about p {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.7;
+  color: var(--text-dim);
+}
+
+.points {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  font-size: 1rem;
+  line-height: 1.6;
+  color: var(--text-dim);
+
+  li {
+    padding-left: 18px;
+    position: relative;
+  }
+
+  li::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0.62em;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--gold, #d4af37);
+  }
+
+  strong { color: var(--text-heading); }
+}
+
+.verdict {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.verdict-solved { color: #5fd0a4; }
+.verdict-wrong  { color: #e8a44c; }
+.verdict-error  { color: #dc7c6a; }
+
+.daily-actions {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+
+  .btn-primary { margin-top: 0; }
+}
+
+/* --------------------------------------------------------- the buttons -- */
+.btn-primary,
+.btn-secondary {
+  align-self: flex-start;
+  margin-top: auto;
+  display: inline-block;
+  padding: 10px 20px;
+  border-radius: 6px;
+  font-size: 1rem;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.btn-primary {
+  background: var(--btn-gradient);
+  color: var(--text-heading);
+  border: 1px solid rgba(var(--gold-rgb), 0.5);
+
+  &:hover { filter: brightness(1.1); }
+}
+
+.btn-secondary {
+  background: transparent;
+  color: var(--text-heading);
+  border: 1px solid rgba(var(--gold-rgb), 0.45);
+
+  &:hover { background: rgba(var(--gold-rgb), 0.1); }
+}
+
+.about-actions {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+
+  .btn-secondary { margin-top: 0; }
+}
+
+.btn-link {
+  font-size: 1rem;
+  color: var(--gold, #d4af37);
+  text-decoration: none;
+
+  &:hover { text-decoration: underline; }
+}
+
+/* Matches the breakpoint the board showcase above uses, so the page reflows in
+   one step rather than two. */
+/*
+ * Below this the two halves stack, board first - which is the DOM order, so no
+ * reordering is needed. The board keeps its own aspect ratio and is centred, and
+ * every shape class collapses to the single column.
+ */
+@media (max-width: 1120px) {
+  .split,
+  .shape-wide,
+  .shape-square,
+  .shape-tall {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 24px;
+  }
+}
+
+@media (max-width: 768px) {
+  .section-header h2 { font-size: 1.8rem; }
+  .section-header p { font-size: 1rem; }
+
+  .daily,
+  .about { padding: 16px; }
+
+}
+
+/* --- Move hints ------------------------------------------------------------
+   Identical to the solver page's dot, down to the geometry, so a square means
+   the same thing wherever you meet it. The colour comes from the shared
+   MOVE_DOT_BACKGROUNDS map rather than being restated here. */
+.move-dot {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 25%;
+  aspect-ratio: 1;
+  translate: -50% -50%;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+/* The square a wrong guess landed on, so the feedback points somewhere. */
+.wrong {
+  box-shadow: inset 0 0 0 3px #dc7c6a;
+}
+
+/* Development-only queue stepper. Never rendered in a production build. */
+.dev-nav {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 6px 10px;
+  border: 1px dashed rgba(255, 255, 255, 0.25);
+  border-radius: 6px;
+  font-size: 0.8rem;
+  color: var(--text-dim);
+
+  span {
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-weight: 700;
+    opacity: 0.7;
+  }
+
+  strong { color: var(--text-heading); }
+
+  button {
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 4px;
+    color: var(--text-heading);
+    font-size: 0.8rem;
+    padding: 3px 8px;
+    cursor: pointer;
+
+    &:disabled { opacity: 0.4; cursor: default; }
+    &:hover:not(:disabled) { background: rgba(255, 255, 255, 0.08); }
+  }
+}

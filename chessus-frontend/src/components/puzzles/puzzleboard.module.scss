@@ -1,0 +1,35 @@
+/*
+ * Geometry only. Everything decorative - selection, fog, move dots, highlights -
+ * belongs to whichever page is using the board, in that page's own stylesheet,
+ * and arrives through PuzzleBoard's squareClassName.
+ */
+.board {
+  display: grid;
+  gap: 0;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.3);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.square {
+  position: relative;
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  /* The board handles its own pointer gestures; without this a touch drag
+     scrolls the page instead of moving a piece. */
+  touch-action: none;
+
+  /* Pieces sit inside the square and never intercept the click on it, and are
+     never draggable in their own right - the board runs the drag. */
+  img {
+    width: 86%;
+    height: 86%;
+    object-fit: contain;
+    pointer-events: none;
+    -webkit-user-drag: none;
+    user-drag: none;
+  }
+}

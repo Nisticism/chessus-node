@@ -33,7 +33,12 @@ export const isGoldSupporter = (user) => {
 export const canUseCustomBoardColors = (user) => isSilverSupporter(user);
 
 /**
- * Whether this user may BUILD puzzles. Solving them is open to everyone - the
- * gate is on authorship, not access - so do not use this to hide the solver.
+ * Whether this user may BUILD puzzles at all. Solving them is open to everyone -
+ * the gate is on authorship, not access - so do not use this to hide the solver.
+ *
+ * Every signed-in account can build a few puzzles per game for free; supporters
+ * are not capped per game. HOW MANY is counted from existing rows, so it can
+ * only be answered by the server: ask /puzzle-allowance rather than inferring a
+ * number from the tier here.
  */
-export const canCreatePuzzles = (user) => isSilverSupporter(user);
+export const canCreatePuzzles = (user) => !!user;

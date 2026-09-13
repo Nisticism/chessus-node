@@ -326,3 +326,174 @@
   gap: 8px;
   flex-wrap: wrap;
 }
+
+/* --- Fog of war and hidden pieces -----------------------------------------
+   Both are rules of the game the puzzle came from, so a puzzle from a fog game
+   is solved in fog. The fog lifts once the puzzle is over so the solution can
+   be read. */
+.fogged {
+  position: relative;
+  filter: brightness(0.42) saturate(0.35);
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.05) 0 6px,
+      rgba(255, 255, 255, 0.02) 6px 12px
+    );
+    pointer-events: none;
+  }
+}
+
+.concealed-piece {
+  display: grid;
+  place-items: center;
+  width: 74%;
+  height: 74%;
+  border-radius: 50%;
+  background: rgba(20, 26, 40, 0.82);
+  border: 2px dashed rgba(255, 255, 255, 0.4);
+  color: rgba(255, 255, 255, 0.75);
+  font-weight: 700;
+  font-size: 1.1em;
+}
+
+.visibility-note {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: rgba(120, 160, 255, 0.09);
+  border-left: 3px solid rgba(120, 160, 255, 0.5);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+
+  strong { color: var(--text-heading); }
+}
+
+/* --- Rules panel -----------------------------------------------------------
+   A daily puzzle rotates across games, so most solvers meeting this one will
+   not know how it is won. Collapsed, but here. */
+.rules-panel {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-size: 14px;
+  color: var(--text-secondary);
+
+  summary {
+    cursor: pointer;
+    font-weight: 600;
+    color: var(--text-heading);
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+}
+
+.rules-hint {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-muted, #8b97ad);
+}
+
+.rules-group {
+  margin-top: 10px;
+
+  h4 {
+    margin: 0 0 4px;
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-muted, #8b97ad);
+  }
+
+  ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
+  strong { color: var(--text-heading); }
+}
+
+.rules-link {
+  display: inline-block;
+  margin-top: 10px;
+  font-size: 13px;
+  color: #7fb0ff;
+}
+
+/* --- Promotion chooser ----------------------------------------------------- */
+.promo-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: grid;
+  place-items: center;
+  z-index: 60;
+  padding: 16px;
+}
+
+.promo-dialog {
+  background: var(--panel-bg-start, #1b2740);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  padding: 20px;
+  max-width: 480px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+
+  h3 { margin: 0; color: var(--text-heading); }
+  p { margin: 0; font-size: 14px; color: var(--text-secondary); }
+}
+
+.promo-options { display: flex; flex-wrap: wrap; gap: 10px; }
+
+.promo-option {
+  flex: 1 1 92px;
+  min-width: 92px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-heading);
+  font-size: 13px;
+  cursor: pointer;
+
+  img { width: 44px; height: 44px; object-fit: contain; }
+  em { font-size: 11px; color: var(--text-muted, #8b97ad); font-style: normal; }
+
+  &:hover, &:focus-visible { border-color: #5fd0a4; background: rgba(95, 208, 164, 0.12); }
+}
+
+/* Whose move it is, above the goal. Matches the home-page card so the two
+   read the same way. */
+.turn {
+  margin: 0 0 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  text-align: center;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-heading);
+}
+
+.turn-p1,
+.turn-p2 {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  flex: 0 0 auto;
+}
+
+.turn-p1 { background: #f0f0f0; }
+.turn-p2 { background: #202020; }

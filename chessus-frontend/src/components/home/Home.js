@@ -8,6 +8,7 @@ import { getPieces } from "../../actions/pieces";
 import { users } from "../../actions/users";
 import { fetchSiteSettings } from "../../actions/siteSettings";
 import PlayablePreviewBoard from "./PlayablePreviewBoard";
+import PuzzlesPanel from "./PuzzlesPanel";
 import API_URL from "../../global/global";
 import axios from "../../services/axios-interceptor";
 import authHeader from "../../services/auth-header";
@@ -466,6 +467,9 @@ const Home = () => {
           </div>
         </section>
       )}
+
+      {/* Today's puzzle, and the standing invitation to solve and build more. */}
+      <PuzzlesPanel />
 
       {/* Interactive Board Section */}
       <section className={styles["board-section"]}>

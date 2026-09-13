@@ -13,7 +13,7 @@ import {
 } from "../../helpers/moveEngine";
 import useBoardViewport from "../common/useBoardViewport";
 import BoardZoomControls from "../common/BoardZoomControls";
-import boardVp from "../common/boardViewport.module.scss";
+import PuzzleBoard from "./PuzzleBoard";
 import styles from "./puzzlesolver.module.scss";
 
 /*
@@ -86,12 +86,54 @@ const applyPly = (cells, ply) => {
     id: mover.id || `${mover.piece_id}_${ply.from.y}_${ply.from.x}`,
     x: ply.to.x,
     y: ply.to.y,
+    // Anything that has moved has moved: this is what stops a king castling
+    // twice, or a pawn double-stepping after it has already stepped.
+    hasMoved: true,
+    moveCount: (Number(mover.moveCount) || 0) + 1,
   };
+
+  /*
+   * Castling moves two pieces. The partner lands on the far side of the square
+   * the king arrived at, which is what the engine does when it applies the move;
+   * without doing the same here the board would keep showing a rook in the
+   * corner and every later ply would be played against the wrong position.
+   */
+  if (ply.isCastling && ply.castlingWith) {
+    const partnerKey = Object.keys(next).find((key) => {
+      const pc = next[key];
+      if (!pc) return false;
+      if (pc.id) return pc.id === ply.castlingWith;
+      const [ky, kx] = key.split(',');
+      return `${pc.piece_id}_${ky}_${kx}` === ply.castlingWith;
+    });
+    if (partnerKey) {
+      const partner = next[partnerKey];
+      const px = ply.castlingDirection === 'left' ? ply.to.x + 1 : ply.to.x - 1;
+      delete next[partnerKey];
+      next[keyOf(px, ply.to.y)] = {
+        ...partner,
+        id: partner.id || ply.castlingWith,
+        x: px,
+        y: ply.to.y,
+        hasMoved: true,
+        moveCount: (Number(partner.moveCount) || 0) + 1,
+      };
+    }
+  }
   return next;
 };
 
+/*
+ * What the solver is looking for.
+ *
+ * The server writes this sentence, because it is the same code that decides
+ * whether the goal was met - so the two can never disagree about what the puzzle
+ * is asking. A creator's own words win when they wrote any; the rest is the
+ * fallback for puzzles saved before goal_text existed.
+ */
 const goalText = (p) => {
   if (!p) return '';
+  if (p.goal_text) return p.goal_text;
   if (p.goal === 'checkmate_in_1') return 'Checkmate in one move';
   return p.goal_description || (p.goal === 'win_material' ? 'Win material' : 'Find the move');
 };
@@ -134,6 +176,14 @@ const PuzzleSolver = () => {
   const [ratingNote, setRatingNote] = useState(null);
   const [busy, setBusy] = useState(false);
   const [startedAt] = useState(() => Date.now());
+
+  /*
+   * A promotion waiting on the solver. Same shape and the same reason as the
+   * builder's: the move is held back until they pick, because the piece they
+   * choose is part of the answer - moveKey includes it, so promoting to the
+   * wrong piece is a different move, not the same move with a footnote.
+   */
+  const [pendingPromotion, setPendingPromotion] = useState(null);
 
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [feedbackCategory, setFeedbackCategory] = useState('other');
@@ -260,6 +310,19 @@ const PuzzleSolver = () => {
         team: player,
         ends_game_on_checkmate: pl.ends_game_on_checkmate ?? def.ends_game_on_checkmate ?? false,
         ends_game_on_capture: pl.ends_game_on_capture ?? def.ends_game_on_capture ?? false,
+        /*
+         * Castling and first-move state, all of it decided by the server and
+         * carried on the placement. The shared client engine reads exactly these
+         * names: without hasMoved it would offer a double step to a pawn halfway
+         * up the board, and without the resolved partner ids it would never draw
+         * a castling dot at all, because partner KEYS are not partner ids.
+         */
+        hasMoved: !!pl.hasMoved,
+        moveCount: Number(pl.moveCount) || 0,
+        can_castle: pl.can_castle ?? def.can_castle ?? false,
+        castling_distance: pl.castling_distance ?? def.castling_distance ?? null,
+        castling_partner_left_id: pl.castling_partner_left_id ?? null,
+        castling_partner_right_id: pl.castling_partner_right_id ?? null,
       };
     });
   }, [placements, pieceDataMap]);
@@ -281,12 +344,56 @@ const PuzzleSolver = () => {
 
   // currentPlayerPosition null, same as the replay board: hovering shows a
   // piece's raw reachability rather than filtering by whose turn it is.
+  //
+  // The en passant target comes from the server, derived from the move that set
+  // this position up. Without it a pawn that CAN take en passant shows no dot on
+  // the square where the capture happens, and the answer looks illegal.
   const moveEngine = useMemo(() => createMoveEngine({
     specialSquares,
     gameType: board,
-    enPassantTarget: null,
+    enPassantTarget: puzzle?.en_passant_target || null,
     currentPlayerPosition: null,
-  }), [specialSquares, board]);
+  }), [specialSquares, board, puzzle?.en_passant_target]);
+
+  /*
+   * Fog of war, played for real.
+   *
+   * Fog is a rule of the game, so a puzzle in a fog game is solved in fog -
+   * showing the whole board would be a different puzzle from the one its creator
+   * built. The visible set is worked out exactly as the live game works it out:
+   * every square the SOLVER'S own pieces occupy or can reach, using raw
+   * reachability (skipCheckFilter) with the fog flag on, so a pawn's diagonals
+   * count as seen even when empty.
+   *
+   * null means fog is off and everything is visible - the same sentinel the
+   * live board uses, so the render below reads the same way.
+   */
+  const fogVisibleSquares = useMemo(() => {
+    if (!puzzle?.fog_of_war || !board) return null;
+    const viewer = Number(puzzle.side_to_move);
+    const visible = new Set();
+    for (const p of enginePieces) {
+      if (Number(p.player_id ?? p.team) !== viewer) continue;
+      const pw = p.piece_width || 1;
+      const ph = p.piece_height || 1;
+      for (let dy = 0; dy < ph; dy++) {
+        for (let dx = 0; dx < pw; dx++) visible.add(`${p.x + dx},${p.y + dy}`);
+      }
+      const moves = moveEngine.calculateValidMoves(
+        p, enginePieces, boardWidth, boardHeight,
+        true,   // skipCheckFilter - raw reachability
+        false,  // forPremove
+        false,  // forHoverDisplay
+        true    // forFog - include capture-range squares even when empty
+      ) || [];
+      for (const m of moves) {
+        for (let dy = 0; dy < ph; dy++) {
+          for (let dx = 0; dx < pw; dx++) visible.add(`${m.x + dx},${m.y + dy}`);
+        }
+      }
+    }
+    return visible;
+  }, [puzzle?.fog_of_war, puzzle?.side_to_move, board, enginePieces, moveEngine, boardWidth, boardHeight]);
 
   const hoverPiece = useCallback((piece) => {
     if (!piece || !board) { setHoveredMoves([]); return; }
@@ -368,17 +475,68 @@ const PuzzleSolver = () => {
     }
   }, [puzzleId, playedMoves, startedAt]);
 
-  const playFrom = useCallback((fromKey, x, y) => {
+  /*
+   * Play a move - but ask the server first what it actually is.
+   *
+   * Both answers change what gets submitted. The promoted piece is part of the
+   * answer, since moveKey folds promotionPieceId in: promoting to a rook when
+   * the line says queen is a different move, not a near miss. And a castle has
+   * to be submitted AS a castle, with the partner and direction the engine
+   * expects - a king-slides-two move without those flags is simply illegal, so a
+   * solver who found the right idea would be told they were wrong.
+   */
+  const playFrom = useCallback(async (fromKey, x, y) => {
     const [fy, fx] = fromKey.split(',').map(Number);
     const mover = placements[fromKey];
     setSelected(null);
     setHoveredMoves([]);
-    submit({
+    let move = {
       from: { x: fx, y: fy },
       to: { x, y },
       pieceId: mover?.id || `${mover?.piece_id}_${fy}_${fx}`,
+    };
+    try {
+      const { data } = await axios.post(
+        `${API_URL}game-types/${gameId}/puzzle-move-info`,
+        {
+          position: Object.entries(placements).map(([k, pl]) => {
+            const [py, px] = k.split(',').map(Number);
+            return { ...pl, x: px, y: py };
+          }),
+          side_to_move: puzzle?.side_to_move,
+          setup_move: puzzle?.setup_move,
+          move,
+        },
+        { headers: authHeader() }
+      );
+      if (data?.castling) {
+        move = {
+          ...move,
+          isCastling: true,
+          castlingWith: data.castling.castlingWith,
+          castlingDirection: data.castling.castlingDirection,
+        };
+      }
+      if (data?.promotes && Array.isArray(data.options) && data.options.length) {
+        setPendingPromotion({ move, options: data.options });
+        return;
+      }
+    } catch (_) {
+      // The lookup is an improvement, not a gate - submit the move as it stands.
+    }
+    submit(move);
+  }, [placements, submit, gameId, puzzle?.side_to_move, puzzle?.setup_move]);
+
+  const choosePromotion = useCallback((option) => {
+    const pending = pendingPromotion;
+    setPendingPromotion(null);
+    if (!pending) return;
+    submit({
+      ...pending.move,
+      promotionPieceId: option.id,
+      ...(option.player != null ? { promotionPlayer: option.player } : {}),
     });
-  }, [placements, submit]);
+  }, [pendingPromotion, submit]);
 
   /** Which square a client-space point is over, or null if it is off the board. */
   const squareAtPoint = useCallback((clientX, clientY) => {
@@ -512,61 +670,89 @@ const PuzzleSolver = () => {
 
   const solutionPlies = Array.isArray(solution) ? solution.filter(Boolean) : [];
   const sol = solutionPlies[0] || null;
-  const squares = [];
-  for (let y = 0; y < boardHeight; y++) {
-    for (let x = 0; x < boardWidth; x++) {
-      const k = keyOf(x, y);
-      const p = placements[k];
-      const isLight = (x + y) % 2 === 0;
-      const setup = puzzle.setup_move;
-      const classes = [
-        styles["square"],
-        selected === k ? styles["selected"] : '',
-        setup && ((setup.from?.x === x && setup.from?.y === y) || (setup.to?.x === x && setup.to?.y === y)) ? styles["setup"] : '',
-        lastTry && lastTry.to.x === x && lastTry.to.y === y && outcome === 'wrong' ? styles["wrong"] : '',
-        sol && sol.from?.x === x && sol.from?.y === y ? styles["sol-from"] : '',
-        sol && sol.to?.x === x && sol.to?.y === y ? styles["sol-to"] : '',
-      ].filter(Boolean).join(' ');
-      const src = imageFor(p, pieceDataMap);
-      const dot = hoveredMoves.find((m) => m.x === x && m.y === y);
-      const mine = p && Number(p.player_id) === Number(puzzle.side_to_move);
-      const isDragOrigin = !!drag && drag.fromKey === k;
-      // Placements only have to carry a piece id; the name lives on the piece
-      // definition, so fall back to it rather than showing "undefined".
-      const pieceName = p ? (p.piece_name || pieceDataMap[p.piece_id]?.piece_name || 'Piece') : '';
-      squares.push(
-        <div
-          key={k}
-          className={`${classes}${mine && !finished ? ` ${styles["grabbable"]}` : ''}`}
-          style={{ background: isLight ? lightColor : darkColor, width: vp.squareSize, height: vp.squareSize }}
-          onClick={() => handleSquareClick(x, y)}
-          onPointerDown={(e) => startPress(e, x, y)}
-          onMouseEnter={() => { if (!finished && !selected && !drag) hoverPiece(enginePieces.find((e) => e.x === x && e.y === y)); }}
-          onMouseLeave={() => { if (!selected && !drag) setHoveredMoves([]); }}
-          title={p ? `${pieceName} (Player ${p.player_id})` : ''}
-        >
-          {src
-            ? <img
-                src={src}
-                alt={pieceName}
-                draggable={false}
-                // While it is being dragged the piece is drawn under the cursor
-                // instead, so the square it came from reads as empty.
-                style={isDragOrigin ? { opacity: 0 } : undefined}
-              />
-            : (p ? <span className={styles["piece-fallback"]}>{(pieceName || '?').charAt(0)}</span> : null)}
-          {/* Same movement helpers as a live game: blue for a move, red for an
-              attack, split when a piece can do both on that square. */}
-          {dot && (
-            <span
-              className={styles["move-dot"]}
-              style={{ background: MOVE_DOT_BACKGROUNDS[getMoveDotType(dot)] }}
+  const setup = puzzle.setup_move;
+
+  /*
+   * What a square looks like, and what is in it.
+   *
+   * The board itself - the frame, the grid, the square sizes, the light/dark
+   * alternation - is PuzzleBoard's, shared with the home-page card. These two
+   * functions are the part that is genuinely this page's: the fog, the hidden
+   * pieces, the selection, the move dots and the solution highlights.
+   */
+  const squareState = (x, y) => {
+    const k = keyOf(x, y);
+    const rawPiece = placements[k];
+
+    /*
+     * Fog and hidden pieces, applied at the point of drawing.
+     *
+     * Both are rules of the GAME, so a puzzle from a fog game is solved in fog -
+     * revealing the whole board would be a different puzzle from the one its
+     * creator built and tested. Once the puzzle is over the fog lifts, the way it
+     * lifts at the end of a live game, so the solution can be read.
+     */
+    const fogged = !finished && !!fogVisibleSquares && !fogVisibleSquares.has(`${x},${y}`);
+    const p = fogged ? null : rawPiece;
+    // "Hidden enemy pieces" shows that something is there, not what it is.
+    const concealed = !finished && !fogged && !!puzzle.hide_enemy_pieces
+      && !!rawPiece && Number(rawPiece.player_id) !== Number(puzzle.side_to_move);
+    // Placements only have to carry a piece id; the name lives on the piece
+    // definition, so fall back to it rather than showing "undefined".
+    const pieceName = p ? (p.piece_name || pieceDataMap[p.piece_id]?.piece_name || 'Piece') : '';
+    return { k, rawPiece, p, fogged, concealed, pieceName };
+  };
+
+  const squareClass = (x, y) => {
+    const { k, fogged } = squareState(x, y);
+    const mine = placements[k] && Number(placements[k].player_id) === Number(puzzle.side_to_move);
+    return [
+      selected === k ? styles["selected"] : '',
+      fogged ? styles["fogged"] : '',
+      setup && !fogged && ((setup.from?.x === x && setup.from?.y === y) || (setup.to?.x === x && setup.to?.y === y)) ? styles["setup"] : '',
+      lastTry && lastTry.to.x === x && lastTry.to.y === y && outcome === 'wrong' ? styles["wrong"] : '',
+      sol && sol.from?.x === x && sol.from?.y === y ? styles["sol-from"] : '',
+      sol && sol.to?.x === x && sol.to?.y === y ? styles["sol-to"] : '',
+      mine && !finished ? styles["grabbable"] : '',
+    ].filter(Boolean).join(' ');
+  };
+
+  const squareTitle = (x, y) => {
+    const { p, concealed, pieceName } = squareState(x, y);
+    if (concealed) return 'An enemy piece — this game hides which one';
+    return p ? `${pieceName} (Player ${p.player_id})` : '';
+  };
+
+  const renderSquare = (x, y) => {
+    const { k, p, concealed, pieceName } = squareState(x, y);
+    const src = concealed ? null : imageFor(p, pieceDataMap);
+    const dot = hoveredMoves.find((m) => m.x === x && m.y === y);
+    const isDragOrigin = !!drag && drag.fromKey === k;
+    return (
+      <>
+        {src
+          ? <img
+              src={src}
+              alt={pieceName}
+              draggable={false}
+              // While it is being dragged the piece is drawn under the cursor
+              // instead, so the square it came from reads as empty.
+              style={isDragOrigin ? { opacity: 0 } : undefined}
             />
-          )}
-        </div>
-      );
-    }
-  }
+          : concealed
+            ? <span className={styles["concealed-piece"]} aria-label="Unknown enemy piece">?</span>
+            : (p ? <span className={styles["piece-fallback"]}>{(pieceName || '?').charAt(0)}</span> : null)}
+        {/* Same movement helpers as a live game: blue for a move, red for an
+            attack, split when a piece can do both on that square. */}
+        {dot && (
+          <span
+            className={styles["move-dot"]}
+            style={{ background: MOVE_DOT_BACKGROUNDS[getMoveDotType(dot)] }}
+          />
+        )}
+      </>
+    );
+  };
 
   // The piece currently in hand, drawn at the cursor. Fixed-position and
   // pointer-transparent so it cannot swallow the pointerup that drops it.
@@ -591,37 +777,53 @@ const PuzzleSolver = () => {
       <h1>{puzzle.title || 'Puzzle'}</h1>
       <p className={styles["subtitle"]}>
         {puzzle.game_name && <>in <Link to={`/games/${puzzle.game_type_id}`}>{puzzle.game_name}</Link></>}
-        {puzzle.creator_username && <> · by {puzzle.creator_username}</>}
+        {puzzle.creator_username && <> · puzzle by {puzzle.creator_username}</>}
       </p>
 
       <div className={styles["layout"]}>
         <div className={styles["board-side"]} style={{ width: boardColumnMax, maxWidth: '100%' }}>
           <div style={{ ...vp.frameStyle, justifyContent: 'flex-start' }}>
-            <div
-              className={`${boardVp.viewport} ${vp.hideScrollbars ? boardVp.noScrollbars : ''}`}
-              ref={vp.viewportRef}
-              style={vp.viewportStyle}
-            >
-              <div style={vp.contentStyle}>
-                <div
-                  className={styles["board"]}
-                  ref={boardRef}
-                  style={{ gridTemplateColumns: `repeat(${boardWidth}, ${vp.squareSize}px)` }}
-                >
-                  {squares}
-                </div>
-              </div>
-            </div>
+            <PuzzleBoard
+              vp={vp}
+              boardRef={boardRef}
+              boardWidth={boardWidth}
+              boardHeight={boardHeight}
+              lightColor={lightColor}
+              darkColor={darkColor}
+              squareClassName={squareClass}
+              squareTitle={squareTitle}
+              renderSquare={renderSquare}
+              onSquareClick={handleSquareClick}
+              onSquarePointerDown={startPress}
+              onSquareMouseEnter={(x, y) => {
+                if (!finished && !selected && !drag) {
+                  hoverPiece(enginePieces.find((e) => e.x === x && e.y === y));
+                }
+              }}
+              onSquareMouseLeave={() => { if (!selected && !drag) setHoveredMoves([]); }}
+            />
             <BoardZoomControls {...vp.controlProps} />
           </div>
         </div>
 
         <div className={styles["panel"]}>
           <div className={styles["goal"]}>
+            {/* Whose move it is decides how the whole board reads, so it leads
+                rather than trailing the goal as a footnote. */}
+            <p className={styles["turn"]}>
+              <span className={styles[`turn-p${puzzle.side_to_move}`]} aria-hidden="true" />
+              Player {puzzle.side_to_move} to move — that is you
+            </p>
             <span className={styles["goal-label"]}>Your goal</span>
             <span className={styles["goal-text"]}>{goalText(puzzle)}</span>
             <span className={styles["goal-side"]}>
-              You are Player {puzzle.side_to_move}.
+              {puzzle.game_name && <>from {puzzle.game_name}</>}
+              {puzzle.creator_username && <> · puzzle by {puzzle.creator_username}</>}
+              {puzzle.published_at && (
+                <> · {new Date(puzzle.published_at).toLocaleDateString(undefined, {
+                  month: 'long', day: 'numeric', year: 'numeric',
+                })}</>
+              )}
               {puzzle.rating_public && puzzle.rating != null && (
                 <> · Rated {puzzle.rating} by {puzzle.rating_sample_count} solvers</>
               )}
@@ -629,6 +831,51 @@ const PuzzleSolver = () => {
           </div>
 
           {puzzle.description && <p className={styles["description"]}>{puzzle.description}</p>}
+
+          {/* Fog and hidden pieces change what the board is showing, so they are
+              said out loud rather than left for the solver to infer from a
+              board that looks half-empty. */}
+          {(puzzle.fog_of_war || puzzle.hide_enemy_pieces) && !finished && (
+            <p className={styles["visibility-note"]}>
+              {puzzle.fog_of_war && <>🌫 <strong>Fog of war.</strong> You only see the squares your own pieces can reach.</>}
+              {puzzle.fog_of_war && puzzle.hide_enemy_pieces && ' '}
+              {puzzle.hide_enemy_pieces && <>👁 <strong>Hidden enemy pieces.</strong> You can see where they are, not what they are.</>}
+            </p>
+          )}
+
+          {/*
+            * The game's rules, for a solver who has never played it.
+            *
+            * A daily puzzle rotates across games, so most people meeting this
+            * one will not know how it is won. Collapsed by default - a solver
+            * who knows the game should not have to scroll past it - but present,
+            * so nobody has to leave the puzzle to find out what they are doing.
+            */}
+          {!!puzzle.rules?.groups?.length && (
+            <details className={styles["rules-panel"]}>
+              <summary>
+                How {puzzle.game_name || 'this game'} works
+                <span className={styles["rules-hint"]}>new to this game?</span>
+              </summary>
+              {puzzle.rules.groups.map((g) => (
+                <div key={g.title} className={styles["rules-group"]}>
+                  <h4>{g.title}</h4>
+                  <ul>
+                    {g.items.map((it) => (
+                      <li key={it.label}><strong>{it.label}.</strong> {it.detail}</li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+              <a
+                className={styles["rules-link"]}
+                href={`/games/${puzzle.game_type_id}`}
+                onClick={(e) => { e.preventDefault(); navigate(`/games/${puzzle.game_type_id}`); }}
+              >
+                See the full game page →
+              </a>
+            </details>
+          )}
 
           {/* Creator tools. Deliberately below the goal rather than beside the
               title: they are for the few people who can use them, and a solver
@@ -773,6 +1020,54 @@ const PuzzleSolver = () => {
           )}
         </div>
       </div>
+
+      {/*
+        * Promotion. The move is not submitted until the piece is chosen, because
+        * the choice is part of the answer - promoting to a rook when the line
+        * says queen is a different move, not a near miss.
+        */}
+      {!!pendingPromotion && (
+        <div
+          className={styles["promo-backdrop"]}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Choose what this piece promotes to"
+        >
+          <div className={styles["promo-dialog"]}>
+            <h3>What does it become?</h3>
+            <p>Your move promotes. Pick the piece.</p>
+            <div className={styles["promo-options"]}>
+              {pendingPromotion.options.map((o) => {
+                const src = imageFor(
+                  {
+                    piece_id: o.id,
+                    image_location: o.image_location,
+                    player_id: o.player ?? puzzle.side_to_move,
+                  },
+                  pieceDataMap
+                );
+                return (
+                  <button
+                    key={`${o.id}:${o.player ?? 'own'}`}
+                    className={styles["promo-option"]}
+                    onClick={() => choosePromotion(o)}
+                  >
+                    {src
+                      ? <img src={src} alt="" draggable={false} />
+                      : <span className={styles["piece-fallback"]}>{(o.piece_name || '?').charAt(0)}</span>}
+                    <span>{o.piece_name}</span>
+                    {o.player === 0 && <em>neutral</em>}
+                    {o.player != null && o.player !== 0 && <em>Player {o.player}</em>}
+                  </button>
+                );
+              })}
+            </div>
+            <button className={styles["btn-secondary"]} onClick={() => setPendingPromotion(null)}>
+              Take the move back
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

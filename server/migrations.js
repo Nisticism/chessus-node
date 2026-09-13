@@ -681,6 +681,116 @@ tableMigrations.push(
       INDEX idx_feedback_new (status, created_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
     description: "Create puzzle_feedback table (solver critique addressed to the creator)"
+  },
+  {
+    table: 'puzzle_pool',
+    sql: `CREATE TABLE IF NOT EXISTS puzzle_pool (
+      game_type_id INT UNSIGNED NOT NULL PRIMARY KEY,
+
+      -- Why this game is or is not in the pool.
+      --
+      --   auto_included  the sweep found nothing against it
+      --   auto_excluded  the sweep ruled it out (see exclusion_reason)
+      --   included       a human overrode the sweep and put it back
+      --   excluded       a human overrode the sweep and took it out
+      --   review         the sweep is not confident; waiting on a human
+      --
+      -- The two human states are what makes this a table rather than a query:
+      -- re-running the sweep must never silently undo a hand-picked decision,
+      -- so the populate script only ever rewrites the auto_* and review rows.
+      status ENUM('auto_included','auto_excluded','included','excluded','review')
+        NOT NULL DEFAULT 'review',
+
+      -- Machine-readable, e.g. 'fairy_stockfish', 'mate_requires_all',
+      -- 'duplicate'. Null for an included game.
+      exclusion_reason VARCHAR(64) NULL,
+      -- The game this one duplicates, when that is why it is out.
+      duplicate_of INT UNSIGNED NULL,
+      -- How sure the sweep was, 0-100, and what it matched on.
+      similarity_score TINYINT UNSIGNED NULL,
+      similarity_kind VARCHAR(64) NULL,
+      -- Free text for a human decision, so the reason survives the person.
+      note VARCHAR(500) NULL,
+
+      decided_by INT UNSIGNED NULL,
+      decided_at DATETIME NULL,
+      swept_at DATETIME NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+      FOREIGN KEY (game_type_id) REFERENCES game_types(id) ON DELETE CASCADE,
+      FOREIGN KEY (duplicate_of) REFERENCES game_types(id) ON DELETE SET NULL,
+      FOREIGN KEY (decided_by) REFERENCES users(id) ON DELETE SET NULL,
+      INDEX idx_pool_status (status)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+    description: "Create puzzle_pool table (which game types the daily puzzle may draw from)"
+  },
+  {
+    table: 'daily_puzzles',
+    sql: `CREATE TABLE IF NOT EXISTS daily_puzzles (
+      -- The DATE is the identity, which is the whole point: everybody who asks
+      -- for a given day gets the same puzzle, in every time zone, on every
+      -- reload, forever. Picking at request time would give two people in
+      -- different places different puzzles and make "yesterday's" unanswerable.
+      puzzle_date DATE NOT NULL PRIMARY KEY,
+      puzzle_id INT UNSIGNED NOT NULL,
+
+      -- Denormalised so "don't repeat a game within N days" is one cheap query
+      -- rather than a join back through puzzles on every scheduling run.
+      game_type_id INT UNSIGNED NOT NULL,
+
+      -- Null when the nightly filler chose it; set when a person did.
+      scheduled_by INT UNSIGNED NULL,
+      scheduled_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+      FOREIGN KEY (puzzle_id) REFERENCES puzzles(id) ON DELETE CASCADE,
+      FOREIGN KEY (game_type_id) REFERENCES game_types(id) ON DELETE CASCADE,
+      FOREIGN KEY (scheduled_by) REFERENCES users(id) ON DELETE SET NULL,
+      -- A puzzle gets one day, ever.
+      UNIQUE KEY uniq_daily_puzzle (puzzle_id),
+      INDEX idx_daily_game (game_type_id, puzzle_date)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+    description: "Create daily_puzzles table (the pre-scheduled daily puzzle rotation)"
+  },
+  {
+    table: 'discord_players',
+    sql: `CREATE TABLE IF NOT EXISTS discord_players (
+      -- Discord's own snowflake, as a string. It is 64-bit and JSON numbers are
+      -- not, so it is never parsed into a number anywhere in this codebase.
+      --
+      -- This is an IDENTITY, not an authentication. It is only ever written
+      -- after Discord itself has confirmed the token belongs to this id, and it
+      -- may only ever reach puzzle progress - never an account, an allowance,
+      -- or anything a GridGrove login can do.
+      discord_user_id VARCHAR(32) NOT NULL PRIMARY KEY,
+
+      -- Cached for the leaderboard so it can be drawn without asking Discord
+      -- about every player. Refreshed whenever they play.
+      username VARCHAR(64) NULL,
+      avatar VARCHAR(64) NULL,
+
+      -- When a GridGrove account claims this Discord id. Null is the normal
+      -- case and stays the normal case: playing signed-out is the point.
+      user_id INT UNSIGNED NULL,
+
+      -- The streak is over DAILY puzzles specifically, so it is counted in days
+      -- rather than solves. last_solved_date is what makes "did it break?"
+      -- answerable without walking the whole attempt history.
+      current_streak INT UNSIGNED NOT NULL DEFAULT 0,
+      best_streak INT UNSIGNED NOT NULL DEFAULT 0,
+      last_solved_date DATE NULL,
+
+      total_solved INT UNSIGNED NOT NULL DEFAULT 0,
+      total_attempts INT UNSIGNED NOT NULL DEFAULT 0,
+
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+      INDEX idx_discord_streak (current_streak),
+      INDEX idx_discord_user (user_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+    description: "Create discord_players table (daily-puzzle progress for Discord players with no account)"
   }
 );
 
@@ -696,6 +806,21 @@ const migrations = [
     column: 'rating_sample_count',
     sql: "ALTER TABLE puzzles ADD COLUMN rating_sample_count INT UNSIGNED NOT NULL DEFAULT 0",
     description: "Add rating_sample_count to puzzles"
+  },
+  /*
+   * Whether the creator is happy for this puzzle to be picked as a daily one.
+   *
+   * Defaults to ON, because the daily rotation is a compliment rather than an
+   * imposition and most creators will want it - but it is theirs to decline, and
+   * declining must not require asking anybody. Meeting every other requirement
+   * still does not guarantee selection: an owner or admin can schedule or drop
+   * any day's puzzle at will, which the requirements modal says out loud.
+   */
+  {
+    table: 'puzzles',
+    column: 'allow_daily',
+    sql: "ALTER TABLE puzzles ADD COLUMN allow_daily TINYINT(1) NOT NULL DEFAULT 1",
+    description: "Add allow_daily to puzzles (creator opt-out from the daily rotation)"
   },
   /*
    * Step-by-step pieces already exclude diagonal steps by storing a NEGATIVE
@@ -1172,7 +1297,24 @@ const migrations = [
   // history is the tournament_matches rows; these are the summary.
   { table: 'tournaments', column: 'winner_id', sql: "ALTER TABLE tournaments ADD COLUMN winner_id INT UNSIGNED DEFAULT NULL", description: "The tournament champion, once the bracket has been played out." },
   { table: 'tournaments', column: 'started_at', sql: "ALTER TABLE tournaments ADD COLUMN started_at DATETIME DEFAULT NULL", description: "When the bracket was drawn and play began." },
-  { table: 'tournaments', column: 'completed_at', sql: "ALTER TABLE tournaments ADD COLUMN completed_at DATETIME DEFAULT NULL", description: "When the final match was decided." }
+  { table: 'tournaments', column: 'completed_at', sql: "ALTER TABLE tournaments ADD COLUMN completed_at DATETIME DEFAULT NULL", description: "When the final match was decided." },
+
+  /*
+   * Where an attempt came from.
+   *
+   * Attempts are counted the same wherever they happen - the puzzle's
+   * attempt_count and solve_count do not care - but "the same" is only worth
+   * claiming if it can be checked, so the surface is recorded on the row.
+   * Existing rows are all 'web' by definition, which is why that is the default.
+   */
+  { table: 'puzzle_attempts', column: 'source', sql: "ALTER TABLE puzzle_attempts ADD COLUMN source ENUM('web','discord') NOT NULL DEFAULT 'web'", description: "Which surface an attempt was played on (the site, or the Discord activity)." },
+  /*
+   * Set when the attempt came from Discord and the player had no GridGrove
+   * account, so their own history is answerable. When they DO have one, user_id
+   * is filled in as usual and this is filled in too - the attempt belongs to the
+   * account, and still happened on Discord.
+   */
+  { table: 'puzzle_attempts', column: 'discord_user_id', sql: "ALTER TABLE puzzle_attempts ADD COLUMN discord_user_id VARCHAR(32) DEFAULT NULL", description: "The Discord snowflake behind an attempt played in the Discord activity." }
 ];
 
 // Ensure physical_board_requests table exists (may have been created after tableMigrations ran)
@@ -4927,6 +5069,193 @@ const runMigrations = async () => {
   } catch (err) {
     console.error('Error splitting supporter game limits:', err.message);
   }
+
+  /*
+   * Widen puzzles.goal to cover the mechanical goals added with the daily pool.
+   *
+   * The column was an ENUM of the original four, so a puzzle whose goal is
+   * "capture the key piece" or "stalemate the opponent" could not be stored at
+   * all - MySQL truncates it and the insert fails. The validator had been taught
+   * the new goals well before the column knew about them.
+   *
+   * Keyed off whether the enum already mentions capture_target, so this runs
+   * once and is safe to re-run.
+   */
+  try {
+    const [[col]] = await db_pool.query("SHOW COLUMNS FROM puzzles LIKE 'goal'");
+    if (col && !String(col.Type).includes('reach_points')) {
+      await runMigration(
+        `ALTER TABLE puzzles MODIFY COLUMN goal ENUM(
+           'checkmate_in_1','capture_target','stalemate_them','no_moves_them',
+           'lose_all_pieces','promote_a_piece','control_square','reach_points',
+           'win_in_1','win_material','specific_move','custom'
+         ) NOT NULL DEFAULT 'checkmate_in_1'`,
+        'Widen puzzles.goal for the mechanical daily-pool goals'
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error widening puzzles.goal:', err.message);
+  }
+
+  /*
+   * The GridGrove account, which owns the seeded daily-pool puzzles.
+   *
+   * A system account rather than a person's, for two reasons: eighty-odd
+   * generated puzzles under somebody's own name reads as though they built them,
+   * and it would skew that person's real creator stats. It cannot be logged into
+   * - the password column is left NULL, which every login path treats as no
+   * credentials - and it holds no email.
+   *
+   * Idempotent: the username is the key, so re-running finds the existing row.
+   */
+  try {
+    const [[existing]] = await db_pool.query(
+      "SELECT id FROM users WHERE username = 'GridGrove' LIMIT 1"
+    );
+    if (!existing) {
+      const [res] = await db_pool.query(
+        `INSERT INTO users (username, first_name, role, show_display_name)
+         VALUES ('GridGrove', 'GridGrove', 'user', 0)`
+      );
+      console.log(`[DB] Created the GridGrove system account (id ${res.insertId})`);
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error ensuring the GridGrove system account:', err.message);
+  }
+
+  /*
+   * Seed the daily-pool puzzles.
+   *
+   * The puzzles themselves were generated and verified offline by
+   * scripts/seed-pool-puzzles.js, which wrote db/seeds/daily-pool-puzzles.json.
+   * They are not generated here: finding one needs thousands of engine calls per
+   * game, which is not something a server should do while booting.
+   *
+   * Idempotent on (GridGrove, game_type_id) - one seeded puzzle per game - so a
+   * redeploy adds only what is genuinely new and never duplicates a game. A
+   * puzzle the owner has since edited or deleted is left alone.
+   */
+  try {
+    await seedDailyPoolPuzzles();
+  } catch (err) {
+    console.error('Error seeding daily-pool puzzles:', err.message);
+  }
 };
+
+/**
+ * Insert any seeded puzzle whose game does not already have one.
+ * Returns the number inserted.
+ */
+async function seedDailyPoolPuzzles() {
+  const fs = require('fs');
+  const path = require('path');
+  const seedPath = path.join(__dirname, '..', 'db', 'seeds', 'daily-pool-puzzles.json');
+  if (!fs.existsSync(seedPath)) return 0;
+
+  let seed;
+  try {
+    seed = JSON.parse(fs.readFileSync(seedPath, 'utf8'));
+  } catch (err) {
+    console.error('[seed] daily-pool-puzzles.json is not readable JSON:', err.message);
+    return 0;
+  }
+  const puzzles = Array.isArray(seed?.puzzles) ? seed.puzzles : [];
+  if (!puzzles.length) return 0;
+
+  const [[owner]] = await db_pool.query(
+    "SELECT id FROM users WHERE username = 'GridGrove' LIMIT 1"
+  );
+  if (!owner) {
+    console.error('[seed] No GridGrove account; skipping puzzle seed.');
+    return 0;
+  }
+
+  const [already] = await db_pool.query(
+    'SELECT DISTINCT game_type_id FROM puzzles WHERE creator_id = ?', [owner.id]
+  );
+  const done = new Set(already.map(r => r.game_type_id));
+
+  const { fingerprintGame } = require('./game-fingerprint');
+
+  let inserted = 0;
+  let skippedMissingGame = 0;
+  let skippedDrifted = 0;
+  for (const p of puzzles) {
+    if (done.has(p.game_type_id)) continue;
+    // The seed is built against one database's ids; a game that is not on this
+    // server is skipped rather than failing the whole migration.
+    const [[game]] = await db_pool.query(
+      'SELECT * FROM game_types WHERE id = ? LIMIT 1', [p.game_type_id]
+    );
+    if (!game) { skippedMissingGame++; continue; }
+
+    /*
+     * Same id is not the same game. Local and production drift - games get
+     * edited on one side and created on the other - and a position verified
+     * against a different version of a game makes a puzzle that is subtly wrong
+     * or has no answer at all. So the fingerprint is recomputed here and has to
+     * match the one the puzzle was built against.
+     *
+     * A seed entry carrying no fingerprint (an older file) is let through,
+     * because refusing everything would be worse than the risk it describes.
+     */
+    if (p.game_fingerprint) {
+      const [placements] = await db_pool.query(
+        'SELECT * FROM game_type_pieces WHERE game_type_id = ?', [p.game_type_id]
+      );
+      const ids = [...new Set(placements.map(r => Number(r.piece_id)).filter(Boolean))];
+      let pieceById = new Map();
+      if (ids.length) {
+        const [rows] = await db_pool.query(
+          `SELECT * FROM pieces WHERE id IN (${ids.map(() => '?').join(',')})`,
+          ids
+        );
+        pieceById = new Map(rows.map(r => [Number(r.id), r]));
+      }
+      if (fingerprintGame(game, placements, pieceById) !== p.game_fingerprint) {
+        skippedDrifted++;
+        continue;
+      }
+    }
+
+    await db_pool.query(
+      `INSERT INTO puzzles
+         (game_type_id, creator_id, title, description, position, side_to_move,
+          setup_move, goal, goal_description, solution_line, solution_depth,
+          allow_daily, is_draft, published_at, validation_status,
+          validation_detail, validated_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,1,0,NOW(),'valid',?,NOW())`,
+      [
+        p.game_type_id, owner.id,
+        p.title || null,
+        p.description || null,
+        JSON.stringify(p.position),
+        p.side_to_move === 2 ? 2 : 1,
+        p.setup_move ? JSON.stringify(p.setup_move) : null,
+        p.goal,
+        p.goal_description || null,
+        JSON.stringify(p.solution_line),
+        p.solution_depth || 1,
+        p.validation_detail || null,
+      ]
+    );
+    done.add(p.game_type_id);
+    inserted++;
+  }
+
+  if (inserted) console.log(`[seed] Published ${inserted} daily-pool puzzle(s) as GridGrove`);
+  if (skippedMissingGame) {
+    console.log(`[seed] Skipped ${skippedMissingGame} puzzle(s) for games not on this server`);
+  }
+  if (skippedDrifted) {
+    console.log(`[seed] Skipped ${skippedDrifted} puzzle(s) whose game differs from the one they were built in`);
+  }
+  if (!inserted && !skippedMissingGame && !skippedDrifted) {
+    console.log('[seed] daily-pool puzzles already present');
+  }
+  return inserted;
+}
 
 module.exports = { runMigrations };

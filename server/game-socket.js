@@ -7302,23 +7302,11 @@ function initializeSocket(server) {
         }
 
         // Apply capture-based point changes (for Points win condition and equal-points draw)
-        if (moveResult.captured && (gameState.gameType?.points_to_win != null ||
-            gameState.gameType?.draw_equal_points_at_turn != null ||
-            gameState.gameType?.draw_equal_points_consecutive != null)) {
-          const capturedPieces = moveResult.allCaptured || (moveResult.captured ? [moveResult.captured] : []);
-          for (const cap of capturedPieces) {
-            const gain = cap.capture_points_gain || 0;
-            const loss = cap.capture_points_loss || 0;
-            const capturerPos = gameState.currentTurn;
-            const ownerPos = cap.player_id || cap.player_number;
-            if (gain > 0 && (capturerPos === 1 || capturerPos === 2)) {
-              gameState.captureScores[capturerPos] = (gameState.captureScores[capturerPos] || 0) + gain;
-            }
-            if (loss > 0 && (ownerPos === 1 || ownerPos === 2)) {
-              gameState.captureScores[ownerPos] = Math.max(0, (gameState.captureScores[ownerPos] || 0) - loss);
-            }
-          }
-        }
+        applyCapturePoints(
+          gameState,
+          moveResult.allCaptured || (moveResult.captured ? [moveResult.captured] : []),
+          gameState.currentTurn
+        );
 
         // Surround (enclosure) capture after a normal move: remove enemy groups
         // left with no liberties (generalized so a moving piece can also enclose).
@@ -13243,6 +13231,90 @@ function getPiecesHoppedOver(fromX, fromY, toX, toY, movingPiece, allPieces) {
   return hoppedPieces;
 }
 
+/*
+ * Does the move that just happened leave an en-passant target behind?
+ *
+ * Extracted from validateAndApplyMove so a puzzle can ask the same question. A
+ * puzzle stores the one move that set its position up rather than a whole game
+ * history, so this is the only way it can know whether en passant is legal on
+ * the very next move - and the answer has to be the one a live game would give.
+ * A second implementation of "was that a double step" would drift within a week.
+ *
+ * Returns the target descriptor, or null when the move creates no opportunity.
+ * The caller assigns it to gameState.enPassantTarget, which is why a null result
+ * is meaningful rather than a no-op: the target lives for exactly one turn.
+ */
+function deriveEnPassantTarget(movingPiece, from, to) {
+  // Only a piece's FIRST move can expose it - moveCount is 1 immediately after.
+  if (!movingPiece || movingPiece.moveCount !== 1) return null;
+  if (!from || !to) return null;
+
+  const dy = to.y - from.y;
+  const dx = to.x - from.x;
+  
+  // Determine if this was a first-move-only directional move
+  // Check which direction was used and if it has available_for restriction
+  let wasFirstMoveOnly = false;
+  const pieceOwner = movingPiece.team || movingPiece.player_id;
+  const isPlayer2 = pieceOwner === 2;
+  const effectiveDy = isPlayer2 ? -dy : dy;
+  const effectiveDx = isPlayer2 ? -dx : dx;
+  
+  // Helper to check special_scenario_moves for first-move-only additional movements
+  const checkSpecialScenarioMoves = (direction, moveDistance) => {
+    if (!movingPiece.special_scenario_moves) return false;
+    let ssm = movingPiece.special_scenario_moves;
+    if (typeof ssm === 'string') {
+      try { ssm = JSON.parse(ssm); } catch (e) { return false; }
+    }
+    const additionalMovements = ssm?.additionalMovements?.[direction];
+    if (!additionalMovements || !Array.isArray(additionalMovements)) return false;
+    
+    // Check if any additional movement has availableForMoves = 1 and matches the move distance
+    return additionalMovements.some(m => m.availableForMoves === 1 && m.value >= moveDistance);
+  };
+  
+  // Check vertical first-move-only (like pawn double move)
+  if (dx === 0 && Math.abs(dy) > 1) {
+    const dirProp = effectiveDy < 0 ? 'up_movement_available_for' : 'down_movement_available_for';
+    const direction = effectiveDy < 0 ? 'up' : 'down';
+    if (movingPiece[dirProp] === 1 || checkSpecialScenarioMoves(direction, Math.abs(dy))) {
+      wasFirstMoveOnly = true;
+    }
+  }
+  // Check diagonal first-move-only
+  else if (Math.abs(dx) === Math.abs(dy) && Math.abs(dx) > 1) {
+    let dirProp = null;
+    let direction = null;
+    if (effectiveDx < 0 && effectiveDy < 0) { dirProp = 'up_left_movement_available_for'; direction = 'up_left'; }
+    else if (effectiveDx > 0 && effectiveDy < 0) { dirProp = 'up_right_movement_available_for'; direction = 'up_right'; }
+    else if (effectiveDx < 0 && effectiveDy > 0) { dirProp = 'down_left_movement_available_for'; direction = 'down_left'; }
+    else if (effectiveDx > 0 && effectiveDy > 0) { dirProp = 'down_right_movement_available_for'; direction = 'down_right'; }
+    if (dirProp && (movingPiece[dirProp] === 1 || checkSpecialScenarioMoves(direction, Math.abs(dx)))) {
+      wasFirstMoveOnly = true;
+    }
+  }
+  // Check horizontal first-move-only
+  else if (dy === 0 && Math.abs(dx) > 1) {
+    const dirProp = effectiveDx < 0 ? 'left_movement_available_for' : 'right_movement_available_for';
+    const direction = effectiveDx < 0 ? 'left' : 'right';
+    if (movingPiece[dirProp] === 1 || checkSpecialScenarioMoves(direction, Math.abs(dx))) {
+      wasFirstMoveOnly = true;
+    }
+  }
+  
+  if (!wasFirstMoveOnly) return null;
+
+  // The en passant capture square is where the piece "passed through".
+  // For a standard 2-square forward move, it's one square behind.
+  return {
+    pieceId: movingPiece.id,
+    piecePosition: { x: to.x, y: to.y },
+    captureSquare: { x: to.x, y: from.y + Math.sign(dy) },
+    fromPosition: { x: from.x, y: from.y },
+  };
+}
+
 /**
  * Basic move validation - checks if move is legal based on piece rules
  * @param {Object} options - Optional settings
@@ -14145,83 +14217,9 @@ async function validateAndApplyMove(gameState, move, options = {}) {
     promotionEligible = await checkPromotionEligibility(movingPiece, to, gameState);
   }
 
-  // Clear previous en passant target - it's only valid for one turn
-  gameState.enPassantTarget = null;
-  
-  // Check if this move creates a new en passant opportunity
-  // A piece becomes vulnerable to en passant if:
-  // 1. It moved using a first-move-only movement (moveCount was 0 before this move)
-  // 2. It has no backward movement (to be a valid en passant target)
-  // 3. The movement was significant (more than 1 square so opponent could have captured in between)
-  if (movingPiece && movingPiece.moveCount === 1) {
-    const dy = to.y - from.y;
-    const dx = to.x - from.x;
-    
-    // Determine if this was a first-move-only directional move
-    // Check which direction was used and if it has available_for restriction
-    let wasFirstMoveOnly = false;
-    const pieceOwner = movingPiece.team || movingPiece.player_id;
-    const isPlayer2 = pieceOwner === 2;
-    const effectiveDy = isPlayer2 ? -dy : dy;
-    const effectiveDx = isPlayer2 ? -dx : dx;
-    
-    // Helper to check special_scenario_moves for first-move-only additional movements
-    const checkSpecialScenarioMoves = (direction, moveDistance) => {
-      if (!movingPiece.special_scenario_moves) return false;
-      let ssm = movingPiece.special_scenario_moves;
-      if (typeof ssm === 'string') {
-        try { ssm = JSON.parse(ssm); } catch (e) { return false; }
-      }
-      const additionalMovements = ssm?.additionalMovements?.[direction];
-      if (!additionalMovements || !Array.isArray(additionalMovements)) return false;
-      
-      // Check if any additional movement has availableForMoves = 1 and matches the move distance
-      return additionalMovements.some(m => m.availableForMoves === 1 && m.value >= moveDistance);
-    };
-    
-    // Check vertical first-move-only (like pawn double move)
-    if (dx === 0 && Math.abs(dy) > 1) {
-      const dirProp = effectiveDy < 0 ? 'up_movement_available_for' : 'down_movement_available_for';
-      const direction = effectiveDy < 0 ? 'up' : 'down';
-      if (movingPiece[dirProp] === 1 || checkSpecialScenarioMoves(direction, Math.abs(dy))) {
-        wasFirstMoveOnly = true;
-      }
-    }
-    // Check diagonal first-move-only
-    else if (Math.abs(dx) === Math.abs(dy) && Math.abs(dx) > 1) {
-      let dirProp = null;
-      let direction = null;
-      if (effectiveDx < 0 && effectiveDy < 0) { dirProp = 'up_left_movement_available_for'; direction = 'up_left'; }
-      else if (effectiveDx > 0 && effectiveDy < 0) { dirProp = 'up_right_movement_available_for'; direction = 'up_right'; }
-      else if (effectiveDx < 0 && effectiveDy > 0) { dirProp = 'down_left_movement_available_for'; direction = 'down_left'; }
-      else if (effectiveDx > 0 && effectiveDy > 0) { dirProp = 'down_right_movement_available_for'; direction = 'down_right'; }
-      if (dirProp && (movingPiece[dirProp] === 1 || checkSpecialScenarioMoves(direction, Math.abs(dx)))) {
-        wasFirstMoveOnly = true;
-      }
-    }
-    // Check horizontal first-move-only
-    else if (dy === 0 && Math.abs(dx) > 1) {
-      const dirProp = effectiveDx < 0 ? 'left_movement_available_for' : 'right_movement_available_for';
-      const direction = effectiveDx < 0 ? 'left' : 'right';
-      if (movingPiece[dirProp] === 1 || checkSpecialScenarioMoves(direction, Math.abs(dx))) {
-        wasFirstMoveOnly = true;
-      }
-    }
-    
-    if (wasFirstMoveOnly) {
-      // The en passant capture square is where the piece "passed through"
-      // For a standard 2-square forward move, it's one square behind
-      const captureSquareX = to.x;
-      const captureSquareY = from.y + Math.sign(dy); // One step in the direction of movement
-      
-      gameState.enPassantTarget = {
-        pieceId: movingPiece.id,
-        piecePosition: { x: to.x, y: to.y },
-        captureSquare: { x: captureSquareX, y: captureSquareY },
-        fromPosition: { x: from.x, y: from.y }
-      };
-    }
-  }
+  // Clear previous en passant target - it's only valid for one turn, then see
+  // whether THIS move creates a new one. See deriveEnPassantTarget.
+  gameState.enPassantTarget = deriveEnPassantTarget(movingPiece, from, to);
 
   return { valid: true, captured: capturedPiece, allCaptured: allCapturedPieces, damagedPieces, promotionEligible, movingPiece, isEnPassantCapture, hoppedCaptures, chainCaptureAvailable, captureActionsAvailable };
 }
@@ -18409,6 +18407,44 @@ function computeEnclosedRegionScores(gameState) {
  * territory when enabled. Under the 'area' model (Chinese) each player also scores
  * for their own stones on the board; under 'region' (Japanese) only territory is added.
  */
+/**
+ * Award (and deduct) capture points for a move that has just been applied.
+ *
+ * Extracted so a PUZZLE can score the same way a live game does. Points accrue
+ * on the per-placement capture_points_gain / capture_points_loss of whatever was
+ * taken, and a puzzle built in a points game is unsolvable without them - its
+ * goal is a score, and the score would never move.
+ *
+ * Cheap no-op when the game type has no points rule, so callers do not have to
+ * check first.
+ *
+ * @param {object} gameState
+ * @param {Array}  capturedPieces - everything removed by this move
+ * @param {number} capturerPos    - 1 or 2, whoever made the capture
+ */
+function applyCapturePoints(gameState, capturedPieces, capturerPos) {
+  const gt = gameState.gameType || {};
+  const tracksPoints = gt.points_to_win != null
+    || gt.draw_equal_points_at_turn != null
+    || gt.draw_equal_points_consecutive != null;
+  if (!tracksPoints) return;
+  if (!Array.isArray(capturedPieces) || !capturedPieces.length) return;
+  if (!gameState.captureScores) gameState.captureScores = { 1: 0, 2: 0 };
+
+  for (const cap of capturedPieces) {
+    if (!cap) continue;
+    const gain = Number(cap.capture_points_gain) || 0;
+    const loss = Number(cap.capture_points_loss) || 0;
+    const ownerPos = cap.player_id || cap.player_number;
+    if (gain > 0 && (capturerPos === 1 || capturerPos === 2)) {
+      gameState.captureScores[capturerPos] = (gameState.captureScores[capturerPos] || 0) + gain;
+    }
+    if (loss > 0 && (ownerPos === 1 || ownerPos === 2)) {
+      gameState.captureScores[ownerPos] = Math.max(0, (gameState.captureScores[ownerPos] || 0) - loss);
+    }
+  }
+}
+
 function computeFinalScores(gameState) {
   const od = gameState.otherGameData || {};
   const scores = { 1: getPlayerScore(gameState, 1), 2: getPlayerScore(gameState, 2) };
@@ -18633,6 +18669,21 @@ function getAllLegalMovesForPlayer(gameState, playerPosition) {
       };
       // Hoist via for direction-change moves — validateAndApplyMove checks move.via (top-level)
       if (toSquare.via) move.via = toSquare.via;
+      /*
+       * Hoist the castling descriptor too. getPossibleMovesForPiece marks the
+       * square with isCastling / castlingWith / castlingDirection, and both
+       * validateAndApplyMove and wouldMoveLeaveInCheck read them off the TOP
+       * level of the move. Rebuilding the move without them turned every castle
+       * into a bare two-square king slide: the check simulation then moved the
+       * king and left the partner in the corner (so a legal castle could be
+       * rejected as self-check), and any caller that played the move back got an
+       * illegal move instead of a castle.
+       */
+      if (toSquare.isCastling) {
+        move.isCastling = true;
+        move.castlingWith = toSquare.castlingWith;
+        move.castlingDirection = toSquare.castlingDirection;
+      }
 
       // If mate_condition is enabled, verify this move doesn't leave player in check
       if (gameType && gameType.mate_condition) {
@@ -21908,6 +21959,9 @@ module.exports = {
   placementRepeatsBannedPosition,
   computeEnclosedRegionScores,
   computeFinalScores,
+  // Capture scoring, shared with puzzles so a points goal can be judged.
+  applyCapturePoints,
+  getPlayerScore,
   // Initial-state validation
   evaluateInitialPosition,
   buildSyntheticInitialState,
@@ -21918,6 +21972,13 @@ module.exports = {
   checkPromotionEligibility,
   getPromotionOptions,
   applyPromotionToPiece,
+  // En passant. A puzzle has no move history, so it derives its target from the
+  // one move that set the position up - through this, not a copy of it.
+  deriveEnPassantTarget,
+  // Castling. Resolves partner KEYS (from the game type) into the board ids the
+  // move generator needs. A puzzle position has to run this too, or every piece
+  // that can castle has no partner and the move is never offered.
+  initializeCastlingPartners,
   moveTriggersPromotion,
   simulMoveLandsOnPromotionSquare,
   computeAllPieceValues,

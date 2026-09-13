@@ -51,3 +51,8 @@ scripts/dev-db/
 # profile, and is the kind of file a real password gets pasted into.
 .claude/
 .mcp.json
+
+# Scratch variant definitions written per-process by the Node Fairy-Stockfish
+# harness (server/ai/fairy-stockfish-node.js). It cleans these up on a normal
+# exit; one killed mid-run leaves a file behind, and none of them are source.
+chessus-frontend/public/fairy-stockfish/variant-*.ini

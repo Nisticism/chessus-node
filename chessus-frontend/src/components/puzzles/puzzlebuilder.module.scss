@@ -428,3 +428,202 @@
   color: var(--bg-dark);
   background: var(--gold-header);
 }
+
+/* --- Their last move -------------------------------------------------------
+   The setup move decides whether en passant exists in this puzzle, which is
+   invisible unless it is stated, so it gets its own readout rather than living
+   only inside the tab. */
+.setup-readout {
+  font-size: 15px;
+  color: var(--text-secondary);
+  padding: 12px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.03);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+
+  em { color: var(--text-muted, #8b97ad); font-style: italic; }
+}
+
+.tab-tick { color: #5fd0a4; font-weight: 700; }
+
+.goal-preview {
+  margin: -4px 0 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-muted, #8b97ad);
+
+  em { color: var(--text-secondary); }
+}
+
+.ply-promo { color: #5fd0a4; }
+
+/* --- Rules panel -----------------------------------------------------------
+   The same summary the solver is shown, so the creator can check what somebody
+   who has never played this game will be told. */
+.rules-panel {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-size: 14px;
+  color: var(--text-secondary);
+
+  summary {
+    cursor: pointer;
+    font-weight: 600;
+    color: var(--text-heading);
+  }
+}
+
+.rules-group {
+  margin-top: 10px;
+
+  h4 {
+    margin: 0 0 4px;
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-muted, #8b97ad);
+  }
+
+  ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
+  strong { color: var(--text-heading); }
+}
+
+/* --- Promotion chooser -----------------------------------------------------
+   Modal because the move is not recorded until the choice is made: a promotion
+   with no piece behind it would validate against a board where it never
+   happened. */
+.promo-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: grid;
+  place-items: center;
+  z-index: 60;
+  padding: 16px;
+}
+
+.promo-dialog {
+  background: var(--panel-bg-start, #1b2740);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  padding: 20px;
+  max-width: 480px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+
+  h3 { margin: 0; color: var(--text-heading); }
+  p { margin: 0; font-size: 14px; color: var(--text-secondary); }
+}
+
+.promo-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.promo-option {
+  flex: 1 1 92px;
+  min-width: 92px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-heading);
+  font-size: 13px;
+  cursor: pointer;
+
+  img { width: 44px; height: 44px; object-fit: contain; }
+  em { font-size: 11px; color: var(--text-muted, #8b97ad); font-style: normal; }
+
+  &:hover, &:focus-visible { border-color: #5fd0a4; background: rgba(95, 208, 164, 0.12); }
+}
+
+.ply-castle { color: #7fb0ff; }
+
+.allowance-note {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-muted, #8b97ad);
+}
+
+/* --- Puzzle of the Day -----------------------------------------------------
+   The invitation sits beside the opt-out, so a creator meets both at once. */
+.daily-cta {
+  margin: -4px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-muted, #8b97ad);
+}
+
+.daily-dialog {
+  max-width: 560px;
+  max-height: 86vh;
+  overflow-y: auto;
+}
+
+.daily-loading {
+  font-size: 14px;
+  color: var(--text-muted, #8b97ad);
+}
+
+.daily-reqs {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+
+  li {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding-left: 20px;
+    position: relative;
+    font-size: 14px;
+    line-height: 1.55;
+  }
+
+  /* A tick, not a bullet: these are things a puzzle has to satisfy. */
+  li::before {
+    content: '✓';
+    position: absolute;
+    left: 0;
+    top: 0;
+    color: #5fd0a4;
+    font-weight: 700;
+  }
+
+  strong { color: var(--text-heading); }
+  span { color: var(--text-secondary); }
+}
+
+/* The one line that is not a requirement but a caveat, so it reads differently
+   from the ticked list above it. */
+.daily-discretion {
+  margin: 0;
+  padding: 10px 12px;
+  border-left: 3px solid rgba(212, 175, 55, 0.6);
+  background: rgba(212, 175, 55, 0.07);
+  border-radius: 0 4px 4px 0;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+
+.daily-optout {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-muted, #8b97ad);
+}

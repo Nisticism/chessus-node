@@ -504,7 +504,8 @@ const GameTypeView = () => {
   const [uniquenessError, setUniquenessError] = useState(null);
   const [upvoteCount, setUpvoteCount] = useState(0);
   const [hasUpvoted, setHasUpvoted] = useState(false);
-  const [showDetails, setShowDetails] = useState(false);
+  // On by default: the annotated board is what most people come here to read.
+  const [showDetails, setShowDetails] = useState(true);
   // AI training analysis link (only shown when caller is allowed to view it).
   const [aiAnalysisAvailable, setAiAnalysisAvailable] = useState(false);
   // "Request AI Analysis" button state
@@ -3225,11 +3226,11 @@ const GameTypeView = () => {
                     disabled={!puzzleBuilderAllowed}
                     title={puzzleBuilderAllowed
                       ? undefined
-                      : 'Building puzzles is a Silver Supporter perk. Solving them is free for everyone.'}
+                      : 'Sign in to build puzzles. Solving them is free for everyone.'}
                   >
                     🧩 Puzzle Builder
                     {!puzzleBuilderAllowed && (
-                      <InfoTooltip text="Building puzzles is a Silver Supporter perk — support the site to unlock it. Solving puzzles is free for everyone." />
+                      <InfoTooltip text="Everyone can build up to 3 puzzles per game; Silver Supporters are not capped. Solving puzzles is free for everyone." />
                     )}
                   </button>
                 </div>
