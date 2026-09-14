@@ -141,6 +141,16 @@ const PuzzleBuilder = () => {
   const [checkResult, setCheckResult] = useState(null);
   const [busy, setBusy] = useState(false);
   const [savedId, setSavedId] = useState(puzzleId ? Number(puzzleId) : null);
+  /*
+   * Whether what is on screen is still a draft. Every new puzzle starts as one
+   * (the create route writes is_draft = 1), and it stops being one the moment
+   * Publish succeeds - or, when an existing puzzle is opened, whatever it
+   * already was. Tracked because the save controls lied without it: editing a
+   * PUBLISHED puzzle and pressing the button still said "Saved as a draft",
+   * which is the opposite of what happened - the edit went straight out to
+   * everyone playing it.
+   */
+  const [isDraft, setIsDraft] = useState(true);
 
   /*
    * Everything for this game the signed-in account may edit: their own puzzles
@@ -236,11 +246,29 @@ const PuzzleBuilder = () => {
         try { parsed = data.pieces_string ? JSON.parse(data.pieces_string) : {}; } catch (_) { parsed = {}; }
         setStartingPlacements(parsed);
 
-        // Arriving from a match replay: seed the board with that position
-        // instead of the game's opening setup. Engine pieces carry the flags
-        // that make a piece royal, so they are copied across rather than
-        // rebuilt - a position without them can never be checkmate.
-        if (fromMatch?.pieces?.length) {
+        /*
+         * Editing an existing puzzle? Then the position is the puzzle's, and
+         * this effect must not touch it.
+         *
+         * Both this and the load-the-puzzle effect below run on mount and both
+         * called setPlacements, so the board showed whichever REQUEST FINISHED
+         * LAST. When the game type answered second - which it does whenever it
+         * is the slower of the two, and it often is - the builder quietly
+         * replaced a saved draft with the game's opening position. Nothing
+         * looked wrong: the creator saw a full board. Pressing Save then wrote
+         * the opening position over the draft they had come back to finish.
+         *
+         * The game type is still loaded here, for its pieces, its board size
+         * and the starting squares; it just no longer has an opinion about
+         * what is on the board when a puzzle does.
+         */
+        if (puzzleId) {
+          // Nothing to seed - the puzzle's own effect owns the position.
+        } else if (fromMatch?.pieces?.length) {
+          // Arriving from a match replay: seed the board with that position
+          // instead of the game's opening setup. Engine pieces carry the flags
+          // that make a piece royal, so they are copied across rather than
+          // rebuilt - a position without them can never be checkmate.
           const seeded = {};
           for (const pc of fromMatch.pieces) {
             const pieceId = pc.piece_id ?? parseInt(String(pc.id).split('_')[0], 10);
@@ -273,7 +301,7 @@ const PuzzleBuilder = () => {
       }
     })();
     return () => { cancelled = true; };
-  }, [gameId, dispatch]);
+  }, [gameId, dispatch, puzzleId, fromMatch]);
 
   // Load an existing draft for editing.
   useEffect(() => {
@@ -293,6 +321,7 @@ const PuzzleBuilder = () => {
         setGoal(p.goal || 'checkmate_in_1');
         setGoalDescription(p.goal_description || '');
         setHideRating(!!p.hide_rating);
+        setIsDraft(p.is_draft === undefined ? true : !!p.is_draft);
         setAllowDaily(p.allow_daily === undefined ? true : !!p.allow_daily);
         if (p.setup_move) setSetupMove(p.setup_move);
         if (Array.isArray(p.solution_line)) setSolutionLine(p.solution_line.filter(Boolean));
@@ -740,29 +769,67 @@ const PuzzleBuilder = () => {
     solution_line: solutionLine,
   });
 
-  const save = async ({ publish = false } = {}) => {
-    /*
-     * Their last move is required rather than optional.
-     *
-     * It was optional, and the cost was invisible: without it the engine has no
-     * previous move to look at, so no pawn has just double-stepped and en passant
-     * cannot be legal in any puzzle built without one. A creator who left it
-     * blank got a position that quietly could not express a whole class of
-     * answer, and nothing told them. Asking for it is cheaper than explaining
-     * that.
-     */
+  /*
+   * What this puzzle still needs before it can be saved, in the order the
+   * builder asks for it - or null when it needs nothing.
+   *
+   * One ordered list rather than a scatter of guards, because the useful part
+   * is not "something is missing" but WHICH thing: each entry names the gap,
+   * and carries the step that closes it so Save can put the creator in front of
+   * the right board instead of leaving them to find it.
+   *
+   * "Their last move" is on the list because it is required rather than
+   * optional. It was optional, and the cost was invisible: without it the
+   * engine has no previous move to look at, so no pawn has just double-stepped
+   * and en passant cannot be legal in any puzzle built without one. A creator
+   * who left it blank got a position that quietly could not express a whole
+   * class of answer, and nothing told them.
+   */
+  const missingRequirement = (() => {
+    if (!Object.keys(placements).length) {
+      return {
+        step: 'arrange',
+        text: 'This puzzle has no pieces on it yet. Place the position first — '
+          + 'pick a piece from the tray and click a square.',
+      };
+    }
     if (!setupMove) {
-      setMode('setup');
-      setCheckResult({
-        tone: 'warn',
-        text: 'Record their last move first — click the piece Player '
-          + `${sideToMove === 1 ? 2 : 1} just moved, then the square it came from.`,
-      });
-      return null;
+      return {
+        step: 'setup',
+        text: 'Their last move is missing. Click the piece Player '
+          + `${sideToMove === 1 ? 2 : 1} just moved, then the square it came from. `
+          + 'It decides whether en passant is possible, so every puzzle needs one.',
+      };
     }
     if (!solutionLine.length) {
-      setMode('solution');
-      setCheckResult({ tone: 'warn', text: 'Record the solution first: switch to "Set the solution" and play the move.' });
+      return {
+        step: 'solution',
+        text: 'There is no solution recorded. Play the move you want solvers to '
+          + 'find — click the piece, then its square.',
+      };
+    }
+    /*
+     * The one requirement that is not a step: a goal the server cannot score
+     * for itself needs a sentence saying what winning looks like, or the solver
+     * is handed a position and no question. The field is on this side of the
+     * page, so this leaves the creator where they are rather than moving them.
+     */
+    const goalDef = goalOptions.find((g) => g.value === goal);
+    if (goalDef && !goalDef.mechanical && !goalDescription.trim()) {
+      return {
+        step: null,
+        text: `“${goalDef.label}” is judged by you rather than by the site, so `
+          + 'solvers need to be told what they are aiming for. Fill in “What '
+          + 'should the solver do?” — for example, “win the rook”.',
+      };
+    }
+    return null;
+  })();
+
+  const save = async ({ publish = false } = {}) => {
+    if (missingRequirement) {
+      if (missingRequirement.step) setMode(missingRequirement.step);
+      setCheckResult({ tone: 'warn', text: missingRequirement.text });
       return null;
     }
     setBusy(true);
@@ -778,9 +845,15 @@ const PuzzleBuilder = () => {
       }
       if (publish) {
         await axios.post(`${API_URL}puzzles/${id}/publish`, { publish: true }, { headers: authHeader() });
+        setIsDraft(false);
       }
       refreshPuzzleList();
-      setCheckResult({ tone: 'ok', text: publish ? 'Published.' : 'Saved as a draft.' });
+      setCheckResult({
+        tone: 'ok',
+        text: publish ? 'Published.'
+          : isDraft ? 'Saved as a draft.'
+            : 'Saved. This puzzle is published, so the change is live now.',
+      });
       return id;
     } catch (err) {
       setCheckResult({ tone: 'error', text: err?.response?.data?.message || 'Could not save this puzzle' });
@@ -1082,8 +1155,6 @@ const PuzzleBuilder = () => {
             </p>
           )}
 
-          {/* What led into the position. Shown outside setup mode too, because
-              it silently decides whether en passant is on the table. */}
           {!!allowance && allowance.perGameLimit != null && (
             <p className={styles["allowance-note"]}>
               {Math.max(0, allowance.perGameLimit - allowance.perGameUsed)} of your{' '}
@@ -1094,25 +1165,26 @@ const PuzzleBuilder = () => {
             </p>
           )}
 
-          <div className={styles["setup-readout"]}>
-            <strong>Their last move:</strong>{' '}
-            {setupMove ? (
-              <>
-                ({setupMove.from.x}, {setupMove.from.y}) → ({setupMove.to.x}, {setupMove.to.y})
-                <button className={styles["link-btn"]} onClick={() => setSetupMove(null)}>clear</button>
-              </>
-            ) : (
-              <em>not set — en passant will not be possible</em>
-            )}
-          </div>
+          {/* Both readouts appear only once there is something to show. They
+              used to announce their own absence - "not set — en passant will
+              not be possible", "not set yet" - which was worth saying while
+              these were optional extras a creator might not know about. They
+              are both required now, and Save says exactly what is missing, so
+              an empty label here is a second voice describing the same gap in
+              vaguer terms. */}
+          {!!setupMove && (
+            <div className={styles["setup-readout"]}>
+              <strong>Their last move:</strong>{' '}
+              ({setupMove.from.x}, {setupMove.from.y}) → ({setupMove.to.x}, {setupMove.to.y})
+              <button className={styles["link-btn"]} onClick={() => setSetupMove(null)}>clear</button>
+            </div>
+          )}
 
-          <div className={styles["solution-readout"]}>
-            <strong>Solution:</strong>{' '}
-            {!solutionLine.length && <em>not set yet</em>}
-            {!!solutionLine.length && (
-              <>
-                <ol className={styles["ply-list"]}>
-                  {solutionLine.map((ply, i) => (
+          {!!solutionLine.length && (
+            <div className={styles["solution-readout"]}>
+              <strong>Solution:</strong>{' '}
+              <ol className={styles["ply-list"]}>
+                {solutionLine.map((ply, i) => (
                     <li
                       key={i}
                       className={i % 2 === 0 ? styles["ply-yours"] : styles["ply-theirs"]}
@@ -1135,23 +1207,22 @@ const PuzzleBuilder = () => {
                         </span>
                       )}
                     </li>
-                  ))}
-                </ol>
-                <button
-                  className={styles["link-btn"]}
-                  onClick={() => { setSolutionLine((prev) => prev.slice(0, -1)); setSelected(null); }}
-                >
-                  undo last move
-                </button>
-                <button
-                  className={styles["link-btn"]}
-                  onClick={() => { setSolutionLine([]); setSelected(null); }}
-                >
-                  clear
-                </button>
-              </>
-            )}
-          </div>
+                ))}
+              </ol>
+              <button
+                className={styles["link-btn"]}
+                onClick={() => { setSolutionLine((prev) => prev.slice(0, -1)); setSelected(null); }}
+              >
+                undo last move
+              </button>
+              <button
+                className={styles["link-btn"]}
+                onClick={() => { setSolutionLine([]); setSelected(null); }}
+              >
+                clear
+              </button>
+            </div>
+          )}
 
           {checkResult && (
             <div className={`${styles["notice"]} ${styles[`notice-${checkResult.tone}`]}`}>
@@ -1164,11 +1235,13 @@ const PuzzleBuilder = () => {
               {busy ? 'Working…' : 'Check puzzle'}
             </button>
             <button className={styles["btn-secondary"]} onClick={() => save()} disabled={busy}>
-              Save draft
+              {isDraft ? 'Save draft' : 'Save changes'}
             </button>
-            <button className={styles["btn"]} onClick={() => save({ publish: true })} disabled={busy}>
-              Publish
-            </button>
+            {isDraft && (
+              <button className={styles["btn"]} onClick={() => save({ publish: true })} disabled={busy}>
+                Publish
+              </button>
+            )}
           </div>
           <p className={styles["fine-print"]}>
             Checking is advice, not a gate — you can publish either way. Only “checkmate in 1”
