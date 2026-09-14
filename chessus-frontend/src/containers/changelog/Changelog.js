@@ -5,6 +5,40 @@ import styles from "./changelog.module.scss";
 const changelogData = [
   {
     date: "September 13, 2026",
+    title: "A page for puzzles",
+    items: [
+      "There is now a Puzzles page listing every published puzzle on the site, from every game. Find it under Play in the menu, in the footer, or from the Find Puzzles button on the home page — which used to send you to the open games lobby, which is a list of people waiting for an opponent and not a list of puzzles.",
+      "Each one shows the game it came from, who wrote it, when it was published, and how many people have solved it. Puzzles that have been a Puzzle of the Day carry a star.",
+      "Filter by game, search by title, author or game, and sort by newest, most played, hardest or easiest. Whatever you pick becomes part of the address, so a filtered list is a link you can share or come back to.",
+      "The home page's puzzles section now explains what it takes for your own puzzle to be picked as a Puzzle of the Day.",
+    ],
+  },
+  {
+    date: "September 13, 2026",
+    title: "The puzzle builder walks you through it",
+    items: [
+      "The three tabs are a sequence — arrange the position, record their last move, then set the solution — and now they say so. A Next button moves you along, and each step gets a green tick once it is done.",
+      "Their last move is now required rather than optional. It never looked like it mattered, and the cost was invisible: with no previous move there is nothing that has just double-stepped, so no piece in your puzzle could ever capture en passant. Asking for it is better than quietly building a position that cannot express that answer.",
+      "If Next or Save needs something you have not done yet, it says which step and why instead of going grey.",
+    ],
+  },
+  {
+    date: "September 13, 2026",
+    title: "Fixes and polish",
+    items: [
+      "The daily puzzle now changes over at midnight Eastern rather than midnight UTC, which used to put the switch at 8pm Eastern — so a new puzzle arrived in the middle of the evening and the old one was gone before the day was. It follows daylight saving, so it stays midnight Eastern all year.",
+      "On a phone, tapping a piece now shows its movement pattern on the piece page and the game page. Those squares were drawn on hover, and a touch screen has no hover, so on a phone they never appeared at all.",
+      "Pieces move as soon as you drag them in puzzles on the site, instead of waiting for the server to agree first. If the move turns out to be wrong the piece goes back. Games and the Discord activity already worked this way.",
+      "Guests in live games and match history now show as “Guest” and are no longer links. Their names led to profiles that do not exist, because a guest does not have one.",
+      "The board in a live game is sized against what is actually on the screen, so the bottom of the board is no longer cut off by the actions panel below it.",
+      "On the home page, the name of each game under Explore the Grove now links to that game's page. Clicking anywhere else on the card still previews it on the board.",
+      "Dropdown arrows are the same solid triangle everywhere. A dozen menus were using the browser's own arrow, which is a different shape, so the site had two depending on which page you were on.",
+      "The daily puzzle post in Discord now has a proper coloured Play button instead of a grey link. Discord only allows six fixed button colours — green is the closest one to GridGrove's.",
+      "GridGrove's own account now has a profile explaining what it is: the name the site publishes its own work under, including the generated puzzles behind Puzzle of the Day.",
+    ],
+  },
+  {
+    date: "September 13, 2026",
     title: "Building puzzles",
     items: [
       "You can delete your own puzzles. There is a bin next to each one in the list under the builder. It asks first, and tells you how many attempts will go with it — deleting a puzzle people have played removes their attempts too.",
