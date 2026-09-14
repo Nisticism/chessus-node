@@ -308,59 +308,65 @@
   }
 }
 
+/*
+ * The ratings, as a line of text.
+ *
+ * These were three stacked boxes - each with its own border, background and
+ * 2.5rem number - in a fixed 170px column beside the avatar. Three outlines for
+ * three short facts, and because they stacked vertically they set the height of
+ * the whole profile header: the panel was as tall as the boxes, not as tall as
+ * its content.
+ *
+ * They are now one wrapping row of label-and-value pairs with no chrome at all.
+ * The numbers still read as the important part - they are larger and take the
+ * accent colour - but nothing is drawn around them, and the row adds a line of
+ * height rather than a column of boxes.
+ */
 .profile-stats {
   display: flex;
-  flex-direction: column;
-  gap: 12px;
-  align-items: stretch;
-  min-width: 170px;
-  flex-shrink: 0;
+  flex-wrap: wrap;
+  align-items: baseline;
+  /* Column gap wide enough to separate pairs without a divider; row gap small,
+     since wrapping should look like a second line, not a second block. */
+  gap: 6px 24px;
+  min-width: 0;
 }
 
-.elo-display {
-  text-align: center;
-  background: rgba(var(--accent-rgb), 0.1);
-  border: 1px solid var(--accent-primary);
-  border-radius: 8px;
-  padding: 14px 24px;
-
-  .elo-label {
-    font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
-    color: var(--text-dim);
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    margin-bottom: 8px;
-  }
-
-  .elo-value {
-    font-size: 2.5rem;
-    color: var(--accent-primary-text);
-    font-weight: 700;
-  }
-}
-
+.elo-display,
 .last-active-display {
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  padding: 14px 24px;
-  background: rgba(136, 136, 136, 0.1);
-  border: 1px solid var(--panel-border);
-  border-radius: 8px;
+  align-items: baseline;
+  gap: 8px;
+  /* Explicitly no border, background or padding: a value that needs a box
+     around it to be found is a value in the wrong place. */
+  padding: 0;
+  border: 0;
+  background: none;
+}
 
-  .last-active-label {
-    font-size: clamp(0.9rem, 0.18vw + 0.86rem, 1rem);
-    color: #888;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
+.elo-label,
+.last-active-label {
+  font-size: 0.82rem;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  margin: 0;
+}
 
-  .last-active-value {
-    font-size: 0.95rem;
-    color: #ccc;
-    font-weight: 500;
-  }
+.elo-value {
+  font-size: 1.5rem;
+  line-height: 1.1;
+  color: var(--accent-primary-text);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.last-active-value {
+  font-size: 0.95rem;
+  color: var(--text-secondary, #ccc);
+  font-weight: 500;
+  white-space: nowrap;
 }
 
 // Collapsible section headings drop their divider + spacing when collapsed.
@@ -638,9 +644,10 @@
     font-size: 3rem;
   }
 
-  .elo-display {
-    width: 100%;
-    min-width: auto;
+  /* Nothing to stretch any more - the row wraps on its own. Kept as a hook so
+     the narrow-screen block still has something to say about the stats. */
+  .profile-stats {
+    gap: 4px 18px;
   }
 
   .info-grid {
