@@ -150,8 +150,37 @@ export default function useDiscordSdk() {
       return undefined;
     }
 
+    /*
+     * Which parameters Discord actually sent, by NAME only.
+     *
+     * The SDK constructor requires frame_id, instance_id AND platform, and
+     * throws on whichever is missing - but this file only ever checked
+     * frame_id, and the constructor sat outside the try below, so that throw
+     * took the whole effect down before a single line could be reported. Three
+     * rounds of "nothing was logged" and this was it.
+     *
+     * Names, not values: these are identifiers for the guild, channel and
+     * instance, and the name alone answers the question.
+     */
+    report('effect-start', `query params: ${[...params.keys()].join(',') || '(none)'}`);
+
     let cancelled = false;
-    const sdk = new DiscordSDK(clientId);
+
+    /*
+     * Inside the try, where everything belongs. A constructor that throws is a
+     * failure like any other and has to be able to say so.
+     */
+    let sdk;
+    try {
+      sdk = new DiscordSDK(clientId);
+    } catch (ctorErr) {
+      report('sdk-constructor', ctorErr?.message || String(ctorErr));
+      setState({
+        status: 'error', sdk: null, token: null, user: null,
+        error: ctorErr?.message || 'Could not start the Discord SDK.',
+      });
+      return undefined;
+    }
 
     /*
      * Ask Discord for consent and swap the code for a token.
