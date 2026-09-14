@@ -21993,4 +21993,11 @@ module.exports = {
   moveTriggersPromotion,
   simulMoveLandsOnPromotionSquare,
   computeAllPieceValues,
+  /*
+   * The donation thresholds. Exported so the supporter-perks endpoint can
+   * quote the same numbers the game limiter applies, rather than a second
+   * copy that would drift the first time either moved.
+   */
+  SILVER_MIN_DONATION,
+  GOLD_MIN_DONATION,
 };

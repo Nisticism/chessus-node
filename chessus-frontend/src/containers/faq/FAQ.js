@@ -12,7 +12,7 @@ const faqData = [
       },
       {
         q: "Is GridGrove free to use?",
-        a: "Yes, GridGrove is completely free. You can create an account, design pieces and games, play matches, and participate in the community at no cost. We accept voluntary donations to help cover hosting costs, but there is no paywall or premium tier."
+        a: "Designing pieces and games, playing matches, solving puzzles and taking part in the community are all free, and there is no paywall in front of any of them. Supporters, from $5 in total donations, get higher limits on a few things that cost us something to run — more games at once, uncapped puzzle building, custom board colours and piece sounds — and a badge on their profile. The full list is on the Support GridGrove page."
       },
       {
         q: "Was AI used to build GridGrove?",

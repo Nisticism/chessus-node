@@ -391,6 +391,60 @@
   margin-bottom: 2rem;
 }
 
+/* The two supporter tiers, side by side on a wide screen and stacked below
+   it. Gold is written as "everything Silver gets, plus", which is exactly what
+   it is in the code - the same predicates with a higher threshold - so the two
+   columns are deliberately not the same length. */
+.perkTiers {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1.5rem;
+  margin: 2rem 0;
+  text-align: left;
+}
+
+.perkTier {
+  padding: 1.5rem;
+  background: rgba(var(--panel-bg-start-rgb), 0.6);
+  border-radius: 6px;
+
+  h3 {
+    margin: 0 0 1rem 0;
+    font-size: 1.15rem;
+    font-weight: 600;
+  }
+}
+
+.perkList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  color: var(--text-dim);
+  font-size: 0.95rem;
+  line-height: 1.6;
+
+  li {
+    position: relative;
+    padding-left: 1.1rem;
+  }
+
+  li::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0.6em;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--gold, #d4af37);
+  }
+
+  strong { color: var(--text-heading); }
+}
+
 .badgeTiers {
   display: flex;
   gap: 2rem;

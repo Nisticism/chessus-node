@@ -152,7 +152,7 @@ const MAX_LOGIN_ATTEMPTS = 10; // Allow 10 failed attempts before lockout
 const { sendWelcomeEmail, sendDonationEmail, sendContactEmail, sendPasswordResetEmail, sendNotificationSummaryEmail, verifyUnsubscribeToken } = require("./email-service");
 
 // Socket.io game handler
-const { initializeSocket, activeGames: gsActiveGames, gameTimers: gsGameTimers, disconnectTimeouts: gsDisconnectTimeouts, onlineUsers, reconcileOnlineUsers, getIO } = require("./game-socket");
+const { initializeSocket, activeGames: gsActiveGames, gameTimers: gsGameTimers, disconnectTimeouts: gsDisconnectTimeouts, onlineUsers, reconcileOnlineUsers, getIO, SILVER_MIN_DONATION, GOLD_MIN_DONATION } = require("./game-socket");
 
 //  Express
 
@@ -739,6 +739,57 @@ app.get("/api/api", (req, res) => {
 app.get("/api/", (req, res) => {
   res.json({ message: "Home page!" });
 })
+
+/*
+ * What a supporter gets, read from the things that enforce it.
+ *
+ * The donation page used to be able to say whatever it liked, and the game
+ * limits it would have quoted are admin-configurable from the dashboard - so a
+ * page with the numbers written into it would start lying the first time
+ * anybody moved one. This is the same site_settings rows the limiter reads and
+ * the same constants the perk checks read, which is the only way the page and
+ * the product can be made to agree.
+ *
+ * Public on purpose: it is a price list, and somebody deciding whether to
+ * donate has not signed in yet.
+ */
+app.get("/api/supporter-perks", async (req, res) => {
+  try {
+    const setting = async (key, fallback) => {
+      try {
+        const [[row]] = await db_pool.query(
+          'SELECT setting_value FROM site_settings WHERE setting_key = ? LIMIT 1', [key]
+        );
+        const n = parseInt(row?.setting_value, 10);
+        return Number.isFinite(n) ? n : fallback;
+      } catch (_) { return fallback; }
+    };
+
+    res.json({
+      silverMinDonation: SILVER_MIN_DONATION,
+      goldMinDonation: GOLD_MIN_DONATION,
+      freePuzzlesPerGame: PUZZLE_FREE_PER_GAME,
+      dailyPuzzleCap: PUZZLE_DAILY_CAP,
+      gameLimits: {
+        free: {
+          live: await setting('game_limit_live', 4),
+          correspondence: await setting('game_limit_correspondence', 12),
+        },
+        silver: {
+          live: await setting('game_limit_live_silver', 10),
+          correspondence: await setting('game_limit_correspondence_silver', 40),
+        },
+        gold: {
+          live: await setting('game_limit_live_gold', 16),
+          correspondence: await setting('game_limit_correspondence_gold', 80),
+        },
+      },
+    });
+  } catch (err) {
+    console.error("Error in /api/supporter-perks:", err);
+    res.status(500).send({ message: "Failed to load supporter perks" });
+  }
+});
 
 const TOURNAMENT_FORMATS = new Set(["single_elimination", "double_elimination", "pool_play"]);
 

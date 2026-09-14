@@ -8,10 +8,41 @@ import StandardButton from "../standardbutton/StandardButton";
 import { trackDonation } from "../../analytics/GoogleAnalytics";
 import cashappQR from "../../assets/cashapp-qr.png";
 import venmoQR from "../../assets/venmo-qr.png";
+import axios from "axios";
+import API_URL from "../../global/global";
+
+/*
+ * What to show before the server has answered.
+ *
+ * The real numbers come from /api/supporter-perks, which reads the same
+ * site_settings rows the game limiter applies - the limits are editable from
+ * the admin dashboard, so a page with them written in would start lying the
+ * first time anyone moved one. These are the defaults that endpoint falls back
+ * to, kept here only so the section is never blank while the request is out.
+ */
+const PERK_FALLBACK = {
+  silverMinDonation: 5,
+  goldMinDonation: 50,
+  freePuzzlesPerGame: 3,
+  gameLimits: {
+    free: { live: 4, correspondence: 12 },
+    silver: { live: 10, correspondence: 40 },
+    gold: { live: 16, correspondence: 80 },
+  },
+};
 
 const Donate = () => {
   const { user: currentUser } = useSelector((state) => state.authReducer);
   const [qrModal, setQrModal] = useState(null); // 'cashapp' | 'venmo' | null
+  // The perk list, from the server. See PERK_FALLBACK above.
+  const [perks, setPerks] = useState(PERK_FALLBACK);
+  useEffect(() => {
+    let cancelled = false;
+    axios.get(`${API_URL}supporter-perks`)
+      .then(({ data }) => { if (!cancelled && data?.gameLimits) setPerks(data); })
+      .catch(() => { /* the fallback is already on screen */ });
+    return () => { cancelled = true; };
+  }, []);
   const [selectedAmount, setSelectedAmount] = useState(null);
   const [customAmount, setCustomAmount] = useState("");
   const [showThankYou, setShowThankYou] = useState(false);
@@ -321,12 +352,14 @@ const Donate = () => {
 
         <div className={styles.description}>
           <p>
-            GridGrove is a passion project dedicated to bringing creative chess variants 
-            to players around the world. Your support helps us maintain servers, develop 
-            new features, and keep the platform free for everyone.
+            GridGrove is a passion project dedicated to bringing creative chess variants
+            to players around the world. Your support helps us maintain servers and
+            develop new features.
           </p>
           <p>
-            Every contribution, no matter how small, makes a difference and is greatly appreciated!
+            Designing games and pieces, playing them, and solving puzzles stay open to
+            everyone. Supporting the site lifts the limits that keep the servers
+            affordable, and adds a handful of things that cost us something to run.
           </p>
         </div>
 
@@ -514,30 +547,74 @@ const Donate = () => {
 
         <Divider />
 
+        {/*
+          * What a supporter actually gets.
+          *
+          * Written from the checks that enforce them rather than from memory -
+          * the numbers here are the ones in server/index.js and the game_limit_*
+          * site settings, and Gold is described as Silver plus its differences
+          * because that is exactly what it is in the code: the same predicates
+          * with a higher threshold.
+          */}
         <div className={styles.donorBadgesInfo}>
-          <h2 className={styles.sectionTitle}>Donor Recognition Badges</h2>
+          <h2 className={styles.sectionTitle}>What Supporters Get</h2>
           <p className={styles.badgeDescription}>
-            Show your support for GridGrove! Donors receive special badges displayed on their profiles:
+            Cumulative, and permanent — your total is what counts, so it can be
+            reached a few dollars at a time.
           </p>
-          <div className={styles.badgeTiers}>
-            <div className={styles.badgeTier}>
-              <span className={styles.badgeIcon}>✦</span>
-              <div className={styles.badgeTierInfo}>
-                <h3 className={styles.silverBadge}>Silver Supporter</h3>
-                <p>Awarded for total donations of $5 - $49.99</p>
-              </div>
+
+          <div className={styles.perkTiers}>
+            <div className={styles.perkTier}>
+              <h3 className={styles.silverBadge}>✦ Silver Supporter — ${perks.silverMinDonation}+</h3>
+              <ul className={styles.perkList}>
+                <li>
+                  <strong>Build as many puzzles as you like.</strong> Everyone can build
+                  {' '}{perks.freePuzzlesPerGame} puzzles per game; Silver removes the cap.
+                  Solving puzzles is free for everyone, always.
+                </li>
+                <li>
+                  <strong>More games at once.</strong> {perks.gameLimits.silver.live} live games and
+                  {' '}{perks.gameLimits.silver.correspondence} correspondence, up from {perks.gameLimits.free.live} and
+                  {' '}{perks.gameLimits.free.correspondence}.
+                </li>
+                <li>
+                  <strong>Your own board colours.</strong> Pick the light and dark squares
+                  yourself instead of choosing from the built-in themes.
+                </li>
+                <li>
+                  <strong>Custom piece sounds.</strong> Give a piece its own move, capture
+                  and hit sounds.
+                </li>
+                <li>
+                  <strong>The Silver badge</strong> on your profile, which you can hide at
+                  any time.
+                </li>
+              </ul>
             </div>
-            <div className={styles.badgeTier}>
-              <span className={styles.badgeIcon}>⭐</span>
-              <div className={styles.badgeTierInfo}>
-                <h3 className={styles.goldBadge}>Gold Supporter</h3>
-                <p>Awarded for total donations of $50 or more</p>
-              </div>
+
+            <div className={styles.perkTier}>
+              <h3 className={styles.goldBadge}>⭐ Gold Supporter — ${perks.goldMinDonation}+</h3>
+              <ul className={styles.perkList}>
+                <li>
+                  <strong>Everything Silver Supporters get</strong>, plus:
+                </li>
+                <li>
+                  <strong>More games again.</strong> {perks.gameLimits.gold.live} live games and
+                  {' '}{perks.gameLimits.gold.correspondence} correspondence — {perks.gameLimits.gold.live - perks.gameLimits.silver.live} and
+                  {' '}{perks.gameLimits.gold.correspondence - perks.gameLimits.silver.correspondence} more than Silver.
+                </li>
+                <li>
+                  <strong>The Gold badge</strong> on your profile in place of the Silver one.
+                </li>
+              </ul>
             </div>
           </div>
+
           <p className={styles.badgeNote}>
-            Badges are automatically awarded based on your cumulative donation total and will be visible on your profile page.
-            You can choose to donate anonymously above, or hide your badge at any time from your <a href="/preferences">preferences</a>.
+            Tiers are awarded automatically from your cumulative donation total. You can
+            donate anonymously above, or hide your badge at any time from your{' '}
+            <a href="/preferences">preferences</a>. Admins and owners have every supporter
+            perk without donating.
           </p>
         </div>
 
