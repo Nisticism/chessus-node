@@ -66,10 +66,20 @@ captureLaunchParams();
      * otherwise have to succeed before this could be delivered.
      */
     const url = `${process.env.REACT_APP_API_URL || ''}/api/discord/diag`;
+    /*
+     * sendBeacon returns FALSE when it cannot queue the request - a sandbox or
+     * a connect-src that will not have it - and the previous version ignored
+     * that, so the fetch fallback never ran and a refused beacon looked exactly
+     * like a beacon that was never sent. Check the return.
+     */
+    let queued = false;
     if (navigator.sendBeacon) {
-      navigator.sendBeacon(url, new Blob([body], { type: 'text/plain;charset=UTF-8' }));
-    } else {
-      fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, keepalive: true })
+      queued = navigator.sendBeacon(url, new Blob([body], { type: 'text/plain;charset=UTF-8' }));
+    }
+    if (!queued) {
+      // text/plain here too: it is CORS-safelisted, so this is not preflighted
+      // and cannot be stopped by the thing it might be reporting.
+      fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=UTF-8' }, body, keepalive: true })
         .catch(() => {});
     }
   } catch (_) { /* a beacon that cannot be sent must never break the page */ }

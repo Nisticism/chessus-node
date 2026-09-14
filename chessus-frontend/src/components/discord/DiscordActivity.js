@@ -651,6 +651,26 @@ export default function DiscordActivity() {
         </button>
       </footer>
 
+      {/*
+        * The handshake, on screen.
+        *
+        * Every attempt to report this to the server has produced silence, and a
+        * report that cannot be delivered is not a diagnostic. This one cannot
+        * fail to arrive: it is rendered where the person launching the activity
+        * can read it. Shown only while the handshake has not succeeded, so a
+        * working activity never carries it.
+        */}
+      {discord.status !== 'ready' && (
+        <p className={styles["muted"]} style={{ fontSize: '11px', opacity: 0.75, wordBreak: 'break-all' }}>
+          {`handshake: ${discord.status}`}
+          {discord.error ? ` · ${discord.error}` : ''}
+          {` · host ${typeof window !== 'undefined' ? window.location.hostname : '?'}`}
+          {` · params ${typeof window !== 'undefined'
+            ? ([...new URLSearchParams(window.location.search).keys()].join(',') || 'none')
+            : '?'}`}
+        </p>
+      )}
+
       {discord.status === 'error' && (
         /*
          * Said plainly and without alarm. Nothing is broken - the puzzle in
