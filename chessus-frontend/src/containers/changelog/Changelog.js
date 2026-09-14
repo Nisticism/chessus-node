@@ -5,6 +5,15 @@ import styles from "./changelog.module.scss";
 const changelogData = [
   {
     date: "September 13, 2026",
+    title: "Making a puzzle has its own page",
+    items: [
+      "New Puzzle is now in the Create menu. It asks which of your games the puzzle is played on — type to search if you have a lot of them — and takes you to the builder from there.",
+      "Building a puzzle used to start from a game's own page, so it was only findable if you already knew to look there. Coming in that way still works and still skips the question, since the game is already known.",
+      "If you have not made a game yet it says so plainly, and offers to start one. A puzzle is a position in a specific game — its board, its pieces, its rules — so there has to be a game first.",
+    ],
+  },
+  {
+    date: "September 13, 2026",
     title: "A page for puzzles",
     items: [
       "There is now a Puzzles page listing every published puzzle on the site, from every game. Find it under Play in the menu, in the footer, or from the Find Puzzles button on the home page — which used to send you to the open games lobby, which is a list of people waiting for an opponent and not a list of puzzles.",

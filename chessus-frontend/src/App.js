@@ -1,6 +1,6 @@
 import React, { useEffect, lazy, Suspense } from "react";
 import { useDispatch } from "react-redux";
-import { Route, Routes, useLocation } from 'react-router-dom';
+import { Route, Routes, useLocation, Navigate, useParams } from 'react-router-dom';
 import { isDiscordLaunch } from './helpers/discord-launch-params';
 import Navbar from './components/navbar/Navbar';
 import Footer from './components/footer/Footer';
@@ -10,6 +10,17 @@ import { clearMessage, resetEdit } from "./actions/general";
 import { fetchSiteSettings } from "./actions/siteSettings";
 import { initGA, trackPageView } from "./analytics/GoogleAnalytics";
 import "./App.css";
+
+/*
+ * The old per-game "new puzzle" URL, pointed at its replacement.
+ *
+ * `replace` so the redirect does not sit in history - pressing back from the
+ * builder should go wherever they came from, not bounce through this again.
+ */
+const RedirectToNewPuzzle = () => {
+  const { gameId } = useParams();
+  return <Navigate to={`/create/puzzle/${gameId}`} replace />;
+};
 
 // Lazy-loaded route components for code splitting
 const Home = lazy(() => import('./components/home/Home'));
@@ -71,7 +82,7 @@ const About = lazy(() => import("./containers/about/About"));
 const Tutorial = lazy(() => import("./containers/tutorial/Tutorial"));
 const InfoHub = lazy(() => import("./containers/infohub/InfoHub"));
 const Announcements = lazy(() => import("./containers/announcements/Announcements"));
-const AnnouncementDetail = lazy(() => import("./containers/announcements/AnnouncementDetail"));const PhysicalBoardRequest = lazy(() => import('./components/physicalboard/PhysicalBoardRequest'));const PuzzleBuilder = lazy(() => import('./components/puzzles/PuzzleBuilder'));const PuzzleSolver = lazy(() => import('./components/puzzles/PuzzleSolver'));const AiAnalysis = lazy(() => import("./containers/ai-analysis/AiAnalysis"));const Changelog = lazy(() => import("./containers/changelog/Changelog"));const DiscordActivity = lazy(() => import('./components/discord/DiscordActivity'));
+const AnnouncementDetail = lazy(() => import("./containers/announcements/AnnouncementDetail"));const PhysicalBoardRequest = lazy(() => import('./components/physicalboard/PhysicalBoardRequest'));const PuzzleBuilder = lazy(() => import('./components/puzzles/PuzzleBuilder'));const NewPuzzle = lazy(() => import('./containers/puzzles/NewPuzzle'));const PuzzleSolver = lazy(() => import('./components/puzzles/PuzzleSolver'));const AiAnalysis = lazy(() => import("./containers/ai-analysis/AiAnalysis"));const Changelog = lazy(() => import("./containers/changelog/Changelog"));const DiscordActivity = lazy(() => import('./components/discord/DiscordActivity'));
 
 function App() {
 
@@ -125,6 +136,7 @@ function App() {
       '/play': 'Play | GridGrove',
       '/play/games': 'Play Games | GridGrove',
       '/play/puzzles': 'Puzzles | GridGrove',
+      '/create/puzzle': 'New Puzzle | GridGrove',
       '/play/tournaments': 'Tournaments | GridGrove',
       '/sandbox': 'Sandbox | GridGrove',
       '/chess-original': 'Chess (Original) | GridGrove',
@@ -248,7 +260,20 @@ function App() {
             {/* Puzzle builder. Authoring is Silver-and-above; the component
                 shows the perk notice itself rather than redirecting, so the
                 page is linkable and explains why it is locked. */}
-            <Route exact path="/games/:gameId/puzzles/new" element={<PuzzleBuilder />} />
+            {/*
+              * Building a puzzle now starts at /create/puzzle, which asks which
+              * game first. The old per-game URL is kept as a redirect rather
+              * than deleted - it is in the wild, in links and in history - and
+              * carries the game straight through so nobody is asked to pick one
+              * they had already chosen.
+              */}
+            <Route exact path="/create/puzzle" element={<NewPuzzle />} />
+            <Route exact path="/create/puzzle/:gameId" element={<PuzzleBuilder />} />
+            <Route
+              exact
+              path="/games/:gameId/puzzles/new"
+              element={<RedirectToNewPuzzle />}
+            />
             <Route exact path="/games/:gameId/puzzles/:puzzleId/edit" element={<PuzzleBuilder />} />
             {/* Solving is open to everyone, signed in or not. */}
             <Route exact path="/games/:gameId/puzzles/:puzzleId" element={<PuzzleSolver />} />

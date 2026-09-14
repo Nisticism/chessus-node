@@ -25,6 +25,7 @@ export const NAV_MENUS = [
     items: [
       { label: "New Game", path: "/create/game", icon: "🎲" },
       { label: "New Piece", path: "/create/piece", icon: <FaChessKnight color="#cbd5e1" /> },
+      { label: "New Puzzle", path: "/create/puzzle", icon: "🧩" },
       { label: "Game Library", path: "/create/games", icon: "📚" },
       { label: "Piece Library", path: "/create/pieces", icon: <FaChessBishop color="#cbd5e1" /> },
     ],

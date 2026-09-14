@@ -1,0 +1,159 @@
+/* The game picker that precedes the puzzle builder. */
+
+.page {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 40px var(--page-gutter);
+}
+
+.title {
+  margin: 0 0 8px 0;
+  font-size: 2.4rem;
+  color: var(--accent-primary-text);
+  line-height: 1.15;
+}
+
+.sub {
+  margin: 0 0 28px 0;
+  color: var(--text-secondary);
+  font-size: 1.02rem;
+  max-width: 60ch;
+}
+
+.empty {
+  color: var(--text-secondary);
+}
+
+.link {
+  color: var(--text-info);
+
+  &:hover { color: var(--accent-primary-text); }
+}
+
+/* ------------------------------------------------------- nothing to pick -- */
+.none {
+  padding: 28px;
+  border: 1px solid var(--panel-card-border);
+  border-radius: 10px;
+  background: linear-gradient(135deg, var(--panel-bg-start) 0%, var(--panel-bg-end) 100%);
+}
+
+.none-title {
+  margin: 0 0 8px 0;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text-heading);
+}
+
+.none-body {
+  margin: 0 0 18px 0;
+  color: var(--text-secondary);
+}
+
+.btn {
+  display: inline-block;
+  padding: 10px 18px;
+  border-radius: 6px;
+  border: 1px solid rgba(var(--gold-rgb, 212, 175, 55), 0.55);
+  background: rgba(var(--gold-rgb, 212, 175, 55), 0.12);
+  color: var(--text-heading);
+  font-weight: 600;
+  text-decoration: none;
+
+  &:hover {
+    background: rgba(var(--gold-rgb, 212, 175, 55), 0.22);
+    border-color: rgba(var(--gold-rgb, 212, 175, 55), 0.8);
+  }
+}
+
+/* ---------------------------------------------------------- the dropdown -- */
+.picker {
+  position: relative;
+  max-width: 480px;
+}
+
+.label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-dim);
+}
+
+.input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 11px 14px;
+  background: var(--bg-dark);
+  border: 1px solid var(--panel-card-border);
+  border-radius: 8px;
+  color: var(--text-bright);
+  font-family: inherit;
+  font-size: 1rem;
+
+  &:focus {
+    outline: none;
+    border-color: var(--accent-primary-text);
+  }
+}
+
+.list {
+  position: absolute;
+  z-index: 20;
+  left: 0;
+  right: 0;
+  margin: 6px 0 0;
+  padding: 4px;
+  list-style: none;
+  /* Tall enough to browse, short enough not to cover the page. */
+  max-height: 320px;
+  overflow-y: auto;
+  background: var(--bg-dark);
+  border: 1px solid var(--panel-card-border);
+  border-radius: 8px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+}
+
+.option {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 9px 11px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-bright);
+  font-family: inherit;
+  font-size: 0.97rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.option-active {
+  background: rgba(var(--gold-rgb, 212, 175, 55), 0.14);
+  color: var(--text-heading);
+}
+
+.option-name {
+  /* Game names here get long; the meta must not be pushed off the row. */
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.option-meta {
+  flex: 0 0 auto;
+  font-size: 0.8rem;
+  color: var(--text-dim);
+}
+
+.no-match {
+  padding: 12px;
+  color: var(--text-secondary);
+  font-size: 0.94rem;
+}

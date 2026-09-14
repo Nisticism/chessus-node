@@ -742,7 +742,7 @@ const MatchView = () => {
             title={canCreatePuzzles(currentUser)
               ? 'Open the puzzle builder with this position'
               : 'Sign in to build a puzzle from this position — solving them is free for everyone'}
-            onClick={!canCreatePuzzles(currentUser) ? undefined : () => navigate(`/games/${match.gameTypeId}/puzzles/new`, {
+            onClick={!canCreatePuzzles(currentUser) ? undefined : () => navigate(`/create/puzzle/${match.gameTypeId}`, {
               state: {
                 fromMatch: {
                   matchId: match.id ?? gameId,

@@ -468,7 +468,7 @@ const PuzzleBuilder = () => {
        * pointed at a row that does not exist. Back to a fresh puzzle on the same
        * game rather than leaving a form that cannot be saved.
        */
-      if (Number(pz.id) === Number(savedId)) navigate(`/games/${gameId}/puzzles/new`);
+      if (Number(pz.id) === Number(savedId)) navigate(`/create/puzzle/${gameId}`);
     } catch (err) {
       setCheckResult({
         tone: 'warn',

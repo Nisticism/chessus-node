@@ -3297,7 +3297,7 @@ Delete the game and its puzzles anyway?`)) {
                     type="button"
                     className={styles["creator-menu-item"]}
                     onClick={puzzleBuilderAllowed
-                      ? () => { setCreatorMenuOpen(false); navigate(`/games/${gameId}/puzzles/new`); }
+                      ? () => { setCreatorMenuOpen(false); navigate(`/create/puzzle/${gameId}`); }
                       : undefined}
                     disabled={!puzzleBuilderAllowed}
                     title={puzzleBuilderAllowed
