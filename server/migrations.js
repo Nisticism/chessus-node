@@ -5221,6 +5221,54 @@ const runMigrations = async () => {
   }
 
   /*
+   * Hand the built-in games to the GridGrove account.
+   *
+   * Chess and Go are not anybody's creations in the sense the rest of the
+   * library is - they shipped with the site, authored under the founder's
+   * personal account because at the time there was no other account to author
+   * them under. That has two costs: they sit in one person's "My Games" as
+   * though they invented chess, and there is no way to say "this game belongs
+   * to the platform" - which is the thing the puzzle rules now need to ask.
+   *
+   * MATCHED BY NAME AND BY CURRENT OWNER, never by name alone. There are
+   * already user-made games called "Chess"; transferring one of those would be
+   * taking somebody's work away from them. A built-in is a game with one of
+   * these names whose creator is a site owner, and nothing else qualifies.
+   *
+   * Idempotent: a game already owned by GridGrove no longer matches, so a
+   * redeploy moves nothing. Deliberately noisy - it prints what it moved, and
+   * says so when it finds nothing, because "did that actually run" is the first
+   * question anyone asks about a data migration.
+   */
+  try {
+    const BUILT_IN_GAME_NAMES = ['Chess', 'Go', 'Go 9x9'];
+    const [[platform]] = await db_pool.query(
+      "SELECT id FROM users WHERE username = 'GridGrove' LIMIT 1"
+    );
+    if (platform) {
+      const [candidates] = await db_pool.query(
+        `SELECT gt.id, gt.game_name, u.username
+         FROM game_types gt
+         JOIN users u ON u.id = gt.creator_id
+         WHERE gt.game_name IN (?) AND u.role = 'owner' AND gt.creator_id <> ?`,
+        [BUILT_IN_GAME_NAMES, platform.id]
+      );
+      for (const g of candidates) {
+        await db_pool.query(
+          'UPDATE game_types SET creator_id = ? WHERE id = ?', [platform.id, g.id]
+        );
+        console.log(`[DB] "${g.game_name}" (game ${g.id}) transferred from ${g.username} to GridGrove`);
+        migrationsRun++;
+      }
+      if (!candidates.length) {
+        console.log('[DB] Built-in games already belong to GridGrove (or none matched)');
+      }
+    }
+  } catch (err) {
+    console.error('Error transferring the built-in games to GridGrove:', err.message);
+  }
+
+  /*
    * Seed the daily-pool puzzles.
    *
    * The puzzles themselves were generated and verified offline by
