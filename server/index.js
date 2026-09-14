@@ -741,6 +741,14 @@ app.get("/api/", (req, res) => {
 })
 
 const TOURNAMENT_FORMATS = new Set(["single_elimination", "double_elimination", "pool_play"]);
+
+/*
+ * The same cadences correspondence games already offer. An allow-list rather
+ * than a range: these are the values the create form presents, and a tournament
+ * asking for 4 days a move when no game can be made at 4 days a move would be a
+ * tournament nobody could play.
+ */
+const CORRESPONDENCE_DAY_OPTIONS = new Set([1, 2, 3, 5, 7, 14]);
 const TERMINAL_TOURNAMENT_STATUSES = new Set(["started", "completed", "cancelled"]);
 
 const parsePositiveInt = (value, fallback = null) => {
@@ -841,6 +849,8 @@ const mapTournamentRow = (row, participants = []) => ({
   gameTypeId: Number(row.game_type_id),
   gameTypeName: row.game_type_name,
   timeControl: Number(row.time_control),
+  isCorrespondence: !!row.is_correspondence,
+  correspondenceDays: row.correspondence_days == null ? null : Number(row.correspondence_days),
   increment: Number(row.increment_seconds),
   minPlayers: Number(row.min_players),
   maxPlayers: Number(row.max_players),
@@ -1025,7 +1035,9 @@ app.post("/api/tournaments", authenticateToken, async (req, res) => {
     minPlayers,
     maxPlayers,
     isPrivate,
-    startDateTime
+    startDateTime,
+    isCorrespondence,
+    correspondenceDays
   } = req.body;
 
   const normalizedFormat = String(format || "").trim();
@@ -1036,6 +1048,14 @@ app.post("/api/tournaments", authenticateToken, async (req, res) => {
   const normalizedMaxPlayers = Math.max(2, parsePositiveInt(maxPlayers, 8));
   const normalizedPrivate = parseBooleanValue(isPrivate);
   const normalizedStartDateTime = normalizeStartDateTime(startDateTime);
+  const normalizedCorrespondence = parseBooleanValue(isCorrespondence);
+  const normalizedDays = normalizedCorrespondence ? Number(correspondenceDays) : null;
+
+  if (normalizedCorrespondence && !CORRESPONDENCE_DAY_OPTIONS.has(normalizedDays)) {
+    return res.status(400).send({
+      message: `Days per move must be one of ${[...CORRESPONDENCE_DAY_OPTIONS].join(', ')}`,
+    });
+  }
 
   if (!TOURNAMENT_FORMATS.has(normalizedFormat)) {
     return res.status(400).send({ message: "Invalid tournament format" });
@@ -1045,7 +1065,7 @@ app.post("/api/tournaments", authenticateToken, async (req, res) => {
     return res.status(400).send({ message: "A valid game type is required" });
   }
 
-  if (!normalizedTimeControl) {
+  if (!normalizedCorrespondence && !normalizedTimeControl) {
     return res.status(400).send({ message: "A valid time control is required" });
   }
 
@@ -1062,12 +1082,21 @@ app.post("/api/tournaments", authenticateToken, async (req, res) => {
     maxPlayers: normalizedMaxPlayers
   });
 
-  const expectedLengthMinutes = calculateExpectedLengthMinutes({
-    format: normalizedFormat,
-    maxPlayers: normalizedMaxPlayers,
-    timeControl: normalizedTimeControl,
-    incrementSeconds: normalizedIncrement
-  });
+  /*
+   * A correspondence bracket is measured in days, and the estimate has to come
+   * from the cadence rather than from a clock that does not exist. Very rough
+   * on purpose - it is a "how long am I signing up for" number, not a promise -
+   * and assumes a generous number of moves a game at the full allowance.
+   */
+  const ASSUMED_MOVES_PER_CORRESPONDENCE_GAME = 30;
+  const expectedLengthMinutes = normalizedCorrespondence
+    ? numberOfRounds * normalizedDays * ASSUMED_MOVES_PER_CORRESPONDENCE_GAME * 24 * 60
+    : calculateExpectedLengthMinutes({
+      format: normalizedFormat,
+      maxPlayers: normalizedMaxPlayers,
+      timeControl: normalizedTimeControl,
+      incrementSeconds: normalizedIncrement
+    });
 
   const connection = await db_pool.getConnection();
   try {
@@ -1086,12 +1115,16 @@ app.post("/api/tournaments", authenticateToken, async (req, res) => {
         number_of_rounds,
         expected_length_minutes,
         status,
-        created_by_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?)`,
+        created_by_id,
+        is_correspondence,
+        correspondence_days
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?)`,
       [
         normalizedFormat,
         normalizedGameTypeId,
-        normalizedTimeControl,
+        // Zero minutes for correspondence: not a clock anybody plays to, which
+        // is exactly what "not applicable" should look like in this column.
+        normalizedCorrespondence ? 0 : normalizedTimeControl,
         normalizedIncrement,
         normalizedMinPlayers,
         normalizedMaxPlayers,
@@ -1099,7 +1132,9 @@ app.post("/api/tournaments", authenticateToken, async (req, res) => {
         normalizedStartDateTime,
         numberOfRounds,
         expectedLengthMinutes,
-        Number(req.user.id)
+        Number(req.user.id),
+        normalizedCorrespondence ? 1 : 0,
+        normalizedCorrespondence ? normalizedDays : null
       ]
     );
 

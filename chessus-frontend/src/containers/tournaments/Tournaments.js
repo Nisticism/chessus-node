@@ -57,6 +57,20 @@ const TIME_CONTROL_OPTIONS = [
   { value: "60", label: "60 minutes (Classical)" }
 ];
 
+/*
+ * Matches the list on the create-a-game form exactly. A tournament that asked
+ * for a cadence no game can be created at would be a tournament nobody could
+ * play, and the server rejects anything outside this set for that reason.
+ */
+const CORRESPONDENCE_DAY_OPTIONS = [
+  { value: "1", label: "1 day per move" },
+  { value: "2", label: "2 days per move" },
+  { value: "3", label: "3 days per move" },
+  { value: "5", label: "5 days per move" },
+  { value: "7", label: "7 days per move (1 week)" },
+  { value: "14", label: "14 days per move (2 weeks)" }
+];
+
 const INCREMENT_OPTIONS = [
   { value: "0", label: "+0 seconds" },
   { value: "1", label: "+1 second" },
@@ -121,7 +135,9 @@ const Tournaments = () => {
     minPlayers: "2",
     maxPlayers: "8",
     isPrivate: false,
-    startDateTime: ""
+    startDateTime: "",
+    isCorrespondence: false,
+    correspondenceDays: "3"
   });
 
   useEffect(() => {
@@ -252,6 +268,10 @@ const Tournaments = () => {
         gameTypeId: selectedGameType.id,
         gameTypeName: selectedGameType.game_name,
         timeControl: Number(wizardData.timeControl),
+        isCorrespondence: !!wizardData.isCorrespondence,
+        correspondenceDays: wizardData.isCorrespondence
+          ? Number(wizardData.correspondenceDays)
+          : null,
         increment: Number(wizardData.increment),
         minPlayers: Number(wizardData.minPlayers),
         maxPlayers: Number(wizardData.maxPlayers),
@@ -324,7 +344,11 @@ const Tournaments = () => {
         </div>
         <div className={styles["card-meta"]}>
           <span>Host: {tournament.createdByUsername}</span>
-          <span>Clock: {tournament.timeControl} min + {tournament.increment}s</span>
+          <span>
+            {tournament.isCorrespondence
+              ? `Correspondence: ${tournament.correspondenceDays} days per move`
+              : `Clock: ${tournament.timeControl} min + ${tournament.increment}s`}
+          </span>
           <span>
             Players: {tournament.participants.length}/{tournament.maxPlayers} (min {tournament.minPlayers})
           </span>
@@ -490,17 +514,43 @@ const Tournaments = () => {
 
               <div className={styles["field-row"]}>
                 <div>
-                  <label className={styles["field-label"]}>Time Control</label>
-                  <select
-                    value={wizardData.timeControl}
-                    onChange={(event) => updateWizardData({ timeControl: event.target.value })}
-                  >
-                    {TIME_CONTROL_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
+                  {/*
+                    * Correspondence replaces the clock rather than sitting
+                    * beside it. A tournament is played one way or the other, and
+                    * showing a disabled time control next to a days-per-move
+                    * picker would only invite the question of which one wins.
+                    */}
+                  <label className={styles["field-label"]}>
+                    <input
+                      type="checkbox"
+                      checked={!!wizardData.isCorrespondence}
+                      onChange={(event) => updateWizardData({ isCorrespondence: event.target.checked })}
+                    />
+                    {' '}Correspondence (days per move)
+                  </label>
+                  {wizardData.isCorrespondence ? (
+                    <select
+                      value={wizardData.correspondenceDays}
+                      onChange={(event) => updateWizardData({ correspondenceDays: event.target.value })}
+                    >
+                      {CORRESPONDENCE_DAY_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <select
+                      value={wizardData.timeControl}
+                      onChange={(event) => updateWizardData({ timeControl: event.target.value })}
+                    >
+                      {TIME_CONTROL_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                 </div>
                 <div>
                   <label className={styles["field-label"]}>Increment</label>

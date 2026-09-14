@@ -466,7 +466,11 @@ const TournamentDetails = () => {
             </div>
             <div className={styles["summary-row"]}>
               <span>Clock</span>
-              <strong>{tournament.timeControl} min + {tournament.increment}s</strong>
+              <strong>
+                {tournament.isCorrespondence
+                  ? `${tournament.correspondenceDays} days per move`
+                  : `${tournament.timeControl} min + ${tournament.increment}s`}
+              </strong>
             </div>
             <div className={styles["summary-row"]}>
               <span>Players</span>

@@ -5,6 +5,27 @@ import styles from "./changelog.module.scss";
 const changelogData = [
   {
     date: "September 13, 2026",
+    title: "Tournaments you can play over weeks",
+    items: [
+      "A tournament can now be played in correspondence, with the same days-a-move choices as a correspondence game: 1, 2, 3, 5, 7 or 14. Tick the box when you create one and the clock picker becomes a cadence picker.",
+      "This is for brackets nobody has to be online for. A live tournament asks everyone to be at their board at the same time, which is the part that is hard to arrange — a correspondence bracket runs over days or weeks instead, with no time pressure on any single move.",
+      "The length estimate on the listing is given in the same terms, so a bracket says how many days it is likely to take rather than how many minutes.",
+      "A game reported as a tournament match has to be played at the tournament's cadence. Everyone entered on the understanding that they would have days to move, so a blitz game cannot be handed in as a match in a correspondence bracket, or the other way round.",
+    ],
+  },
+  {
+    date: "September 13, 2026",
+    title: "Discord, and a tidier profile",
+    items: [
+      "Your Discord name is not shown on your profile unless you ask for it. Connected Accounts now says so, and offers to display it.",
+      "Displaying it requires being in the GridGrove Discord server. Linking an account is about your puzzles following you between here and Discord; the display is a small piece of the profile, and it belongs to people who are actually in the community rather than being a free advert. Turning the display back off is never gated.",
+      "Re-opening the daily puzzle in Discord after solving it now shows the puzzle as you solved it, with your moves played out, instead of the position as it started.",
+      "Text in the Discord activity is a step larger throughout. It was pitched for a small frame and ended up reading smaller than Discord's own interface sitting next to it.",
+      "Ratings on a profile are plain text on one line rather than three outlined boxes, so the top of a profile is shorter and quieter.",
+    ],
+  },
+  {
+    date: "September 13, 2026",
     title: "Puzzles: every piece now uses its own settings",
     items: [
       "Fixed puzzles giving every copy of a piece the same settings. Your game configures each piece per square — this rook castles two squares and that one castles one, these two pawns promote to a custom list and the rest do not, this wall cannot be captured and the others can. Puzzles were picking one of those squares and applying it to every copy of the piece on the board.",

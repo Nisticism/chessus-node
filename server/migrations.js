@@ -1382,6 +1382,22 @@ const migrations = [
   { table: 'discord_players', column: 'show_on_profile', sql: "ALTER TABLE discord_players ADD COLUMN show_on_profile TINYINT(1) NOT NULL DEFAULT 0", description: "Opt in to showing a linked Discord name on the public profile (off by default)." },
 
   /*
+   * Tournaments played a few days a move rather than a few minutes a game.
+   *
+   * Mirrors the two columns games already carries, deliberately with the same
+   * names: a correspondence tournament is not a different kind of tournament,
+   * it is the same bracket whose matches are correspondence games, and the
+   * attach step checks one against the other.
+   *
+   * time_control stays NOT NULL and is written as 0 for these. Zero minutes is
+   * not a clock anybody plays to - it reads as "not applicable", which is what
+   * it is, and it keeps the column honest rather than storing a fictional
+   * number that some later sum would take seriously.
+   */
+  { table: 'tournaments', column: 'is_correspondence', sql: "ALTER TABLE tournaments ADD COLUMN is_correspondence TINYINT(1) NOT NULL DEFAULT 0", description: "Whether this tournament's matches are played as correspondence games." },
+  { table: 'tournaments', column: 'correspondence_days', sql: "ALTER TABLE tournaments ADD COLUMN correspondence_days INT DEFAULT NULL", description: "Days per move for a correspondence tournament." },
+
+  /*
    * The rules this puzzle was built under.
    *
    * Nullable, and read with a fallback to the live game, so every puzzle that

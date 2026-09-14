@@ -583,7 +583,8 @@ const getBracketForResponse = async (tournamentId) => {
  */
 const attachGameToMatch = async (tournamentId, matchKey, gameId, reporterId) => {
   const [[tournament]] = await db_pool.query(
-    `SELECT id, game_type_id, status FROM tournaments WHERE id = ?`,
+    `SELECT id, game_type_id, status, is_correspondence, correspondence_days
+     FROM tournaments WHERE id = ?`,
     [tournamentId]
   );
   if (!tournament) throw Object.assign(new Error('Tournament not found'), { statusCode: 404 });
@@ -612,7 +613,9 @@ const attachGameToMatch = async (tournamentId, matchKey, gameId, reporterId) => 
   }
 
   const [[game]] = await db_pool.query(
-    `SELECT id, game_type_id, host_id, challenged_user_id, status FROM games WHERE id = ?`,
+    `SELECT id, game_type_id, host_id, challenged_user_id, status,
+            is_correspondence, correspondence_days
+     FROM games WHERE id = ?`,
     [gameId]
   );
   if (!game) throw Object.assign(new Error('Game not found'), { statusCode: 404 });
@@ -621,6 +624,37 @@ const attachGameToMatch = async (tournamentId, matchKey, gameId, reporterId) => 
   }
   if (game.status === 'completed' || game.status === 'cancelled') {
     throw Object.assign(new Error('That game has already finished'), { statusCode: 400 });
+  }
+
+  /*
+   * The cadence has to be the one the tournament advertised.
+   *
+   * Everyone entered a correspondence bracket on the understanding that they
+   * would have days to move; a blitz game attached to one of its matches makes
+   * that untrue for whoever is not at their desk. The reverse matters too - a
+   * week-a-move game in a bracket people expected to finish this evening stalls
+   * everyone waiting on that round.
+   *
+   * Checked here for the same reason the game type and the two players are:
+   * this is the moment a game claims to BE a match, and it is the last chance
+   * to say it is not.
+   */
+  const wantsCorrespondence = !!tournament.is_correspondence;
+  if (wantsCorrespondence !== !!game.is_correspondence) {
+    throw Object.assign(
+      new Error(wantsCorrespondence
+        ? 'This is a correspondence tournament - that game is not a correspondence game'
+        : 'That is a correspondence game, and this tournament is played live'),
+      { statusCode: 400 }
+    );
+  }
+  if (wantsCorrespondence
+      && Number(game.correspondence_days) !== Number(tournament.correspondence_days)) {
+    throw Object.assign(
+      new Error(`This tournament is ${tournament.correspondence_days} days per move;`
+        + ` that game is ${game.correspondence_days || '?'}`),
+      { statusCode: 400 }
+    );
   }
 
   const gameSeats = [Number(game.host_id), Number(game.challenged_user_id)].filter(Boolean).sort();
