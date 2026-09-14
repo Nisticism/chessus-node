@@ -31,6 +31,9 @@ import styles from "./discordlinkpanel.module.scss";
  */
 export default function DiscordLinkPanel({ itemClass = '', labelClass = '' }) {
   const [linked, setLinked] = useState(null);
+  const [inGuild, setInGuild] = useState(null);
+  const [guildInvite, setGuildInvite] = useState(null);
+  const [visBusy, setVisBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
@@ -40,6 +43,8 @@ export default function DiscordLinkPanel({ itemClass = '', labelClass = '' }) {
     try {
       const { data } = await axios.get(`${API_URL}account/link-discord`, { headers: authHeader() });
       setLinked(data.linked || null);
+      setInGuild(data.inGuild ?? null);
+      setGuildInvite(data.guildInvite || null);
     } catch (_) {
       setLinked(null);
     } finally {
@@ -97,6 +102,32 @@ export default function DiscordLinkPanel({ itemClass = '', labelClass = '' }) {
 
   if (loading) return null;
 
+  const setVisibility = async (show) => {
+    setVisBusy(true);
+    setMessage(null);
+    try {
+      const { data } = await axios.put(
+        `${API_URL}account/link-discord/visibility`,
+        { show },
+        { headers: authHeader() }
+      );
+      setLinked((prev) => (prev ? { ...prev, show_on_profile: !!data.show_on_profile } : prev));
+      setMessage({
+        kind: 'ok',
+        text: data.show_on_profile
+          ? 'Your Discord name is now shown on your profile.'
+          : 'Your Discord name is hidden again.',
+      });
+    } catch (err) {
+      const d = err?.response?.data;
+      if (d?.inGuild === false) setInGuild(false);
+      if (d?.guildInvite) setGuildInvite(d.guildInvite);
+      setMessage({ kind: 'error', text: d?.message || 'Could not change that setting.' });
+    } finally {
+      setVisBusy(false);
+    }
+  };
+
   return (
     <div className={`${itemClass} ${styles["row"]}`}>
       <span className={labelClass}>Discord</span>
@@ -116,6 +147,38 @@ export default function DiscordLinkPanel({ itemClass = '', labelClass = '' }) {
             Daily puzzles you solve in Discord count towards your puzzle rating,
             and solving on the site counts towards your streak.
           </p>
+
+          {/*
+            * Said before they have to ask. Linking is done to make solves
+            * count; nobody should have to wonder afterwards whether it also
+            * published their handle.
+            */}
+          <label className={styles["visibility"]}>
+            <input
+              type="checkbox"
+              checked={!!linked.show_on_profile}
+              disabled={visBusy}
+              onChange={(e) => setVisibility(e.target.checked)}
+            />
+            <span>
+              Show my Discord name on my public profile
+              <em className={styles["visibility-note"]}>
+                {linked.show_on_profile
+                  ? ' — visible to anyone who views your profile.'
+                  : ' — off by default. Your Discord name is not shown to anyone.'}
+              </em>
+            </span>
+          </label>
+
+          {/* Only worth saying when it is the thing standing in the way. */}
+          {!linked.show_on_profile && inGuild === false && (
+            <p className={styles["body"]}>
+              To show it, join the GridGrove Discord server first.
+              {guildInvite && (
+                <> <a href={guildInvite} target="_blank" rel="noopener noreferrer">Join here</a>.</>
+              )}
+            </p>
+          )}
           <div className={styles["linked-foot"]}>
             {linked.current_streak > 0 && (
               <span className={styles["streak"]}>

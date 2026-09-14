@@ -104,3 +104,22 @@
 .message { margin: 0; font-size: 0.82rem; }
 .ok  { color: #5fd0a4; }
 .bad { color: #e8a44c; }
+
+/* The profile-visibility opt-in. A checkbox and a sentence, not a switch in a
+   box: it sits inside an existing card and should read as part of it. */
+.visibility {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 8px 0 0;
+  font-size: 0.9rem;
+  color: var(--text-bright, #dce7e2);
+  cursor: pointer;
+
+  input { margin-top: 2px; flex: 0 0 auto; }
+}
+
+.visibility-note {
+  font-style: normal;
+  color: var(--text-dim, #7d8f89);
+}

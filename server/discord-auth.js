@@ -195,4 +195,43 @@ function optionalDiscord(req, _res, next) {
     .catch(() => { req.discord = null; next(); });
 }
 
-module.exports = { identify, exchangeCode, optionalDiscord };
+/**
+ * Is this Discord user in GridGrove's own server?
+ *
+ * Asked with the BOT token rather than by requesting the `guilds` scope from
+ * the player. The scope would let us read every server they are in, which is a
+ * great deal more than the question needs - and the question is only ever "are
+ * they in this one". The bot is already in that server, so it may look up a
+ * member there and nothing else.
+ *
+ * @returns {Promise<boolean|null>} true/false when Discord answered, and null
+ *   when the check could not be made at all (no token or guild configured,
+ *   Discord unreachable). Callers must treat null as "unknown" and refuse
+ *   rather than assume - a membership check that fails open is not a check.
+ */
+async function isGuildMember(discordUserId) {
+  const token = process.env.DISCORD_BOT_TOKEN;
+  const guildId = process.env.DISCORD_GUILD_ID;
+  if (!token || !guildId || !discordUserId) return null;
+
+  let res;
+  try {
+    res = await fetch(`${DISCORD_API}/guilds/${guildId}/members/${discordUserId}`, {
+      headers: { Authorization: `Bot ${token}` },
+      signal: AbortSignal.timeout(8000),
+    });
+  } catch (err) {
+    console.warn('[discord] guild membership check failed:', err.message);
+    return null;
+  }
+
+  // 404 is the answer "not a member", not a failure - Discord returns it for a
+  // user who is not in the guild, and it is the case this exists to detect.
+  if (res.status === 404) return false;
+  if (res.ok) return true;
+
+  console.warn(`[discord] guild membership check returned ${res.status}`);
+  return null;
+}
+
+module.exports = { identify, exchangeCode, optionalDiscord, isGuildMember };

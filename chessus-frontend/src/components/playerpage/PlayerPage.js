@@ -734,6 +734,15 @@ const PlayerPage = (props) => {
                     <div className={styles["elo-value"]}>{playerPageUser.puzzle_elo}</div>
                   </div>
                 )}
+                {/* Only present when they opted in - the server attaches this
+                    field solely for a profile whose owner asked for it, so its
+                    presence IS the permission. */}
+                {playerPageUser?.discord_username && (
+                  <div className={styles["last-active-display"]}>
+                    <span className={styles["last-active-label"]}>Discord:</span>
+                    <span className={styles["last-active-value"]}>{playerPageUser.discord_username}</span>
+                  </div>
+                )}
                 {playerPageUser?.last_active_at && (
                   <div className={styles["last-active-display"]}>
                     <span className={styles["last-active-label"]}>Last Active:</span>

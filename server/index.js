@@ -1557,6 +1557,22 @@ app.get("/api/user", optionalAuthenticate, async (req, res) => {
       return res.status(400).send({ auth: false, message: "Username does not exist" });
     }
     
+    /*
+     * A linked Discord name, only if they asked for it to be shown.
+     *
+     * Attached rather than stored on the user row, so the single source of
+     * truth stays the discord_players row that the toggle writes - and so a
+     * profile can never carry a stale copy of a handle somebody has since
+     * hidden or unlinked.
+     */
+    const [[dsc]] = await db_pool.query(
+      'SELECT username, show_on_profile FROM discord_players WHERE user_id = ? LIMIT 1',
+      [user.id]
+    ).catch(() => [[null]]);
+    if (dsc?.show_on_profile && dsc.username) {
+      user.discord_username = dsc.username;
+    }
+
     // Strip personal information if viewing someone else's profile
     const isOwnProfile = req.user && req.user.username === username;
     if (!isOwnProfile) {
@@ -7485,6 +7501,68 @@ app.post('/api/account/link-discord', authenticateToken, async (req, res) => {
  * Unlinking. As easy as linking, and it leaves the streak on the Discord
  * record - this is "stop connecting these", not "delete my history".
  */
+/*
+ * Show, or stop showing, a linked Discord name on the public profile.
+ *
+ * Two separate decisions live here and they are deliberately not the same one.
+ * Linking is done so solves count towards a streak - private, between a person
+ * and their own progress. Publishing the handle to every visitor is a different
+ * thing, so it is off until asked for.
+ *
+ * Turning it ON also requires being in the GridGrove server. The reason is not
+ * security - a Discord handle is not a secret - it is that a profile field
+ * carrying someone's handle is a place to advertise, and the point of showing
+ * it is that people can find each other in the community. Somebody who is not
+ * in the community is just using the profile as a billboard.
+ *
+ * Turning it OFF is never gated. Withdrawing something you published must not
+ * depend on a check that might fail.
+ */
+app.put('/api/account/link-discord/visibility', authenticateToken, async (req, res) => {
+  try {
+    const show = !!req.body?.show;
+
+    const [[row]] = await db_pool.query(
+      'SELECT discord_user_id FROM discord_players WHERE user_id = ? LIMIT 1',
+      [req.user.id]
+    ).catch(() => [[null]]);
+    if (!row?.discord_user_id) {
+      return res.status(404).send({ message: 'No Discord account is linked.' });
+    }
+
+    if (show) {
+      const member = await require('./discord-auth').isGuildMember(row.discord_user_id);
+      if (member === false) {
+        return res.status(403).send({
+          message: 'Join the GridGrove Discord server first, then you can show your Discord name here.',
+          inGuild: false,
+          guildInvite: process.env.DISCORD_INVITE_URL || null,
+        });
+      }
+      if (member === null) {
+        /*
+         * The check could not be made - no bot token or guild configured, or
+         * Discord unreachable. Refusing is the only honest answer: a membership
+         * requirement that quietly passes when it cannot be tested is not a
+         * requirement at all.
+         */
+        return res.status(503).send({
+          message: 'Could not check your GridGrove Discord membership just now. Try again shortly.',
+        });
+      }
+    }
+
+    await db_pool.query(
+      'UPDATE discord_players SET show_on_profile = ? WHERE user_id = ?',
+      [show ? 1 : 0, req.user.id]
+    );
+    res.json({ show_on_profile: show });
+  } catch (err) {
+    console.error('PUT /api/account/link-discord/visibility:', err);
+    res.status(500).send({ message: 'Could not change that setting' });
+  }
+});
+
 app.delete('/api/account/link-discord', authenticateToken, async (req, res) => {
   try {
     await db_pool.query('UPDATE discord_players SET user_id = NULL WHERE user_id = ?', [req.user.id]);
@@ -7499,11 +7577,27 @@ app.delete('/api/account/link-discord', authenticateToken, async (req, res) => {
 app.get('/api/account/link-discord', authenticateToken, async (req, res) => {
   try {
     const [[row]] = await db_pool.query(
-      `SELECT discord_user_id, username, avatar, current_streak, best_streak, total_solved
+      `SELECT discord_user_id, username, avatar, current_streak, best_streak, total_solved,
+              show_on_profile
        FROM discord_players WHERE user_id = ? LIMIT 1`,
       [req.user.id]
     ).catch(() => [[null]]);
-    res.json({ linked: row || null });
+
+    /*
+     * Whether they are in the GridGrove server, answered here so the panel can
+     * explain itself before they try. Checked live rather than remembered: it
+     * is a fact about a Discord server that can change without us hearing.
+     */
+    let inGuild = null;
+    if (row?.discord_user_id) {
+      inGuild = await require('./discord-auth').isGuildMember(row.discord_user_id);
+    }
+
+    res.json({
+      linked: row ? { ...row, show_on_profile: !!row.show_on_profile } : null,
+      inGuild,
+      guildInvite: process.env.DISCORD_INVITE_URL || null,
+    });
   } catch (err) {
     console.error('GET /api/account/link-discord:', err);
     res.status(500).send({ message: 'Could not load your Discord link' });

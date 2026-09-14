@@ -517,6 +517,8 @@ button posted with no endpoint to answer it fails visibly when someone presses i
    ```
    DISCORD_BOT_TOKEN=…
    DISCORD_CHANNEL_ID=…
+   DISCORD_GUILD_ID=…         # your server's id, for the profile-display check
+   DISCORD_INVITE_URL=…       # optional: offered to somebody who has not joined
    DISCORD_BUTTON_STYLE=3     # optional: 3 green (default), 1 blurple, 2 grey, 4 red
    ```
 
@@ -530,6 +532,19 @@ button posted with no endpoint to answer it fails visibly when someone presses i
 
    It prints the message and says which path it would take. Look for "as the app,
    with an interactive button".
+
+**`DISCORD_GUILD_ID` also gates one thing on the site.** A player who links
+their Discord account can choose to show that name on their public profile —
+off by default, because linking is done to make solves count, not to publish a
+handle. Turning it *on* requires being in your server, checked with the bot
+token against `GET /guilds/{id}/members/{user}`. That needs no extra OAuth
+scope: asking the player for `guilds` would let the site read every server they
+are in, when the only question is whether they are in yours.
+
+If `DISCORD_GUILD_ID` or the bot token is missing, the check cannot be made and
+turning the setting on is refused rather than allowed — a membership
+requirement that passes when it cannot be tested is not a requirement. Turning
+it *off* is never gated.
 
 `DISCORD_WEBHOOK_URL` can stay where it is — it becomes the fallback, and
 `--webhook <url>` still forces it for a test post to a throwaway channel.

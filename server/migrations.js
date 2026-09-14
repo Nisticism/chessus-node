@@ -1371,6 +1371,17 @@ const migrations = [
   { table: 'puzzle_attempts', column: 'discord_user_id', sql: "ALTER TABLE puzzle_attempts ADD COLUMN discord_user_id VARCHAR(32) DEFAULT NULL", description: "The Discord snowflake behind an attempt played in the Discord activity." },
 
   /*
+   * Whether a linked Discord name is shown on the public profile.
+   *
+   * DEFAULT 0, and that is the whole point: linking a Discord account is done
+   * to make solves count towards a streak, which is a private arrangement
+   * between a person and their own progress. Publishing their Discord handle to
+   * every visitor is a different decision, and it has to be made on purpose
+   * rather than inherited from one they already made for another reason.
+   */
+  { table: 'discord_players', column: 'show_on_profile', sql: "ALTER TABLE discord_players ADD COLUMN show_on_profile TINYINT(1) NOT NULL DEFAULT 0", description: "Opt in to showing a linked Discord name on the public profile (off by default)." },
+
+  /*
    * The rules this puzzle was built under.
    *
    * Nullable, and read with a fallback to the live game, so every puzzle that
