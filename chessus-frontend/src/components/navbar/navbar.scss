@@ -299,7 +299,7 @@ p {
     letter-spacing: 0.04em;
     text-decoration: none;
     font-size: clamp(0.85rem, 0.15vw + 0.8rem, 0.92rem);
-    transition: transform 0.15s ease, background 0.15s ease;
+    transition: padding 0.15s ease, background 0.15s ease;
   }
 
   // Thin glowing gold underline that grows in under the label on hover, kept
@@ -320,9 +320,17 @@ p {
     pointer-events: none;
   }
 
+  // The nudge on hover is done with padding rather than translateX, because
+  // translating the element moves its background with it: the highlight slid
+  // 4px off the right edge (clipped by the panel's overflow) and left a 4px
+  // strip of panel showing down the left. Shifting the padding instead moves
+  // the label and leaves the highlight filling the row edge to edge. The two
+  // sides are kept summing to 36px so the row's width - and so the panel's -
+  // does not change as the pointer travels down it.
   .inner-menu-item:hover {
     background: rgba(212, 175, 55, 0.12);
-    transform: translateX(4px);
+    padding-left: 22px;
+    padding-right: 14px;
   }
 
   .inner-menu-item:hover::after {
