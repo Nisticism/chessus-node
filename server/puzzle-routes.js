@@ -448,6 +448,21 @@ function registerPuzzleRoutes(app, {
    */
   app.get('/api/puzzles/daily', optionalAuthenticate, async (req, res) => {
     try {
+      /*
+       * The first request the activity makes, so this fires at LAUNCH rather
+       * than only on a solve - proof that the activity ran at all, which is the
+       * fact that has been missing.
+       *
+       * Only a cross-origin caller is logged. Every ordinary visitor to the site
+       * sends gridgrove.gg (or no Origin at all on a same-origin GET), so this
+       * stays silent for them and speaks only for an embedded caller such as
+       * <app_id>.discordsays.com.
+       */
+      const origin = req.get('Origin');
+      if (origin && !/(^|\/\/)([a-z0-9-]+\.)?gridgrove\.gg$/i.test(origin)) {
+        console.log(`[discord] daily puzzle requested from origin ${String(origin).slice(0, 120)}`);
+      }
+
       const today = dailyPuzzle.todayKey();
       let date = /^\d{4}-\d{2}-\d{2}$/.test(req.query.date || '') ? req.query.date : today;
 
@@ -1631,6 +1646,26 @@ function registerPuzzleRoutes(app, {
       // can set it to 'discord'; the client cannot claim the surface.
       const discordId = req.discord?.id || null;
       const source = discordId ? 'discord' : 'web';
+
+      /*
+       * Where this request actually came from, which is the one fact the last
+       * several rounds of chasing this could not establish.
+       *
+       * An activity runs in an iframe served from <app_id>.discordsays.com, so
+       * its requests carry that Origin. A browser tab on the site carries
+       * gridgrove.gg. Those are the two hypotheses - "the activity ran and the
+       * token was lost" versus "this was never the activity at all" - and the
+       * header tells them apart without anyone having to describe what they saw.
+       *
+       * Logged only when there is no Discord identity, so a working activity
+       * stays quiet and this says something exactly when something is wrong.
+       * Solves are a handful a day; this is not a hot path.
+       */
+      if (!discordId) {
+        const origin = req.get('Origin') || req.get('Referer') || '(none)';
+        console.warn(`[discord] anonymous solve on puzzle ${req.params.id}`
+          + ` from origin ${String(origin).slice(0, 120)}`);
+      }
       let ratingChange = null;
       let ratingNote = null;
 

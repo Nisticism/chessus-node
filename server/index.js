@@ -170,6 +170,10 @@ app.set('trust proxy', 1);
 
 //app.use("/api", "*");
 
+// Origins already reported as refused, so the warning below is one line per
+// origin rather than one per request.
+const rejectedOrigins = new Set();
+
 const corsOptions = {
   origin: function (origin, callback) {
     // Allow requests with no origin (like mobile apps, curl, Postman)
@@ -180,6 +184,24 @@ const corsOptions = {
       'http://localhost:3000',
       'http://localhost:3001',
       /^https?:\/\/(www\.)?gridgrove\.gg$/,
+      /*
+       * The Discord activity.
+       *
+       * It is this site's own page, but Discord serves it into the client from
+       * <application_id>.discordsays.com - so every call it makes to this API is
+       * cross-origin, and without this line the browser refuses them all.
+       *
+       * That refusal is why the activity never saved anything. A request
+       * carrying X-Discord-Token is not a simple request, so it is preflighted;
+       * the preflight got no Access-Control-Allow-Origin and the real request
+       * was never sent. The token exchange is a JSON POST and went the same way,
+       * so the handshake could not complete - and the diagnostic endpoint added
+       * to report that failure was a JSON POST too, which is why three rounds of
+       * logging showed nothing at all. The bug was silencing its own alarm.
+       *
+       * Scoped to one subdomain label so it cannot match a lookalike host.
+       */
+      /^https:\/\/[a-z0-9-]+\.discordsays\.com$/i,
     ];
     
     // Check if origin matches any allowed pattern
@@ -193,10 +215,24 @@ const corsOptions = {
     if (isAllowed) {
       callback(null, true);
     } else {
-      // Silently reject � callback(null, false) tells the cors middleware NOT
-      // to set Access-Control-Allow-Origin, so the browser blocks the response.
-      // Using callback(new Error()) instead would log an unhandled error in PM2
-      // every time a bot or crawler hits the API from a foreign origin.
+      /*
+       * Reject without throwing: callback(null, false) tells the cors middleware
+       * NOT to set Access-Control-Allow-Origin, so the browser blocks the
+       * response. Using callback(new Error()) instead would log an unhandled
+       * error in PM2 every time a bot or crawler hits the API.
+       *
+       * But not SILENTLY. A rejection here is invisible on this side and fatal
+       * on the other, which is exactly how the Discord activity's origin went
+       * unnoticed while every request it made was being dropped before it
+       * arrived. Each distinct origin is logged once - enough to notice a real
+       * client being turned away, not enough for a crawler to fill the log.
+       */
+      if (!rejectedOrigins.has(origin)) {
+        rejectedOrigins.add(origin);
+        // Bounded, so a spray of random origins cannot grow this without limit.
+        if (rejectedOrigins.size > 200) rejectedOrigins.clear();
+        console.warn(`[cors] refused origin ${String(origin).slice(0, 120)}`);
+      }
       callback(null, false);
     }
   },
