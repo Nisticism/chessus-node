@@ -91,6 +91,43 @@ const applyMove = (cells, move, recorded) => {
   return next;
 };
 
+/*
+ * How long today's puzzle has left, for the countdown beside the date.
+ *
+ * The day turns over at midnight EASTERN, not at the viewer's midnight and not
+ * at UTC's - see server/daily-puzzle.js, which is the authority. Read off the
+ * Eastern wall clock and subtracted from 24 hours, which is the same sum the
+ * server does when it picks a day key.
+ *
+ * On the two days a year the clock shifts this is an hour out, because 24 hours
+ * is not how long those days are. Nobody plans around a countdown, and the
+ * alternative - resolving the exact instant of the next Eastern midnight - is a
+ * lot of arithmetic to be right twice a year.
+ */
+const DAILY_TZ = 'America/New_York';
+const easternClock = new Intl.DateTimeFormat('en-US', {
+  timeZone: DAILY_TZ, hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit',
+});
+
+const timeUntilNextPuzzle = () => {
+  const parts = {};
+  for (const part of easternClock.formatToParts(new Date())) parts[part.type] = part.value;
+  // hour12:false renders midnight as "24" in some engines, so it is wrapped
+  // rather than trusted.
+  const seconds = (Number(parts.hour) % 24) * 3600
+    + Number(parts.minute) * 60
+    + Number(parts.second);
+  if (!Number.isFinite(seconds)) return null;
+
+  const left = 86400 - seconds;
+  const h = Math.floor(left / 3600);
+  const m = Math.floor((left % 3600) / 60);
+  const sec = left % 60;
+  if (h > 0) return `${h}h ${String(m).padStart(2, '0')}m`;
+  if (m > 0) return `${m}m ${String(sec).padStart(2, '0')}s`;
+  return `${sec}s`;
+};
+
 const PuzzlesPanel = () => {
   const { user: currentUser } = useSelector((state) => state.authReducer);
   const navigate = useNavigate();
@@ -427,6 +464,19 @@ const PuzzlesPanel = () => {
     weekday: 'long', month: 'long', day: 'numeric',
   });
 
+  /*
+   * Ticked every second, but held as the FORMATTED string rather than as a
+   * number of seconds: for most of the day the label only changes once a
+   * minute, and setting state to a string it already equals is a no-op in
+   * React. So the panel - board, drag handlers and all - re-renders when the
+   * countdown actually moves, not sixty times a minute.
+   */
+  const [nextPuzzleIn, setNextPuzzleIn] = useState(timeUntilNextPuzzle);
+  useEffect(() => {
+    const id = setInterval(() => setNextPuzzleIn(timeUntilNextPuzzle()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
   const dragSrc = drag ? imageFor(board?.[drag.fromKey]) : null;
 
   return (
@@ -501,18 +551,42 @@ const PuzzlesPanel = () => {
                   Player {puzzle.side_to_move} to move
                 </p>
 
-                <p className={styles["daily-game"]}>
-                  from <Link to={`/games/${puzzle.game_type_id}`}>{puzzle.game_name}</Link>
-                  {puzzle.creator_username && <> · puzzle by {puzzle.creator_username}</>}
-                  {' · '}{today}
-                </p>
-                <div className={styles["daily-meta"]}>
-                  {puzzle.goal_label && <span className={styles["chip"]}>{puzzle.goal_label}</span>}
-                  {puzzle.solution_depth > 1 && (
-                    <span className={styles["chip"]}>{puzzle.solution_depth} moves</span>
+                {/*
+                  * One row of facts about this puzzle - where it is from, who
+                  * wrote it, which day it is, how long it has left, and what
+                  * kind of puzzle it is.
+                  *
+                  * A div of spans rather than a sentence, because each fact has
+                  * to stay whole when the row wraps: a date broken across two
+                  * lines reads as two dates. Each span is nowrap and the
+                  * separators are drawn by CSS between them, so wrapping moves
+                  * facts around without ever splitting one.
+                  */}
+                <div className={styles["daily-facts"]}>
+                  <span className={styles["fact"]}>
+                    from <Link to={`/games/${puzzle.game_type_id}`}>{puzzle.game_name}</Link>
+                  </span>
+                  {puzzle.creator_username && (
+                    <span className={styles["fact"]}>puzzle by {puzzle.creator_username}</span>
                   )}
-                  {puzzle.rating != null && <span className={styles["chip"]}>Rated {puzzle.rating}</span>}
+                  <span className={styles["fact"]}>{today}</span>
+                  {!!nextPuzzleIn && (
+                    <span className={styles["fact"]} title="Puzzles change at midnight Eastern">
+                      next in {nextPuzzleIn}
+                    </span>
+                  )}
+                  {puzzle.goal_label && (
+                    <span className={`${styles["fact"]} ${styles["chip"]}`}>{puzzle.goal_label}</span>
+                  )}
                 </div>
+                {(puzzle.solution_depth > 1 || puzzle.rating != null) && (
+                  <div className={styles["daily-meta"]}>
+                    {puzzle.solution_depth > 1 && (
+                      <span className={styles["chip"]}>{puzzle.solution_depth} moves</span>
+                    )}
+                    {puzzle.rating != null && <span className={styles["chip"]}>Rated {puzzle.rating}</span>}
+                  </div>
+                )}
                 {IS_LOCAL && (
                   <div className={styles["dev-nav"]}>
                     <span>dev only</span>
@@ -535,12 +609,6 @@ const PuzzlesPanel = () => {
                     {verdict.text}
                   </p>
                 )}
-                {!verdict && !daily.solvedByYou && (
-                  <p className={styles["muted"]}>
-                    Play it right here: drag a piece, or click it and then its square.
-                  </p>
-                )}
-
                 <div className={styles["daily-actions"]}>
                   <Link
                     to={`/games/${puzzle.game_type_id}/puzzles/${puzzle.id}`}

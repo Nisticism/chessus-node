@@ -82,6 +82,15 @@
   min-width: 0;
 }
 
+/* .app sets text-align: center on everything below it, so a block of prose has
+   to say otherwise. Centred body copy is hard to read down a column - every
+   line starts in a different place - and this half is a paragraph and four
+   bullets of it. Scoped to this half alone: the card beside it centres its
+   title and its "Player 1 to move" line on purpose. */
+.about {
+  text-align: left;
+}
+
 /* ----------------------------------------------------------- the board -- */
 /* The board fills its column. Sizing comes from useBoardViewport, the same hook
    the solver and builder use; this just gives it the whole width to work with
@@ -174,14 +183,43 @@
 .turn-p1 { background: #f0f0f0; }
 .turn-p2 { background: #202020; }
 
-.daily-game {
-  margin: 0;
+/*
+ * The row of facts under the title: game, author, date, countdown, puzzle type.
+ *
+ * A wrapping flex row of nowrap items. The point of the arrangement is that a
+ * narrow screen may put each fact on its own line, but may never break one in
+ * half - "Saturday, September 13" split across a line ending reads as two
+ * different things, and so does "next in 7h" with the minutes underneath.
+ *
+ * Facts are separated by space rather than by a dot. A dot between them has to
+ * belong to one of the two - a ::after on the left one or a ::before on the
+ * right - and whichever it is, it dangles at the end of a line or starts one
+ * when the row wraps. Nothing in CSS can ask "is the next item still beside
+ * me". A wider column gap separates them at every width and never leaves a
+ * mark pointing at nothing.
+ */
+.daily-facts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  /* Centred to match the title and the "to move" line above it - this card is
+     centred, unlike the prose half beside it. */
+  justify-content: center;
+  gap: 4px 18px;
   font-size: 0.95rem;
   color: var(--text-dim);
 
   a { color: var(--gold, #d4af37); text-decoration: none; }
   a:hover { text-decoration: underline; }
 }
+
+.fact {
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
 
 .daily-meta {
   display: flex;

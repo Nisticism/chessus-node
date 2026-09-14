@@ -5,6 +5,28 @@ import styles from "./changelog.module.scss";
 const changelogData = [
   {
     date: "September 13, 2026",
+    title: "Your puzzles on your profile",
+    items: [
+      "Profiles now have a My Puzzles section, alongside My Games and My Pieces and laid out the same way: one puzzle a line with the game it was built for, what it asks, and how many people have solved it. A puzzle that has been a Puzzle of the Day carries a star.",
+      "Your own drafts are in there too, marked DRAFT, and open straight into the builder. Before this, an unfinished puzzle was only findable from the game it belonged to — if you could remember which game that was.",
+      "Everyone else sees the published ones only. Search and filter work the same as the other two sections.",
+      "Fixed coming back to a draft sometimes showing the game's opening position instead of the position you saved. The builder was loading the game and the puzzle at the same time and drawing whichever arrived last, so a slow game load quietly replaced your work — and saving then wrote the opening position over the draft.",
+      "Editing a published puzzle no longer says “Saved as a draft”. It was never a draft, and the edit went live immediately; the button now says Save changes and the message says so.",
+    ],
+  },
+  {
+    date: "September 13, 2026",
+    title: "The builder says what it is waiting for",
+    items: [
+      "Saving a puzzle that is not finished now names the missing piece — no pieces on the board, no last move, no solution, or a goal you judge yourself with nothing written for the solver to aim at — and moves you to the step that fixes it.",
+      "The sidebar no longer announces what is missing twice. “Their last move: not set” and “Solution: not set yet” were worth saying when those were optional; both are required now, and Save is the place that says so.",
+      "On the home page, today's puzzle shows how long is left before the next one, beside the date. The type of puzzle sits on the same line as the game and the date, and the whole row wraps a line at a time on a narrow screen without ever splitting a date or a countdown in half.",
+      "The text beside it reads down a left edge instead of being centred, and no longer explains how to move a piece — the board does that better by being playable.",
+      "Fixed the highlight on a dropdown menu item sitting 4px off to one side, leaving a strip of the menu showing down its left edge.",
+    ],
+  },
+  {
+    date: "September 13, 2026",
     title: "Tournaments you can play over weeks",
     items: [
       "A tournament can now be played in correspondence, with the same days-a-move choices as a correspondence game: 1, 2, 3, 5, 7 or 14. Tick the box when you create one and the clock picker becomes a cadence picker.",
