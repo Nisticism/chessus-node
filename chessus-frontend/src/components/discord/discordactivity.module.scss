@@ -1,4 +1,10 @@
 /*
+ * Type scale note: every size here was raised a step in one pass. The original
+ * values were pitched for "this is a small frame, be modest", and the result
+ * read smaller than Discord's own UI sitting right next to it - which makes an
+ * embedded app feel like a widget rather than part of the client.
+ */
+/*
  * The daily puzzle inside Discord.
  *
  * Standalone rather than inheriting the site's theme variables, because this
@@ -34,7 +40,7 @@
 }
 
 .title {
-  font-size: 1.15rem;
+  font-size: 1.45rem;
   font-weight: 700;
   margin: 0;
   color: #f2f3f5;
@@ -42,7 +48,7 @@
 }
 
 .sub {
-  font-size: 0.82rem;
+  font-size: 0.95rem;
   margin: 3px 0 0;
   color: #b5bac1;
 }
@@ -59,7 +65,7 @@
 }
 
 .streak-n {
-  font-size: 1.3rem;
+  font-size: 1.45rem;
   font-weight: 700;
   color: #f0b132;
   line-height: 1;
@@ -67,7 +73,7 @@
 }
 
 .streak-label {
-  font-size: 0.62rem;
+  font-size: 0.72rem;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: #949ba4;
@@ -77,7 +83,7 @@
 .turn {
   margin: 0;
   text-align: center;
-  font-size: 0.85rem;
+  font-size: 0.97rem;
   font-weight: 600;
   color: #b5bac1;
 }
@@ -114,7 +120,7 @@
 }
 
 .piece-letter {
-  font-size: 0.8rem;
+  font-size: 0.92rem;
   font-weight: 700;
   color: rgba(255, 255, 255, 0.85);
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
@@ -148,7 +154,7 @@
   padding: 7px 14px;
   border-radius: 8px;
   text-align: center;
-  font-size: 0.88rem;
+  font-size: 1.1rem;
   font-weight: 600;
   display: flex;
   flex-direction: column;
@@ -173,7 +179,7 @@
 
 .code {
   font-family: var(--mono, ui-monospace, Consolas, monospace);
-  font-size: 1rem;
+  font-size: 1.1rem;
   letter-spacing: 0.14em;
   color: #f0b132;
 }
@@ -191,7 +197,7 @@
 
 .muted {
   color: #949ba4;
-  font-size: 0.78rem;
+  font-size: 0.9rem;
   margin: 0;
 }
 
@@ -203,7 +209,7 @@
   padding: 0;
   color: #00a8fc;
   font: inherit;
-  font-size: 0.78rem;
+  font-size: 0.9rem;
   cursor: pointer;
   text-decoration: underline;
 }

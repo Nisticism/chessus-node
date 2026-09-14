@@ -217,6 +217,23 @@ export default function DiscordActivity() {
               ? `Solved in ${tries} ${tries === 1 ? 'try' : 'tries'}.`
               : 'You solved this one already.',
           });
+          /*
+           * Show the position they left, not the one they started from.
+           *
+           * Coming back to a puzzle you solved this morning and being handed
+           * the opening position reads as though it had not happened - and the
+           * board is already locked, so the only thing on offer was a puzzle
+           * you could look at but not touch. Replaying the line puts the answer
+           * back on the board.
+           *
+           * Guarded on the line actually arriving: the server only attaches it
+           * once this player has solved this puzzle.
+           */
+          const line = data?.today?.solution;
+          if (Array.isArray(line) && line.length) {
+            setFound(line);
+            setBoard((prev) => line.reduce((cells, ply) => applyMove(cells, ply), prev));
+          }
         }
       } catch (_) { /* progress is a nicety; the puzzle still plays */ }
     })();
@@ -692,7 +709,7 @@ export default function DiscordActivity() {
         * can read it. Shown only while the handshake has not succeeded, so a
         * working activity never carries it.
         */}
-      {discord.status !== 'ready' && (
+      {discord.status === 'error' && (
         <p className={styles["muted"]} style={{ fontSize: '11px', opacity: 0.75, wordBreak: 'break-all' }}>
           {`handshake: ${discord.status}`}
           {discord.stage ? ` @ ${discord.stage}` : ''}

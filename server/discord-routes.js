@@ -202,6 +202,28 @@ function registerDiscordRoutes(app, { db_pool }) {
           [today.puzzle_id, req.discord.id]
         );
         todayState = { solved: !!Number(t?.solved), attempts: Number(t?.attempts) || 0 };
+
+        /*
+         * The answer, but only to somebody who has already found it.
+         *
+         * Re-opening a puzzle you solved this morning should show the position
+         * you left, not the one you started from - and the board cannot be
+         * replayed without the line. There is no spoiler here by construction:
+         * this is only ever attached when THIS player has already solved THIS
+         * puzzle, which is the one case where the solution is theirs to see.
+         */
+        if (todayState.solved) {
+          const [[row]] = await db_pool.query(
+            'SELECT solution_line FROM puzzles WHERE id = ? LIMIT 1',
+            [today.puzzle_id]
+          );
+          try {
+            const line = typeof row?.solution_line === 'string'
+              ? JSON.parse(row.solution_line)
+              : row?.solution_line;
+            if (Array.isArray(line)) todayState.solution = line;
+          } catch (_) { /* an unreadable line just means no replay */ }
+        }
       }
 
       res.json({
