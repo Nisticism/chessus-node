@@ -1,6 +1,7 @@
 import React, { useEffect, lazy, Suspense } from "react";
 import { useDispatch } from "react-redux";
 import { Route, Routes, useLocation } from 'react-router-dom';
+import { isDiscordLaunch } from './helpers/discord-launch-params';
 import Navbar from './components/navbar/Navbar';
 import Footer from './components/footer/Footer';
 import ChunkErrorBoundary from './components/ChunkErrorBoundary';
@@ -195,7 +196,13 @@ function App() {
    *                       rather than the home page. `frame_id` is the parameter
    *                       Discord always adds, and is the only reliable signal.
    */
-  const inDiscordFrame = new URLSearchParams(location.search).has('frame_id');
+  /*
+   * Reads the CAPTURED launch parameters, not just the current URL. A
+   * navigation inside the activity drops the query string, and deciding from
+   * the live URL alone would drop the player out of the activity and back onto
+   * the marketing home page mid-session.
+   */
+  const inDiscordFrame = isDiscordLaunch();
   if (inDiscordFrame || location.pathname.startsWith('/discord')) {
     return (
       <ChunkErrorBoundary>

@@ -8,6 +8,18 @@ import reportWebVitals from './reportWebVitals';
 import { BrowserRouter } from 'react-router-dom';
 import { GoogleOAuthProvider } from '@react-oauth/google';
 import './services/axios-interceptor'; // Initialize axios interceptor
+import { captureLaunchParams } from './helpers/discord-launch-params';
+
+/*
+ * Before anything can navigate.
+ *
+ * Discord launches an activity with frame_id, instance_id and platform on the
+ * URL, and this is a single-page app: the first client-side navigation replaces
+ * that URL, and a query string nobody carried forward is gone. Everything the
+ * activity needs depends on those three values, so they are copied out here, at
+ * the top of the bundle, before React mounts or routes.
+ */
+captureLaunchParams();
 
 const UI_CACHE_VERSION = process.env.REACT_APP_UI_CACHE_VERSION || '2026-02-20-1';
 

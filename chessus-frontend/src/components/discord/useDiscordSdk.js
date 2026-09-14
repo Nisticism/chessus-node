@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { DiscordSDK } from "@discord/embedded-app-sdk";
 import axios from "axios";
 import API_URL from "../../global/global";
+import { getLaunchParams, restoreLaunchParamsToUrl } from "../../helpers/discord-launch-params";
 
 /*
  * The handshake with the Discord client.
@@ -119,23 +120,42 @@ export default function useDiscordSdk() {
       } catch (_) { /* never let reporting break the activity */ }
     };
 
-    const params = new URLSearchParams(window.location.search);
+    /*
+     * Put the launch parameters back on the URL before anything reads it.
+     *
+     * The Discord SDK reads window.location.search itself and cannot be handed
+     * values, so if a navigation has stripped the query the SDK cannot start no
+     * matter what this file knows. Restoring the captured copy is what lets it.
+     * A no-op when the URL still has them, which is the ordinary case.
+     */
+    restoreLaunchParamsToUrl();
+
+    const params = getLaunchParams();
     if (!params.get('frame_id')) {
       /*
        * A normal browser tab. Not an error, just not Discord - so this is the
        * quiet path for every ordinary visitor and must stay silent.
        *
-       * The exception worth hearing about: running INSIDE an iframe with no
-       * frame_id. That is not a browser tab, it is an activity whose URL did not
-       * carry the parameter the whole handshake keys off - and it would look
-       * exactly like the symptom being chased, a board that plays fine and saves
-       * nothing.
+       * Is this the activity, loaded without the parameters it needs?
+       *
+       * This used to ask "are we in an iframe", and that gate was wrong: in the
+       * Discord client the activity is the top document of its own view, so
+       * window.self === window.top and the check said "ordinary browser tab".
+       * It therefore suppressed the one report that mattered, on every launch,
+       * which is why several rounds of instrumentation came back empty.
+       *
+       * The host answers it properly. Discord serves the activity from
+       * <application_id>.discordsays.com and nothing else is ever on that
+       * domain, so this fires exactly once per activity launch and stays silent
+       * for every ordinary visitor to the site.
        */
-      const framed = (() => {
-        try { return window.self !== window.top; } catch (_) { return true; }
-      })();
-      if (framed) {
-        report('no-frame-id', `framed but no frame_id; search="${window.location.search}"`);
+      const onActivityHost = /\.discordsays\.com$/i.test(window.location.hostname);
+      if (onActivityHost) {
+        report('no-frame-id',
+          `activity loaded without frame_id. host=${window.location.hostname}`
+          + ` path=${window.location.pathname}`
+          + ` params=${[...params.keys()].join(',') || '(none)'}`
+          + ` framed=${(() => { try { return window.self !== window.top; } catch (_) { return 'blocked'; } })()}`);
       }
       setState({ status: 'outside', sdk: null, token: null, user: null, error: null });
       return undefined;
