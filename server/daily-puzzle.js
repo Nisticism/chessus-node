@@ -173,7 +173,10 @@ function createDailyPuzzle({ db_pool }) {
               p.solution_depth, p.rating, p.rating_sample_count, p.hide_rating,
               p.attempt_count, p.solve_count, p.creator_id, p.position,
               u.username AS creator_username,
-              gt.game_name, gt.board_width, gt.board_height
+              gt.game_name, gt.board_width, gt.board_height,
+              -- What the game lets a player put down. The home board needs it
+              -- to offer a placement when the answer is one rather than a move.
+              gt.other_game_data
        FROM daily_puzzles d
        JOIN puzzles p ON p.id = d.puzzle_id
        JOIN game_types gt ON gt.id = d.game_type_id

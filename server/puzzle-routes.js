@@ -15,13 +15,15 @@
  */
 const {
   validatePuzzle, moveKey, GOALS, GOAL_DEFS, MECHANICAL_GOALS, VALIDATION,
-  goalsForGameType, describeGoal, buildGameState, playLine, applyPly,
+  goalsForGameType, describeGoal, buildGameState, playLine, applyPly, placementRules,
 } = require('./puzzle-validation');
 const {
   getPromotionOptions, checkPromotionEligibility, getAllLegalMovesForPlayer,
+  getPossibleMovesForPiece,
 } = require('./game-socket');
 const { summariseRules } = require('./game-rules-summary');
 const { renderPuzzle } = require('./puzzle-image');
+const { PLATFORM_ACCOUNT_USERNAME, platformAccountId } = require('./platform-account');
 const { rulesForPuzzle, ensureSnapshot, readLive } = require('./puzzle-snapshot');
 /*
  * Hydration lives in its own module because more than one thing needs it - the
@@ -79,9 +81,20 @@ const MAX_PLIES = MAX_MOVES_PER_SIDE * 2;
 const solverPlies = (line) => line.filter((_, i) => i % 2 === 0);
 const replyPlies = (line) => line.filter((_, i) => i % 2 === 1);
 
-const isPly = (m) => !!m && m.from && m.to
-  && Number.isFinite(Number(m.from.x)) && Number.isFinite(Number(m.from.y))
-  && Number.isFinite(Number(m.to.x)) && Number.isFinite(Number(m.to.y));
+const isSquare = (sq) => !!sq
+  && Number.isFinite(Number(sq.x)) && Number.isFinite(Number(sq.y));
+
+/*
+ * A placement has a destination and a piece, and no origin - the piece comes
+ * from off the board. See the note on placement plies in puzzle-validation.js.
+ * Stored in the live game's own shape so one ply means one thing everywhere.
+ */
+const isPlacePly = (m) => !!m && m.type === 'place'
+  && isSquare(m.to) && Number.isFinite(Number(m.placePieceId));
+
+const isMovePly = (m) => !!m && isSquare(m.from) && isSquare(m.to);
+
+const isPly = (m) => isPlacePly(m) || isMovePly(m);
 
 /** Coerce whatever the client sent into a storable line, or say why not. */
 function sanitizeLine(raw) {
@@ -90,8 +103,22 @@ function sanitizeLine(raw) {
   if (list.length > MAX_PLIES) {
     return { error: `A solution can be at most ${MAX_MOVES_PER_SIDE} moves per side` };
   }
-  if (!list.every(isPly)) return { error: 'Every move in the solution needs a from and a to square' };
-  return { line: list };
+  if (!list.every(isPly)) {
+    return {
+      error: 'Every move in the solution needs a from and a to square, '
+        + 'or a piece and a square to place it on',
+    };
+  }
+  /*
+   * Normalised on the way in so nothing downstream has to guess which shape it
+   * is holding: a placement keeps exactly its three fields, and anything else
+   * a client attached (a stray `from`, say) is dropped rather than stored and
+   * later half-believed.
+   */
+  const line = list.map((m) => (isPlacePly(m)
+    ? { type: 'place', placePieceId: Number(m.placePieceId), to: { x: Number(m.to.x), y: Number(m.to.y) } }
+    : m));
+  return { line };
 }
 
 /*
@@ -116,6 +143,42 @@ function registerPuzzleRoutes(app, {
   const dailyPuzzle = createDailyPuzzle({ db_pool });
 
   /**
+   * May this person build a puzzle on this game at all?
+   *
+   * Separate from the allowance, which answers "how many more" for somebody
+   * already entitled to one. This answers "whose game is this".
+   *
+   * A puzzle freezes a position in somebody else's rules and publishes it under
+   * the builder's name, and the game's author has no say in it afterwards -
+   * they cannot edit it, cannot take it down, and it carries their game's name
+   * wherever it is listed. So the default is the game's own creator, and the
+   * exceptions are the cases where that worry does not apply:
+   *
+   *  - The platform's own games. Chess and Go belong to GridGrove precisely so
+   *    that everybody may build on them; there is no author to wrong.
+   *  - The platform account itself, which authors the daily pool. Its puzzles
+   *    are generated across every game in the rotation - 55 of them on this
+   *    database sit on other people's games - so a rule that forgot it would
+   *    quietly kill Puzzle of the Day.
+   *  - Staff, who already edit and delete anyone's puzzles.
+   *
+   * Returns null when allowed, or the sentence to refuse with.
+   */
+  const puzzleBuildRefusal = async (user, gameType) => {
+    if (!user || !gameType) return 'Sign in to build puzzles.';
+    if (isStaff(user)) return null;
+    if (Number(gameType.creator_id) === Number(user.id)) return null;
+
+    const platformId = await platformAccountId(db_pool);
+    if (platformId != null) {
+      if (Number(gameType.creator_id) === platformId) return null;
+      if (Number(user.id) === platformId) return null;
+    }
+    return 'You can only build puzzles for games you created, or for '
+      + `${PLATFORM_ACCOUNT_USERNAME}'s own games.`;
+  };
+
+  /**
    * Rows go out without the answer unless the caller is entitled to it, and
    * without the rating until enough people have solved the puzzle for it to
    * mean anything (or if the creator has chosen to hide it). The creator always
@@ -130,6 +193,28 @@ function registerPuzzleRoutes(app, {
       delete out.rating_sample_count;
     }
     return out;
+  };
+
+  /**
+   * The placement half of a game's rules, for any client that draws a board.
+   *
+   * `{}` for a game that does not place pieces, so every caller can spread it
+   * unconditionally and nothing downstream has to ask twice.
+   */
+  const placementPayload = (gameType) => {
+    const rules = placementRules(gameType);
+    if (!rules) return {};
+    return {
+      place_pieces_action: true,
+      placeable_pieces: rules.templates.map((t) => ({
+        piece_id: Number(t.piece_id),
+        name: t.name || t.piece_name || null,
+        image_url: t.image_url || null,
+        image_location: t.image_location || null,
+        is_neutral: !!t.is_neutral,
+        player: t.player ?? 'all',
+      })),
+    };
   };
 
   const safeParse = (v, fallback = null) => {
@@ -562,6 +647,9 @@ function registerPuzzleRoutes(app, {
           creator_username: row.creator_username,
           attempt_count: row.attempt_count,
           solve_count: row.solve_count,
+          // What may be put down, when the answer is a placement rather than a
+          // move. Empty for every game that does not place pieces.
+          ...placementPayload(row),
           rating: ratingPublic ? row.rating : null,
           rating_sample_count: ratingPublic ? row.rating_sample_count : null,
         },
@@ -908,6 +996,119 @@ function registerPuzzleRoutes(app, {
    * the board would show anyway; the ANSWER is which of those moves is right,
    * and that stays on the server.
    */
+  /**
+   * Where one piece on one position could go, with the move/attack split.
+   *
+   * Shared by two callers that hold different things: a saved puzzle (the home
+   * board, the Discord activity) and a position being built that has no id yet
+   * (the builder). Both need the same answer drawn the same way, so they ask
+   * the same function rather than growing two of them.
+   */
+  const movesForSquare = (state, x, y) => {
+    const piece = state.pieces.find(p => Number(p.x) === x && Number(p.y) === y);
+    if (!piece) return [];
+    const side = Number(piece.team ?? piece.player_id);
+
+    /*
+     * Any piece, not just the side to move - the solver page shows a piece's
+     * raw reachability on hover whoever owns it, and this exists so the home
+     * board can do the same. Seeing where an enemy piece could go is part of
+     * reading the position, and gives nothing away: the answer is WHICH move
+     * is right, and that stays on the server.
+     */
+    state.currentTurn = side;
+    const all = getAllLegalMovesForPlayer(state, side) || [];
+    const occupied = new Set(state.pieces.map(p => `${p.y},${p.x}`));
+
+    /*
+     * Can this piece ATTACK that square, as well as walk to it?
+     *
+     * The boards draw a half-and-half dot for a square a piece could both
+     * move to and take on - a rook's file is both, a pawn's step forward is
+     * movement only, its diagonal is attack only. The client engine works
+     * this out from its own pattern internals; the server generator has no
+     * such notion, and porting the client's version here would be a second
+     * copy of the pattern logic, which is the mistake this codebase keeps
+     * making and paying for.
+     *
+     * So it is ASKED instead of derived: stand an enemy on the square and
+     * generate again. If the piece can still reach it, it can take there.
+     * That is the definition, answered by the same generator that decides
+     * every other move, so the two can never disagree.
+     *
+     * One generation per empty destination, on a position of a few pieces,
+     * for one hovered piece - and the client caches the answer per square.
+     */
+    const enemySide = side === 1 ? 2 : 1;
+    const canAttackSquare = (tx, ty) => {
+      const dummy = {
+        ...piece,
+        id: `probe_${tx}_${ty}`,
+        x: tx, y: ty,
+        team: enemySide, player_id: enemySide,
+        // A probe must be takeable, or a game whose pieces are uncapturable
+        // would report every square as movement-only.
+        cannot_be_captured: 0,
+      };
+      try {
+        const reach = getPossibleMovesForPiece(
+          piece, [...state.pieces, dummy], state.gameType, 0
+        ) || [];
+        return reach.some(m => Number(m.x) === tx && Number(m.y) === ty);
+      } catch (_) {
+        // A generator that threw is not a verdict; fall back to "movement
+        // only", which is what the board drew before this existed.
+        return false;
+      }
+    };
+
+    const moves = all
+      .filter(m => m.from.x === x && m.from.y === y)
+      .map(m => {
+        const isCapture = occupied.has(`${m.to.y},${m.to.x}`);
+        return {
+          x: m.to.x,
+          y: m.to.y,
+          isCapture,
+          isCastling: !!m.isCastling,
+          isFirstMoveOnly: !!m.isFirstMoveOnly,
+          /*
+           * Named the way the client engine names them, so both boards can
+           * feed getMoveDotType and pick the same colour.
+           *
+           * An occupied square was reached BY attacking, and nothing else
+           * needs asking. An empty one was reached by movement, and the
+           * probe says whether it is also attackable.
+           */
+          reachedByMove: !isCapture,
+          reachedByAttack: isCapture || (!m.isCastling && canAttackSquare(m.to.x, m.to.y)),
+        };
+      });
+
+    /*
+     * En passant is never enumerated by the move generator (it cannot see the
+     * target), so it is added here the way the validator adds it - otherwise a
+     * pawn that CAN take en passant shows no dot on the square where it lands
+     * and the right answer looks illegal.
+     */
+    const ept = state.enPassantTarget;
+    if (ept?.captureSquare && piece.can_en_passant) {
+      const victim = state.pieces.find(p => p.id === ept.pieceId);
+      if (victim && Number(victim.team ?? victim.player_id) !== side
+          && piece.piece_id === victim.piece_id
+          && piece.y === victim.y && Math.abs(piece.x - victim.x) === 1) {
+        moves.push({
+          x: ept.captureSquare.x, y: ept.captureSquare.y,
+          isCapture: true, isEnPassant: true,
+          // En passant lands on an empty square but is unambiguously a
+          // capture, so it reads as attack-only rather than as both.
+          reachedByMove: false, reachedByAttack: true,
+        });
+      }
+    }
+    return moves;
+  };
+
   app.get('/api/puzzles/:id/moves', optionalAuthenticate, async (req, res) => {
     try {
       const puzzle = await loadPuzzle(parseInt(req.params.id, 10));
@@ -933,47 +1134,46 @@ function registerPuzzleRoutes(app, {
         game_type_id: puzzle.game_type_id,
       }, gameType);
 
-      const piece = state.pieces.find(p => Number(p.x) === x && Number(p.y) === y);
-      if (!piece) return res.json({ moves: [] });
-      const side = Number(piece.team ?? piece.player_id);
-
-      /*
-       * Any piece, not just the side to move - the solver page shows a piece's
-       * raw reachability on hover whoever owns it, and this exists so the home
-       * board can do the same. Seeing where an enemy piece could go is part of
-       * reading the position, and gives nothing away: the answer is WHICH move
-       * is right, and that stays on the server.
-       */
-      state.currentTurn = side;
-      const all = getAllLegalMovesForPlayer(state, side) || [];
-      const occupied = new Set(state.pieces.map(p => `${p.y},${p.x}`));
-      const moves = all
-        .filter(m => m.from.x === x && m.from.y === y)
-        .map(m => ({
-          x: m.to.x,
-          y: m.to.y,
-          isCapture: occupied.has(`${m.to.y},${m.to.x}`),
-          isCastling: !!m.isCastling,
-        }));
-
-      /*
-       * En passant is never enumerated by the move generator (it cannot see the
-       * target), so it is added here the way the validator adds it - otherwise a
-       * pawn that CAN take en passant shows no dot on the square where it lands
-       * and the right answer looks illegal.
-       */
-      const ept = state.enPassantTarget;
-      if (ept?.captureSquare && piece.can_en_passant) {
-        const victim = state.pieces.find(p => p.id === ept.pieceId);
-        if (victim && Number(victim.team ?? victim.player_id) !== side
-            && piece.piece_id === victim.piece_id
-            && piece.y === victim.y && Math.abs(piece.x - victim.x) === 1) {
-          moves.push({ x: ept.captureSquare.x, y: ept.captureSquare.y, isCapture: true, isEnPassant: true });
-        }
-      }
-      res.json({ moves });
+      return res.json({ moves: movesForSquare(state, x, y) });
     } catch (err) {
       console.error('GET /api/puzzles/:id/moves:', err);
+      res.status(500).send({ message: "Failed to work out that piece's moves" });
+    }
+  });
+
+  /*
+   * The same question for a position that is not a puzzle yet.
+   *
+   * The builder had no move dots at all, which made arranging a position in an
+   * unfamiliar game guesswork: the whole point of a user-defined piece is that
+   * you cannot know where it goes by looking at it. It cannot use the route
+   * above because its puzzle has no id - and often no row - so the position
+   * travels in the request instead.
+   *
+   * Live rules, like puzzle-move-info beside it: the builder is working on the
+   * game as it is now, not as some snapshot once froze it.
+   */
+  app.post('/api/game-types/:gameTypeId/puzzle-moves', optionalAuthenticate, async (req, res) => {
+    try {
+      const gameTypeId = parseInt(req.params.gameTypeId, 10);
+      const { position, side_to_move, setup_move, x, y } = req.body || {};
+      if (!Array.isArray(position) || !Number.isFinite(Number(x)) || !Number.isFinite(Number(y))) {
+        return res.status(400).send({ message: 'A position and a square are required' });
+      }
+      const rules = await loadLiveRules(gameTypeId);
+      if (!rules?.game) return res.status(404).send({ message: 'Game type not found' });
+
+      const state = buildGameState({
+        position: await hydratePosition(rules, position),
+        initial_pieces: await loadStartingRoster(rules),
+        side_to_move: Number(side_to_move) || 1,
+        setup_move: setup_move || null,
+        game_type_id: gameTypeId,
+      }, rules.game);
+
+      res.json({ moves: movesForSquare(state, Number(x), Number(y)) });
+    } catch (err) {
+      console.error('POST /api/game-types/:id/puzzle-moves:', err);
       res.status(500).send({ message: "Failed to work out that piece's moves" });
     }
   });
@@ -1111,6 +1311,13 @@ function registerPuzzleRoutes(app, {
         out.permanent_fog_reveal = !!gameType.permanent_fog_reveal;
         out.hide_enemy_pieces = !!gameType.hide_enemy_pieces;
         out.rules = summariseRules(gameType);
+        /*
+         * What a solver may PUT DOWN, when the answer is a placement rather
+         * than a move. Sent for the same reason the pieces are: a solver of a
+         * Go puzzle has no piece to pick up, so without this there is nothing
+         * on the page they could possibly click first.
+         */
+        Object.assign(out, placementPayload(gameType));
 
         /*
          * Three things the client cannot work out for itself, all derived from
@@ -1171,7 +1378,20 @@ function registerPuzzleRoutes(app, {
   app.get('/api/game-types/:gameTypeId/puzzle-allowance', authenticateToken, async (req, res) => {
     try {
       const gameTypeId = parseInt(req.params.gameTypeId, 10);
+      const [[gameType]] = await db_pool.query(
+        'SELECT id, creator_id FROM game_types WHERE id = ? LIMIT 1', [gameTypeId]
+      );
       const allowance = await puzzleCreateAllowance(req.user.id, gameTypeId);
+      /*
+       * Whose game it is, folded into the same answer the builder already asks
+       * for. Without it the builder would offer a full form and only refuse on
+       * Save - which is exactly the "let them arrange a whole position and then
+       * say no" this endpoint exists to avoid.
+       */
+      const refusal = await puzzleBuildRefusal(req.user, gameType);
+      if (refusal) {
+        return res.json({ ...allowance, allowed: false, reason: refusal, notYourGame: true });
+      }
       res.json(allowance);
     } catch (err) {
       console.error('GET /api/game-types/:id/puzzle-allowance:', err);
@@ -1226,7 +1446,8 @@ function registerPuzzleRoutes(app, {
       if (!gameType) return res.status(404).send({ message: 'Game type not found' });
 
       const { position, side_to_move, setup_move, move } = req.body || {};
-      if (!Array.isArray(position) || !move?.from || !move?.to) {
+      const placing = move?.type === 'place';
+      if (!Array.isArray(position) || !move?.to || (!placing && !move?.from)) {
         return res.status(400).send({ message: 'A position and a move are required' });
       }
 
@@ -1251,6 +1472,33 @@ function registerPuzzleRoutes(app, {
         game_type_id: gameTypeId,
       }, gameType);
       const state = await makeState();
+
+      /*
+       * A placement answers a shorter set of questions than a move: there is no
+       * origin square, nothing castles, and nothing promotes on the way down.
+       * What it still needs is the legality probe, because the rules that
+       * refuse a deploy - an occupied or forbidden square, a piece this player
+       * may not place, a stone that would capture itself or repeat the position
+       * - are exactly the ones a creator cannot see by looking.
+       */
+      if (placing) {
+        let placeLegal = true;
+        let placeReason = null;
+        try {
+          const probe = await applyPly(await makeState(), {
+            type: 'place',
+            placePieceId: Number(move.placePieceId),
+            to: { x: Number(move.to.x), y: Number(move.to.y) },
+          });
+          if (!probe.ok) { placeLegal = false; placeReason = probe.reason || 'that placement is not legal here'; }
+        } catch (err) {
+          console.error('POST /api/game-types/:id/puzzle-move-info place probe:', err);
+        }
+        return res.json({
+          promotes: false, skipped: false, options: [], castling: null,
+          legal: placeLegal, reason: placeReason,
+        });
+      }
 
       const fromX = Number(move.from.x); const fromY = Number(move.from.y);
       const toX = Number(move.to.x); const toY = Number(move.to.y);
@@ -1345,6 +1593,14 @@ function registerPuzzleRoutes(app, {
       const gameTypeId = parseInt(req.params.gameTypeId, 10);
       const [[gameType]] = await db_pool.query('SELECT * FROM game_types WHERE id = ? LIMIT 1', [gameTypeId]);
       if (!gameType) return res.status(404).send({ message: 'Game type not found' });
+
+      /*
+       * Whose game is this, asked before how many you have left: being told
+       * "2 of your 3 free puzzles remain" for a game you may not build on at
+       * all would be answering a question nobody asked.
+       */
+      const refusal = await puzzleBuildRefusal(req.user, gameType);
+      if (refusal) return res.status(403).send({ message: refusal });
 
       /*
        * Free accounts get a real go at this - PUZZLE_FREE_PER_GAME puzzles for
@@ -1473,6 +1729,20 @@ function registerPuzzleRoutes(app, {
       if (!canEdit(puzzle, req.user)) {
         return res.status(403).send({ message: 'You can only duplicate your own puzzles' });
       }
+      /*
+       * The same whose-game check as building one from scratch. canEdit above
+       * already limits this to your own puzzles, but a puzzle created before
+       * that rule existed is still yours - and duplicating it forever would be
+       * a way around the rule rather than an exception to it.
+       */
+      const [[dupGameType]] = await db_pool.query(
+        'SELECT id, creator_id FROM game_types WHERE id = ? LIMIT 1', [puzzle.game_type_id]
+      );
+      if (dupGameType) {
+        const dupRefusal = await puzzleBuildRefusal(req.user, dupGameType);
+        if (dupRefusal) return res.status(403).send({ message: dupRefusal });
+      }
+
       // Duplicating writes a new row, so it spends the same allowance as building
       // one from scratch - otherwise the cap is one click away from meaningless.
       const dupAllowance = await puzzleCreateAllowance(req.user.id, puzzle.game_type_id);
@@ -1875,11 +2145,91 @@ function registerPuzzleRoutes(app, {
         );
       }
 
+      /*
+       * The board after everything just played, for games the client cannot
+       * work out for itself.
+       *
+       * A solver applies its own moves optimistically - piece leaves here,
+       * lands there - and that is a complete description of a move in almost
+       * every game. It is not a complete description of a PLACEMENT: a stone
+       * put down in Go can remove a group of six on the far side of the board,
+       * and nothing on the client knows the surround rule.
+       *
+       * Computed only for games that place pieces, so a chess puzzle costs
+       * exactly what it did before. Best-effort: if the replay fails the client
+       * keeps its own guess, which is what it had anyway.
+       */
+      let resultingPosition;
+      try {
+        /*
+         * Gated on one narrow column read before anything expensive happens.
+         * Almost every puzzle is in a game that does not place pieces, and
+         * those must not start paying for a replay they will never use.
+         */
+        const [[placeCheck]] = await db_pool.query(
+          'SELECT other_game_data FROM game_types WHERE id = ? LIMIT 1', [puzzle.game_type_id]
+        );
+        const placesPieces = !!placementRules(placeCheck);
+
+        if (placesPieces && (inProgress || solved || revealed)) {
+          const rules = await loadRulesFor(puzzle);
+          const upTo = solved || revealed ? line : line.slice(0, matched * 2);
+          const replayed = await playLine(
+            {
+              position: await hydratePosition(rules, safeParse(puzzle.position, [])),
+              initial_pieces: await loadStartingRoster(rules),
+              side_to_move: puzzle.side_to_move,
+              setup_move: safeParse(puzzle.setup_move),
+              game_type_id: puzzle.game_type_id,
+            },
+            rules.game, upTo
+          );
+          if (replayed.ok) {
+            /*
+             * Engine pieces carry the rules, not the artwork: hydratePosition
+             * builds them for the move generator and does not thread the name
+             * and the image through. The board needs both, so they are looked
+             * up per piece type - from the puzzle's own stored placements
+             * first, then from what the game says is placeable - rather than
+             * left null, which drew the position as a row of blanks.
+             */
+            const art = new Map();
+            for (const pl of (safeParse(puzzle.position, []) || [])) {
+              if (pl?.piece_id != null && (pl.piece_name || pl.image_location)) {
+                art.set(Number(pl.piece_id), pl);
+              }
+            }
+            for (const t of (placementRules(placeCheck)?.templates || [])) {
+              if (!art.has(Number(t.piece_id))) {
+                art.set(Number(t.piece_id), {
+                  piece_name: t.name || t.piece_name || null,
+                  image_location: t.image_location || null,
+                });
+              }
+            }
+            resultingPosition = replayed.state.pieces.map((pc) => {
+              const look = art.get(Number(pc.piece_id)) || {};
+              return {
+                piece_id: Number(pc.piece_id),
+                player_id: Number(pc.team ?? pc.player_id),
+                piece_name: pc.piece_name || look.piece_name || null,
+                image_location: pc.image_location || look.image_location || null,
+                x: Number(pc.x), y: Number(pc.y),
+              };
+            });
+          }
+        }
+      } catch (e) {
+        console.warn('[puzzle] could not replay a placement line:', e.message);
+      }
+
       res.json({
         solved,
         status: solved ? 'solved' : (revealed ? 'revealed' : (wrong ? 'wrong' : 'continue')),
         movesPlayed: matched,
         movesTotal: mine.length,
+        // Present only for games that place pieces; see above.
+        position: resultingPosition,
         /*
          * The opponent's answer to the move just found. Handing this back is not
          * a leak - it is the consequence of a move the solver already played,

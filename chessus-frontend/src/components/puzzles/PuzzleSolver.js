@@ -14,6 +14,8 @@ import {
 import useBoardViewport from "../common/useBoardViewport";
 import BoardZoomControls from "../common/BoardZoomControls";
 import PuzzleBoard from "./PuzzleBoard";
+import PlacementTray from "../common/PlacementTray";
+import { expandPlaceable, placesPieces } from "../../helpers/placement";
 import styles from "./puzzlesolver.module.scss";
 
 /*
@@ -72,7 +74,37 @@ const toEngineFields = (row) => {
 };
 
 /** Move a piece on the board map. Anything unplayable is left alone. */
+/** A server-sent position, keyed the way the board wants it. */
+const fromServerPosition = (list) => {
+  const out = {};
+  for (const pc of (Array.isArray(list) ? list : [])) {
+    out[keyOf(pc.x, pc.y)] = { ...pc };
+  }
+  return out;
+};
+
 const applyPly = (cells, ply) => {
+  /*
+   * A placement puts a NEW piece down rather than moving one. What it CAPTURES
+   * is not worked out here: a stone played in Go can take a group on the far
+   * side of the board, and the surround rule lives in the engine. The server
+   * sends the resulting position for these games (see `position` on the solve
+   * response) and that replaces this guess the moment it arrives; this is only
+   * what the board shows for the fraction of a second in between.
+   */
+  if (ply?.type === 'place') {
+    return {
+      ...cells,
+      [keyOf(ply.to.x, ply.to.y)]: {
+        piece_id: Number(ply.placePieceId),
+        player_id: Number(ply.placedBy ?? 1),
+        piece_name: ply.placedName || null,
+        image_location: ply.placedImage || null,
+        x: ply.to.x,
+        y: ply.to.y,
+      },
+    };
+  }
   if (!ply?.from || !ply?.to) return cells;
   const fromKey = keyOf(ply.from.x, ply.from.y);
   const mover = cells[fromKey];
@@ -160,6 +192,12 @@ const PuzzleSolver = () => {
 
   const [placements, setPlacements] = useState({});
   const [selected, setSelected] = useState(null);
+  /*
+   * The piece held from the tray, in a game where the answer is a placement.
+   * Mutually exclusive with `selected`: you are either holding a piece off the
+   * board or one on it, never both.
+   */
+  const [trayPick, setTrayPick] = useState(null);
   const [lastTry, setLastTry] = useState(null);   // {from,to}
   const [outcome, setOutcome] = useState(null);   // 'solved' | 'wrong' | 'revealed' | 'continue'
   /*
@@ -442,7 +480,11 @@ const PuzzleSolver = () => {
         // From `before`, not from the optimistic board - the move is already on
         // that one, and applying it again would play it twice.
         setPlayedMoves(attemptLine);
-        setPlacements(applyPly(applyPly(before, move), data.reply));
+        // `position` arrives only for games whose captures the client cannot
+        // compute; when it does it is the authority and the guess is discarded.
+        setPlacements(data.position
+          ? fromServerPosition(data.position)
+          : applyPly(applyPly(before, move), data.reply));
         setLastTry(data.reply || move);
         setOutcome('continue');
         return;
@@ -454,7 +496,9 @@ const PuzzleSolver = () => {
         // reply the creator wrote after it. Replayed onto `before` so the
         // authoritative version of this move - promotion piece included -
         // replaces the guess rather than stacking on top of it.
-        setPlacements(line.slice(playedMoves.length * 2).reduce(applyPly, before));
+        setPlacements(data.position
+          ? fromServerPosition(data.position)
+          : line.slice(playedMoves.length * 2).reduce(applyPly, before));
         setSolution(line);
         setOutcome('solved');
         return;
@@ -484,7 +528,9 @@ const PuzzleSolver = () => {
       );
       const line = data.solution || null;
       setSolution(line);
-      if (Array.isArray(line)) {
+      if (data.position) {
+        setPlacements(fromServerPosition(data.position));
+      } else if (Array.isArray(line)) {
         setPlacements((prev) => line.slice(playedMoves.length * 2).reduce(applyPly, prev));
       }
       if (data.rating) setRatingChange(data.rating);
@@ -659,6 +705,24 @@ const PuzzleSolver = () => {
     if (busy || finished) return;
     const k = keyOf(x, y);
     const here = placements[k];
+    /*
+     * A piece held from the tray answers by being PUT DOWN, so one click ends
+     * the turn rather than two. Whether the square is legal is the server's
+     * call, exactly as it is for a move.
+     */
+    if (trayPick) {
+      submit({
+        type: 'place',
+        placePieceId: Number(trayPick.template.piece_id),
+        to: { x, y },
+        // Carried for the optimistic draw only; the server stores three fields
+        // and sends back the real position for these games.
+        placedBy: trayPick.player || Number(puzzle?.side_to_move) || 1,
+        placedName: trayPick.template.name || null,
+        placedImage: trayPick.template.image_location || null,
+      });
+      return;
+    }
     if (!selected) {
       if (!here) return;
       if (Number(here.player_id) !== Number(puzzle?.side_to_move)) return;
@@ -667,7 +731,7 @@ const PuzzleSolver = () => {
     }
     if (selected === k) { setSelected(null); return; }
     playFrom(selected, x, y);
-  }, [busy, finished, selected, placements, puzzle, playFrom]);
+  }, [busy, finished, selected, placements, puzzle, playFrom, trayPick, submit]);
 
   const sendFeedback = async () => {
     setFeedbackNotice(null);
@@ -688,6 +752,14 @@ const PuzzleSolver = () => {
   if (loading) return <div className={styles["solver-page"]}><p>Loading…</p></div>;
   if (error && !puzzle) return <div className={styles["solver-page"]}><p>{error}</p></div>;
   if (!puzzle) return null;
+
+  /*
+   * What this game lets the solver put down. Empty for every game that does
+   * not place pieces, so the tray does not appear and nothing changes.
+   */
+  const trayItems = placesPieces(puzzle)
+    ? expandPlaceable(puzzle.placeable_pieces, puzzle.player_count)
+    : [];
 
   const solutionPlies = Array.isArray(solution) ? solution.filter(Boolean) : [];
   const sol = solutionPlies[0] || null;
@@ -825,6 +897,27 @@ const PuzzleSolver = () => {
             />
             <BoardZoomControls {...vp.controlProps} />
           </div>
+          {/* In a game where the answer is a placement there is no piece on the
+              board to pick up first, so the tray IS the first half of the
+              gesture. */}
+          <PlacementTray
+            items={trayItems}
+            heldKey={trayPick?.key}
+            onPick={(item) => { setTrayPick(item); setSelected(null); }}
+            label="Answer by placing"
+            disabled={busy || finished}
+            /*
+             * image_location, not image_url: the template's image_url is one
+             * fixed picture, and these pieces differ by owner - a black stone
+             * and a white one are the same piece_id. image_location is the
+             * per-player list, indexed by who is placing.
+             */
+            imageFor={(item) => imageFor({
+              piece_id: item.template.piece_id,
+              image_location: item.template.image_location,
+              player_id: item.player || 1,
+            }, {})}
+          />
         </div>
 
         <div className={styles["panel"]}>

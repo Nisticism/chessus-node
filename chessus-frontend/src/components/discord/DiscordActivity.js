@@ -2,7 +2,9 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from "react"
 import axios from "axios";
 import API_URL from "../../global/global";
 import useBoardViewport from "../common/useBoardViewport";
-import { MOVE_DOT_BACKGROUNDS } from "../../helpers/moveEngine";
+import { MOVE_DOT_BACKGROUNDS, getMoveDotType } from "../../helpers/moveEngine";
+import PlacementTray from "../common/PlacementTray";
+import { expandPlaceable, placesPieces } from "../../helpers/placement";
 import PuzzleBoard from "../puzzles/PuzzleBoard";
 import useDiscordSdk from "./useDiscordSdk";
 import styles from "./discordactivity.module.scss";
@@ -73,6 +75,13 @@ const imageFor = (placement) => {
 };
 
 /** Move a piece on the board map. Castling moves two. */
+/** A server-sent position, keyed the way the board wants it. */
+const fromServerPosition = (list) => {
+  const out = {};
+  for (const pc of (Array.isArray(list) ? list : [])) out[`${pc.y},${pc.x}`] = { ...pc };
+  return out;
+};
+
 const applyMove = (cells, move, recorded) => {
   const m = recorded || move;
   if (!cells || !m?.from || !m?.to) return cells;
@@ -107,6 +116,8 @@ export default function DiscordActivity() {
   const [board, setBoard] = useState(null);
   const [picked, setPicked] = useState(null);
   const [hints, setHints] = useState([]);
+  // The piece held from the tray, in a game whose answer is a placement.
+  const [trayPick, setTrayPick] = useState(null);
   const [verdict, setVerdict] = useState(null);
   const [busy, setBusy] = useState(false);
   const [lastTry, setLastTry] = useState(null);
@@ -410,7 +421,10 @@ export default function DiscordActivity() {
         // From `before`, not from the optimistic board: the authoritative version
         // carries the promotion piece, and applying it on top of the guess would
         // play the move twice.
-        setBoard(applyMove(before, move, data.solution?.[found.length]));
+        // `position` arrives only for games whose captures this frame cannot
+        // work out - a surrounded group in Go - and is the authority when it does.
+        setBoard(data.position ? fromServerPosition(data.position)
+          : applyMove(before, move, data.solution?.[found.length]));
         setFound(moves);
         const tries = attempts + 1;
         setVerdict({
@@ -426,6 +440,7 @@ export default function DiscordActivity() {
          */
         setFound(moves);
         setBoard(() => {
+          if (data.position) return fromServerPosition(data.position);
           const after = applyMove(before, move);
           return data.reply ? applyMove(after, data.reply) : after;
         });
@@ -504,8 +519,58 @@ export default function DiscordActivity() {
     };
   }, [drag, squareAt, tryMove]);
 
+  /*
+   * Answer by putting a piece down. One click, because there is nothing on the
+   * board to pick up first - and the board that comes back is the server's,
+   * since a placement can capture a group this frame cannot find.
+   */
+  const tryPlace = useCallback(async (x, y) => {
+    if (!puzzle || busy || finished || !trayPick) return;
+    setBusy(true);
+    setLastTry({ x, y });
+    const move = {
+      type: 'place',
+      placePieceId: Number(trayPick.template.piece_id),
+      to: { x, y },
+    };
+    try {
+      const moves = [...found, move];
+      await awaitHandshake();
+      const { data } = await axios.post(
+        `${API}puzzles/${puzzle.id}/solve`,
+        { moves },
+        { headers: tokenRef.current ? { 'X-Discord-Token': tokenRef.current } : {} }
+      );
+      if (data.position) setBoard(fromServerPosition(data.position));
+      if (data.solved) {
+        setFound(moves);
+        const tries = attempts + 1;
+        setVerdict({ status: 'solved', text: `Solved in ${tries} ${tries === 1 ? 'try' : 'tries'}.` });
+        setAttempts(tries);
+        if (data.discord) setProgress((p) => ({ ...(p || {}), player: { ...(p?.player || {}), ...data.discord } }));
+      } else if (data.status === 'continue') {
+        setFound(moves);
+        hintCache.current = new Map();
+        const left = (data.movesTotal || 0) - (data.movesPlayed || 0);
+        setVerdict({
+          status: 'continue',
+          text: left === 1 ? 'Good. One move left.' : `Good. ${left} moves left.`,
+        });
+      } else {
+        setAttempts((n) => n + 1);
+        setVerdict({ status: 'wrong', text: 'Not that one. Try again.' });
+      }
+    } catch (_) {
+      setVerdict({ status: 'error', text: 'Could not check that just now.' });
+    } finally {
+      setBusy(false);
+      setTrayPick(null);
+    }
+  }, [puzzle, busy, finished, trayPick, found, attempts, awaitHandshake]);
+
   const clickSquare = useCallback((x, y) => {
     if (!puzzle || busy || finished) return;
+    if (trayPick) { tryPlace(x, y); return; }
     const key = `${y},${x}`;
     const here = board?.[key];
     if (!picked) {
@@ -517,7 +582,7 @@ export default function DiscordActivity() {
     }
     if (picked === key) { setPicked(null); setHints([]); return; }
     tryMove(picked, x, y);
-  }, [puzzle, busy, finished, board, picked, tryMove, loadHints]);
+  }, [puzzle, busy, finished, board, picked, tryMove, loadHints, trayPick, tryPlace]);
 
   const hoverSquare = useCallback(async (x, y) => {
     if (!puzzle || finished || picked || drag) return;
@@ -569,9 +634,14 @@ export default function DiscordActivity() {
           <span
             className={styles["move-dot"]}
             style={{
-              background: MOVE_DOT_BACKGROUNDS[
-                hint.isCastling ? 'castle' : (hint.isCapture ? 'capture' : 'move')
-              ],
+              /*
+               * getMoveDotType, the same call the solver page and every live
+               * board make, so one square means one thing everywhere. It reads
+               * the move/attack split the moves endpoint now sends: a square a
+               * piece can both walk to and take on gets the half-and-half dot,
+               * which was previously only ever drawn outside puzzles.
+               */
+              background: MOVE_DOT_BACKGROUNDS[getMoveDotType(hint)],
             }}
             aria-hidden="true"
           />
@@ -662,6 +732,23 @@ export default function DiscordActivity() {
           />
         )}
       </div>
+
+      {/* Only for a game that places pieces; every other puzzle is unchanged.
+          `tone` swaps the chrome for Discord's own greys - the geometry and
+          the held-piece ring stay identical to the site's. */}
+      <PlacementTray
+        items={placesPieces(puzzle) ? expandPlaceable(puzzle.placeable_pieces, puzzle.player_count) : []}
+        heldKey={trayPick?.key}
+        onPick={(item) => { setTrayPick(item); setPicked(null); setHints([]); }}
+        label="Answer by placing"
+        tone="discord"
+        disabled={busy || finished}
+        imageFor={(item) => imageFor({
+          piece_id: item.template.piece_id,
+          image_location: item.template.image_location,
+          player_id: item.player || 1,
+        })}
+      />
 
       {verdict && (
         <p className={`${styles["verdict"]} ${styles[`v-${verdict.status}`] || ''}`}>

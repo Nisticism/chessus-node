@@ -21955,8 +21955,19 @@ module.exports = {
   applyFlankingCaptures,
   // Surround (enclosure) capture + scoring
   resolveSurroundCaptures,
+  applySurroundCaptureScoring,
   placementViolatesSelfCapture,
   placementRepeatsBannedPosition,
+  /*
+   * Placement rules, exported so a puzzle can deploy a piece under exactly the
+   * rules a live game deploys it under. A puzzle whose answer is "place a stone
+   * here" has to be judged by the same code that would judge it in a real game,
+   * or the puzzle is teaching a variant of the game that does not exist.
+   */
+  isPlacementSquareAllowed,
+  getPlacementConfinementZone,
+  isPlaceableEligibleFor,
+  parseCustomSquares,
   computeEnclosedRegionScores,
   computeFinalScores,
   // Capture scoring, shared with puzzles so a points goal can be judged.

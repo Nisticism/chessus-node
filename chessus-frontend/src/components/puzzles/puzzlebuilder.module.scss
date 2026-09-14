@@ -273,6 +273,21 @@
   overflow: clip;
 }
 
+/* Identical to the solver page's dot, down to the geometry, so a square means
+   the same thing wherever you meet a board. The colour comes from the shared
+   MOVE_DOT_BACKGROUNDS map rather than being restated here - including the
+   half-and-half fill for a square a piece can both move to and take on. */
+.move-dot {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 25%;
+  aspect-ratio: 1;
+  translate: -50% -50%;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
 .square {
   position: relative;
   display: flex;

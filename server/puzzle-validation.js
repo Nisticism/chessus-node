@@ -47,6 +47,16 @@ const {
   applyPromotionToPiece,
   applyCapturePoints,
   getPlayerScore,
+  resolveSurroundCaptures,
+  applySurroundCaptureScoring,
+  placementViolatesSelfCapture,
+  placementRepeatsBannedPosition,
+  isPlacementSquareAllowed,
+  getPlacementConfinementZone,
+  isPlaceableEligibleFor,
+  parseCustomSquares,
+  getValidFlankingPlacements,
+  applyFlankingCaptures,
 } = require('./game-socket');
 
 const VALIDATION = {
@@ -261,6 +271,39 @@ function describeGoal(puzzle, gameType) {
 /* ------------------------------------------------------------------ state -- */
 
 /** Stable identity for a move, so two descriptions of the same move compare equal. */
+/* --------------------------------------------------------- placement plies --
+ *
+ * In some games a turn is not "move a piece from here to there" - it is "put a
+ * piece down". Go is the pure case: a stone has every movement column set to
+ * zero, so placing one IS the game and a puzzle whose answer must be a move
+ * could never be written for it at all.
+ *
+ * A placement ply borrows the live game's own shape rather than inventing one:
+ * { type: 'place', placePieceId, to: {x, y} }. The same three fields the socket
+ * handler reads off a deploy. WHOSE piece it is is deliberately not stored - it
+ * is whoever's turn it is at that point in the line, which removes a whole
+ * class of ply that disagrees with the position it sits in.
+ */
+const isPlacementPly = (ply) => !!ply && ply.type === 'place';
+
+/** The game's placement settings, or null when it does not place pieces. */
+function placementRules(gameType) {
+  const data = parseOtherGameData(gameType);
+  if (!data?.place_pieces_action) return null;
+  return {
+    data,
+    templates: Array.isArray(data.placeable_pieces) ? data.placeable_pieces : [],
+  };
+}
+
+/** other_game_data as an object, whether it arrived as one or as JSON text. */
+function parseOtherGameData(gameType) {
+  const raw = gameType?.other_game_data;
+  if (!raw) return {};
+  if (typeof raw !== 'string') return raw;
+  try { return JSON.parse(raw); } catch (_) { return {}; }
+}
+
 function moveKey(move) {
   if (!move) return '';
   const extra = move.promotionPieceId ? `|P${move.promotionPieceId}` : '';
@@ -282,6 +325,15 @@ function moveKey(move) {
  */
 function boardMoveKey(move) {
   if (!move) return '';
+  /*
+   * A placement has no origin square, so the piece being placed takes the
+   * origin's place in the key. Two different pieces put on the same square are
+   * two different answers; the same piece on two squares likewise.
+   */
+  if (isPlacementPly(move)) {
+    const to = move.to ? `${move.to.x},${move.to.y}` : '?';
+    return `place${move.placePieceId ?? ''}>${to}`;
+  }
   const from = move.from ? `${move.from.x},${move.from.y}` : '?';
   const to = move.to ? `${move.to.x},${move.to.y}` : '?';
   const extra = [
@@ -316,7 +368,14 @@ function buildGameState(puzzle, gameType) {
       { id: 'puzzle_p2', position: 2, username: 'Player 2' },
     ],
     timeControl: null,
-    otherGameData: gameType?.other_game_data || {},
+    /*
+     * PARSED, not the raw column. game_types.other_game_data is JSON text, and
+     * handing the string through meant every rule that reads it - placement,
+     * flanking, surround capture, the scoring model - was reading undefined off
+     * a String. A live game parses it in every one of its own entry points;
+     * this was the one path that did not.
+     */
+    otherGameData: parseOtherGameData(gameType),
     enPassantTarget: null,
     /*
      * The game's STARTING roster, not this puzzle's handful of pieces.
@@ -399,7 +458,129 @@ function applySetupMove(state, setupMove) {
  *
  * Returns { ok, reason, promotionEligible, captured, movingPiece }.
  */
+/**
+ * Put a piece down, under exactly the rules a live game would apply.
+ *
+ * Every check here is the live handler's check, called through the same
+ * exported function rather than reimplemented - square empty, square allowed,
+ * the piece eligible for this player, the self-capture ban, the repetition
+ * (ko) ban - and the two capture resolutions that follow a deploy, flanking
+ * (Othello) and surround (Go). A puzzle that accepted a placement the game
+ * would refuse would be teaching a variant that does not exist.
+ *
+ * TWO DELIBERATE DIFFERENCES from the live handler, both because a puzzle is a
+ * position rather than a game with a history:
+ *
+ *  - Reserves are not counted. A limited piece bank is spent over a whole game,
+ *    and a puzzle has no record of what came before it; treating the position
+ *    as "whatever is left" is the only answer that does not invent a number.
+ *  - The turn is not advanced here. applyPly's callers own the turn, because a
+ *    solution line alternates by index rather than by what the engine did.
+ *
+ * Returns the same { ok, reason } shape as a move, so callers do not branch.
+ */
+async function applyPlacementPly(state, ply) {
+  const rules = placementRules(state.gameType);
+  if (!rules) return { ok: false, reason: 'this game does not place pieces' };
+
+  const x = Number(ply?.to?.x);
+  const y = Number(ply?.to?.y);
+  const width = Number(state.gameType?.board_width) || 8;
+  const height = Number(state.gameType?.board_height) || 8;
+  if (!Number.isFinite(x) || !Number.isFinite(y)
+      || x < 0 || x >= width || y < 0 || y >= height) {
+    return { ok: false, reason: 'that square is not on the board' };
+  }
+
+  if ((state.pieces || []).some((p) => Number(p.x) === x && Number(p.y) === y)) {
+    return { ok: false, reason: 'that square is occupied' };
+  }
+
+  const player = Number(state.currentTurn);
+  const customSquares = parseCustomSquares(state.gameType);
+  if (customSquares && !isPlacementSquareAllowed(customSquares, player, x, y)) {
+    return { ok: false, reason: 'a piece may not be placed on that square' };
+  }
+
+  const template = ply.placePieceId != null
+    ? rules.templates.find((t) => Number(t.piece_id) === Number(ply.placePieceId))
+    : rules.templates[0];
+  if (!template) return { ok: false, reason: 'that piece cannot be placed in this game' };
+  if (!isPlaceableEligibleFor(template, player)) {
+    return { ok: false, reason: `Player ${player} cannot place that piece` };
+  }
+
+  if (placementViolatesSelfCapture(state, x, y, player, template)) {
+    return { ok: false, reason: 'that placement would capture itself' };
+  }
+  if (placementRepeatsBannedPosition(state, x, y, player, template)) {
+    return { ok: false, reason: 'that placement would repeat a previous board position' };
+  }
+
+  /*
+   * Flanking games (Othello) may REQUIRE a deploy to flank something. Asked
+   * before the piece goes down, exactly as the live handler asks it.
+   */
+  let flankingHere = null;
+  if (rules.data.flanking_captures) {
+    const valid = getValidFlankingPlacements(state, player) || [];
+    flankingHere = valid.find((v) => Number(v.x) === x && Number(v.y) === y) || null;
+    if (rules.data.must_flank && !flankingHere) {
+      return { ok: false, reason: 'a piece must be placed where it flanks an opponent' };
+    }
+  }
+
+  /*
+   * The engine piece. Spread from the template first, the same way the live
+   * handler does, so a placeable piece's movement and capture rules survive
+   * into the position - a placed piece that can later move must be able to.
+   */
+  const placedIsNeutral = !!template.is_neutral;
+  const team = placedIsNeutral ? 0 : player;
+  state.pieces.push({
+    ...template,
+    id: `placed_${x}_${y}_${state.pieces.length}`,
+    piece_id: Number(template.piece_id),
+    piece_name: template.name || template.piece_name || 'Placed Piece',
+    image_url: template.image_url,
+    image_location: template.image_location,
+    x, y,
+    team,
+    player_id: team,
+    is_neutral: placedIsNeutral,
+    // A piece that has just been placed has not moved, whatever the geography
+    // would otherwise infer - it did not walk there.
+    hasMoved: false,
+    moveCount: 0,
+    hit_points: template.hit_points ?? 1,
+    current_hp: template.hit_points ?? 1,
+    attack_damage: template.attack_damage ?? 1,
+    piece_width: template.piece_width ?? 1,
+    piece_height: template.piece_height ?? 1,
+  });
+
+  let captured = [];
+  if (flankingHere) {
+    captured = applyFlankingCaptures(state, x, y, player) || [];
+  }
+
+  const surrounded = resolveSurroundCaptures(state, player) || [];
+  if (surrounded.length) {
+    applySurroundCaptureScoring(state, surrounded, player);
+    captured = captured.concat(surrounded);
+  }
+
+  // A deploy brings new material to the board, so it resets the drawn-game
+  // counter for the same reason a pawn move does in chess.
+  state.movesWithoutCapture = 0;
+  state.moveHistory.push({ type: 'place', to: { x, y }, position: player });
+
+  return { ok: true, reason: null, promotedTo: null, promotionEligible: null, captured };
+}
+
 async function applyPly(state, ply, { autoPromote = false } = {}) {
+  if (isPlacementPly(ply)) return applyPlacementPly(state, ply);
+
   let applied;
   try {
     applied = await validateAndApplyMove(state, ply, { skipTurnCheck: true });
@@ -533,6 +714,49 @@ function enPassantCandidates(state, side) {
 }
 
 /** Does this state meet the puzzle's goal for the side to move? */
+/**
+ * Every piece this player could put down, as candidate plies.
+ *
+ * Needed for the same reason the moves are enumerated: a "find the move"
+ * uniqueness check that only looked at moves would report "no legal move
+ * achieves this" for a game whose every turn is a placement, and would miss a
+ * second winning placement in a game that has both.
+ *
+ * Cheap because it only proposes: every empty square times every template the
+ * player may deploy, with the expensive rules (self-capture, ko, flanking)
+ * left to applyPlacementPly, which the caller runs on each candidate anyway.
+ * On a 9x9 Go board with one stone that is 81 proposals; the enumeration of
+ * moves it sits beside is routinely larger.
+ *
+ * Returns [] for every game that does not place pieces, which is nearly all of
+ * them - so nothing about validating a chess puzzle changes.
+ */
+function placementCandidates(state, side) {
+  const rules = placementRules(state.gameType);
+  if (!rules || !rules.templates.length) return [];
+
+  const width = Number(state.gameType?.board_width) || 8;
+  const height = Number(state.gameType?.board_height) || 8;
+  const occupied = new Set((state.pieces || []).map((p) => `${Number(p.y)},${Number(p.x)}`));
+  const customSquares = parseCustomSquares(state.gameType);
+  const zone = customSquares ? getPlacementConfinementZone(customSquares, side) : null;
+
+  const out = [];
+  for (const template of rules.templates) {
+    if (!isPlaceableEligibleFor(template, side)) continue;
+    const pieceId = Number(template.piece_id);
+    if (!Number.isFinite(pieceId)) continue;
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (occupied.has(`${y},${x}`)) continue;
+        if (customSquares && !isPlacementSquareAllowed(customSquares, side, x, y, zone)) continue;
+        out.push({ type: 'place', placePieceId: pieceId, to: { x, y } });
+      }
+    }
+  }
+  return out;
+}
+
 function goalMet(goal, state, side, ctx) {
   const def = GOAL_DEFS[goal];
   if (!def || !def.mechanical) return false;
@@ -632,6 +856,7 @@ async function validatePuzzle(puzzle, gameType) {
   const candidates = [
     ...(getAllLegalMovesForPlayer(base, side) || []),
     ...enPassantCandidates(base, side),
+    ...placementCandidates(base, side),
   ];
   if (!candidates.some((m) => moveKey(m) === moveKey(intended))) candidates.push(intended);
 
@@ -703,6 +928,9 @@ module.exports = {
   playLine,
   buildGameState,
   moveKey,
+  isPlacementPly,
+  placementRules,
+  placementCandidates,
   goalsForGameType,
   describeGoal,
   GOALS,

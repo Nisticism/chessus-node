@@ -6,7 +6,9 @@ import authHeader from "../../services/auth-header";
 import API_URL from "../../global/global";
 import { isSilverSupporter } from "../../helpers/supporterTiers";
 import useBoardViewport from "../common/useBoardViewport";
-import { MOVE_DOT_BACKGROUNDS } from "../../helpers/moveEngine";
+import { MOVE_DOT_BACKGROUNDS, getMoveDotType } from "../../helpers/moveEngine";
+import PlacementTray from "../common/PlacementTray";
+import { expandPlaceable, placesPieces } from "../../helpers/placement";
 import PuzzleBoard from "../puzzles/PuzzleBoard";
 import styles from "./puzzlespanel.module.scss";
 
@@ -62,6 +64,13 @@ const imageFor = (placement) => {
 };
 
 /** Move a piece on the board map, so a solved puzzle shows its answer played. */
+/** A server-sent position, keyed the way the board wants it. */
+const fromServerPosition = (list) => {
+  const out = {};
+  for (const pc of (Array.isArray(list) ? list : [])) out[`${pc.y},${pc.x}`] = { ...pc };
+  return out;
+};
+
 const applyMove = (cells, move, recorded) => {
   const m = recorded || move;
   if (!cells || !m?.from || !m?.to) return cells;
@@ -149,6 +158,8 @@ const PuzzlesPanel = () => {
   // Where the held piece may go, from the server. The dots are what make the
   // board playable rather than a picture you can click at.
   const [hints, setHints] = useState([]);
+  // The piece held from the tray, in a game whose answer is a placement.
+  const [trayPick, setTrayPick] = useState(null);
   const [lastTry, setLastTry] = useState(null);
   // Development only: how many days ahead of today we are previewing.
   const [preview, setPreview] = useState(0);
@@ -391,8 +402,46 @@ const PuzzlesPanel = () => {
     };
   }, [drag, squareAt, tryMove]);
 
+  /*
+   * Answer by putting a piece down. One click rather than two - there is no
+   * piece on the board to pick up first - and the resulting board comes back
+   * from the server, because a placement's captures (a surrounded group in Go)
+   * are not something this card can work out.
+   */
+  const tryPlace = useCallback(async (x, y) => {
+    if (!puzzle || busy || finished || !trayPick) return;
+    setBusy(true);
+    setLastTry({ x, y });
+    const move = {
+      type: 'place',
+      placePieceId: Number(trayPick.template.piece_id),
+      to: { x, y },
+    };
+    try {
+      const { data } = await axios.post(
+        `${API_URL}puzzles/${puzzle.id}/solve`,
+        { moves: [move] },
+        { headers: authHeader() }
+      );
+      if (data.position) setBoard(fromServerPosition(data.position));
+      if (data.solved) {
+        setVerdict({ status: 'solved', text: 'That is it — solved.' });
+      } else if (data.status === 'continue') {
+        navigate(`/games/${puzzle.game_type_id}/puzzles/${puzzle.id}`);
+      } else {
+        setVerdict({ status: 'wrong', text: 'Not this one. Try another square.' });
+      }
+    } catch (_) {
+      setVerdict({ status: 'error', text: 'Could not check that just now.' });
+    } finally {
+      setBusy(false);
+      setTrayPick(null);
+    }
+  }, [puzzle, busy, finished, trayPick, navigate]);
+
   const clickSquare = useCallback((x, y) => {
     if (!puzzle || busy || finished) return;
+    if (trayPick) { tryPlace(x, y); return; }
     const key = `${y},${x}`;
     const here = board?.[key];
     if (!picked) {
@@ -405,7 +454,7 @@ const PuzzlesPanel = () => {
     }
     if (picked === key) { setPicked(null); setHints([]); return; }
     tryMove(picked, x, y);
-  }, [puzzle, busy, finished, board, picked, tryMove, loadHints]);
+  }, [puzzle, busy, finished, board, picked, tryMove, loadHints, trayPick, tryPlace]);
 
   const bySquare = useMemo(() => {
     const map = new Map();
@@ -449,9 +498,14 @@ const PuzzlesPanel = () => {
           <span
             className={styles["move-dot"]}
             style={{
-              background: MOVE_DOT_BACKGROUNDS[
-                hint.isCastling ? 'castle' : (hint.isCapture ? 'capture' : 'move')
-              ],
+              /*
+               * getMoveDotType, the same call the solver page and every live
+               * board make, so one square means one thing everywhere. It reads
+               * the move/attack split the moves endpoint now sends: a square a
+               * piece can both walk to and take on gets the half-and-half dot,
+               * which was previously only ever drawn outside puzzles.
+               */
+              background: MOVE_DOT_BACKGROUNDS[getMoveDotType(hint)],
             }}
             aria-hidden="true"
           />
@@ -534,6 +588,21 @@ const PuzzlesPanel = () => {
                   onSquareMouseLeave={unhoverSquare}
                 />
               </div>
+
+              {/* Only appears for a game that places pieces, which is where the
+                  answer is "put one here" rather than "move this there". */}
+              <PlacementTray
+                items={placesPieces(puzzle) ? expandPlaceable(puzzle.placeable_pieces, puzzle.player_count) : []}
+                heldKey={trayPick?.key}
+                onPick={(item) => { setTrayPick(item); setPicked(null); setHints([]); }}
+                label="Answer by placing"
+                disabled={busy || finished}
+                imageFor={(item) => imageFor({
+                  piece_id: item.template.piece_id,
+                  image_location: item.template.image_location,
+                  player_id: item.player || 1,
+                })}
+              />
 
               <div className={styles["daily-info"]}>
                 <h3 className={styles["daily-title"]}>

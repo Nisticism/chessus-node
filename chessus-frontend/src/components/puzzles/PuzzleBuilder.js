@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { useSelector } from "react-redux";
 import axios from "../../services/axios-interceptor";
 import API_URL from "../../global/global";
 import authHeader from "../../services/auth-header";
+import { MOVE_DOT_BACKGROUNDS, getMoveDotType } from "../../helpers/moveEngine";
 import { getGameById } from "../../actions/games";
 import { getPieceById } from "../../actions/pieces";
 import { useDispatch } from "react-redux";
@@ -102,6 +103,19 @@ const PuzzleBuilder = () => {
    * to drag, so a Go puzzle could not be arranged at all.
    */
   const [trayPick, setTrayPick] = useState(null);
+
+  /*
+   * Where the hovered piece could go.
+   *
+   * The builder had no dots at all, which made arranging a position in an
+   * unfamiliar game guesswork - the whole point of a user-defined piece is
+   * that you cannot tell where it goes by looking at it, and the creator is
+   * often working on somebody else's game now that GridGrove's are open to
+   * everyone. Answered by the server, because the position here is not a saved
+   * puzzle and the full piece definitions are not on this page.
+   */
+  const [hints, setHints] = useState([]);
+  const hintCache = useRef(new Map());
   /*
    * The solution is a flat list of plies that ALTERNATES, starting with the side
    * to move: [your move 1, their reply 1, your move 2, ...]. A one-move puzzle
@@ -407,6 +421,68 @@ const PuzzleBuilder = () => {
   }, [placements, pieceDataMap]);
 
   /*
+   * The tray: what this game lets a player put on the board, and for whom.
+   *
+   * Read from the game's own placeable_pieces - the same list the live game
+   * deploys from - so the builder can never offer a piece the game would refuse
+   * mid-play. An entry can be for one player, for either, or neutral; the
+   * `player` field says which, and "all" is expanded into one tray item per
+   * player so the creator picks a colour by picking an item rather than by
+   * setting a separate control.
+   *
+   * Empty for every game that does not place pieces, which is nearly all of
+   * them - so the tray simply does not appear and nothing about arranging a
+   * chess position changes.
+   */
+  const trayItems = useMemo(() => {
+    let data = game?.other_game_data;
+    if (typeof data === 'string') {
+      try { data = JSON.parse(data); } catch (_) { data = null; }
+    }
+    if (!data?.place_pieces_action) return [];
+    const list = Array.isArray(data.placeable_pieces) ? data.placeable_pieces : [];
+    const players = Math.max(2, Number(game?.player_count) || 2);
+
+    const out = [];
+    for (const entry of list) {
+      const pieceId = Number(entry?.piece_id);
+      if (!Number.isFinite(pieceId)) continue;
+      /*
+       * A neutral piece belongs to nobody, so it gets one tray item rather than
+       * one per player. player_id 0 is how the rest of the engine spells "not
+       * either side" - see is_neutral in puzzle-hydrate.js.
+       */
+      if (entry.is_neutral) {
+        out.push({ key: `${pieceId}:0`, template: entry, player: 0 });
+        continue;
+      }
+      const who = entry.player == null || entry.player === 'all' ? 'all' : String(entry.player);
+      const match = who === 'all' ? null : who.match(/^p?(\d+)$/);
+      if (match) {
+        out.push({ key: `${pieceId}:${match[1]}`, template: entry, player: Number(match[1]) });
+      } else {
+        for (let p = 1; p <= players; p++) {
+          out.push({ key: `${pieceId}:${p}`, template: entry, player: p });
+        }
+      }
+    }
+    return out;
+  }, [game]);
+
+  /*
+   * The tray belongs to two of the three steps, for two different reasons.
+   *
+   * Arranging: it is how the position gets built at all in a game that starts
+   * with an empty board.
+   *
+   * Solution: it is how the ANSWER gets recorded, when the answer is "put a
+   * stone here". Not in "their last move": that step records what the opponent
+   * did to reach this position, and the position already contains the result -
+   * a placement there would put a second piece down.
+   */
+  const trayOpen = (mode === 'arrange' || mode === 'solution') && trayItems.length > 0;
+
+  /*
    * The board as it stands after the moves recorded so far. Solution mode plays
    * forward from the starting position, so every move after the first is chosen
    * from the position the previous one left behind - which is the only way to
@@ -414,11 +490,42 @@ const PuzzleBuilder = () => {
    */
   const solutionBoard = useMemo(() => {
     const next = { ...placements };
-    for (const ply of solutionLine) {
-      if (!ply?.from || !ply?.to) continue;
+    solutionLine.forEach((ply, plyIndex) => {
+      /*
+       * A placement ply puts a NEW piece on the board rather than moving one,
+       * so the preview adds it where a move would relocate. Skipping it here
+       * (which is what "no from square" used to mean) left every later ply in
+       * a placement line being recorded against a board missing the piece the
+       * line had just played.
+       */
+      if (ply?.type === 'place') {
+        /*
+         * Whose stone it is comes from the ply's POSITION IN THE LINE, not from
+         * a field on it. A line alternates from the side to move, and the
+         * server stores a placement as three fields - type, piece, square - so
+         * an owner written here would be a fourth that does not survive a
+         * reload and could disagree with the three that do.
+         */
+        const placer = plyIndex % 2 === 0
+          ? Number(sideToMove)
+          : (Number(sideToMove) === 1 ? 2 : 1);
+        const template = trayItems.find(
+          (t) => Number(t.template.piece_id) === Number(ply.placePieceId)
+        )?.template;
+        next[keyOf(ply.to.x, ply.to.y)] = {
+          piece_id: Number(ply.placePieceId),
+          player_id: placer,
+          piece_name: template?.name || template?.piece_name || null,
+          image_location: template?.image_location || null,
+          x: ply.to.x,
+          y: ply.to.y,
+        };
+        return;
+      }
+      if (!ply?.from || !ply?.to) return;
       const fromKey = keyOf(ply.from.x, ply.from.y);
       const mover = next[fromKey];
-      if (!mover) continue;
+      if (!mover) return;
       delete next[fromKey];
       next[keyOf(ply.to.x, ply.to.y)] = {
         ...mover,
@@ -457,9 +564,9 @@ const PuzzleBuilder = () => {
           next[keyOf(px, ply.to.y)] = { ...partner, x: px, y: ply.to.y };
         }
       }
-    }
+    });
     return next;
-  }, [placements, solutionLine]);
+  }, [placements, solutionLine, trayItems, sideToMove]);
 
   // Which side plays the next ply, and whose move number it is.
   const nextPlyIndex = solutionLine.length;
@@ -531,58 +638,6 @@ const PuzzleBuilder = () => {
     [placements]
   );
 
-  /*
-   * The tray: what this game lets a player put on the board, and for whom.
-   *
-   * Read from the game's own placeable_pieces - the same list the live game
-   * deploys from - so the builder can never offer a piece the game would refuse
-   * mid-play. An entry can be for one player, for either, or neutral; the
-   * `player` field says which, and "all" is expanded into one tray item per
-   * player so the creator picks a colour by picking an item rather than by
-   * setting a separate control.
-   *
-   * Empty for every game that does not place pieces, which is nearly all of
-   * them - so the tray simply does not appear and nothing about arranging a
-   * chess position changes.
-   */
-  const trayItems = useMemo(() => {
-    let data = game?.other_game_data;
-    if (typeof data === 'string') {
-      try { data = JSON.parse(data); } catch (_) { data = null; }
-    }
-    if (!data?.place_pieces_action) return [];
-    const list = Array.isArray(data.placeable_pieces) ? data.placeable_pieces : [];
-    const players = Math.max(2, Number(game?.player_count) || 2);
-
-    const out = [];
-    for (const entry of list) {
-      const pieceId = Number(entry?.piece_id);
-      if (!Number.isFinite(pieceId)) continue;
-      /*
-       * A neutral piece belongs to nobody, so it gets one tray item rather than
-       * one per player. player_id 0 is how the rest of the engine spells "not
-       * either side" - see is_neutral in puzzle-hydrate.js.
-       */
-      if (entry.is_neutral) {
-        out.push({ key: `${pieceId}:0`, template: entry, player: 0 });
-        continue;
-      }
-      const who = entry.player == null || entry.player === 'all' ? 'all' : String(entry.player);
-      const match = who === 'all' ? null : who.match(/^p?(\d+)$/);
-      if (match) {
-        out.push({ key: `${pieceId}:${match[1]}`, template: entry, player: Number(match[1]) });
-      } else {
-        for (let p = 1; p <= players; p++) {
-          out.push({ key: `${pieceId}:${p}`, template: entry, player: p });
-        }
-      }
-    }
-    return out;
-  }, [game]);
-
-  // Arranging is the only step the tray belongs to: the other two record moves
-  // on a position that is already settled.
-  const trayOpen = mode === 'arrange' && trayItems.length > 0;
 
   /*
    * Record a ply, asking the server first what the move actually is.
@@ -602,9 +657,37 @@ const PuzzleBuilder = () => {
     setCheckResult(null);
     let move = ply;
     try {
+      /*
+       * Probed against the board the move is ACTUALLY played from, which for
+       * any ply after the first is the position the line has reached - not the
+       * starting position. And the move that led into that board is the
+       * previous ply, which is what setup_move means, so en passant is judged
+       * mid-line the same way it is judged on move one.
+       *
+       * This matters more with placements than it did without them: "is that
+       * square occupied" is the first thing a deploy is refused for, and asking
+       * it of the starting position would accept a stone on a point the line
+       * had already filled.
+       */
+      const played = solutionLine.length;
+      const probePosition = mode === 'solution' && played
+        ? Object.entries(solutionBoard).map(([k, v]) => {
+          const [py, px] = k.split(',').map(Number);
+          return { ...v, x: px, y: py };
+        })
+        : positionArray;
+      const probeSetup = mode === 'solution' && played
+        ? solutionLine[played - 1]
+        : setupMove;
+
       const { data } = await axios.post(
         `${API_URL}game-types/${gameId}/puzzle-move-info`,
-        { position: positionArray, side_to_move: sideToMove, setup_move: setupMove, move: ply },
+        {
+          position: probePosition,
+          side_to_move: nextSide,
+          setup_move: probeSetup && probeSetup.from && probeSetup.to ? probeSetup : null,
+          move: ply,
+        },
         { headers: authHeader() }
       );
       /*
@@ -645,7 +728,7 @@ const PuzzleBuilder = () => {
        */
     }
     setSolutionLine((prev) => [...prev, move]);
-  }, [gameId, positionArray, sideToMove, setupMove]);
+  }, [gameId, positionArray, setupMove, mode, solutionLine, solutionBoard, nextSide]);
 
   /*
    * The requirements come from the server rather than being written out here,
@@ -674,6 +757,76 @@ const PuzzleBuilder = () => {
       return null;
     });
   }, []);
+
+  /*
+   * The board the dots are about: the arranged position in the first two steps,
+   * the position the line has reached in the third. Same rule the click handler
+   * uses, so a dot and a click can never be talking about different boards.
+   */
+  const hintBoard = mode === 'solution' ? solutionBoard : placements;
+
+  const hintPosition = useMemo(
+    () => Object.entries(hintBoard).map(([k, v]) => {
+      const [y, x] = k.split(',').map(Number);
+      return { ...v, x, y };
+    }),
+    [hintBoard]
+  );
+
+  /*
+   * Keyed on the board as well as the square, so rearranging a piece does not
+   * leave the previous position's dots cached against it. The board changes a
+   * handful of times while a puzzle is built; the cache earns its keep on the
+   * hovering in between.
+   */
+  const hintBoardKey = useMemo(() => JSON.stringify(hintPosition), [hintPosition]);
+
+  const loadHints = useCallback(async (x, y) => {
+    const cacheKey = `${hintBoardKey}|${x},${y}`;
+    if (hintCache.current.has(cacheKey)) return hintCache.current.get(cacheKey);
+    try {
+      const { data } = await axios.post(
+        `${API_URL}game-types/${gameId}/puzzle-moves`,
+        { position: hintPosition, side_to_move: sideToMove, setup_move: setupMove, x, y },
+        { headers: authHeader() }
+      );
+      const moves = data?.moves || [];
+      // Bounded so a long building session cannot grow it without limit.
+      if (hintCache.current.size > 400) hintCache.current.clear();
+      hintCache.current.set(cacheKey, moves);
+      return moves;
+    } catch (_) {
+      return [];
+    }
+  }, [gameId, hintPosition, hintBoardKey, sideToMove, setupMove]);
+
+  const hoverSquare = useCallback(async (x, y) => {
+    // A held piece owns the board's attention; hover must not fight it.
+    if (selected || trayPick) return;
+    if (!hintBoard[keyOf(x, y)]) { setHints([]); return; }
+    const moves = await loadHints(x, y);
+    // The pointer may have moved on while the request was out.
+    setHints((prev) => (selected || trayPick ? prev : moves));
+  }, [selected, trayPick, hintBoard, loadHints]);
+
+  const unhoverSquare = useCallback(() => {
+    if (selected || trayPick) return;
+    setHints([]);
+  }, [selected, trayPick]);
+
+  /*
+   * A held piece keeps its dots up, so "where can this go" survives the click
+   * that picks it up - which is the moment the question actually gets asked.
+   */
+  useEffect(() => {
+    if (!selected) return undefined;
+    let cancelled = false;
+    const [sy, sx] = selected.split(',').map(Number);
+    loadHints(sx, sy).then((moves) => { if (!cancelled) setHints(moves); });
+    return () => { cancelled = true; };
+  }, [selected, loadHints]);
+
+  useEffect(() => { if (!selected) setHints([]); }, [selected]);
 
   const handleSquareClick = useCallback((x, y) => {
     const k = keyOf(x, y);
@@ -764,6 +917,36 @@ const PuzzleBuilder = () => {
         return;
       }
       if (here) setSelected(k);
+      return;
+    }
+
+    /*
+     * Solution mode with a piece held from the tray: the ANSWER is a placement.
+     *
+     * Recorded as the live game's own deploy shape - type, piece, square - and
+     * whose it is comes from where the ply sits in the line, so it is always
+     * the side whose turn it is. That is what makes a Go puzzle possible at
+     * all: a stone has no movement, so "click the piece, then its square" can
+     * never describe a Go move.
+     */
+    if (mode === 'solution' && trayPick) {
+      if (lineFull) {
+        setCheckResult({ tone: 'warn', text: `A solution can be at most ${MAX_MOVES_PER_SIDE} moves per side.` });
+        return;
+      }
+      if (Number(trayPick.player) !== 0 && Number(trayPick.player) !== nextSide) {
+        setCheckResult({
+          tone: 'warn',
+          text: `That is Player ${trayPick.player}'s piece, but it is Player ${nextSide}'s turn in the line.`,
+        });
+        return;
+      }
+      recordPly({
+        type: 'place',
+        placePieceId: Number(trayPick.template.piece_id),
+        to: { x, y },
+      });
+      setSelected(null);
       return;
     }
 
@@ -1029,9 +1212,11 @@ const PuzzleBuilder = () => {
       const isSelected = selected === k;
       // Highlight the move just recorded, so the line reads as you build it.
       // In setup mode that is the opponent's last move instead.
+      const hint = hints.find((m) => Number(m.x) === x && Number(m.y) === y);
       const shown = mode === 'setup' ? setupMove : lastPly;
-      const isFrom = !!shown && shown.from.x === x && shown.from.y === y;
-      const isTo = !!shown && shown.to.x === x && shown.to.y === y;
+      // A placement has no origin square to light up, only a destination.
+      const isFrom = !!shown?.from && shown.from.x === x && shown.from.y === y;
+      const isTo = !!shown?.to && shown.to.x === x && shown.to.y === y;
       squares.push(
         <div
           key={k}
@@ -1047,6 +1232,8 @@ const PuzzleBuilder = () => {
             height: vp.squareSize,
           }}
           onClick={() => handleSquareClick(x, y)}
+          onMouseEnter={() => hoverSquare(x, y)}
+          onMouseLeave={unhoverSquare}
           title={p ? `${p.piece_name} (Player ${p.player_id})` : ''}
         >
           {(() => {
@@ -1055,6 +1242,17 @@ const PuzzleBuilder = () => {
               p ? <span className={styles["piece-fallback"]}>{(p.piece_name || '?').charAt(0)}</span> : null
             );
           })()}
+          {/* The same dot, from the same colour map and the same chooser, as
+              the solver page and every live board - so a half red, half blue
+              square means "can move here and can take here" in the builder
+              too. */}
+          {!!hint && (
+            <span
+              className={styles["move-dot"]}
+              style={{ background: MOVE_DOT_BACKGROUNDS[getMoveDotType(hint)] }}
+              aria-hidden="true"
+            />
+          )}
         </div>
       );
     }
@@ -1144,7 +1342,9 @@ const PuzzleBuilder = () => {
             */}
           {trayOpen && (
             <div className={styles["tray"]}>
-              <span className={styles["tray-label"]}>Place a piece</span>
+              <span className={styles["tray-label"]}>
+                {mode === 'solution' ? 'Answer by placing' : 'Place a piece'}
+              </span>
               <div className={styles["tray-items"]}>
                 {trayItems.map((item) => {
                   const src = imageFor(
@@ -1331,7 +1531,11 @@ const PuzzleBuilder = () => {
                           ? `Your move ${Math.floor(i / 2) + 1}`
                           : `Their reply ${Math.floor(i / 2) + 1}`}
                       </span>
-                      ({ply.from.x}, {ply.from.y}) → ({ply.to.x}, {ply.to.y})
+                      {ply.type === 'place'
+                        ? <>place {trayItems.find((t) => Number(t.template.piece_id) === Number(ply.placePieceId))?.template?.name
+                            || pieceDataMap[ply.placePieceId]?.piece_name
+                            || `piece #${ply.placePieceId}`} on ({ply.to.x}, {ply.to.y})</>
+                        : <>({ply.from.x}, {ply.from.y}) → ({ply.to.x}, {ply.to.y})</>}
                       {!!ply.isCastling && (
                         <span className={styles["ply-castle"]}>
                           {' '}castles {ply.castlingDirection}

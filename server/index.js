@@ -16105,7 +16105,7 @@ app.put("/api/admin/site-settings/:key", authenticateAdmin1, async (req, res) =>
  * with - so this uses an explicit role check rather than authenticateAdmin1,
  * which admits admins too.
  */
-const PLATFORM_ACCOUNT_USERNAME = 'GridGrove';
+const { PLATFORM_ACCOUNT_USERNAME } = require('./platform-account');
 
 const requireOwner = (req, res) => {
   const role = (req.user?.role || '').toLowerCase();
