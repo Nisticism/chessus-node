@@ -5,6 +5,17 @@ import styles from "./changelog.module.scss";
 const changelogData = [
   {
     date: "September 13, 2026",
+    title: "Puzzles: every piece now uses its own settings",
+    items: [
+      "Fixed puzzles giving every copy of a piece the same settings. Your game configures each piece per square — this rook castles two squares and that one castles one, these two pawns promote to a custom list and the rest do not, this wall cannot be captured and the others can. Puzzles were picking one of those squares and applying it to every copy of the piece on the board.",
+      "Which copy won was not consistent either, so the same puzzle could load one way and then the other.",
+      "The effect was usually a move being offered that should not have been, or withheld when it should have been there: castling to the wrong distance, the wrong promotion menu, or a piece that could not be taken when it should have been takeable.",
+      "Fixed a piece configured for only one side handing its settings to the other side. Games that set up a neutral piece or an uncapturable wall for one player were giving the other player's pieces the same treatment — which, for neutral pieces, meant both players could move them.",
+      "The daily puzzles were being checked against the same wrong settings when they were generated, so this corrects the puzzles themselves and not only how they are played.",
+    ],
+  },
+  {
+    date: "September 13, 2026",
     title: "Making a puzzle has its own page",
     items: [
       "New Puzzle is now in the Create menu. It asks which of your games the puzzle is played on — type to search if you have a lot of them — and takes you to the builder from there.",

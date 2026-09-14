@@ -52,8 +52,23 @@ async function readLive(db_pool, gameTypeId) {
   const [[game]] = await db_pool.query('SELECT * FROM game_types WHERE id = ? LIMIT 1', [id]);
   if (!game) return null;
 
+  /*
+   * ORDERED, because a junction row is per SQUARE and consumers that want one
+   * row per piece have to pick one. Without an ORDER BY the server may hand
+   * back the same rows in a different sequence between two identical queries,
+   * so "whichever row came first" is a coin flip and a puzzle can hydrate with
+   * different flags on two consecutive loads. See the lookup in
+   * server/puzzle-hydrate.js, which reads this order as lowest square first.
+   *
+   * This does not move any fingerprint: fingerprintGame sorts its cells by
+   * square before hashing, and (game_type_id, x, y, player_number) is unique,
+   * so the sort is total and row order cannot reach the digest. Checked against
+   * production - all 335 games with placements fingerprint identically ordered
+   * and unordered, and all four stored snapshots still recompute to their own id.
+   */
   const [placements] = await db_pool.query(
-    'SELECT * FROM game_type_pieces WHERE game_type_id = ?', [id]
+    `SELECT * FROM game_type_pieces WHERE game_type_id = ?
+      ORDER BY player_number, y, x, piece_id, id`, [id]
   );
 
   /*

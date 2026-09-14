@@ -66,6 +66,7 @@ const mysql = require('mysql2/promise');
 const ROOT = path.join(__dirname, '..');
 const compat = require(path.join(ROOT, 'server/ai/fairy-stockfish-compat'));
 const { fingerprintGame } = require(path.join(ROOT, 'server/game-fingerprint'));
+const { hydratePosition } = require(path.join(ROOT, 'server/puzzle-hydrate'));
 
 const arg = (name, fallback) => {
   const i = process.argv.indexOf(`--${name}`);
@@ -152,33 +153,6 @@ process.env.DB_USER = dsn.user;
 process.env.DB_PASSWORD = dsn.password;
 process.env.DB_NAME = dsn.database;
 
-const ENGINE_FIELD_RENAMES = {
-  ratio_one_movement: 'ratio_movement_1',
-  ratio_two_movement: 'ratio_movement_2',
-  ratio_one_capture: 'ratio_capture_1',
-  ratio_two_capture: 'ratio_capture_2',
-  step_by_step_movement_value: 'step_movement_value',
-  step_by_step_movement_style: 'step_movement_style',
-  step_by_step_capture: 'step_capture_value',
-};
-
-// The same per-placement overrides the puzzle routes merge. See the note on
-// JUNCTION_OVERRIDES in server/puzzle-routes.js: null means "not overridden".
-const JUNCTION_OVERRIDES = [
-  'ends_game_on_checkmate', 'ends_game_on_capture',
-  'manual_castling_partners', 'castling_partner_left_key', 'castling_partner_right_key',
-  'castling_distance', 'can_control_squares', 'can_en_passant',
-  'can_fire_over_allies', 'can_fire_over_enemies',
-  'promotion_pieces_override', 'disable_promotion',
-  'can_promote_to_checkmate', 'limit_promote_checkmate_to_original',
-  'can_promote_to_capture', 'limit_promote_capture_to_original',
-  'capture_points_gain', 'capture_points_loss',
-  'cannot_move_outside_zone', 'cannot_be_captured', 'is_neutral',
-  'hit_points', 'attack_damage', 'hp_regen', 'burn_damage', 'burn_duration',
-  'trample', 'trample_radius', 'ghostwalk', 'die_on_capture',
-  'die_on_capture_grants_win', 'attack_radius',
-];
-
 /** Titles, from the goal. Short, and the owner can edit any of them afterwards. */
 const TITLE_FOR_GOAL = {
   checkmate_in_1: 'Mate in one',
@@ -200,7 +174,12 @@ const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
   const db = await mysql.createConnection({ ...conn, connectTimeout: 20000 });
   const [games] = await db.query('SELECT * FROM game_types');
-  const [placements] = await db.query('SELECT * FROM game_type_pieces');
+  // Ordered for the same reason readLive is (server/puzzle-snapshot.js): the
+  // junction rows are per square, and where hydratePosition has to fall back to
+  // one row per piece, an unordered result makes the choice a coin flip.
+  const [placements] = await db.query(
+    'SELECT * FROM game_type_pieces ORDER BY game_type_id, player_number, y, x, piece_id, id'
+  );
   const [pieceRows] = await db.query('SELECT * FROM pieces');
 
   const pieceById = new Map(pieceRows.map(p => [p.id, p]));
@@ -260,27 +239,43 @@ const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
     require(path.join(ROOT, 'server/puzzle-validation'));
   const { getAllLegalMovesForPlayer } = require(path.join(ROOT, 'server/game-socket'));
 
-  /** Merge a placement into a full engine piece, exactly as the routes do. */
-  const buildPiece = (pl, junctionBySide, junctionByPiece, startingSquares) => {
-    const pieceId = Number(pl.piece_id);
-    const player = Number(pl.player_id ?? pl.player_number ?? 1);
-    const def = { ...(pieceById.get(pieceId) || {}) };
-    for (const [from, to] of Object.entries(ENGINE_FIELD_RENAMES)) {
-      if (def[from] !== undefined) def[to] = def[from];
-    }
-    const junction = junctionBySide.get(`${pieceId}:${player}`) || junctionByPiece.get(pieceId) || {};
-    const home = startingSquares.has(`${pieceId}:${player}:${Number(pl.y)},${Number(pl.x)}`);
-    const out = {
-      ...def,
-      id: `${pieceId}_${pl.y}_${pl.x}`,
-      piece_id: pieceId,
-      x: Number(pl.x), y: Number(pl.y),
-      player_id: player, team: player, player_number: player,
-      hasMoved: !home, moveCount: home ? 0 : 1,
-    };
-    for (const col of JUNCTION_OVERRIDES) if (junction[col] != null) out[col] = junction[col];
-    return out;
-  };
+  /*
+   * Engine pieces come from server/puzzle-hydrate.js, not from a copy here.
+   *
+   * There was a copy here, and it had drifted: it keyed the game_type_pieces
+   * junction by piece and side only. Those rows are PER SQUARE - the table is
+   * unique on (game_type_id, x, y, player_number) - so collapsing them let one
+   * arbitrary row configure every copy of a piece. This is the script that
+   * GENERATES the pool, so the wrong flags were both verified against and then
+   * written into puzzles.position. On production 266 (game, piece, side) groups
+   * have rows that disagree: game 75 gives a custom promotion list to exactly
+   * two of its twenty-four pawns per side, and the collapse handed it to all
+   * twenty-four.
+   *
+   * That is the second time a simplified copy of this merge has gone wrong -
+   * see the header of server/puzzle-hydrate.js for the first - so there is no
+   * copy any more.
+   *
+   * The copy had drifted in a SECOND way, and it is the larger of the two: it
+   * merged junction values only, with no "the placement's own value wins" rule
+   * at all. Every caller in the server has that rule - null on a junction column
+   * means "not overridden", and a placement that states a value states it for a
+   * reason - so the opening this script verified against was not the opening the
+   * server builds from the same pieces_string. Measured on production, switching
+   * to hydratePosition changes 1,155 flags across 141 games from that, against
+   * 99 flags across 12 games from the junction keying above; castling_distance
+   * alone accounts for 740 of them.
+   *
+   * What does NOT change: hydratePosition keeps a placement's own id where it
+   * has one and synthesises pieceId_y_x where it does not, which matters because
+   * the replay below finds pieces by strict id equality. Checked on production,
+   * pieces_string entries never carry an id (16,104 of 16,104) and
+   * initial_pieces_json entries always do and it always already equals the
+   * synthetic form (18,509 of 18,509). Neither carries hasMoved or moveCount, so
+   * movedState falls through to the same geography rule the copy applied, and
+   * every non-junction key on every one of the 16,080 opening pieces compares
+   * identical.
+   */
 
   /*
    * The compact placement shape a puzzle stores.
@@ -319,24 +314,20 @@ const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
     }
 
     const mine = placeByGame.get(game.id) || [];
-    const junctionBySide = new Map();
-    const junctionByPiece = new Map();
-    for (const r of mine) {
-      junctionBySide.set(`${r.piece_id}:${r.player_number}`, r);
-      if (!junctionByPiece.has(r.piece_id)) junctionByPiece.set(r.piece_id, r);
-    }
+    // The shape hydratePosition takes: the game, its piece definitions, and its
+    // junction rows. Every piece definition is passed because a promotion can
+    // introduce one the game never places; hydratePosition indexes them by id.
+    const rules = { game, pieces: [...pieceById.values()], placements: mine };
 
     // The opening, which is both the starting position and the answer to "has
     // this piece moved?" for every position derived from it.
     let opening = {};
     try { opening = JSON.parse(game.pieces_string || '{}') || {}; } catch (_) { opening = {}; }
-    const startingSquares = new Set();
     const openingList = [];
     for (const [key, v] of Object.entries(opening)) {
       const [ky, kx] = String(key).split(',').map(Number);
       const x = Number(v.x ?? kx), y = Number(v.y ?? ky);
       const player = Number(v.player_id ?? v.player_number ?? 1);
-      startingSquares.add(`${Number(v.piece_id)}:${player}:${y},${x}`);
       openingList.push({ ...v, x, y, player_id: player });
     }
     if (!openingList.length) {
@@ -345,8 +336,7 @@ const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
       continue;
     }
 
-    const initialPieces = openingList.map(pl =>
-      buildPiece(pl, junctionBySide, junctionByPiece, startingSquares));
+    const initialPieces = await hydratePosition(rules, openingList);
 
     const goals = goalsForGameType(game).filter(g => g.mechanical);
     if (!goals.length) {
@@ -470,8 +460,8 @@ const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
           try {
             const recorded = JSON.parse(row.initial_pieces_json);
             if (Array.isArray(recorded) && recorded.length) {
-              startPieces = recorded.map(pl =>
-                buildPiece(pl, junctionBySide, junctionByPiece, startingSquares));
+              // eslint-disable-next-line no-await-in-loop
+              startPieces = await hydratePosition(rules, recorded);
               openingCache.set(row.initial_pieces_json, startPieces);
             }
           } catch (_) { /* fall back to the game type's own opening */ }
