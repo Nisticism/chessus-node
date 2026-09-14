@@ -1308,6 +1308,18 @@ const PieceBoardPreview = ({ pieceData, showAttack = true, showLegend = true }) 
           style={getGridStyle()}
           onMouseEnter={() => { mouseInsideRef.current = true; if (!animState) setIsHovering(true); }}
           onMouseLeave={() => { mouseInsideRef.current = false; setIsHovering(false); }}
+          /*
+           * Touch has no hover, and isHovering gates the whole movement pattern
+           * - so on a phone the squares this board exists to show were never
+           * drawn at all. A tap turns them on.
+           *
+           * Deliberately one-way: it never turns them back off. The squares are
+           * also the control for "click a highlighted square to see the piece
+           * move", and a tap that both revealed and dismissed them would fight
+           * that. On a touch screen there is no pointer to move away, so leaving
+           * the pattern up is the behaviour that makes sense anyway.
+           */
+          onTouchStart={() => { mouseInsideRef.current = true; if (!animState) setIsHovering(true); }}
           onAnimationEnd={animState === 'recentering' ? handleRecenterEnd : undefined}
         >
           {renderBoard()}

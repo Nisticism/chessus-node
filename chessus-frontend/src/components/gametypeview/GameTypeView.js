@@ -493,6 +493,26 @@ const GameTypeView = () => {
   const [piecePlacements, setPiecePlacements] = useState({});
   const [pieceDataMap, setPieceDataMap] = useState({});
   const [hoveredPiecePosition, setHoveredPiecePosition] = useState(null);
+
+  /*
+   * The same reveal, for a finger.
+   *
+   * The movement overlay is driven by mouseenter/mouseleave, which a touch
+   * device does not deliver: mouseenter fires inconsistently on tap and
+   * mouseleave essentially never, so on a phone the pattern either never
+   * appeared or appeared and would not go away. A tap has to do the whole job.
+   *
+   * Tapping the piece that is already shown clears it - without a pointer to
+   * move away there is no other way to dismiss it - and tapping an empty square
+   * clears it too, which is what "tap anywhere else" should do.
+   */
+  const togglePieceOverlay = useCallback((row, col, pieceId, playerId) => {
+    setHoveredPiecePosition((prev) => (
+      prev && prev.row === row && prev.col === col
+        ? null
+        : { row, col, pieceId, playerId }
+    ));
+  }, []);
   const [specialSquares, setSpecialSquares] = useState({
     range: {},
     promotion: {},
@@ -2821,6 +2841,19 @@ const GameTypeView = () => {
                 setHoveredPiecePosition(null);
               }
             }}
+            onClick={() => {
+              // Touch has no hover; see togglePieceOverlay. Harmless on desktop,
+              // where mouseenter has already shown the same thing.
+              if (!(placement && placement._occupied && placement._anchorKey)) {
+                setHoveredPiecePosition(null);
+                return;
+              }
+              const [anchorRow, anchorCol] = placement._anchorKey.split(',').map(Number);
+              const anchorPlacement = piecePlacements[placement._anchorKey];
+              if (anchorPlacement) {
+                togglePieceOverlay(anchorRow, anchorCol, anchorPlacement.piece_id, anchorPlacement.player_id);
+              }
+            }}
           >
             {showDetails && <SquareHighlightOverlay
               highlightStyle={highlightStyle}
@@ -2885,6 +2918,12 @@ const GameTypeView = () => {
                 }}
                 onMouseLeave={() => {
                   setHoveredPiecePosition(null);
+                }}
+                onClick={(e) => {
+                  // The square beneath has its own handler; without this the two
+                  // would fire in turn and cancel each other out.
+                  e.stopPropagation();
+                  togglePieceOverlay(row, col, placement.piece_id, placement.player_id);
                 }}
                 style={{
                   position: 'absolute',
