@@ -36,12 +36,27 @@ captureLaunchParams();
  */
 (() => {
   try {
-    if (!/\.discordsays\.com$/i.test(window.location.hostname)) return;
+    /*
+     * Fire anywhere that is NOT the site's own host.
+     *
+     * This used to test for *.discordsays.com, which assumed the activity's
+     * document lives on the same host its REQUESTS come from. That is where the
+     * Origin header says they come from, but the assumption was never verified
+     * and it is the last thing standing between "no report" and a cause - so
+     * the test is inverted: speak for any host that is not ours, which is
+     * silent for every real visitor and cannot miss whatever Discord uses.
+     */
+    const host = window.location.hostname;
+    const ours = /^(localhost|127\.0\.0\.1|(www\.)?gridgrove\.gg)$/i.test(host);
+    if (ours) return;
     const names = [...new URLSearchParams(window.location.search).keys()];
     const body = JSON.stringify({
       stage: 'boot',
       message: `host=${window.location.hostname} path=${window.location.pathname}`
         + ` params=${names.join(',') || '(none)'}`
+        // Which build is actually running. If the activity is being served a
+        // cached bundle, this is what says so.
+        + ` build=${process.env.REACT_APP_UI_CACHE_VERSION || 'unset'}`
         + ` top=${(() => { try { return window.self === window.top; } catch (_) { return 'blocked'; } })()}`,
     });
     /*
