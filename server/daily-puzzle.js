@@ -42,12 +42,51 @@ const MAX_TRACKED_DEPTH = 4;
 
 const depthBucket = (d) => Math.min(MAX_TRACKED_DEPTH, Math.max(1, Number(d) || 1));
 
-const toDateKey = (d) => d.toISOString().slice(0, 10);
+/*
+ * When the puzzle changes over.
+ *
+ * The day used to be a UTC day, which put the switch at 8pm Eastern - so a
+ * player in the US got "tomorrow's" puzzle during their evening and yesterday's
+ * was gone before the day was. Eastern midnight is the switch most of the
+ * audience actually experiences as midnight.
+ *
+ * The IANA zone rather than a fixed -05:00 on purpose. "EST" is literally UTC-5,
+ * which is only correct for half the year; America/New_York follows the daylight
+ * saving change, so the switch stays at midnight Eastern in July as well as
+ * January. A fixed offset would drift an hour every spring.
+ *
+ * Nothing else moves. The Discord post is a cron job at its own time, and it
+ * only ever asks for "today" - whatever that resolves to when it runs.
+ */
+const DAILY_TZ = 'America/New_York';
+
+const keyParts = new Intl.DateTimeFormat('en-CA', {
+  timeZone: DAILY_TZ, year: 'numeric', month: '2-digit', day: '2-digit',
+});
+
+/** The date key for an instant, as it stands in the daily timezone. */
+const toDateKey = (d) => {
+  const parts = keyParts.formatToParts(d).reduce((acc, p) => {
+    acc[p.type] = p.value;
+    return acc;
+  }, {});
+  return `${parts.year}-${parts.month}-${parts.day}`;
+};
+
 const todayKey = () => toDateKey(new Date());
+
+/*
+ * Calendar arithmetic on the key itself, deliberately NOT through toDateKey.
+ *
+ * A key is already a local date with no time in it. Parsing one as UTC midnight
+ * and formatting it back through the Eastern formatter would land on 8pm the
+ * previous evening and shift every result a day - which is exactly the bug this
+ * comment exists to stop someone reintroducing.
+ */
 const addDays = (key, n) => {
   const d = new Date(`${key}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + n);
-  return toDateKey(d);
+  return d.toISOString().slice(0, 10);
 };
 
 /*

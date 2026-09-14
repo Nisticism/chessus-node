@@ -291,7 +291,9 @@ function registerDiscordRoutes(app, { db_pool }) {
     const clamp = (v, n) => String(v == null ? '' : v).split(/\s+/).join(' ').slice(0, n);
     const stage = clamp(req.body?.stage, 40) || 'unknown';
     const message = clamp(req.body?.message, 300);
-    console.warn(`[discord] activity handshake failed at "${stage}": ${message}`);
+    // Neutral wording: this now carries progress breadcrumbs as well as
+    // failures, and a line reading "failed at ready-ok" would be a lie.
+    console.warn(`[discord] activity handshake [${stage}] ${message}`);
     res.status(204).end();
   });
 

@@ -278,14 +278,24 @@ function registerPuzzleRoutes(app, {
                  * quietly break the paging.
                  */
                 (SELECT MIN(d.puzzle_date) FROM daily_puzzles d
-                  WHERE d.puzzle_id = p.id AND d.puzzle_date <= CURDATE()) AS featured_on
+                  /*
+                   * The day boundary comes from daily-puzzle.js, not CURDATE().
+                   * CURDATE() is the database server's clock - UTC - and the
+                   * daily puzzle now turns over at Eastern midnight, so the two
+                   * disagree for four or five hours every night. Using CURDATE()
+                   * here would put the "Puzzle of the Day" badge on tomorrow's
+                   * puzzle before it was anybody's today.
+                   */
+                  WHERE d.puzzle_id = p.id AND d.puzzle_date <= ?) AS featured_on
          FROM puzzles p
          LEFT JOIN users u ON u.id = p.creator_id
          LEFT JOIN game_types gt ON gt.id = p.game_type_id
          WHERE ${whereSql}
          ORDER BY ${order}
          LIMIT ? OFFSET ?`,
-        [...params, limit, offset]
+        // The featured_on subquery's placeholder comes first in the statement,
+        // so its value leads the parameter list.
+        [dailyPuzzle.todayKey(), ...params, limit, offset]
       );
 
       const [[{ total }]] = await db_pool.query(

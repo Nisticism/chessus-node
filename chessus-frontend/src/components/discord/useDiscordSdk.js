@@ -162,12 +162,13 @@ export default function useDiscordSdk() {
      */
     const authorizeFresh = async () => {
       stage = 'authorize';
-      const { code } = await sdk.commands.authorize({
+      const { code } = await withTimeout(sdk.commands.authorize({
         client_id: clientId,
         response_type: 'code',
         state: '',
         scope: SCOPES,
-      });
+      }), 120000, 'authorize');
+      report('authorize-ok', `got a code of length ${String(code || '').length}`);
       /*
        * The code is swapped for a token ON THE SERVER. The exchange needs the
        * client secret, and a secret shipped to an iframe is a published secret.
@@ -182,11 +183,36 @@ export default function useDiscordSdk() {
     // Which step we are on, so a failure reports where and not only what.
     let stage = 'ready';
 
+    /*
+     * A step that never settles is worse than one that fails.
+     *
+     * The last launch produced no token, no error and no report - which no
+     * thrown exception can explain, but a promise that simply never resolves
+     * explains exactly. `sdk.ready()` talks to the Discord client over postMessage
+     * and has nothing to time it out; if that conversation is never answered the
+     * whole handshake stops there, silently, and the board carries on looking
+     * fine. A timeout turns that into a rejection, which the reporter can see.
+     *
+     * Generous on authorize, because a human is reading a consent modal.
+     */
+    const withTimeout = (promise, ms, label) => Promise.race([
+      promise,
+      new Promise((_, reject) => setTimeout(
+        () => reject(new Error(`${label} did not settle within ${ms}ms`)), ms)),
+    ]);
+
     (async () => {
       try {
-        await sdk.ready();
+        await withTimeout(sdk.ready(), 15000, 'sdk.ready');
+        /*
+         * Breadcrumbs, not just failures. Knowing a step SUCCEEDED is what turns
+         * "nothing was logged" from a mystery into a position on the path - the
+         * distinction that cost several rounds of guessing.
+         */
+        report('ready-ok', 'sdk handshake complete');
 
         const cached = readCachedToken(clientId);
+        report('token-source', cached ? 'using a cached token' : 'no cached token; will authorize');
         let token = cached || await authorizeFresh();
         if (cancelled) return;
 
