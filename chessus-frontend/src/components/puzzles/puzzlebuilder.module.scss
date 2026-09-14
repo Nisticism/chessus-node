@@ -10,7 +10,12 @@
   // The app centres text globally, which is why the form read as centred; the
   // page opts back into normal left-aligned reading and the heading re-centres.
   text-align: left;
-  max-width: 1200px;
+  /*
+   * Capped at 1200px, centred, and never closer to the window edge than the
+   * site's standard gutter. max-width alone let the panel sit flush against the
+   * edge on anything narrower than 1200px, which no other page does.
+   */
+  width: min(1200px, calc(100% - 2 * var(--page-gutter)));
   margin: 40px auto;
   padding: 30px;
   background: linear-gradient(135deg, var(--panel-bg-start) 0%, var(--panel-bg-end) 100%);
@@ -54,10 +59,20 @@
   // minmax(0, auto): the track takes the board column's definite width when it
   // fits and is allowed to shrink when it does not, so a 24-wide board is
   // clamped to the panel instead of bursting out of it and scrolling the page.
-  grid-template-columns: minmax(0, auto) minmax(300px, 360px);
+  /*
+   * The board column takes the slack, the settings column sits at the right
+   * edge. It used to be `auto` with justify-content: start, which sized the
+   * first track to the board and left the remainder as dead space AFTER the
+   * settings - so the sidebar floated in the middle of the panel with nothing
+   * beside it, and the board never used the room going spare.
+   *
+   * 1fr is safe here where `auto` was not: the track is derived from the grid's
+   * width, which comes from the page, not from the board inside it. That is the
+   * loop the comment on .board-side warns about, and this does not close it.
+   */
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
   gap: 16px;
   align-items: start;
-  justify-content: start;
 
   @media (max-width: 1000px) {
     grid-template-columns: 1fr;
@@ -139,11 +154,17 @@
   margin: 0 0 12px;
 }
 
-/* Forward through the three steps. Right-aligned, where a "next" lives. */
+/*
+ * Forward through the three steps.
+ *
+ * Under the board and centred on it, rather than right-aligned above it: the
+ * board is what you have just finished working on, so the way onward belongs
+ * at the end of it, not floating over the far side of the page.
+ */
 .step-nav {
   display: flex;
-  justify-content: flex-end;
-  margin: 0 0 14px;
+  justify-content: center;
+  margin: 14px 0 4px;
 }
 
 .btn-next {
@@ -339,10 +360,22 @@
 .btn-secondary {
   padding: 11px 18px;
   border-radius: 8px;
-  border: none;
+  /*
+   * A border and a hover, because without them these read as dark panels
+   * rather than as controls - the background is nearly the page's own colour,
+   * so the only thing marking them out was the text.
+   */
+  border: 1px solid var(--panel-card-border);
   cursor: pointer;
   font-size: 16px;
   font-weight: 500;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+
+  &:hover:not(:disabled) {
+    color: var(--text-heading);
+    border-color: rgba(var(--gold-rgb, 212, 175, 55), 0.7);
+    background: rgba(var(--gold-rgb, 212, 175, 55), 0.12);
+  }
 
   &:disabled { opacity: 0.55; cursor: not-allowed; }
 }

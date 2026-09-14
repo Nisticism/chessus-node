@@ -185,7 +185,11 @@ const PuzzleBuilder = () => {
   const vp = useBoardViewport({
     boardWidth,
     boardHeight,
-    fitMaxSquare: 72,
+    // Raised with the layout change: the settings column is now pinned to the
+    // right edge instead of floating mid-panel, so there is real width going
+    // spare and the board is allowed to take it. Height still governs - a tall
+    // board hits the height budget long before this.
+    fitMaxSquare: 96,
     maxSquare: 160,
     maxHeight: () => Math.max(320, (typeof window !== 'undefined' ? window.innerHeight : 900) - 320),
     insetW: 8,
@@ -195,7 +199,7 @@ const PuzzleBuilder = () => {
   const boardColumnMax = useMemo(() => {
     const heightBudget = Math.max(320, (typeof window !== 'undefined' ? window.innerHeight : 900) - 320);
     const byHeight = Math.floor((heightBudget - 8) / Math.max(1, boardHeight));
-    const fitSquare = Math.max(6, Math.min(72, byHeight));
+    const fitSquare = Math.max(6, Math.min(96, byHeight));
 
     // The FLOOR is what keeps this from feeding back on itself. useBoardViewport
     // measures this column to decide how wide the board may be, so a width taken
@@ -937,33 +941,14 @@ const PuzzleBuilder = () => {
               : `Now play the reply you expect from Player ${nextSide} — the board carries on from there. Leave it here if your move ${Math.ceil(nextPlyIndex / 2)} is the whole answer.`))}
       </p>
 
-      {/* Forward, one step at a time.
-          Only on the first two steps: the third ends at Save and Publish, and a
-          Next button there would point at nothing. */}
-      {nextStep && (
-        <div className={styles["step-nav"]}>
-          <button
-            type="button"
-            className={styles["btn-next"]}
-            onClick={() => {
-              if (nextBlockedBecause) {
-                setCheckResult({ tone: 'warn', text: nextBlockedBecause });
-                return;
-              }
-              goToStep(nextStep);
-            }}
-          >
-            Next: {STEP_LABELS[nextStep]} →
-          </button>
-        </div>
-      )}
 
       <div className={styles["layout"]}>
-        {/* A DEFINITE width, not max-width. useBoardViewport measures this column
-            to size the board, so an `auto` grid track sized by its content is a
-            loop: the board shrinks, the column shrinks with it, and it settles
-            at the 6px minimum square. */}
-        <div className={styles["board-side"]} style={{ width: boardColumnMax, maxWidth: '100%' }}>
+        {/* The column fills its grid track and is CAPPED by the computed size,
+            rather than being set to it. The loop the old arrangement guarded
+            against needs a content-sized track: 100% of a 1fr track is derived
+            from the page, so the board can grow into the space without the
+            measurement chasing itself down to the 6px minimum. */}
+        <div className={styles["board-side"]} style={{ width: '100%', maxWidth: boardColumnMax }}>
           {/* width is what the board WANTS; max-width is what the page allows.
               Both are page- or window-derived, never content-derived, so the
               hook's measurement stays stable either way. */}
@@ -985,6 +970,30 @@ const PuzzleBuilder = () => {
             <BoardZoomControls {...vp.controlProps} />
           </div>
 
+          {/*
+            * Forward, one step at a time - under the board and centred on it,
+            * since the board is what was just being worked on.
+            *
+            * Only on the first two steps: the third ends at Save and Publish,
+            * and a Next button there would point at nothing.
+            */}
+          {nextStep && (
+            <div className={styles["step-nav"]}>
+              <button
+                type="button"
+                className={styles["btn-next"]}
+                onClick={() => {
+                  if (nextBlockedBecause) {
+                    setCheckResult({ tone: 'warn', text: nextBlockedBecause });
+                    return;
+                  }
+                  goToStep(nextStep);
+                }}
+              >
+                Next: {STEP_LABELS[nextStep]} →
+              </button>
+            </div>
+          )}
         </div>
 
         <div className={styles["form-side"]}>
