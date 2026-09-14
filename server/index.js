@@ -3495,6 +3495,17 @@ app.get("/api/games", optionalAuthenticate, async (req, res) => {
     const winCondition = req.query.winCondition || '';
     const search = req.query.search || '';
     const creatorId = req.query.creatorId ? parseInt(req.query.creatorId) : null;
+    /*
+     * Filter by who made it, by NAME rather than by id.
+     *
+     * For the one caller that needs it: "the games GridGrove owns", which the
+     * client cannot ask for by id because the platform account's id is a
+     * different number on every database. Deliberately separate from creatorId
+     * - it does not turn on the my-own-games behaviour above (drafts and
+     * pending-review names stay hidden), because asking for somebody by name is
+     * asking as a visitor, not as them.
+     */
+    const creatorUsername = String(req.query.creatorUsername || '').trim().slice(0, 64);
     const includeDrafts = req.query.includeDrafts === 'true';
     const userId = req.user?.id || 0;
 
@@ -3520,6 +3531,11 @@ app.get("/api/games", optionalAuthenticate, async (req, res) => {
     if (creatorId) {
       conditions.push('gt.creator_id = ?');
       whereParams.push(creatorId);
+    }
+
+    if (creatorUsername) {
+      conditions.push('gt.creator_id = (SELECT id FROM users WHERE username = ? LIMIT 1)');
+      whereParams.push(creatorUsername);
     }
 
     if (winCondition) {

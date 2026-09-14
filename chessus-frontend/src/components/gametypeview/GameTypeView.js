@@ -28,6 +28,7 @@ import useBoardViewport from "../common/useBoardViewport";
 import BoardZoomControls from "../common/BoardZoomControls";
 import boardVp from "../common/boardViewport.module.scss";
 import useSeo from "../../hooks/useSeo";
+import { isPlatformGame } from "../../helpers/platform-account";
 
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";
 
@@ -3232,6 +3233,27 @@ Delete the game and its puzzles anyway?`)) {
               title="View AI training analysis (win rates, balance report)"
             >
               📊 AI Analysis
+            </button>
+          )}
+          {/*
+            * Building a puzzle on one of the site's own games.
+            *
+            * Chess and Go belong to GridGrove, so nobody but staff passes
+            * canEdit() on them and the builder in Creator Options is out of
+            * reach - which would leave the games everyone knows as the only
+            * ones you cannot write a puzzle for. Shown beside Play rather than
+            * inside Creator Options, because the point is that it is NOT a
+            * creator's privilege here. Creators of the game keep the entry they
+            * already have below, so nobody gets two of the same button.
+            */}
+          {isPlatformGame(game) && !canEdit() && currentUser && (
+            <button
+              type="button"
+              onClick={() => navigate(`/create/puzzle/${gameId}`)}
+              className={styles["play-button"]}
+              title="Everyone can build up to 3 puzzles per game; Silver Supporters are not capped."
+            >
+              🧩 Build a Puzzle
             </button>
           )}
           {canEdit() && (

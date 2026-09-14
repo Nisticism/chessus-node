@@ -152,6 +152,22 @@
   color: var(--text-dim);
 }
 
+/* Marks one of the site's own games in a list that is otherwise the player's.
+   A small tag on the row rather than a separate heading, so the search keeps
+   returning one flat list to arrow through. */
+.option-tag {
+  margin-left: 8px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  vertical-align: middle;
+  color: var(--gold, #d4af37);
+  border: 1px solid rgba(212, 175, 55, 0.4);
+  background: rgba(212, 175, 55, 0.1);
+}
+
 .no-match {
   padding: 12px;
   color: var(--text-secondary);
