@@ -277,9 +277,40 @@ export default function useDiscordSdk() {
         () => reject(new Error(`${label} did not settle within ${ms}ms`)), ms)),
     ]);
 
+    /*
+     * The SDK's handshake, retried.
+     *
+     * ready() resolves when the Discord client answers the SDK's postMessage
+     * handshake. Observed behaviour: it times out on a cold launch and
+     * succeeds on a warm one - which is what "no consent modal the first time,
+     * modal the second time" was describing all along. A timeout means we never
+     * reached authorize, so no modal; a warm launch got through and asked.
+     *
+     * That is a race, not a dead channel, so it is retried rather than given up
+     * on. A FRESH SDK instance each time: the previous one has a half-finished
+     * handshake and its own message listener, and reusing it would wait on the
+     * same unanswered conversation.
+     */
+    const readyWithRetry = async () => {
+      let active = sdk;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          await withTimeout(active.ready(), attempt === 1 ? 8000 : 15000, 'sdk.ready');
+          return active;
+        } catch (err) {
+          report('ready-retry', `attempt ${attempt} failed: ${err?.message}`);
+          if (attempt === 3) throw err;
+          // A short pause, then a clean instance for the next attempt.
+          await new Promise((r) => setTimeout(r, 750));
+          try { active = new DiscordSDK(clientId); } catch (_) { /* keep the old one */ }
+        }
+      }
+      return active;
+    };
+
     (async () => {
       try {
-        await withTimeout(sdk.ready(), 15000, 'sdk.ready');
+        sdk = await readyWithRetry();
         /*
          * Breadcrumbs, not just failures. Knowing a step SUCCEEDED is what turns
          * "nothing was logged" from a mystery into a position on the path - the

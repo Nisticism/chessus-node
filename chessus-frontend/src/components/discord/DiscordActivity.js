@@ -669,6 +669,16 @@ export default function DiscordActivity() {
           {` · params ${typeof window !== 'undefined'
             ? ([...new URLSearchParams(window.location.search).keys()].join(',') || 'none')
             : '?'}`}
+          {/* Whether the page is actually inside an iframe, and whether it has
+              a real origin. A top-level document has no parent to hand the
+              SDK's handshake to, and a sandbox without allow-same-origin gives
+              an opaque origin where storage throws - either explains a ready()
+              that never settles, and neither is visible any other way. */}
+          {` · framed ${(() => { try { return window.self !== window.top; } catch (_) { return 'blocked'; } })()}`}
+          {` · storage ${(() => {
+            try { window.localStorage.setItem('gg:probe', '1'); window.localStorage.removeItem('gg:probe'); return 'ok'; }
+            catch (_) { return 'blocked'; }
+          })()}`}
         </p>
       )}
 
