@@ -4,6 +4,26 @@ import styles from "./changelog.module.scss";
 
 const changelogData = [
   {
+    date: "September 14, 2026",
+    title: "Build puzzles on Chess and Go",
+    items: [
+      "Chess and Go now belong to the GridGrove account rather than to a person. Nobody here invented them — they shipped with the site, authored under the founder's account because at the time there was no other account to author them under.",
+      "Anyone can build puzzles on them. Until now a puzzle had to be on a game you had made yourself, so the two games everyone already knows were the two you could not write a puzzle for — and a new arrival had to design a whole game before they could make anything.",
+      "The allowance is the one that applies everywhere else: three puzzles per game for a free account, uncapped for Silver Supporters and above. GridGrove's games are not a loophole and not a separate pool.",
+      "New Puzzle lists them alongside your own, marked GridGrove. On either game's page there is a Build a Puzzle button next to Play.",
+      "Games called Chess that somebody here actually made are untouched. Only the built-in ones moved.",
+    ],
+  },
+  {
+    date: "September 14, 2026",
+    title: "Setting up a board in games that place pieces",
+    items: [
+      "In games where you place pieces rather than start with them — Go, Othello, Boss Battle and the rest — the puzzle builder now has a tray under the board. Pick a piece, then click squares to put it down; it stays held, so a run of stones is a run of clicks.",
+      "Arranging used to work only by moving what the game had already put out, which is fine for chess, where everything a puzzle might want is on the board at the start. On a game that begins with an empty board there was nothing to drag, so the position could not be arranged at all.",
+      "A note on Go specifically: the board can now be set up, but a puzzle's answer is still a move from one square to another, and a Go stone does not move — placing one is the whole game. So a Go position can be built but not yet finished. Games that place pieces AND move them work end to end today.",
+    ],
+  },
+  {
     date: "September 13, 2026",
     title: "Your puzzles on your profile",
     items: [

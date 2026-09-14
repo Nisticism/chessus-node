@@ -154,6 +154,85 @@
   margin: 0 0 12px;
 }
 
+/* ------------------------------------------------------------- the tray --
+   Shown only for games that place pieces rather than start with them. In every
+   other game the board IS the palette - everything a puzzle could want is
+   already on it - so the tray does not exist and arranging is unchanged. */
+.tray {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin: 12px 0 0;
+}
+
+.tray-label {
+  font-size: 0.85rem;
+  color: var(--text-dim);
+}
+
+.tray-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+}
+
+.tray-item {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border-radius: 6px;
+  border: 1px solid var(--panel-border);
+  background: var(--bg-deep);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+
+  &:hover { border-color: var(--border-bright); }
+}
+
+/* The held piece, which stays held across placements so a run of stones is a
+   run of clicks. */
+.tray-item-held {
+  border-color: #5fd0a4;
+  box-shadow: inset 0 0 0 2px #5fd0a4;
+  background: rgba(95, 208, 164, 0.1);
+}
+
+.tray-img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+}
+
+.tray-letter {
+  font-weight: 700;
+  color: var(--text-bright);
+  pointer-events: none;
+}
+
+/* Which side this one goes down for. Two identical-looking stones differ only
+   in who owns them, so the number has to be on the button. */
+.tray-who {
+  position: absolute;
+  right: 2px;
+  bottom: 1px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  line-height: 1;
+  padding: 1px 3px;
+  border-radius: 3px;
+  color: var(--text-heading);
+  background: rgba(0, 0, 0, 0.6);
+  pointer-events: none;
+}
+
 /*
  * Forward through the three steps.
  *

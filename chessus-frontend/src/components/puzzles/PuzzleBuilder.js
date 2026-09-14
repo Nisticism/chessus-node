@@ -92,6 +92,17 @@ const PuzzleBuilder = () => {
   const [mode, setMode] = useState('arrange');   // 'arrange' | 'setup' | 'solution'
   const [selected, setSelected] = useState(null); // "y,x" of the held piece
   /*
+   * The piece held from the tray, in a game where pieces are PLACED rather than
+   * started with. Shape: { key, template, player }.
+   *
+   * Arranging used to work only by rearranging what the game already put on the
+   * board - "the board is the palette" - which is fine for chess, where every
+   * piece a puzzle could want is already out. It is useless for Go, whose board
+   * starts empty and whose only action is to place a stone: there was nothing
+   * to drag, so a Go puzzle could not be arranged at all.
+   */
+  const [trayPick, setTrayPick] = useState(null);
+  /*
    * The solution is a flat list of plies that ALTERNATES, starting with the side
    * to move: [your move 1, their reply 1, your move 2, ...]. A one-move puzzle
    * is a list of one, which is exactly the shape puzzles had before longer lines
@@ -521,6 +532,59 @@ const PuzzleBuilder = () => {
   );
 
   /*
+   * The tray: what this game lets a player put on the board, and for whom.
+   *
+   * Read from the game's own placeable_pieces - the same list the live game
+   * deploys from - so the builder can never offer a piece the game would refuse
+   * mid-play. An entry can be for one player, for either, or neutral; the
+   * `player` field says which, and "all" is expanded into one tray item per
+   * player so the creator picks a colour by picking an item rather than by
+   * setting a separate control.
+   *
+   * Empty for every game that does not place pieces, which is nearly all of
+   * them - so the tray simply does not appear and nothing about arranging a
+   * chess position changes.
+   */
+  const trayItems = useMemo(() => {
+    let data = game?.other_game_data;
+    if (typeof data === 'string') {
+      try { data = JSON.parse(data); } catch (_) { data = null; }
+    }
+    if (!data?.place_pieces_action) return [];
+    const list = Array.isArray(data.placeable_pieces) ? data.placeable_pieces : [];
+    const players = Math.max(2, Number(game?.player_count) || 2);
+
+    const out = [];
+    for (const entry of list) {
+      const pieceId = Number(entry?.piece_id);
+      if (!Number.isFinite(pieceId)) continue;
+      /*
+       * A neutral piece belongs to nobody, so it gets one tray item rather than
+       * one per player. player_id 0 is how the rest of the engine spells "not
+       * either side" - see is_neutral in puzzle-hydrate.js.
+       */
+      if (entry.is_neutral) {
+        out.push({ key: `${pieceId}:0`, template: entry, player: 0 });
+        continue;
+      }
+      const who = entry.player == null || entry.player === 'all' ? 'all' : String(entry.player);
+      const match = who === 'all' ? null : who.match(/^p?(\d+)$/);
+      if (match) {
+        out.push({ key: `${pieceId}:${match[1]}`, template: entry, player: Number(match[1]) });
+      } else {
+        for (let p = 1; p <= players; p++) {
+          out.push({ key: `${pieceId}:${p}`, template: entry, player: p });
+        }
+      }
+    }
+    return out;
+  }, [game]);
+
+  // Arranging is the only step the tray belongs to: the other two record moves
+  // on a position that is already settled.
+  const trayOpen = mode === 'arrange' && trayItems.length > 0;
+
+  /*
    * Record a ply, asking the server first what the move actually is.
    *
    * Neither question can be answered here. Promotion options depend on the
@@ -657,6 +721,31 @@ const PuzzleBuilder = () => {
     }
 
     if (mode === 'arrange') {
+      /*
+       * A piece held from the tray goes down wherever you click, replacing
+       * whatever was there. Replacing rather than refusing, because the tray is
+       * how you correct a square in a placement game - there is nothing else to
+       * drag onto it - and "click again to remove" is already how the board
+       * clears a square.
+       *
+       * The tray piece stays held afterwards: setting up a Go position means
+       * putting down a dozen stones of the same colour, and making the creator
+       * re-pick between each one would be its own small punishment.
+       */
+      if (trayPick) {
+        setPlacements((prev) => ({
+          ...prev,
+          [k]: {
+            piece_id: Number(trayPick.template.piece_id),
+            player_id: Number(trayPick.player),
+            piece_name: trayPick.template.name || trayPick.template.piece_name || null,
+            image_location: trayPick.template.image_location || null,
+            ...(trayPick.template.is_neutral ? { is_neutral: true } : {}),
+          },
+        }));
+        setSelected(null);
+        return;
+      }
       if (selected === k) {
         // Second click on the held piece removes it - the board is the palette.
         setPlacements((prev) => { const next = { ...prev }; delete next[k]; return next; });
@@ -706,7 +795,7 @@ const PuzzleBuilder = () => {
     });
     setSelected(null);
     setCheckResult(null);
-  }, [mode, selected, placements, solutionBoard, nextSide, lineFull, sideToMove, recordPly]);
+  }, [mode, selected, trayPick, placements, solutionBoard, nextSide, lineFull, sideToMove, recordPly]);
 
   /*
    * Whether each step has been done, and what follows it.
@@ -753,6 +842,9 @@ const PuzzleBuilder = () => {
   const goToStep = (step) => {
     setMode(step);
     setSelected(null);
+    // A piece still held from the tray would place itself on the first click of
+    // the next step, which is a move-recording click.
+    setTrayPick(null);
     setCheckResult(null);
   };
 
@@ -992,17 +1084,19 @@ const PuzzleBuilder = () => {
           ))}
         </div>
         <div className={styles["board-actions"]}>
-          <button className={styles["btn-secondary"]} onClick={() => { setPlacements(startingPlacements); setSolutionLine([]); setSelected(null); }}>
+          <button className={styles["btn-secondary"]} onClick={() => { setPlacements(startingPlacements); setSolutionLine([]); setSelected(null); setTrayPick(null); }}>
             Reset to starting position
           </button>
-          <button className={styles["btn-secondary"]} onClick={() => { setPlacements({}); setSolutionLine([]); setSelected(null); }}>
+          <button className={styles["btn-secondary"]} onClick={() => { setPlacements({}); setSolutionLine([]); setSelected(null); setTrayPick(null); }}>
             Clear the board
           </button>
         </div>
       </div>
       <p className={styles["mode-hint"]}>
         {mode === 'arrange'
-          ? 'Click a piece then an empty square to move it. Click a piece twice to take it off the board.'
+          ? (trayItems.length
+            ? 'Pick a piece below the board, then click squares to place it — it stays held, so a run of them is a run of clicks. Click a piece on the board twice to take it off.'
+            : 'Click a piece then an empty square to move it. Click a piece twice to take it off the board.')
           : mode === 'setup'
           ? (setupMove
             ? `Their last move: (${setupMove.from.x}, ${setupMove.from.y}) → (${setupMove.to.x}, ${setupMove.to.y}). Record a different one, or clear it.`
@@ -1042,6 +1136,49 @@ const PuzzleBuilder = () => {
             </div>
             <BoardZoomControls {...vp.controlProps} />
           </div>
+
+          {/*
+            * The tray, for games where pieces are placed rather than started
+            * with. Directly under the board, because picking from it and
+            * clicking a square are one gesture.
+            */}
+          {trayOpen && (
+            <div className={styles["tray"]}>
+              <span className={styles["tray-label"]}>Place a piece</span>
+              <div className={styles["tray-items"]}>
+                {trayItems.map((item) => {
+                  const src = imageFor(
+                    {
+                      piece_id: item.template.piece_id,
+                      image_location: item.template.image_location,
+                      player_id: item.player || 1,
+                    },
+                    pieceDataMap
+                  );
+                  const held = trayPick?.key === item.key;
+                  const name = item.template.name || item.template.piece_name || `Piece ${item.template.piece_id}`;
+                  const whose = item.player === 0 ? 'neutral' : `Player ${item.player}`;
+                  return (
+                    <button
+                      key={item.key}
+                      type="button"
+                      // Clicking the held piece again puts it back, so there is
+                      // always a way to stop placing without leaving the step.
+                      onClick={() => setTrayPick(held ? null : item)}
+                      className={`${styles["tray-item"]} ${held ? styles["tray-item-held"] : ''}`}
+                      title={`${name} — ${whose}`}
+                      aria-pressed={held}
+                    >
+                      {src
+                        ? <img src={src} alt="" className={styles["tray-img"]} />
+                        : <span className={styles["tray-letter"]}>{name.slice(0, 1)}</span>}
+                      <span className={styles["tray-who"]}>{item.player === 0 ? 'N' : item.player}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/*
             * Forward, one step at a time - under the board and centred on it,
