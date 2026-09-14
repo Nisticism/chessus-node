@@ -132,6 +132,35 @@ export default function DiscordActivity() {
     [discord.token]
   );
 
+  /*
+   * The handshake takes a moment; a fast solver does not.
+   *
+   * The SDK's ready() call is retried and can take a couple of seconds on a
+   * cold launch. Somebody who spots a mate-in-one immediately can submit before
+   * the token exists, and that attempt is then recorded as anonymous - it
+   * happened in testing, three seconds before the identity arrived, and it is
+   * the difference between a streak counting and not.
+   *
+   * So a submission waits for the handshake to settle - but only briefly, and
+   * never for a handshake that has already failed. Anonymous play stays a
+   * supported path; this only stops an attempt being misfiled as anonymous
+   * while the answer was moments away.
+   */
+  const statusRef = useRef(discord.status);
+  const tokenRef = useRef(discord.token);
+  useEffect(() => { statusRef.current = discord.status; }, [discord.status]);
+  useEffect(() => { tokenRef.current = discord.token; }, [discord.token]);
+
+  const HANDSHAKE_GRACE_MS = 3000;
+  const awaitHandshake = useCallback(async () => {
+    if (statusRef.current !== 'connecting') return;
+    const until = Date.now() + HANDSHAKE_GRACE_MS;
+    while (statusRef.current === 'connecting' && Date.now() < until) {
+      // eslint-disable-next-line no-await-in-loop -- a short poll, deliberately serial
+      await new Promise((r) => setTimeout(r, 100));
+    }
+  }, []);
+
   // -------------------------------------------------------------- loading --
   /*
    * The puzzle loads immediately, whatever the Discord handshake is doing.
@@ -351,10 +380,13 @@ export default function DiscordActivity() {
       }
 
       const moves = [...found, move];
+      // Give the handshake its last moment before this is filed as anonymous,
+      // then read the token as it stands NOW rather than as it was on mount.
+      await awaitHandshake();
       const { data } = await axios.post(
         `${API}puzzles/${puzzle.id}/solve`,
         { moves },
-        { headers: discordHeaders }
+        { headers: tokenRef.current ? { 'X-Discord-Token': tokenRef.current } : {} }
       );
 
       if (data.solved) {
@@ -410,7 +442,7 @@ export default function DiscordActivity() {
     } finally {
       setBusy(false);
     }
-  }, [puzzle, busy, finished, board, found, daily, discordHeaders, attempts]);
+  }, [puzzle, busy, finished, board, found, daily, attempts, awaitHandshake]);
 
   // ----------------------------------------------------------- interaction --
   const squareAt = useCallback((clientX, clientY) => {

@@ -60,30 +60,13 @@ echo "[deploy] Publishing frontend to nginx..."
 sudo rm -rf /usr/share/nginx/html/*
 sudo cp -r /home/ec2-user/chessus-node/chessus-frontend/build/. /usr/share/nginx/html/
 
-echo "[deploy] Installing COOP/COEP header snippet for Fairy Stockfish..."
+echo "[deploy] Installing COOP/COEP and cache headers..."
 # Copies a two-line add_header snippet into conf.d/. nginx includes conf.d/*.conf
 # inside http {}, so these headers are inherited by all server/location blocks
 # that don't define their own add_header (the main site config in nginx.conf
 # has none, so all responses pick them up). SharedArrayBuffer requires both
 # COOP same-origin and COEP credentialless to be set on the page response.
 sudo cp /home/ec2-user/chessus-node/configs/nginx-site.conf /etc/nginx/conf.d/coop-coep.conf
-
-echo "[deploy] Installing cache headers..."
-# This one CANNOT go in conf.d/: it contains location blocks, and location is
-# only legal inside server {}. default.d/ is included from inside the default
-# server block on the RHEL/Amazon Linux nginx packages, which is what it needs.
-#
-# Guarded rather than assumed - if that include is not present, installing the
-# file would either do nothing or break the config, and a deploy is the wrong
-# moment to find out.
-if grep -rq 'include */etc/nginx/default\.d/\*\.conf' /etc/nginx/nginx.conf; then
-  sudo mkdir -p /etc/nginx/default.d
-  sudo cp /home/ec2-user/chessus-node/configs/nginx-caching.conf           /etc/nginx/default.d/gridgrove-caching.conf
-else
-  echo "[deploy] WARNING: /etc/nginx/nginx.conf does not include default.d/*.conf."
-  echo "[deploy]          Cache headers NOT installed. Add the include inside the"
-  echo "[deploy]          server block, or paste configs/nginx-caching.conf into it."
-fi
 
 sudo nginx -t || { echo "[deploy] nginx config test failed, aborting"; exit 1; }
 
