@@ -21,6 +21,45 @@ import { captureLaunchParams } from './helpers/discord-launch-params';
  */
 captureLaunchParams();
 
+/*
+ * One line, from outside every conditional in the app.
+ *
+ * Every previous probe lived inside something that could decline to run - the
+ * Discord hook, which only mounts if the activity renders; App's gate, which
+ * only renders the activity if it recognises the launch. When the answer is
+ * "none of that happened", instrumentation placed inside it cannot say so.
+ *
+ * This runs at the top of the bundle on every load, and speaks only when the
+ * page is being served from Discord's activity proxy - a domain nothing else is
+ * ever on - so it is silent for every ordinary visitor and unconditional for
+ * the case being chased. It reports parameter NAMES, never values.
+ */
+(() => {
+  try {
+    if (!/\.discordsays\.com$/i.test(window.location.hostname)) return;
+    const names = [...new URLSearchParams(window.location.search).keys()];
+    const body = JSON.stringify({
+      stage: 'boot',
+      message: `host=${window.location.hostname} path=${window.location.pathname}`
+        + ` params=${names.join(',') || '(none)'}`
+        + ` top=${(() => { try { return window.self === window.top; } catch (_) { return 'blocked'; } })()}`,
+    });
+    /*
+     * sendBeacon rather than fetch: it is fire-and-forget by design, is not
+     * cancelled if the page navigates immediately afterwards, and - the part
+     * that matters here - is not subject to the CORS preflight that would
+     * otherwise have to succeed before this could be delivered.
+     */
+    const url = `${process.env.REACT_APP_API_URL || ''}/api/discord/diag`;
+    if (navigator.sendBeacon) {
+      navigator.sendBeacon(url, new Blob([body], { type: 'text/plain;charset=UTF-8' }));
+    } else {
+      fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, keepalive: true })
+        .catch(() => {});
+    }
+  } catch (_) { /* a beacon that cannot be sent must never break the page */ }
+})();
+
 const UI_CACHE_VERSION = process.env.REACT_APP_UI_CACHE_VERSION || '2026-02-20-1';
 
 const clearAppCachesIfNeeded = async () => {

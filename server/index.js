@@ -424,6 +424,17 @@ app.use('/api/stripe-webhook', express.raw({ type: 'application/json' }));
 // before express.json, which then skips the path because req._body is already set.
 app.use(discordInteractions.INTERACTIONS_PATH, discordInteractions.interactionsRawBody);
 
+/*
+ * The activity's diagnostic beacon arrives as text/plain.
+ *
+ * navigator.sendBeacon cannot set a JSON content type, and that is exactly why
+ * it is used there: text/plain is a CORS-safelisted type, so the beacon is not
+ * preflighted and cannot be blocked by the very misconfiguration it may be
+ * reporting. express.json would ignore it, so the body is taken as text here
+ * and parsed in the route.
+ */
+app.use('/api/discord/diag', express.text({ type: 'text/plain', limit: '8kb' }));
+
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
 

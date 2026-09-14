@@ -286,6 +286,14 @@ function registerDiscordRoutes(app, { db_pool }) {
    * rate limit. Everything it accepts is clamped before it reaches the log.
    */
   app.post('/api/discord/diag', (req, res) => {
+    /*
+     * The body is JSON either way, but it arrives as a parsed object from
+     * fetch and as a string from sendBeacon (which can only send a safelisted
+     * content type). Normalise before reading it.
+     */
+    if (typeof req.body === 'string') {
+      try { req.body = JSON.parse(req.body); } catch (_) { req.body = {}; }
+    }
     // Collapses any whitespace, newlines included, so one report stays one log
     // line and cannot forge extra ones.
     const clamp = (v, n) => String(v == null ? '' : v).split(/\s+/).join(' ').slice(0, n);
