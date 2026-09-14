@@ -97,6 +97,7 @@ function clearCachedToken(clientId) {
  *   token: string|null,
  *   user: object|null,
  *   error: string|null,
+ *   stage: string|undefined,   the step that failed, when one did
  * }}
  */
 export default function useDiscordSdk() {
@@ -197,6 +198,7 @@ export default function useDiscordSdk() {
       report('sdk-constructor', ctorErr?.message || String(ctorErr));
       setState({
         status: 'error', sdk: null, token: null, user: null,
+        stage: 'sdk-constructor',
         error: ctorErr?.message || 'Could not start the Discord SDK.',
       });
       return undefined;
@@ -223,7 +225,32 @@ export default function useDiscordSdk() {
        * client secret, and a secret shipped to an iframe is a published secret.
        */
       stage = 'token-exchange';
-      const { data } = await axios.post(`${API_URL}discord/token`, { code });
+      /*
+       * Absolute first, then through Discord's proxy.
+       *
+       * Inside an activity the page is served from <app_id>.discordsays.com and
+       * Discord proxies it to the mapped target. An ABSOLUTE url to
+       * gridgrove.gg is therefore cross-origin and subject to the activity's
+       * content security policy; a RELATIVE one stays on the proxy host, is
+       * same-origin, and Discord forwards it to the same server.
+       *
+       * The absolute form is tried first because it is what works everywhere
+       * else, and the relative form only on a network-level failure - the shape
+       * axios reports as "Network Error", meaning no response arrived at all.
+       * That is exactly what was happening here: the exchange never reached the
+       * server (nothing in its logs), while requests made later in the same
+       * session did.
+       */
+      let data;
+      try {
+        ({ data } = await axios.post(`${API_URL}discord/token`, { code }));
+      } catch (netErr) {
+        const noResponse = !netErr?.response;
+        if (!noResponse) throw netErr;
+        report('token-exchange-retry', `absolute url failed (${netErr?.message}); trying the proxy path`);
+        ({ data } = await axios.post('/api/discord/token', { code }));
+        report('token-exchange-proxy-ok', 'the relative path worked where the absolute one did not');
+      }
       if (!data?.access_token) throw new Error('Discord returned no access token');
       writeCachedToken(clientId, data.access_token, data.expires_in);
       return data.access_token;
@@ -312,6 +339,9 @@ export default function useDiscordSdk() {
         report(stage, err?.message || String(err));
         setState({
           status: 'error', sdk, token: null, user: null,
+          // The step that threw, carried out with the error. "Network Error" on
+          // its own does not say which call; with the stage it does.
+          stage,
           error: err?.message || 'Could not sign in with Discord.',
         });
       }

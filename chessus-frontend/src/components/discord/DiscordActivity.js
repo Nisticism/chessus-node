@@ -663,6 +663,7 @@ export default function DiscordActivity() {
       {discord.status !== 'ready' && (
         <p className={styles["muted"]} style={{ fontSize: '11px', opacity: 0.75, wordBreak: 'break-all' }}>
           {`handshake: ${discord.status}`}
+          {discord.stage ? ` @ ${discord.stage}` : ''}
           {discord.error ? ` · ${discord.error}` : ''}
           {` · host ${typeof window !== 'undefined' ? window.location.hostname : '?'}`}
           {` · params ${typeof window !== 'undefined'
