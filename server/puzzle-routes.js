@@ -1976,6 +1976,60 @@ function registerPuzzleRoutes(app, {
     }
   });
 
+  /*
+   * One player's puzzles, for their profile.
+   *
+   * Separate from /api/puzzles (the browse shelf) because the two answer
+   * different questions: the shelf is "what can I play", and must never show a
+   * draft or a puzzle awaiting moderation; this is "what has this person made",
+   * which on your own profile includes the ones you have not finished. Drafts
+   * are added only for the author themselves and for staff - a stranger sees
+   * the published list, which is what a profile is for.
+   *
+   * optionalAuthenticate rather than authenticateToken: a profile is a public
+   * page, and a signed-out visitor should still see what someone has written.
+   */
+  app.get('/api/users/:userId/puzzles', optionalAuthenticate, async (req, res) => {
+    try {
+      const userId = parseInt(req.params.userId, 10);
+      if (!userId) return res.status(400).send({ message: 'Invalid user' });
+
+      const viewer = req.user || null;
+      const includeDrafts = !!viewer && (Number(viewer.id) === userId || isStaff(viewer));
+
+      /*
+       * Drafts have never been moderated and are not published, so the
+       * moderation and draft conditions have to travel together: a draft is
+       * allowed through on its own terms, and anything else must be an
+       * approved, published puzzle.
+       */
+      const visibility = includeDrafts
+        ? "(p.is_draft = 1 OR (p.is_draft = 0 AND p.moderation_status = 'approved'))"
+        : "(p.is_draft = 0 AND p.moderation_status = 'approved')";
+
+      const [rows] = await db_pool.query(
+        `SELECT p.id, p.game_type_id, gt.game_name, p.title, p.goal, p.goal_description,
+                p.side_to_move, p.solution_depth, p.is_draft,
+                p.rating, p.rating_sample_count, p.hide_rating,
+                p.attempt_count, p.solve_count, p.published_at, p.updated_at,
+                p.validation_status,
+                (SELECT MIN(d.puzzle_date) FROM daily_puzzles d
+                  WHERE d.puzzle_id = p.id AND d.puzzle_date <= ?) AS featured_on
+         FROM puzzles p
+         LEFT JOIN game_types gt ON gt.id = p.game_type_id
+         WHERE p.creator_id = ? AND ${visibility}
+         ORDER BY p.is_draft DESC, p.published_at DESC, p.updated_at DESC, p.id DESC
+         LIMIT 200`,
+        [dailyPuzzle.todayKey(), userId]
+      );
+
+      res.json({ puzzles: rows.map((r) => publicPuzzle(r)), includesDrafts: includeDrafts });
+    } catch (err) {
+      console.error('GET /api/users/:userId/puzzles:', err);
+      res.status(500).send({ message: 'Failed to load puzzles' });
+    }
+  });
+
   // --------------------------------------------------------------- history --
   app.get('/api/users/:userId/puzzle-history', async (req, res) => {
     try {

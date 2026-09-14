@@ -1007,6 +1007,29 @@
   color: var(--text-dim);
 }
 
+/* A puzzle carries more than one thing worth saying about it - the game, the
+   goal, how many people have solved it - so the right-hand side is a group
+   rather than a single span. It wraps on a narrow card and keeps each fact
+   whole, which is why the separators are gaps and not commas inside one
+   string. */
+.content-details {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: baseline;
+  gap: 2px 12px;
+  text-align: right;
+  margin-left: 12px;
+}
+
+/* Marks a puzzle that has been a Puzzle of the Day, same star as the puzzles
+   page uses for the same fact. */
+.featured-star {
+  margin-left: 6px;
+  color: #f0b132;
+  font-size: 0.85rem;
+}
+
 .draft-item {
   border-color: #f59e0b;
   opacity: 0.85;

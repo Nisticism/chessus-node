@@ -8,6 +8,7 @@ import { EDIT_SUCCESS } from "../../actions/types";
 import StandardButton from "../standardbutton/StandardButton";
 import axios from "axios";
 import API_URL from "../../global/global";
+import authHeader from "../../services/auth-header";
 import BioSection from "../biosection/BioSection";
 import DonorBadge from "../DonorBadge/DonorBadge";
 import DiscordLinkPanel from "../discord/DiscordLinkPanel";
@@ -25,6 +26,7 @@ import useSeo from "../../hooks/useSeo";
 // import NotFound from "../notfound/NotFound";
 
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "";
+
 
 const PlayerPage = (props) => {
   const { user: currentUser } = useSelector((state) => state.authReducer);
@@ -53,8 +55,10 @@ const PlayerPage = (props) => {
   const [incomingRequests, setIncomingRequests] = useState([]);
   const [createdGames, setCreatedGames] = useState([]);
   const [createdPieces, setCreatedPieces] = useState([]);
+  const [createdPuzzles, setCreatedPuzzles] = useState([]);
   const [gamesCollapsed, setGamesCollapsed] = useState(true);
   const [piecesCollapsed, setPiecesCollapsed] = useState(true);
+  const [puzzlesCollapsed, setPuzzlesCollapsed] = useState(true);
   const [ongoingCollapsed, setOngoingCollapsed] = useState(true);
   const [friendsCollapsed, setFriendsCollapsed] = useState(true);
 
@@ -64,6 +68,8 @@ const PlayerPage = (props) => {
   const [gameFilter, setGameFilter] = useState('all');
   const [pieceQuery, setPieceQuery] = useState('');
   const [pieceFilter, setPieceFilter] = useState('all');
+  const [puzzleQuery, setPuzzleQuery] = useState('');
+  const [puzzleFilter, setPuzzleFilter] = useState('all');
 
   const visibleGames = useMemo(() => {
     const q = gameQuery.trim().toLowerCase();
@@ -93,8 +99,23 @@ const PlayerPage = (props) => {
     });
   }, [createdPieces, pieceQuery, pieceFilter]);
 
+  /*
+   * Searched over the title AND the game name, because half of what people
+   * remember about a puzzle they wrote is which game it was for.
+   */
+  const visiblePuzzles = useMemo(() => {
+    const q = puzzleQuery.trim().toLowerCase();
+    return createdPuzzles.filter((p) => {
+      if (q && !`${p.title || ''} ${p.game_name || ''}`.toLowerCase().includes(q)) return false;
+      if (puzzleFilter === 'draft') return !!p.is_draft;
+      if (puzzleFilter === 'published') return !p.is_draft;
+      return true;
+    });
+  }, [createdPuzzles, puzzleQuery, puzzleFilter]);
+
   const pagedGames = usePagedList(visibleGames);
   const pagedPieces = usePagedList(visiblePieces);
+  const pagedPuzzles = usePagedList(visiblePuzzles);
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   // const [postDeleteUsername, setPostDeleteUsername] = useState("");
@@ -231,12 +252,21 @@ const PlayerPage = (props) => {
           const isOwnProfile = currentUser && currentUser.id === playerPageUser.id;
           const isAdmin = currentUser && (currentUser.role?.toLowerCase() === 'admin' || currentUser.role?.toLowerCase() === 'owner');
           const includeDrafts = (isOwnProfile || isAdmin) ? '&includeDrafts=true' : '';
-          const [gamesRes, piecesRes] = await Promise.all([
+          /*
+           * The puzzle list decides for itself whether to include drafts, from
+           * the token on the request - unlike games, where the caller asks. It
+           * is the same rule either way (your own, or staff); putting it on the
+           * server means a query string cannot be edited into showing somebody
+           * else's unfinished work.
+           */
+          const [gamesRes, piecesRes, puzzlesRes] = await Promise.all([
             axios.get(`${API_URL}games?creatorId=${playerPageUser.id}&limit=50${includeDrafts}`),
-            axios.get(`${API_URL}pieces?creatorId=${playerPageUser.id}&limit=50`)
+            axios.get(`${API_URL}pieces?creatorId=${playerPageUser.id}&limit=50`),
+            axios.get(`${API_URL}users/${playerPageUser.id}/puzzles`, { headers: authHeader() })
           ]);
           setCreatedGames(gamesRes.data.games || []);
           setCreatedPieces(piecesRes.data.pieces || []);
+          setCreatedPuzzles(puzzlesRes.data.puzzles || []);
         } catch (error) {
           console.error("Error fetching created content:", error);
         }
@@ -1005,6 +1035,92 @@ const PlayerPage = (props) => {
                       ))}
                     </div>
                     <ListPager {...pagedPieces} label="pieces" />
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* My Puzzles - published for everyone, drafts for the author */}
+              {createdPuzzles.length > 0 && (
+                <div className={styles["info-card"]}>
+                  <h2 className={`${styles["card-title"]} ${puzzlesCollapsed ? styles["title-collapsed"] : ''}`} onClick={() => setPuzzlesCollapsed(!puzzlesCollapsed)} style={{ cursor: 'pointer' }}>
+                    My Puzzles
+                    <span className={`${styles["collapse-arrow"]} ${puzzlesCollapsed ? styles["collapsed"] : ''}`}>{`▼`}</span>
+                  </h2>
+                  {!puzzlesCollapsed && (
+                    <>
+                      <ListFilterBar
+                        total={createdPuzzles.length}
+                        shown={visiblePuzzles.length}
+                        query={puzzleQuery}
+                        onQueryChange={setPuzzleQuery}
+                        placeholder="Search puzzles"
+                        filters={[
+                          { value: 'all', label: 'All' },
+                          { value: 'published', label: 'Published' },
+                          { value: 'draft', label: 'Drafts' },
+                        ]}
+                        filter={puzzleFilter}
+                        onFilterChange={setPuzzleFilter}
+                        label="puzzles"
+                      />
+                      <div className={styles["created-content-list"]}>
+                        {visiblePuzzles.length === 0 && (
+                          <p className={styles["no-matches"]}>No puzzles match that search.</p>
+                        )}
+                        {pagedPuzzles.pageItems.map((puzzle) => {
+                          const isDraft = Boolean(puzzle.is_draft);
+                          return (
+                            <Link
+                              key={puzzle.id}
+                              /*
+                               * A draft opens in the builder, because a draft is
+                               * not playable and the solver would have nothing
+                               * to show. Anything published opens to be played.
+                               */
+                              to={isDraft
+                                ? `/games/${puzzle.game_type_id}/puzzles/${puzzle.id}/edit`
+                                : `/games/${puzzle.game_type_id}/puzzles/${puzzle.id}`}
+                              className={`${styles["created-content-item"]} ${isDraft ? styles["draft-item"] : ''}`}
+                            >
+                              <span className={styles["content-name"]}>
+                                {isDraft && <span className={styles["draft-tag"]}>DRAFT</span>}
+                                {puzzle.title || 'Untitled puzzle'}
+                                {puzzle.featured_on && (
+                                  <span className={styles["featured-star"]} title="Has been a Puzzle of the Day">{`★`}</span>
+                                )}
+                              </span>
+                              <span className={styles["content-details"]}>
+                                {puzzle.game_name && (
+                                  <span className={styles["content-detail"]}>{puzzle.game_name}</span>
+                                )}
+                                {/*
+                                  * The author's own sentence if they wrote one,
+                                  * and otherwise how long the line is - not the
+                                  * goal enum's label. Almost every generated
+                                  * puzzle carries goal "checkmate_in_1", whose
+                                  * label is "Checkmate in 1"; printed beside a
+                                  * title reading "Mate in four" the row looks
+                                  * like it is arguing with itself.
+                                  */}
+                                {puzzle.goal_description ? (
+                                  <span className={styles["content-detail"]}>{puzzle.goal_description}</span>
+                                ) : puzzle.solution_depth > 1 ? (
+                                  <span className={styles["content-detail"]}>
+                                    {puzzle.solution_depth} moves
+                                  </span>
+                                ) : null}
+                                {!isDraft && (
+                                  <span className={styles["content-detail"]}>
+                                    {puzzle.solve_count || 0} solved
+                                  </span>
+                                )}
+                              </span>
+                            </Link>
+                          );
+                        })}
+                      </div>
+                      <ListPager {...pagedPuzzles} label="puzzles" />
                     </>
                   )}
                 </div>
