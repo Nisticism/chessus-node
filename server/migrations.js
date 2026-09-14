@@ -1394,6 +1394,28 @@ const migrations = [
    * it is, and it keeps the column honest rather than storing a fictional
    * number that some later sum would take seriously.
    */
+  /*
+   * Winning by making a LINE, or a CONNECTION.
+   *
+   * The one shape of win condition the engine could not express. Everything
+   * else is about pieces - capture this one, have the most of them, run out of
+   * moves - and this is about where they sit relative to each other, which is
+   * the whole point of a family of games the site could already BUILD and could
+   * never finish: an empty board, a piece with no movement, placement on, and
+   * no way to say "three in a row wins".
+   *
+   * Six columns rather than one flag because the two shapes it has to cover are
+   * genuinely different - N in a row (noughts and crosses, gomoku) and a chain
+   * across the board (a Tak road, a Hex chain) - and because the direction and
+   * piece-type questions have real answers either way. See server/win-line.js.
+   */
+  { table: 'game_types', column: 'line_condition', sql: "ALTER TABLE game_types ADD COLUMN line_condition TINYINT(1) NOT NULL DEFAULT 0", description: "Win by making a line or a connection of your pieces." },
+  { table: 'game_types', column: 'line_win_type', sql: "ALTER TABLE game_types ADD COLUMN line_win_type VARCHAR(16) NOT NULL DEFAULT 'in_a_row'", description: "'in_a_row' (N in a straight line) or 'edge_to_edge' (a chain across the board)." },
+  { table: 'game_types', column: 'line_length', sql: "ALTER TABLE game_types ADD COLUMN line_length INT DEFAULT 3", description: "How many in a row wins, for the in_a_row shape." },
+  { table: 'game_types', column: 'line_directions', sql: "ALTER TABLE game_types ADD COLUMN line_directions VARCHAR(16) NOT NULL DEFAULT 'all'", description: "Which directions count: 'all', 'orthogonal' or 'diagonal'." },
+  { table: 'game_types', column: 'line_edges', sql: "ALTER TABLE game_types ADD COLUMN line_edges VARCHAR(16) NOT NULL DEFAULT 'either'", description: "Which pair of sides an edge_to_edge chain must join." },
+  { table: 'game_types', column: 'line_same_piece_type', sql: "ALTER TABLE game_types ADD COLUMN line_same_piece_type TINYINT(1) NOT NULL DEFAULT 0", description: "Whether a line has to be all one piece type, rather than any of yours." },
+
   { table: 'tournaments', column: 'is_correspondence', sql: "ALTER TABLE tournaments ADD COLUMN is_correspondence TINYINT(1) NOT NULL DEFAULT 0", description: "Whether this tournament's matches are played as correspondence games." },
   { table: 'tournaments', column: 'correspondence_days', sql: "ALTER TABLE tournaments ADD COLUMN correspondence_days INT DEFAULT NULL", description: "Days per move for a correspondence tournament." },
 

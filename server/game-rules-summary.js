@@ -14,6 +14,8 @@
  * left out.
  */
 
+const { describeLineRule } = require('./win-line');
+
 const T = (v) => v === true || v === 1 || v === '1';
 const I = (v) => { const n = parseInt(v, 10); return Number.isFinite(n) ? n : 0; };
 
@@ -62,6 +64,14 @@ function summariseRules(gameType) {
       `Hold the marked control squares${I(gt.squares_count) ? ` for ${I(gt.squares_count)} turns` : ''} to win.`),
     item(T(gt.piece_count_condition), 'Most pieces wins',
       'The player with the most pieces on the board at the end wins.'),
+    /*
+     * The sentence is written by win-line.js from the same settings the engine
+     * applies, rather than assembled again here - the rule has four knobs and a
+     * second description of it would be a second thing to keep right.
+     */
+    item(T(gt.line_condition),
+      gt.line_win_type === 'edge_to_edge' ? 'Connect the sides' : 'Make a line',
+      describeLineRule(gt) || 'Win by arranging your pieces into a line.'),
     item(I(gt.points_to_win) > 0, 'Points',
       `Score ${I(gt.points_to_win)} points from captures to win.`),
     item(T(gt.value_condition), 'Material value',

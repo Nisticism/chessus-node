@@ -7791,6 +7791,9 @@ const LiveGame = () => {
                gameOverData.reason === 'resignation' ? 'By Resignation' :
                gameOverData.reason === 'timeout' ? 'By Timeout' :
                gameOverData.reason === 'disconnect' ? 'By Disconnect' :
+               gameOverData.reason === 'line' ? 'By a Line of Pieces' :
+               gameOverData.reason === 'connection' ? 'By Connecting the Sides' :
+               gameOverData.reason === 'board_full_draw' ? 'Board Full - Draw' :
                gameOverData.reason === 'piece_count' ? 'By Piece Count' :
                gameOverData.reason === 'equal_piece_count' ? 'Equal Piece Count - Draw' :
                gameOverData.reason === 'promotion' ? 'By Promotion' :

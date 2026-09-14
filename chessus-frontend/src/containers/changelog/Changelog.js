@@ -5,6 +5,29 @@ import styles from "./changelog.module.scss";
 const changelogData = [
   {
     date: "September 14, 2026",
+    title: "Win by making a line",
+    items: [
+      "A new win condition in the game wizard: win by the shape your pieces make rather than by what they capture. Two forms — a straight run of N of your pieces, or an unbroken chain joining two opposite sides of the board.",
+      "Three in a row on a 3×3 board, with a piece that cannot move and piece placement switched on, is noughts and crosses. Five in a row is gomoku. The chain form is the road from Tak and the chain from Hex.",
+      "You choose how many in a row, which directions count (diagonals included or not), which pair of sides a chain must join, and whether the line has to be all one piece type — off by default, since in most games of this kind any of your pieces count.",
+      "Checked after every move AND every placement, for whoever has a line. A line can be completed by something other than its owner's move — a capture that removes the piece blocking it, for instance — so the question is asked of the whole board rather than only of the piece that just arrived.",
+      "A placement game whose board fills up now ends instead of stalling. A draw by default, since nobody being able to act is not a defeat; games that use “no legal moves loses” get that instead.",
+    ],
+  },
+  {
+    date: "September 14, 2026",
+    title: "Puzzles for games where you place pieces",
+    items: [
+      "A puzzle's answer can now be placing a piece, not just moving one. Go needed this: a stone has no movement at all, so “click the piece, then its square” could never describe a Go move, and a Go puzzle could be set up but never finished.",
+      "Pick a piece from the tray under the board and click a square. It works the same way in the builder, on a puzzle's own page, on the home page card and in the Discord activity.",
+      "Placements are judged by the same rules a live game applies — an occupied or forbidden square, a piece you are not allowed to place, a stone that would capture itself or repeat the position — and captures resolve properly, so a stone that surrounds a group takes it.",
+      "The builder now shows move dots. Hovering a piece shows where it can go, which mattered more once GridGrove's own games opened up: you are often building on a game whose pieces you have never used.",
+      "A square a piece could both move to and capture on now gets the half-and-half dot in puzzles, the way it always has everywhere else. Puzzles were drawing a plain dot.",
+      "Building a puzzle now requires the game to be yours, or one of GridGrove's. Anyone could previously publish a puzzle on anyone's game, under their own name, with the game's author unable to edit or remove it.",
+    ],
+  },
+  {
+    date: "September 14, 2026",
     title: "Build puzzles on Chess and Go",
     items: [
       "Chess and Go now belong to the GridGrove account rather than to a person. Nobody here invented them — they shipped with the site, authored under the founder's account because at the time there was no other account to author them under.",

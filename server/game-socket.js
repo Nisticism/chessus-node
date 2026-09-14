@@ -7,6 +7,11 @@ const db_pool = require("../configs/db");
 const crypto = require('crypto');
 const path = require('path');
 const { Worker } = require('worker_threads');
+/*
+ * Line and connection wins, in their own module because the geometry is
+ * self-contained and worth being able to test without a game around it.
+ */
+const { findAnyWinningLine, findWinningLine, describeLineRule } = require('./win-line');
 
 // Verbose per-move debug logging is gated behind an env var so PM2 isn't
 // hammered with disk I/O during normal play. Set VERBOSE_GAME_LOG=1 to enable.
@@ -6935,6 +6940,61 @@ function initializeSocket(server) {
             applySurroundCaptureScoring(gameState, surroundRemoved, gameState.currentTurn);
           }
 
+          /*
+           * Did that placement make a line?
+           *
+           * Asked HERE as well as in checkWinCondition, because a deploy never
+           * reaches checkWinCondition - this handler ends its own games (piece
+           * count, nobody can flank) and returns. A game of noughts and crosses
+           * is placement from the first move to the last, so without this the
+           * win condition it exists for would never once be evaluated.
+           *
+           * After the captures, not before: a surrounded group is gone, and a
+           * line running through a stone that has just been taken is not a line.
+           */
+          {
+            const placedLine = findWinningLine(gameState, gameState.currentTurn);
+            if (placedLine) {
+              stopGameTimer(gameId);
+              gameState.status = 'completed';
+              const lineWinner = gameState.players.find(p => p.position === gameState.currentTurn);
+              const winnerId = lineWinner ? lineWinner.id : null;
+              const reason = placedLine.winType === 'edge_to_edge' ? 'connection' : 'line';
+              gameState.winner = winnerId;
+              gameState.winReason = reason;
+
+              let eloChanges = null;
+              if (gameState.rated !== false && winnerId) {
+                const loserId = gameState.players.find(p => p.id !== winnerId)?.id;
+                if (loserId) eloChanges = await updateEloRatings(winnerId, loserId);
+              }
+
+              const endTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
+              try {
+                await db_pool.query(
+                  `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?,
+                   pieces = ?, other_data = ? WHERE id = ?`,
+                  [endTime, winnerId ? sanitizeWinnerId(winnerId) : null,
+                   JSON.stringify(gameState.pieces),
+                   buildOtherData(gameState, { winner: winnerId, reason, eloChanges }), gameId]
+                );
+              } catch (dbError) {
+                console.error('Failed to record a line win:', dbError);
+              }
+
+              broadcastGameOver(io, gameId, gameState, {
+                gameId,
+                winner: winnerId,
+                reason,
+                lineSquares: placedLine.squares,
+                finalState: gameState,
+                eloChanges,
+              });
+              console.log(`Game ${gameId} ended: ${reason} by player ${gameState.currentTurn}`);
+              return;
+            }
+          }
+
           // Record the placement move
           const placeMoveRecord = {
             type: 'place',
@@ -6953,6 +7013,80 @@ function initializeSocket(server) {
           if (turnSwitched) {
             gameState.currentTurn = gameState.currentTurn === 1 ? 2 : 1;
             gameState.actionsThisTurn = 0;
+          }
+
+          /*
+           * Nowhere left to put anything, and nothing able to move.
+           *
+           * A game whose every turn is a placement runs out when the board
+           * fills, and until now nothing noticed - noughts and crosses that
+           * nobody won would simply sit there with neither player able to act
+           * and no way to finish. The flanking check below is the only thing
+           * that ever ended a placement game this way, and it is gated on
+           * three Othello-specific settings.
+           *
+           * A draw by default, because "nobody could act" is not a defeat.
+           * A game that says otherwise with no_moves_condition - the existing
+           * "a player with no legal move loses" setting - gets that instead,
+           * applied to whoever is now to move.
+           *
+           * Deliberately checked only when the board is FULL rather than by
+           * enumerating every player's legal actions after every deploy: the
+           * cheap test catches the case that actually happens, and the
+           * expensive one would run on every stone of every game of Go.
+           */
+          {
+            const squaresTotal = boardWidth * boardHeight;
+            const boardFull = gameState.pieces.length >= squaresTotal;
+            const anyoneCanMove = boardFull && gameState.pieces.some((pc) => {
+              try {
+                return (getPossibleMovesForPiece(pc, gameState.pieces, gameState.gameType, 0) || []).length > 0;
+              } catch (_) { return false; }
+            });
+
+            if (boardFull && !anyoneCanMove && !gameState.gameType?.piece_count_condition) {
+              stopGameTimer(gameId);
+              gameState.status = 'completed';
+
+              const loserByRule = gameState.gameType?.no_moves_condition
+                ? gameState.players.find(p => p.position === gameState.currentTurn)
+                : null;
+              const stalledWinner = loserByRule
+                ? gameState.players.find(p => p.id !== loserByRule.id)
+                : null;
+              const reason = loserByRule ? 'no_moves' : 'board_full_draw';
+
+              gameState.winner = stalledWinner ? stalledWinner.id : null;
+              gameState.winReason = reason;
+
+              let eloChanges = null;
+              if (gameState.rated !== false && stalledWinner && loserByRule) {
+                eloChanges = await updateEloRatings(stalledWinner.id, loserByRule.id);
+              }
+
+              const endTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
+              try {
+                await db_pool.query(
+                  `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?,
+                   pieces = ?, other_data = ? WHERE id = ?`,
+                  [endTime, stalledWinner ? sanitizeWinnerId(stalledWinner.id) : null,
+                   JSON.stringify(gameState.pieces),
+                   buildOtherData(gameState, { winner: stalledWinner?.id || null, reason, eloChanges }), gameId]
+                );
+              } catch (dbError) {
+                console.error('Failed to record a full-board finish:', dbError);
+              }
+
+              broadcastGameOver(io, gameId, gameState, {
+                gameId,
+                winner: stalledWinner ? stalledWinner.id : null,
+                reason,
+                finalState: gameState,
+                eloChanges,
+              });
+              console.log(`Game ${gameId} ended: ${reason} (board full)`);
+              return;
+            }
           }
 
           // Check if next player must skip (no valid flanking placements)
@@ -19297,6 +19431,30 @@ function checkWinCondition(gameState, capturedPieceOrArray = null) {
     }
   }
 
+  /*
+   * A line, or a chain across the board.
+   *
+   * Checked here rather than only where a piece lands, because a line can be
+   * COMPLETED BY SOMETHING OTHER THAN ITS OWNER'S MOVE: a capture that removes
+   * the piece blocking it, a trample, a promotion that changes a piece's type
+   * under a same-type rule. Asking "does anybody have one" after every move is
+   * the only version of this that cannot be gamed by the order of events.
+   *
+   * Cheap for every game that does not use it: lineRules returns null on the
+   * flag and nothing else runs.
+   */
+  {
+    const line = findAnyWinningLine(gameState);
+    if (line) {
+      return {
+        gameOver: true,
+        winner: line.playerId,
+        reason: line.winType === 'edge_to_edge' ? 'connection' : 'line',
+        lineSquares: line.squares,
+      };
+    }
+  }
+
   // Fallback: If no win conditions are defined, capturing all opponent pieces wins
   // This provides a reasonable default so games without explicit win conditions can still end
   const hasAnyWinCondition = gameType.mate_condition || gameType.capture_condition || 
@@ -19304,7 +19462,8 @@ function checkWinCondition(gameState, capturedPieceOrArray = null) {
                               gameType.hill_condition || gameType.no_moves_condition ||
                               gameType.promotion_condition || gameType.lose_all_pieces_condition ||
                               gameType.stalemate_win_condition || (gameType.points_to_win != null) ||
-                              gameType.piece_count_condition || isPlacementGame;
+                              gameType.piece_count_condition || gameType.line_condition ||
+                              isPlacementGame;
   
   if (!hasAnyWinCondition) {
     for (const player of players) {

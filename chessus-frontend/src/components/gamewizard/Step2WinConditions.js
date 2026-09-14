@@ -135,6 +135,94 @@ const Step2WinConditions = ({ gameData, updateGameData }) => {
         onChange={(val) => handleChange("piece_count_condition", val)}
       />
 
+      {/*
+        * Winning by the SHAPE your pieces make rather than by what they take.
+        * Two modes, because the two well-known shapes are different: N in a
+        * straight line, and a chain joining opposite sides of the board.
+        */}
+      <ToggleRow
+        title="Line / Connection Condition"
+        tooltip="Win by the shape your pieces make rather than by capturing. Two forms: a straight run of N of your pieces (three in a row makes noughts and crosses on a 3x3 board with no movement and piece placement on; five makes gomoku), or an unbroken chain joining two opposite sides of the board (a road, as in Tak). Checked after every move and every placement, for whoever has one."
+        checked={gameData.line_condition === true}
+        onChange={(val) => handleChange("line_condition", val)}
+      >
+        <div className={styles["sub-field"]}>
+          <label className={styles["sub-label"]}>
+            <span className={styles["condition-toggle-title"]}>
+              What shape wins
+              <InfoTooltip text="A run is N of your pieces in a straight line — the noughts-and-crosses and gomoku shape. A chain is any connected group of your pieces that touches two opposite sides of the board, however long and however bent — the road shape from Tak and the chain from Hex." />
+            </span>
+            <select
+              value={gameData.line_win_type || 'in_a_row'}
+              onChange={(e) => handleChange("line_win_type", e.target.value)}
+            >
+              <option value="in_a_row">A straight run of N pieces</option>
+              <option value="edge_to_edge">A chain joining opposite sides</option>
+            </select>
+          </label>
+
+          {gameData.line_win_type !== 'edge_to_edge' && (
+            <label className={styles["sub-label"]}>
+              <span className={styles["condition-toggle-title"]}>
+                How many in a row
+                <InfoTooltip text="Three on a 3x3 board is noughts and crosses. Five is gomoku. Four with a board that drops pieces to the bottom is Connect Four." />
+              </span>
+              <input
+                type="number"
+                min={2}
+                max={64}
+                value={gameData.line_length ?? 3}
+                onChange={(e) => handleChange("line_length", parseInt(e.target.value, 10) || 3)}
+              />
+            </label>
+          )}
+
+          {gameData.line_win_type === 'edge_to_edge' && (
+            <label className={styles["sub-label"]}>
+              <span className={styles["condition-toggle-title"]}>
+                Which sides must be joined
+                <InfoTooltip text="Either pair is the usual rule — a road across or a road down both win, as in Tak. Pick one pair when the two directions should not be worth the same." />
+              </span>
+              <select
+                value={gameData.line_edges || 'either'}
+                onChange={(e) => handleChange("line_edges", e.target.value)}
+              >
+                <option value="either">Either pair of opposite sides</option>
+                <option value="horizontal">Left to right only</option>
+                <option value="vertical">Top to bottom only</option>
+              </select>
+            </label>
+          )}
+
+          <label className={styles["sub-label"]}>
+            <span className={styles["condition-toggle-title"]}>
+              Which directions count
+              <InfoTooltip text="Noughts and crosses counts diagonals; a Tak road does not. This also decides what counts as touching for a chain." />
+            </span>
+            <select
+              value={gameData.line_directions || 'all'}
+              onChange={(e) => handleChange("line_directions", e.target.value)}
+            >
+              <option value="all">Any direction, diagonals included</option>
+              <option value="orthogonal">Across and down only</option>
+              <option value="diagonal">Diagonals only</option>
+            </select>
+          </label>
+
+          <ToggleSwitch
+            checked={gameData.line_same_piece_type === true}
+            onChange={(val) => handleChange("line_same_piece_type", val)}
+            size="small"
+            label={
+              <span className={styles["condition-toggle-title"]}>
+                The line must be all one piece type
+                <InfoTooltip text="Off by default, which is the rule in almost every game of this kind: any of your pieces count, so a Tak road can mix flats and capstones. Turn it on when only one kind of piece should be able to complete the shape." />
+              </span>
+            }
+          />
+        </div>
+      </ToggleRow>
+
       <ToggleRow
         title="Win on Promotion"
         tooltip="When enabled, a player instantly wins the game when they move a promotable piece onto a promotion square. The piece does not actually promote — reaching the square is enough to win. Requires promotion squares to be set in Step 3 and at least one piece with 'can promote' enabled."

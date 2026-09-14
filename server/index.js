@@ -4016,6 +4016,18 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
       repetition_draw_count:                 (gameData.repetition_draw_count != null && gameData.repetition_draw_count >= 2 && gameData.repetition_draw_count <= 9) ? gameData.repetition_draw_count : null,
       no_moves_condition:                    gameData.no_moves_condition || false,
       piece_count_condition:                 gameData.piece_count_condition || false,
+      /*
+       * Winning by making a line or a connection. Clamped the same way
+       * server/win-line.js clamps them at read time - a length of 0 would
+       * report a win on an empty board - so a bad value cannot be stored in
+       * the first place rather than only being survived later.
+       */
+      line_condition:                        gameData.line_condition ? 1 : 0,
+      line_win_type:                         gameData.line_win_type === 'edge_to_edge' ? 'edge_to_edge' : 'in_a_row',
+      line_length:                           Math.max(2, Math.min(64, parseInt(gameData.line_length, 10) || 3)),
+      line_directions:                       ['orthogonal', 'diagonal', 'all'].includes(gameData.line_directions) ? gameData.line_directions : 'all',
+      line_edges:                            ['horizontal', 'vertical', 'either'].includes(gameData.line_edges) ? gameData.line_edges : 'either',
+      line_same_piece_type:                  gameData.line_same_piece_type ? 1 : 0,
       promotion_condition:                   gameData.promotion_condition || false,
       lose_all_pieces_condition:             gameData.lose_all_pieces_condition || false,
       stalemate_win_condition:               gameData.stalemate_win_condition || false,
@@ -5527,6 +5539,7 @@ app.post("/api/games/:gameId/uniqueness-check", authenticateToken, async (req, r
               value_condition, value_piece, value_max, value_title,
               squares_condition, squares_count, hill_condition, hill_x, hill_y, hill_turns,
               no_moves_condition, piece_count_condition, promotion_condition, optional_condition,
+              line_condition,
               lose_all_pieces_condition, stalemate_win_condition, forced_capture_condition,
               actions_per_turn, simultaneous_turns, board_width, board_height, player_count,
               draw_move_limit, repetition_draw_count,
@@ -5683,7 +5696,8 @@ app.post("/api/games/:gameId/uniqueness-check", authenticateToken, async (req, r
       const winConditionFields = [
         'mate_condition', 'capture_condition', 'value_condition', 'squares_condition',
         'hill_condition', 'no_moves_condition', 'piece_count_condition', 'promotion_condition',
-        'lose_all_pieces_condition', 'stalemate_win_condition', 'forced_capture_condition'
+        'lose_all_pieces_condition', 'stalemate_win_condition', 'forced_capture_condition',
+        'line_condition'
       ];
       const winWeight = 30;
       totalWeight += winWeight;
@@ -9013,6 +9027,18 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
       repetition_draw_count:                 (gameData.repetition_draw_count != null && gameData.repetition_draw_count >= 2 && gameData.repetition_draw_count <= 9) ? gameData.repetition_draw_count : null,
       no_moves_condition:                    gameData.no_moves_condition || false,
       piece_count_condition:                 gameData.piece_count_condition || false,
+      /*
+       * Winning by making a line or a connection. Clamped the same way
+       * server/win-line.js clamps them at read time - a length of 0 would
+       * report a win on an empty board - so a bad value cannot be stored in
+       * the first place rather than only being survived later.
+       */
+      line_condition:                        gameData.line_condition ? 1 : 0,
+      line_win_type:                         gameData.line_win_type === 'edge_to_edge' ? 'edge_to_edge' : 'in_a_row',
+      line_length:                           Math.max(2, Math.min(64, parseInt(gameData.line_length, 10) || 3)),
+      line_directions:                       ['orthogonal', 'diagonal', 'all'].includes(gameData.line_directions) ? gameData.line_directions : 'all',
+      line_edges:                            ['horizontal', 'vertical', 'either'].includes(gameData.line_edges) ? gameData.line_edges : 'either',
+      line_same_piece_type:                  gameData.line_same_piece_type ? 1 : 0,
       promotion_condition:                   gameData.promotion_condition || false,
       lose_all_pieces_condition:             gameData.lose_all_pieces_condition || false,
       stalemate_win_condition:               gameData.stalemate_win_condition || false,
