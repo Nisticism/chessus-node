@@ -208,6 +208,10 @@ const PuzzleSolver = () => {
    * back only the opponent's reply to a move already found.
    */
   const [playedMoves, setPlayedMoves] = useState([]);
+  // The opponent move currently sliding in - the setup move, then each reply -
+  // and a key bumped to re-arm the animation for each new one.
+  const [animMove, setAnimMove] = useState(null);
+  const [replayKey, setReplayKey] = useState(0);
   const [progress, setProgress] = useState(null); // { played, total }
   const [attempts, setAttempts] = useState(0);
   const [solution, setSolution] = useState(null);
@@ -284,6 +288,7 @@ const PuzzleSolver = () => {
         if (cancelled) return;
         const p = data.puzzle;
         setPuzzle(p);
+        setAnimMove(p?.setup_move || null);
         const map = {};
         (p.position || []).forEach((pl) => { map[keyOf(pl.x, pl.y)] = pl; });
         setPlacements(map);
@@ -486,6 +491,13 @@ const PuzzleSolver = () => {
         setPlacements(data.position
           ? fromServerPosition(data.position)
           : applyPly(applyPly(before, move), data.reply));
+        // Slide the opponent's reply in, the same as the opening move.
+        if (data.reply?.from && data.reply?.to) {
+          setAnimMove(data.reply);
+          setReplayKey((k) => k + 1);
+        } else {
+          setAnimMove(null);
+        }
         setLastTry(data.reply || move);
         setOutcome('continue');
         return;
@@ -667,11 +679,14 @@ const PuzzleSolver = () => {
     boardRef,
     squareSize: vp.squareSize,
     board: placements,
-    setupMove: puzzle?.setup_move,
+    // The opponent's move to play in: the setup move to begin with, then every
+    // reply as a multi-move line is answered, so each opponent move slides.
+    setupMove: animMove,
     imageFor: (piece) => imageFor(piece, pieceDataMap),
-    // Nothing to replay once they have started, or on a finished puzzle they
-    // have come back to look at.
-    enabled: !playedMoves.length && !finished,
+    // Not gated on being mid-line: each opponent move animates as it arrives,
+    // and nothing plays once the puzzle is over.
+    enabled: !finished,
+    replayKey,
   });
 
   const startPress = useCallback((e, x, y) => {

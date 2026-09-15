@@ -5,6 +5,14 @@ import styles from "./changelog.module.scss";
 const changelogData = [
   {
     date: "September 15, 2026",
+    title: "Multi-move puzzles are solvable on the home page, and the opponent moves",
+    items: [
+      "Fixed a bug that made multi-move puzzles unsolvable on the home-page card: the first move was accepted, but every second move was rejected wherever you played it. A piece that had already moved was being quoted by the square it sat on rather than the square it started from, which is the name the answer is checked against — so the correct move never matched. The puzzle's own page was unaffected.",
+      "Every move the opponent makes now slides across the board, not just the opening one. In a multi-move puzzle each scripted reply animates as it arrives — on the home page, the puzzle's own page and the Discord activity — so you can see what was played before it is your turn again.",
+    ],
+  },
+  {
+    date: "September 15, 2026",
     title: "A wrong move no longer throws the puzzle away",
     items: [
       "Get a move wrong and the puzzle now keeps what you have found. It takes the wrong piece back to where it was, tells you it missed, and lets you try again from the same position — instead of dropping you back at the opening move to replay the whole thing.",

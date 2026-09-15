@@ -91,7 +91,15 @@ const applyMove = (cells, move, recorded) => {
   if (!mover) return cells;
   const next = { ...cells };
   delete next[fromKey];
-  next[`${m.to.y},${m.to.x}`] = { ...mover, x: m.to.x, y: m.to.y };
+  next[`${m.to.y},${m.to.x}`] = {
+    ...mover,
+    // Keep the id the piece had on its STARTING square, so a later move by the
+    // same piece quotes that square, not its current one - the solve check keys
+    // on the id, and a second move quoting the wrong square never matches.
+    id: mover.id || `${mover.piece_id}_${m.from.y}_${m.from.x}`,
+    x: m.to.x,
+    y: m.to.y,
+  };
 
   if (m.isCastling && m.castlingWith) {
     const pKey = `${m.castlingWith.y},${m.castlingWith.x}`;
@@ -130,6 +138,10 @@ export default function DiscordActivity() {
    * what makes a reload pick up where it left off.
    */
   const [found, setFound] = useState([]);
+  // Bumped to re-arm the opponent's-move animation for each new opponent move.
+  const [replayKey, setReplayKey] = useState(0);
+  // The opponent move currently sliding in - the setup move, then each reply.
+  const [animMove, setAnimMove] = useState(null);
   const [attempts, setAttempts] = useState(0);
   // The one-time code for joining this Discord id to a GridGrove account.
   const [linkCode, setLinkCode] = useState(null);
@@ -198,6 +210,8 @@ export default function DiscordActivity() {
           for (const pl of data.puzzle.position) map[`${pl.y},${pl.x}`] = pl;
           setBoard(map);
         }
+        setAnimMove(data?.puzzle?.setup_move || null);
+        setReplayKey((k) => k + 1);
       } catch (_) {
         if (!cancelled) setDaily({ puzzle: null });
       } finally {
@@ -452,6 +466,13 @@ export default function DiscordActivity() {
           const after = applyMove(before, move);
           return data.reply ? applyMove(after, data.reply) : after;
         });
+        // Slide the opponent's reply in, the same as the opening move.
+        if (data.reply?.from && data.reply?.to) {
+          setAnimMove(data.reply);
+          setReplayKey((k) => k + 1);
+        } else {
+          setAnimMove(null);
+        }
         hintCache.current = new Map();
         const left = (data.movesTotal || 0) - (data.movesPlayed || 0);
         setVerdict({
@@ -502,11 +523,15 @@ export default function DiscordActivity() {
     boardRef,
     squareSize: vp.squareSize,
     board,
-    setupMove: puzzle?.setup_move,
+    // The opponent's move to play in: the setup move to begin with, then every
+    // reply as a multi-move line is answered, so each of the opponent's moves
+    // slides rather than snapping into place.
+    setupMove: animMove,
     imageFor,
-    // Nothing to replay once it is over, or for somebody reopening a line they
-    // have already solved today.
-    enabled: !finished && !found.length,
+    // Not gated on being mid-line: the board animates each opponent move as it
+    // arrives, and stops once the puzzle is over.
+    enabled: !finished,
+    replayKey,
   });
 
   const startPress = useCallback((e, x, y) => {

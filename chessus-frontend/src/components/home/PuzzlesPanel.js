@@ -80,7 +80,16 @@ const applyMove = (cells, move, recorded) => {
   if (!mover) return cells;
   const next = { ...cells };
   delete next[fromKey];
-  next[`${m.to.y},${m.to.x}`] = { ...mover, x: m.to.x, y: m.to.y };
+  next[`${m.to.y},${m.to.x}`] = {
+    ...mover,
+    // Keep the id the piece had on its STARTING square, so a later move by the
+    // same piece quotes that square, not its current one. The solve check keys
+    // on the id, and a second move quoting the wrong square never matches - the
+    // bug that made move two of a multi-move puzzle unsolvable on this card.
+    id: mover.id || `${mover.piece_id}_${m.from.y}_${m.from.x}`,
+    x: m.to.x,
+    y: m.to.y,
+  };
 
   // Castling moves two pieces; the partner lands the far side of the king.
   if (m.isCastling && m.castlingWith) {
@@ -166,6 +175,9 @@ const PuzzlesPanel = () => {
   const [found, setFound] = useState([]);
   // Bumped to re-arm the opponent's-move animation when the puzzle restarts.
   const [replayKey, setReplayKey] = useState(0);
+  // The opponent move currently sliding in: the setup move at the start, then
+  // each scripted reply as a multi-move line is answered.
+  const [animMove, setAnimMove] = useState(null);
   /*
    * The signed-in solver's rating move, shown once the puzzle is decided -
    * exactly what the puzzle's own page shows, so a solve on the card counts and
@@ -221,6 +233,8 @@ const PuzzlesPanel = () => {
         setRatingChange(null);
         setRatingNote(null);
         setStartedAt(Date.now());
+        setAnimMove(data?.puzzle?.setup_move || null);
+        setReplayKey((k) => k + 1);
         hintCache.current = new Map();
         if (data?.puzzle?.position) {
           const map = {};
@@ -307,13 +321,15 @@ const PuzzlesPanel = () => {
     boardRef,
     squareSize: vp.squareSize,
     board,
-    setupMove: puzzle?.setup_move,
+    // The opponent's move to play in: the setup move to begin with, then every
+    // reply the creator wrote, as a multi-move line is answered - so each of
+    // the opponent's moves slides rather than snapping into place.
+    setupMove: animMove,
     imageFor,
-    // Nothing to replay once it is over, or once they are mid-line. Not gated
-    // on having solved it before: the card always opens on the fresh position,
-    // so the opponent's move should play in every time - including after a
-    // refresh - the same way it does on the puzzle's own page.
-    enabled: !finished && !found.length,
+    // Not gated on solvedByYou or on being mid-line: the card always opens on
+    // the fresh position and animates each opponent move as it arrives, the
+    // same way the puzzle's own page does.
+    enabled: !finished,
     replayKey,
   });
 
@@ -340,9 +356,10 @@ const PuzzlesPanel = () => {
     setRatingChange(null);
     setRatingNote(null);
     setStartedAt(Date.now());
+    setAnimMove(puzzle?.setup_move || null);
     hintCache.current = new Map();
     setReplayKey((k) => k + 1);
-  }, [freshBoard]);
+  }, [freshBoard, puzzle]);
 
   const tryMove = useCallback(async (fromKey, x, y) => {
     if (!puzzle || busy || finished) return;
@@ -417,6 +434,13 @@ const PuzzlesPanel = () => {
         setBoard(data.position
           ? fromServerPosition(data.position)
           : applyMove(applyMove(before, move), data.reply));
+        // Slide the opponent's reply in, the same as the opening move.
+        if (data.reply?.from && data.reply?.to) {
+          setAnimMove(data.reply);
+          setReplayKey((k) => k + 1);
+        } else {
+          setAnimMove(null);
+        }
         setLastTry(data.reply ? { x: data.reply.to.x, y: data.reply.to.y } : { x, y });
         hintCache.current = new Map();
         const left = (data.movesTotal || 0) - (data.movesPlayed || 0);
