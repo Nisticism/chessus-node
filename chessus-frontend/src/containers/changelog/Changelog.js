@@ -5,6 +5,29 @@ import styles from "./changelog.module.scss";
 const changelogData = [
   {
     date: "September 15, 2026",
+    title: "Tic Tac Toe and Connect Four, and presets for your own games",
+    items: [
+      "Tic Tac Toe and Connect Four are now on the site, published by GridGrove. Both are ordinary GridGrove games — you can play them, build puzzles on them, and start your own game from either of them.",
+      "The game wizard's first step has a Start from a preset dropdown that loads one of GridGrove's games into every step, to change however you like. The list is simply whatever GridGrove has published, so it grows as the classics do.",
+      "New filters: Classic Games in the game library and Classic Pieces in the piece library, both showing GridGrove's own work. The pieces the classic games are made of — the chess pawn, knight, bishop, rook, queen and king, and Go's stone — now belong to that account, which is where they always belonged.",
+      "The four new drawings (a cross, a nought and two counters) are in the built-in image library under Classics, free to use for your own pieces.",
+    ],
+  },
+  {
+    date: "September 15, 2026",
+    title: "Placing pieces with a left click, and fixes",
+    items: [
+      "You can place a piece with a left click. It used to be right-click only unless you found a setting, which made a game of noughts and crosses unplayable until you did — and left-clicking an empty square did nothing at all otherwise. Both buttons work now, and the setting is gone.",
+      "Dragging is unaffected: a drag that ends on an empty square finishes the move, and only a press and release on the same square places.",
+      "Fixed the computer ignoring board gravity and appearing to hang pieces in mid-air. It was choosing from a list of every empty square rather than the one square per column a drop can actually land on.",
+      "Fixed a game against the computer stalling when the board filled with nobody having won. It now ends, as a draw.",
+      "Board gravity and the line win condition are described on each game's own page, under Gameplay Mechanics and Win Conditions.",
+      "The piece uniqueness comparer used to show the first ten matches and no sign the rest existed — searching “pawn” found forty-five and offered ten. It pages now.",
+      "Pieces in that comparer show who made them, which they never did: the author was in the markup but never in the data. Where two pieces on a page share a name, the author is the only thing telling them apart, so it is shown more prominently there.",
+    ],
+  },
+  {
+    date: "September 15, 2026",
     title: "Board gravity, and two games to try it on",
     items: [
       "New setting under Place Pieces Action: board gravity. Placed pieces fall towards one edge instead of staying where they were put, so a player picks a column and the piece lands on the first free space. Down, up, left or right.",

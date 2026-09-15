@@ -2440,7 +2440,7 @@ const GameTypeView = () => {
 
     // Illegal Move Limit — a loss condition triggered by repeated illegal attempts.
     if (game.illegal_move_limit && Number(game.illegal_move_limit) > 0) {
-      winConditions.push(`• **Illegal Move Limit**: A player who attempts ${game.illegal_move_limit} illegal moves loses the game. The server silently rejects each illegal attempt without revealing why — the player only sees a private counter increment. The turn does not pass on a rejected attempt; the player must try a different move. Especially relevant alongside Hidden Enemy Pieces, where players cannot see what blocks them.\n   ◦ *Adapted from the illegal-move rule used in Tsuitate Shogi.*`);
+      winConditions.push(`• **Illegal Move Limit**: A player who attempts ${game.illegal_move_limit} illegal moves loses the game.${game.illegal_move_label ? ` The counter is shown during play as "${game.illegal_move_label}".` : ''} The server silently rejects each illegal attempt without revealing why — the player only sees a private counter increment. The turn does not pass on a rejected attempt; the player must try a different move. Especially relevant alongside Hidden Enemy Pieces, where players cannot see what blocks them.\n   ◦ *Adapted from the illegal-move rule used in Tsuitate Shogi.*`);
     }
 
     if (winConditions.length > 0) {
