@@ -532,6 +532,8 @@ export default function DiscordActivity() {
     // arrives, and stops once the puzzle is over.
     enabled: !finished,
     replayKey,
+    // Only the opening move holds; each reply answers a move just made.
+    immediate: found.length > 0,
   });
 
   const startPress = useCallback((e, x, y) => {

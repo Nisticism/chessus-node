@@ -212,7 +212,16 @@ function optionalDiscord(req, _res, next) {
 async function isGuildMember(discordUserId) {
   const token = process.env.DISCORD_BOT_TOKEN;
   const guildId = process.env.DISCORD_GUILD_ID;
-  if (!token || !guildId || !discordUserId) return null;
+  if (!token || !guildId) {
+    // Otherwise this returns null in silence, and that null becomes a 503 on the
+    // "show my Discord name" toggle with nothing in the log to say the check was
+    // never configured rather than momentarily down.
+    console.warn('[discord] guild membership check unavailable:'
+      + `${token ? '' : ' DISCORD_BOT_TOKEN not set'}`
+      + `${guildId ? '' : ' DISCORD_GUILD_ID not set'}`);
+    return null;
+  }
+  if (!discordUserId) return null;
 
   let res;
   try {

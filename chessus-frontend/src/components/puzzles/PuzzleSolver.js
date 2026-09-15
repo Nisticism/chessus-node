@@ -687,6 +687,8 @@ const PuzzleSolver = () => {
     // and nothing plays once the puzzle is over.
     enabled: !finished,
     replayKey,
+    // Only the opening move holds; each reply answers a move just made.
+    immediate: playedMoves.length > 0,
   });
 
   const startPress = useCallback((e, x, y) => {

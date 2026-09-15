@@ -8,7 +8,7 @@ const changelogData = [
     title: "Multi-move puzzles are solvable on the home page, and the opponent moves",
     items: [
       "Fixed a bug that made multi-move puzzles unsolvable on the home-page card: the first move was accepted, but every second move was rejected wherever you played it. A piece that had already moved was being quoted by the square it sat on rather than the square it started from, which is the name the answer is checked against — so the correct move never matched. The puzzle's own page was unaffected.",
-      "Every move the opponent makes now slides across the board, not just the opening one. In a multi-move puzzle each scripted reply animates as it arrives — on the home page, the puzzle's own page and the Discord activity — so you can see what was played before it is your turn again.",
+      "Every move the opponent makes now slides across the board, not just the opening one. In a multi-move puzzle each scripted reply animates the instant you play into it — on the home page, the puzzle's own page and the Discord activity — while the opening move still holds a beat first so you can take in the position you are answering.",
     ],
   },
   {

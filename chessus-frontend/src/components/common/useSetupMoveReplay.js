@@ -43,6 +43,10 @@ const useSetupMoveReplay = ({
   imageFor,
   enabled = true,
   replayKey,
+  // The opening move holds a beat before it slides, so the solver registers
+  // what just happened; the opponent's later replies do not - they answer a
+  // move the solver just made and should feel immediate.
+  immediate = false,
 }) => {
   const [progress, setProgress] = useState(null);   // null = not running
   const [done, setDone] = useState(false);
@@ -125,7 +129,7 @@ const useSetupMoveReplay = ({
       // Generous, so it never cuts a running animation short - it is a
       // backstop for frames that are not coming at all.
       watchdog = setTimeout(finish, REPLAY_DURATION_MS + 1500);
-    }, REPLAY_DELAY_MS);
+    }, immediate ? 0 : REPLAY_DELAY_MS);
 
     return () => {
       cancelled = true;
@@ -133,7 +137,7 @@ const useSetupMoveReplay = ({
       if (watchdog) clearTimeout(watchdog);
       if (frameRef.current) cancelAnimationFrame(frameRef.current);
     };
-  }, [runnable]);
+  }, [runnable, immediate]);
 
   /*
    * A puzzle that cannot be replayed must not leave the board disabled. Marked

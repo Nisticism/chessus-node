@@ -331,6 +331,8 @@ const PuzzlesPanel = () => {
     // same way the puzzle's own page does.
     enabled: !finished,
     replayKey,
+    // Only the opening move holds; each reply answers a move just made.
+    immediate: found.length > 0,
   });
 
   /** A fresh copy of the opening position, for a restart or a wrong guess. */
