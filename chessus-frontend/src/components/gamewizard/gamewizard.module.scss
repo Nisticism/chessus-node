@@ -196,6 +196,26 @@
   max-width: 200px;
 }
 
+/* A <select> wearing .form-input gets the site's own dropdown arrow - the
+   solid triangle from --select-arrow - rather than the browser's native
+   chevron, which is a different shape on every platform. */
+select.form-input,
+select.form-input-small {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: var(--select-arrow);
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  padding-right: 36px;
+  cursor: pointer;
+
+  option {
+    background: var(--panel-bg-start);
+    color: var(--text-bright);
+  }
+}
+
 // Number input with increment/decrement buttons
 .number-input-group {
   display: inline-flex;
@@ -432,6 +452,26 @@
     color: var(--text-bright);
     font-family: inherit;
     font-size: 15px;
+  }
+
+  /* The site's own dropdown: the browser's arrow replaced by the solid
+     triangle every other select here uses, from --select-arrow. Without this
+     the wizard's dropdowns were the only ones on the site wearing the
+     platform's native chevron. */
+  select {
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    background-image: var(--select-arrow);
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    padding-right: 32px;
+    cursor: pointer;
+
+    option {
+      background: var(--panel-bg-start);
+      color: var(--text-bright);
+    }
   }
 }
 

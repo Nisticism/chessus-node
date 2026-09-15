@@ -2405,6 +2405,39 @@ const GameTypeView = () => {
       winConditions.push(`• **Highest Score Wins**: When the game reaches an end trigger (such as consecutive passes), the player with the highest score wins; an equal score is a draw. Score combines starting points (a handicap, like a Go "komi"), capture points, control-square points${otherData.enclosed_region_scoring ? ', and enclosed-region scoring' : ''}. This is how the winner is decided in Go.`);
     }
 
+    /*
+      * Line / connection — winning by the SHAPE the pieces make.
+      *
+      * Described from the same four settings the engine reads, in the same
+      * order the wizard asks for them, so a reader can map what they see here
+      * onto what they would set.
+      */
+    if (game.line_condition) {
+      const lineHow = game.line_directions === 'orthogonal'
+        ? 'horizontally or vertically (diagonals do not count)'
+        : (game.line_directions === 'diagonal'
+          ? 'diagonally only'
+          : 'in any direction, including diagonally');
+      const sameType = game.line_same_piece_type
+        ? ' Every piece in the line must be the same piece type.'
+        : ' Any of your pieces count — they do not have to be the same type.';
+
+      if (game.line_win_type === 'edge_to_edge') {
+        const which = game.line_edges === 'horizontal'
+          ? 'the left and right sides'
+          : (game.line_edges === 'vertical' ? 'the top and bottom' : 'two opposite sides');
+        winConditions.push(`• **Connect the Sides**: A player wins by joining ${which} of the board with an unbroken chain of their own pieces, connected ${lineHow}. The chain can be any length and any shape.${sameType}
+   ◦ *This is the "road" win from Tak and the chain from Hex.*`);
+      } else {
+        const howMany = game.line_length_matches_board
+          ? `${Math.max(2, Math.min(Number(game.board_width) || 8, Number(game.board_height) || 8))} (taken from the board size)`
+          : (game.line_length || 3);
+        winConditions.push(`• **Line of Pieces**: A player wins by getting **${howMany}** of their own pieces in an unbroken straight line, ${lineHow}.${sameType} The line is checked after every move and every placement, for whichever player has one — so it can also be completed by a capture that clears whatever was blocking it.${game.line_length_matches_board ? `
+   ◦ **Matches the board**: the length follows the board rather than a fixed number, using the shorter side on a board that is not square.` : ''}
+   ◦ *Three in a row on a 3×3 board is noughts and crosses; four with board gravity is Connect Four; five is gomoku.*`);
+      }
+    }
+
     // Illegal Move Limit — a loss condition triggered by repeated illegal attempts.
     if (game.illegal_move_limit && Number(game.illegal_move_limit) > 0) {
       winConditions.push(`• **Illegal Move Limit**: A player who attempts ${game.illegal_move_limit} illegal moves loses the game. The server silently rejects each illegal attempt without revealing why — the player only sees a private counter increment. The turn does not pass on a rejected attempt; the player must try a different move. Especially relevant alongside Hidden Enemy Pieces, where players cannot see what blocks them.\n   ◦ *Adapted from the illegal-move rule used in Tsuitate Shogi.*`);
@@ -2507,6 +2540,29 @@ const GameTypeView = () => {
         placeDesc += `\n\nDeploying a piece resets the 50-move draw counter (like a pawn move). When threefold repetition is active, remaining reserves are part of the position, so identical boards with different reserves are treated as different positions.`;
       }
       mechanicsContent.push(placeDesc);
+    }
+
+    /*
+      * Board gravity. Sits immediately after Piece Placement because it only
+      * exists alongside it and changes how a placement is made.
+      */
+    if (game.board_gravity && game.board_gravity !== 'off') {
+      const fallsTo = {
+        down: 'the bottom', up: 'the top', left: 'the left edge', right: 'the right edge',
+      }[game.board_gravity] || 'one edge';
+      const pickWhat = (game.board_gravity === 'down' || game.board_gravity === 'up')
+        ? 'column' : 'row';
+      mechanicsContent.push(
+        `**Board Gravity**
+A placed piece falls towards ${fallsTo} instead of staying on the square it was put on. `
+        + `Choosing a ${pickWhat} is enough — the piece lands on the first free space in it, and a full ${pickWhat} cannot be played into.`
+        + `
+
+**Both players see the board the same way up.** Every other game turns the board round for the second player so their own pieces are nearest them, which makes sense when "forward" is a direction relative to you. A board where pieces fall has a real top and bottom that are the same for everyone, so it is never flipped.`
+        + `
+
+*Combined with a piece that cannot move and a four-in-a-row line condition, this is Connect Four.*`
+      );
     }
 
     // Surround (enclosure) capture — Go-style capture
@@ -4112,8 +4168,16 @@ Delete the game and its puzzles anyway?`)) {
                         if (line.trim() === '---') {
                           return <hr key={lineIndex} className={styles["rule-divider"]} />;
                         }
-                        // Handle bold text markers - convert piece names to links
-                        const parts = line.split(/(\*\*[^*]+\*\*)/);
+                        /*
+                          * Bold and italic markers. Bold is matched FIRST in the
+                          * alternation so a `**word**` is never read as an empty
+                          * italic wrapping a bold one.
+                          *
+                          * Italics were written into these rule strings long
+                          * before anything rendered them - the asides marked
+                          * with single asterisks were showing their asterisks.
+                          */
+                        const parts = line.split(/(\*\*[^*]+\*\*|\*[^*]+\*)/);
                         return (
                           <p key={lineIndex} className={styles["rule-line"]}>
                             {parts.map((part, partIndex) => {
@@ -4124,6 +4188,9 @@ Delete the game and its puzzles anyway?`)) {
                                   return <Link key={partIndex} to={`/pieces/${pieceId}`} className={styles["piece-link-inline"]}><strong>{text}</strong></Link>;
                                 }
                                 return <strong key={partIndex}>{text}</strong>;
+                              }
+                              if (part.length > 2 && part.startsWith('*') && part.endsWith('*')) {
+                                return <em key={partIndex}>{part.slice(1, -1)}</em>;
                               }
                               return part;
                             })}

@@ -14,6 +14,92 @@ import Step3BoardSpecialSquares from "./Step3BoardSpecialSquares";
 import Step4PiecePlacement from "./Step4PiecePlacement";
 import ValidationWarningModal from "../common/ValidationWarningModal";
 
+/**
+ * One game_types row, as the wizard's form state.
+ *
+ * Shared by the two things that load a whole game into the form: editing your
+ * own, and starting from a preset. They were one inline object literal inside
+ * the edit path, which meant a preset would have needed a second copy - and a
+ * second copy of an eighty-field mapping is a guarantee that a field added
+ * later reaches one of them and not the other.
+ */
+export const gameRowToWizardData = (existingGame) => ({
+    game_name: existingGame.game_name || "",
+    descript: existingGame.descript || "",
+    rules: existingGame.rules || "",
+    mate_condition: Boolean(existingGame.mate_condition),
+    mate_piece: existingGame.mate_piece || null,
+    capture_condition: Boolean(existingGame.capture_condition),
+    capture_piece: existingGame.capture_piece || null,
+    capture_condition_requires_all: Boolean(existingGame.capture_condition_requires_all),
+    mate_condition_requires_all: Boolean(existingGame.mate_condition_requires_all),
+    value_condition: Boolean(existingGame.value_condition),
+    value_piece: existingGame.value_piece || null,
+    value_max: existingGame.value_max || null,
+    value_title: existingGame.value_title || "",
+    squares_condition: Boolean(existingGame.squares_condition),
+    squares_count: existingGame.squares_count || null,
+    hill_condition: Boolean(existingGame.hill_condition),
+    hill_x: existingGame.hill_x || null,
+    hill_y: existingGame.hill_y || null,
+    hill_turns: existingGame.hill_turns || null,
+    no_moves_condition: Boolean(existingGame.no_moves_condition),
+    piece_count_condition: Boolean(existingGame.piece_count_condition),
+    line_condition: Boolean(existingGame.line_condition),
+    line_win_type: existingGame.line_win_type || "in_a_row",
+    line_length: existingGame.line_length ?? 3,
+    line_length_matches_board: Boolean(existingGame.line_length_matches_board),
+    line_directions: existingGame.line_directions || "all",
+    line_edges: existingGame.line_edges || "either",
+    line_same_piece_type: Boolean(existingGame.line_same_piece_type),
+    board_gravity: existingGame.board_gravity || "off",
+    promotion_condition: Boolean(existingGame.promotion_condition),
+    lose_all_pieces_condition: Boolean(existingGame.lose_all_pieces_condition),
+    stalemate_win_condition: Boolean(existingGame.stalemate_win_condition),
+    stalemate_draw_condition: existingGame.stalemate_draw_condition === undefined || existingGame.stalemate_draw_condition === null ? true : Boolean(existingGame.stalemate_draw_condition),
+    points_to_win: existingGame.points_to_win != null ? existingGame.points_to_win : null,
+    starting_points_p1: Number(existingGame.starting_points_p1) || 0,
+    starting_points_p2: Number(existingGame.starting_points_p2) || 0,
+    draw_equal_points_at_turn: existingGame.draw_equal_points_at_turn != null ? existingGame.draw_equal_points_at_turn : null,
+    draw_equal_points_consecutive: existingGame.draw_equal_points_consecutive != null ? existingGame.draw_equal_points_consecutive : null,
+    forced_capture_condition: Boolean(existingGame.forced_capture_condition),
+    optional_condition: existingGame.optional_condition || null,
+    draw_move_limit: existingGame.draw_move_limit != null ? existingGame.draw_move_limit : null,
+    repetition_draw_count: existingGame.repetition_draw_count != null ? existingGame.repetition_draw_count : null,
+    board_width: existingGame.board_width || 8,
+    board_height: existingGame.board_height || 8,
+    player_count: existingGame.player_count || 2,
+    actions_per_turn: existingGame.actions_per_turn || 1,
+    simultaneous_turns: Boolean(existingGame.simultaneous_turns),
+    simul_turns_clock_pause: Boolean(existingGame.simul_turns_clock_pause),
+    simul_turns_draw_after_cancellations: existingGame.simul_turns_draw_after_cancellations != null ? Number(existingGame.simul_turns_draw_after_cancellations) : 3,
+    simul_turns_submit_mode: existingGame.simul_turns_submit_mode || 'immediate',
+    simul_turns_place_conflict: existingGame.simul_turns_place_conflict || 'cancel',
+    simul_turns_free_move_after_capture: existingGame.simul_turns_free_move_after_capture || 'disable',
+    simul_turns_simultaneous_capture_draw: existingGame.simul_turns_simultaneous_capture_draw == null ? true : Boolean(Number(existingGame.simul_turns_simultaneous_capture_draw)),
+    simul_turns_simultaneous_checkmate_draw: existingGame.simul_turns_simultaneous_checkmate_draw == null ? true : Boolean(Number(existingGame.simul_turns_simultaneous_checkmate_draw)),
+    veto_enabled: Boolean(existingGame.veto_enabled),
+    veto_style: existingGame.veto_style || 'preemptive',
+    veto_per_turn_limit: existingGame.veto_per_turn_limit != null ? Number(existingGame.veto_per_turn_limit) : 1,
+    veto_per_game_limit: existingGame.veto_per_game_limit != null ? Number(existingGame.veto_per_game_limit) : null,
+    veto_disallow_placement: Boolean(existingGame.veto_disallow_placement),
+    veto_disallow_promotion: Boolean(existingGame.veto_disallow_promotion),
+    starting_piece_count: existingGame.starting_piece_count || 0,
+    pieces_string: existingGame.pieces_string || "[]",
+    range_squares_string: existingGame.range_squares_string || "",
+    promotion_squares_string: existingGame.promotion_squares_string || "",
+    special_squares_string: existingGame.special_squares_string || "",
+    control_squares_string: existingGame.control_squares_string || "",
+    randomized_starting_positions: existingGame.randomized_starting_positions || "",
+    other_game_data: existingGame.other_game_data || "",
+    start_repositions: existingGame.start_repositions != null ? Number(existingGame.start_repositions) : 0,
+    reposition_key_pieces_only: Boolean(existingGame.reposition_key_pieces_only),
+    fog_of_war: Boolean(existingGame.fog_of_war),
+    permanent_fog_reveal: Boolean(existingGame.permanent_fog_reveal),
+    hide_enemy_pieces: Boolean(existingGame.hide_enemy_pieces),
+    illegal_move_limit: existingGame.illegal_move_limit != null ? Number(existingGame.illegal_move_limit) : 0,
+});
+
 const GameWizard = ({ editGameId }) => {
   const { user: currentUser } = useSelector((state) => state.authReducer);
   const dispatch = useDispatch();
@@ -188,82 +274,7 @@ const GameWizard = ({ editGameId }) => {
             return;
           }
           
-          setGameData({
-            game_name: existingGame.game_name || "",
-            descript: existingGame.descript || "",
-            rules: existingGame.rules || "",
-            mate_condition: Boolean(existingGame.mate_condition),
-            mate_piece: existingGame.mate_piece || null,
-            capture_condition: Boolean(existingGame.capture_condition),
-            capture_piece: existingGame.capture_piece || null,
-            capture_condition_requires_all: Boolean(existingGame.capture_condition_requires_all),
-            mate_condition_requires_all: Boolean(existingGame.mate_condition_requires_all),
-            value_condition: Boolean(existingGame.value_condition),
-            value_piece: existingGame.value_piece || null,
-            value_max: existingGame.value_max || null,
-            value_title: existingGame.value_title || "",
-            squares_condition: Boolean(existingGame.squares_condition),
-            squares_count: existingGame.squares_count || null,
-            hill_condition: Boolean(existingGame.hill_condition),
-            hill_x: existingGame.hill_x || null,
-            hill_y: existingGame.hill_y || null,
-            hill_turns: existingGame.hill_turns || null,
-            no_moves_condition: Boolean(existingGame.no_moves_condition),
-            piece_count_condition: Boolean(existingGame.piece_count_condition),
-            line_condition: Boolean(existingGame.line_condition),
-            line_win_type: existingGame.line_win_type || "in_a_row",
-            line_length: existingGame.line_length ?? 3,
-            line_length_matches_board: Boolean(existingGame.line_length_matches_board),
-            line_directions: existingGame.line_directions || "all",
-            line_edges: existingGame.line_edges || "either",
-            line_same_piece_type: Boolean(existingGame.line_same_piece_type),
-            board_gravity: existingGame.board_gravity || "off",
-            promotion_condition: Boolean(existingGame.promotion_condition),
-            lose_all_pieces_condition: Boolean(existingGame.lose_all_pieces_condition),
-            stalemate_win_condition: Boolean(existingGame.stalemate_win_condition),
-            stalemate_draw_condition: existingGame.stalemate_draw_condition === undefined || existingGame.stalemate_draw_condition === null ? true : Boolean(existingGame.stalemate_draw_condition),
-            points_to_win: existingGame.points_to_win != null ? existingGame.points_to_win : null,
-            starting_points_p1: Number(existingGame.starting_points_p1) || 0,
-            starting_points_p2: Number(existingGame.starting_points_p2) || 0,
-            draw_equal_points_at_turn: existingGame.draw_equal_points_at_turn != null ? existingGame.draw_equal_points_at_turn : null,
-            draw_equal_points_consecutive: existingGame.draw_equal_points_consecutive != null ? existingGame.draw_equal_points_consecutive : null,
-            forced_capture_condition: Boolean(existingGame.forced_capture_condition),
-            optional_condition: existingGame.optional_condition || null,
-            draw_move_limit: existingGame.draw_move_limit != null ? existingGame.draw_move_limit : null,
-            repetition_draw_count: existingGame.repetition_draw_count != null ? existingGame.repetition_draw_count : null,
-            board_width: existingGame.board_width || 8,
-            board_height: existingGame.board_height || 8,
-            player_count: existingGame.player_count || 2,
-            actions_per_turn: existingGame.actions_per_turn || 1,
-            simultaneous_turns: Boolean(existingGame.simultaneous_turns),
-            simul_turns_clock_pause: Boolean(existingGame.simul_turns_clock_pause),
-            simul_turns_draw_after_cancellations: existingGame.simul_turns_draw_after_cancellations != null ? Number(existingGame.simul_turns_draw_after_cancellations) : 3,
-            simul_turns_submit_mode: existingGame.simul_turns_submit_mode || 'immediate',
-            simul_turns_place_conflict: existingGame.simul_turns_place_conflict || 'cancel',
-            simul_turns_free_move_after_capture: existingGame.simul_turns_free_move_after_capture || 'disable',
-            simul_turns_simultaneous_capture_draw: existingGame.simul_turns_simultaneous_capture_draw == null ? true : Boolean(Number(existingGame.simul_turns_simultaneous_capture_draw)),
-            simul_turns_simultaneous_checkmate_draw: existingGame.simul_turns_simultaneous_checkmate_draw == null ? true : Boolean(Number(existingGame.simul_turns_simultaneous_checkmate_draw)),
-            veto_enabled: Boolean(existingGame.veto_enabled),
-            veto_style: existingGame.veto_style || 'preemptive',
-            veto_per_turn_limit: existingGame.veto_per_turn_limit != null ? Number(existingGame.veto_per_turn_limit) : 1,
-            veto_per_game_limit: existingGame.veto_per_game_limit != null ? Number(existingGame.veto_per_game_limit) : null,
-            veto_disallow_placement: Boolean(existingGame.veto_disallow_placement),
-            veto_disallow_promotion: Boolean(existingGame.veto_disallow_promotion),
-            starting_piece_count: existingGame.starting_piece_count || 0,
-            pieces_string: existingGame.pieces_string || "[]",
-            range_squares_string: existingGame.range_squares_string || "",
-            promotion_squares_string: existingGame.promotion_squares_string || "",
-            special_squares_string: existingGame.special_squares_string || "",
-            control_squares_string: existingGame.control_squares_string || "",
-            randomized_starting_positions: existingGame.randomized_starting_positions || "",
-            other_game_data: existingGame.other_game_data || "",
-            start_repositions: existingGame.start_repositions != null ? Number(existingGame.start_repositions) : 0,
-            reposition_key_pieces_only: Boolean(existingGame.reposition_key_pieces_only),
-            fog_of_war: Boolean(existingGame.fog_of_war),
-            permanent_fog_reveal: Boolean(existingGame.permanent_fog_reveal),
-            hide_enemy_pieces: Boolean(existingGame.hide_enemy_pieces),
-            illegal_move_limit: existingGame.illegal_move_limit != null ? Number(existingGame.illegal_move_limit) : 0,
-          });
+          setGameData(gameRowToWizardData(existingGame));
           setIsEditMode(true);
           setIsDraftMode(Boolean(existingGame.is_draft));
           setIsPublishedGame(!Boolean(existingGame.is_draft));
@@ -705,7 +716,19 @@ const GameWizard = ({ editGameId }) => {
   const renderStep = () => {
     switch (currentStep) {
       case 1:
-        return <Step1BasicInfo gameData={gameData} updateGameData={updateGameData} currentUser={currentUser} />;
+        return (
+          <Step1BasicInfo
+            gameData={gameData}
+            updateGameData={updateGameData}
+            currentUser={currentUser}
+            /*
+             * A preset replaces the whole form, so it sets state rather than
+             * merging into it - a half-applied preset would be a game made of
+             * two games. Same mapping the edit path uses.
+             */
+            onApplyPreset={(row) => setGameData(gameRowToWizardData(row))}
+          />
+        );
       case 2:
         return <Step2WinConditions gameData={gameData} updateGameData={updateGameData} />;
       case 3:

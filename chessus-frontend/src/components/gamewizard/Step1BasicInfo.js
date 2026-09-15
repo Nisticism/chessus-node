@@ -1,16 +1,69 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
+import axios from "axios";
 import styles from "./gamewizard.module.scss";
 import ToggleSwitch from "../common/ToggleSwitch";
 import InfoTooltip from "../piecewizard/InfoTooltip";
+import API_URL from "../../global/global";
+import { PLATFORM_ACCOUNT_USERNAME } from "../../helpers/platform-account";
 import { checkForLinks, checkOffensiveContent, checkProfessionalName } from "../../utils/contentModeration";
 import LinkInsertButton from "../common/LinkInsertButton";
 import EmojiPickerButton from "../common/EmojiPickerButton";
 import BulletInsertButton, { handleBulletKeyDown } from "../common/BulletInsertButton";
 
-const Step1BasicInfo = ({ gameData, updateGameData, currentUser }) => {
+const Step1BasicInfo = ({ gameData, updateGameData, currentUser, onApplyPreset }) => {
   const [contentWarnings, setContentWarnings] = useState({});
   const [nameReviewWarning, setNameReviewWarning] = useState(false);
   const descriptRef = useRef(null);
+
+  /*
+   * Presets: start from a game that already works.
+   *
+   * The list is GridGrove's own games, asked for by name - not a hand-written
+   * list here. That is the whole point: the site's classic games ARE the
+   * presets, so adding one to the GridGrove account puts it in this dropdown
+   * without anybody remembering to update a second list that would otherwise
+   * drift the first time a game was added or renamed.
+   */
+  const [presets, setPresets] = useState([]);
+  const [presetId, setPresetId] = useState('');
+  const [presetBusy, setPresetBusy] = useState(false);
+  const [presetError, setPresetError] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    axios.get(`${API_URL}games?creatorUsername=${encodeURIComponent(PLATFORM_ACCOUNT_USERNAME)}&limit=100&sort=alphabetical`)
+      .then(({ data }) => {
+        if (cancelled) return;
+        const list = Array.isArray(data) ? data : (data?.games || []);
+        setPresets(list.filter(Boolean));
+      })
+      .catch(() => { /* the dropdown simply does not appear */ });
+    return () => { cancelled = true; };
+  }, []);
+
+  const applyPreset = async (id) => {
+    setPresetId(id);
+    setPresetError(null);
+    if (!id) return;
+    setPresetBusy(true);
+    try {
+      const { data } = await axios.get(`${API_URL}games/${id}`);
+      const row = data?.game || data;
+      if (!row?.game_name) throw new Error('empty');
+      /*
+       * The name is deliberately NOT carried over. A preset is a starting
+       * point, and a second game called "Chess" helps nobody - so the field is
+       * left empty for the creator to fill, which is also what the Next button
+       * is already checking for.
+       */
+      onApplyPreset({ ...row, game_name: '' });
+    } catch (_) {
+      setPresetError('Could not load that game just now. Try again in a moment.');
+      setPresetId('');
+    } finally {
+      setPresetBusy(false);
+    }
+  };
 
   const handleChange = (field, value) => {
     updateGameData({ [field]: value });
@@ -54,6 +107,36 @@ const Step1BasicInfo = ({ gameData, updateGameData, currentUser }) => {
       <p className={styles["step-description"]}>
         Enter the basic details about your custom game type.
       </p>
+
+      {presets.length > 0 && (
+        <div className={styles["form-group"]}>
+          <label className={styles["form-label"]}>
+            Start from a preset
+            <InfoTooltip text="Loads one of GridGrove's own games into every step of this wizard, for you to change however you like. Nothing is shared with the original - you get a copy to edit. The name is left blank for you to fill in. Leave this alone to start from scratch." />
+          </label>
+          <select
+            className={styles["form-input"]}
+            value={presetId}
+            disabled={presetBusy}
+            onChange={(e) => applyPreset(e.target.value)}
+          >
+            <option value="">Start from scratch</option>
+            {presets.map((g) => (
+              <option key={g.id} value={g.id}>
+                {g.game_name} ({g.board_width}×{g.board_height})
+              </option>
+            ))}
+          </select>
+          <div className={styles["char-count"]}>
+            {presetBusy
+              ? 'Loading…'
+              : 'Everything in the wizard is replaced by the preset, so pick one before you start editing.'}
+          </div>
+          {presetError && (
+            <p className={styles["validation-error"]}>{presetError}</p>
+          )}
+        </div>
+      )}
 
       <div className={styles["form-group"]}>
         <label className={styles["form-label"]}>
