@@ -58,6 +58,7 @@ const {
   getValidFlankingPlacements,
   applyFlankingCaptures,
 } = require('./game-socket');
+const { gravityOf, restingSquare } = require('./board-gravity');
 
 const VALIDATION = {
   VALID: 'valid',
@@ -483,16 +484,33 @@ async function applyPlacementPly(state, ply) {
   const rules = placementRules(state.gameType);
   if (!rules) return { ok: false, reason: 'this game does not place pieces' };
 
-  const x = Number(ply?.to?.x);
-  const y = Number(ply?.to?.y);
+  const rawX = Number(ply?.to?.x);
+  const rawY = Number(ply?.to?.y);
   const width = Number(state.gameType?.board_width) || 8;
   const height = Number(state.gameType?.board_height) || 8;
-  if (!Number.isFinite(x) || !Number.isFinite(y)
-      || x < 0 || x >= width || y < 0 || y >= height) {
+  if (!Number.isFinite(rawX) || !Number.isFinite(rawY)
+      || rawX < 0 || rawX >= width || rawY < 0 || rawY >= height) {
     return { ok: false, reason: 'that square is not on the board' };
   }
 
-  if ((state.pieces || []).some((p) => Number(p.x) === x && Number(p.y) === y)) {
+  /*
+   * Gravity, resolved the same way the live game resolves it: the square in
+   * the ply is where the solver aimed, and the piece lands at the foot of that
+   * column. Without this a puzzle in a Connect-Four-shaped game would accept
+   * an answer hanging in mid-air.
+   */
+  const gravity = gravityOf(state.gameType);
+  let x = rawX;
+  let y = rawY;
+  if (gravity) {
+    const landed = restingSquare(
+      gravity, { x, y }, width, height,
+      (gx, gy) => (state.pieces || []).some((p) => Number(p.x) === gx && Number(p.y) === gy)
+    );
+    if (!landed) return { ok: false, reason: 'that column is full' };
+    x = landed.x;
+    y = landed.y;
+  } else if ((state.pieces || []).some((p) => Number(p.x) === x && Number(p.y) === y)) {
     return { ok: false, reason: 'that square is occupied' };
   }
 
@@ -741,16 +759,38 @@ function placementCandidates(state, side) {
   const customSquares = parseCustomSquares(state.gameType);
   const zone = customSquares ? getPlacementConfinementZone(customSquares, side) : null;
 
+  /*
+   * On a gravity board there is one square per column, not one per empty
+   * square - a piece dropped anywhere in a column lands at the same place, so
+   * every other square in it is the same answer wearing a different hat. The
+   * live move generator makes the same distinction.
+   */
+  const gravity = gravityOf(state.gameType);
+  const isOccupied = (gx, gy) => occupied.has(`${gy},${gx}`);
+
   const out = [];
   for (const template of rules.templates) {
     if (!isPlaceableEligibleFor(template, side)) continue;
     const pieceId = Number(template.piece_id);
     if (!Number.isFinite(pieceId)) continue;
+    const seen = new Set();
     for (let y = 0; y < height; y++) {
       for (let x = 0; x < width; x++) {
-        if (occupied.has(`${y},${x}`)) continue;
-        if (customSquares && !isPlacementSquareAllowed(customSquares, side, x, y, zone)) continue;
-        out.push({ type: 'place', placePieceId: pieceId, to: { x, y } });
+        let tx = x;
+        let ty = y;
+        if (gravity) {
+          const landed = restingSquare(gravity, { x, y }, width, height, isOccupied);
+          if (!landed) continue;
+          tx = landed.x;
+          ty = landed.y;
+          const key = `${ty},${tx}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+        } else if (occupied.has(`${y},${x}`)) {
+          continue;
+        }
+        if (customSquares && !isPlacementSquareAllowed(customSquares, side, tx, ty, zone)) continue;
+        out.push({ type: 'place', placePieceId: pieceId, to: { x: tx, y: ty } });
       }
     }
   }

@@ -44,7 +44,6 @@ import {
 import { createMoveEngine, getMoveDotType, MOVE_DOT_BACKGROUNDS } from "../../helpers/moveEngine";
 import { totalMaterialValue } from "../../utils/pieceValueEstimator";
 import { getFallbackPieceImage } from "../../utils/pieceFallback";
-import { isTouchDevice } from "../../helpers/mobileUtils";
 import { gravityOf, restingSquare } from "../../helpers/boardGravity";
 import { toggleUpvote, getUpvoteStatus } from "../../actions/games";
 import useFairyStockfish from "../../hooks/useFairyStockfish";
@@ -532,7 +531,7 @@ const LiveGame = () => {
   const [placementTarget, setPlacementTarget] = useState(null); // {x, y} where user wants to place
   // When true, placement uses left-click/tap (fallback for mobile). Default: right-click
   // on desktop, but left-click/tap on touch devices where right-click isn't available.
-  const [placementUseLeftClick, setPlacementUseLeftClick] = useState(() => isTouchDevice());
+
   // When false, squares restricted from piece placement are shaded red. Default: hidden
   // for a cleaner board; users can toggle it on from the board options.
   const [hidePlacementRestrictions, setHidePlacementRestrictions] = useState(true);
@@ -3923,16 +3922,40 @@ const LiveGame = () => {
         setValidMoves([]);
       }
     } else {
-      // Check for piece placement action (Othello-style) — only if left-click placement is enabled.
-      // By default placement is triggered via right-click; this left-click path is an opt-in for mobile.
+      /*
+       * Piece placement on a left click.
+       *
+       * This used to be an opt-in for touch devices, with right-click as the
+       * only way on a mouse - which made a game of noughts and crosses
+       * unplayable until you discovered a setting. Left click on an empty
+       * square did nothing at all in every other case, so there was nothing to
+       * take away by using it.
+       *
+       * Three things it must NOT do, and how each is ruled out:
+       *
+       *  - Finish a drag. This branch is only reached from onClick, and an
+       *    HTML5 drag ends in `drop` without a click - but the guard is
+       *    explicit anyway, because resting a correctness rule on browser event
+       *    ordering is how something breaks quietly two years later.
+       *  - Steal a move. A click that IS a legal move was handled far above;
+       *    reaching here means no move matched.
+       *  - Steal a deselect. With a piece selected and real moves on offer, a
+       *    click on a random square means "never mind" - so placing waits until
+       *    nothing is held. A selected piece with NO moves is inert (every
+       *    piece in a placement-only game), and there placing immediately is
+       *    what was meant.
+       */
       const otherData = gameState.otherGameData || {};
+      const nothingMeaningfulHeld = !selectedPiece || validMoves.length === 0;
       /*
        * A gravity board accepts a click on an occupied square, because the
        * click picks a COLUMN and the piece falls past whatever is in it. The
        * !clickedPiece test is right for every other placement game and wrong
        * for this one.
        */
-      const canPlace = placementUseLeftClick && isMyTurn && otherData.place_pieces_action
+      const canPlace = isMyTurn && otherData.place_pieces_action
+        && !draggedPiece
+        && nothingMeaningfulHeld
         && (!clickedPiece || !!boardGravity)
         && (gameState.status === 'active' || gameState.status === 'ready');
       if (canPlace) {
@@ -3986,7 +4009,7 @@ const LiveGame = () => {
       setSelectedPiece(null);
       setValidMoves([]);
     }
-  }, [isMyTurn, gameState, currentPlayer, selectedPiece, validMoves, calculateValidMoves, submitMove, sendPremove, setPremove, gameId, rangedSelectedPiece, setShowPlacementModal, setPlacementTarget, pendingMove, ghostMoveIndex, captureActionPieceId, showIllegalMoveWarning, placementUseLeftClick, specialSquares, showPromotionModal, vetoWindow, vetoSelectedPiece, vetoPieceMoves, vetoMyBudget, vetoDoneThisTurn, vetoSelection, premove, sendClearPremove, reactiveMoveLocked, heldMoveHighlight, cancelVetoStagedMove, cancelReactiveHeldMove]);
+  }, [isMyTurn, gameState, currentPlayer, selectedPiece, validMoves, calculateValidMoves, submitMove, sendPremove, setPremove, gameId, rangedSelectedPiece, setShowPlacementModal, setPlacementTarget, pendingMove, ghostMoveIndex, captureActionPieceId, showIllegalMoveWarning, specialSquares, showPromotionModal, vetoWindow, vetoSelectedPiece, vetoPieceMoves, vetoMyBudget, vetoDoneThisTurn, vetoSelection, premove, sendClearPremove, reactiveMoveLocked, heldMoveHighlight, cancelVetoStagedMove, cancelReactiveHeldMove]);
   /* eslint-enable react-hooks/exhaustive-deps */
 
   // Handle piece hover for movement helpers
@@ -5115,8 +5138,13 @@ const LiveGame = () => {
       return;
     }
 
-    // Piece placement via right-click (default mode; left-click mode handled in handleSquareClick)
-    if (!placementUseLeftClick && isMyTurn && (gameState?.status === 'active' || gameState?.status === 'ready')) {
+    /*
+     * Piece placement via right-click. Left click does it too now (see
+     * handleSquareClick) - both work, because there was never a reason for one
+     * to exclude the other, and a player who reaches for the wrong button
+     * should not have to find a setting to fix it.
+     */
+    if (isMyTurn && (gameState?.status === 'active' || gameState?.status === 'ready')) {
       const otherData = gameState.otherGameData || {};
       if (otherData.place_pieces_action) {
         const pieces = parsePieces(gameState.pieces || []);
@@ -5198,7 +5226,7 @@ const LiveGame = () => {
       setValidMoves([]);
     }
     rightClickDataRef.current = null;
-  }, [selectedPiece, validMoves, isMyTurn, gameState, submitMove, gameId, premove, sendClearPremove, rangedSelectedPiece, sendPremove, showIllegalMoveWarning, placementUseLeftClick, currentPlayer, specialSquares, setPlacementTarget, setShowPlacementModal, canReachStepByStepRanged, setPremove, isRangedPathClear, pendingMove, showPromotionModal, vetoDoneThisTurn, vetoWindow, vetoSelection, boardGravity]);
+  }, [selectedPiece, validMoves, isMyTurn, gameState, submitMove, gameId, premove, sendClearPremove, rangedSelectedPiece, sendPremove, showIllegalMoveWarning, currentPlayer, specialSquares, setPlacementTarget, setShowPlacementModal, canReachStepByStepRanged, setPremove, isRangedPathClear, pendingMove, showPromotionModal, vetoDoneThisTurn, vetoWindow, vetoSelection, boardGravity]);
 
   // Handle resign
   const handleResign = () => {
@@ -7078,13 +7106,8 @@ const LiveGame = () => {
                 label="Confirm moves"
               />
             )}
-            {gameState?.otherGameData?.place_pieces_action && currentPlayer && (
-              <ToggleSwitch
-                checked={placementUseLeftClick}
-                onChange={(v) => setPlacementUseLeftClick(v)}
-                label="Place pieces with left click (mobile)"
-              />
-            )}
+            {/* "Place pieces with left click" used to live here. Both buttons
+                place now, so the setting had nothing left to choose between. */}
             </>)}
 
             {/* Turn Confirmation — hidden in simul-stage mode since the Submit button serves this role.

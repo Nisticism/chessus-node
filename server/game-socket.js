@@ -19020,6 +19020,32 @@ function getAllLegalMovesForPlayer(gameState, playerPosition) {
             if (x == null || y == null) continue;
             pushPlacementsFor(x, y);
           }
+        } else if (gravityOf(gameType)) {
+          /*
+           * A gravity board has ONE legal square per column, not one per empty
+           * square: a piece dropped anywhere in a column lands at the bottom of
+           * it, so every other square in that column is the same move.
+           *
+           * This is the list the bot chooses from, and the bug it fixes was
+           * exactly that - the bot picked any empty square it liked, which on a
+           * board that drops pieces meant it appeared to hang them in mid-air.
+           * Enumerating the resting squares fixes the choice at the source,
+           * rather than correcting it afterwards in one of the two places that
+           * apply a placement.
+           */
+          const gravity = gravityOf(gameType);
+          const isOccupied = (gx, gy) => pieces.some(p => p.x === gx && p.y === gy && !p._occupied);
+          const seen = new Set();
+          for (let y = 0; y < boardHeight; y++) {
+            for (let x = 0; x < boardWidth; x++) {
+              const landed = restingSquare(gravity, { x, y }, boardWidth, boardHeight, isOccupied);
+              if (!landed) continue;                       // that column is full
+              const key = `${landed.y},${landed.x}`;
+              if (seen.has(key)) continue;                 // already offered
+              seen.add(key);
+              pushPlacementsFor(landed.x, landed.y);
+            }
+          }
         } else {
           // Free placement: any unoccupied square is valid.
           for (let y = 0; y < boardHeight; y++) {
@@ -20189,8 +20215,9 @@ async function _processBotTurnInner(io, gameId, gameState, precomputedMove = nul
       // so we handle them here, mirroring the socket makeMove placement block.
       if (bestMove.type === 'place') {
         const otherData = gameState.otherGameData || {};
-        const placeX = bestMove.to?.x;
-        const placeY = bestMove.to?.y;
+        // let, not const: gravity re-resolves these below.
+        let placeX = bestMove.to?.x;
+        let placeY = bestMove.to?.y;
         const boardWidth = gameState.gameType?.board_width || 8;
         const boardHeight = gameState.gameType?.board_height || 8;
 
@@ -20199,7 +20226,30 @@ async function _processBotTurnInner(io, gameId, gameState, precomputedMove = nul
           clearTimeout(safetyTimer);
           return;
         }
-        if (gameState.pieces.some(p => p.x === placeX && p.y === placeY)) {
+        /*
+         * Gravity, applied here too.
+         *
+         * The bot does not go through the socket placement handler - it has its
+         * own copy of the apply - so the resolver has to be called on both or
+         * the bot is playing a different game from the human. The enumeration
+         * it chose from only offers resting squares now, so this should be a
+         * no-op; it is here because "should be" is not a guarantee across two
+         * copies of the same logic.
+         */
+        const botGravity = gravityOf(gameState.gameType);
+        if (botGravity) {
+          const landed = restingSquare(
+            botGravity, { x: placeX, y: placeY }, boardWidth, boardHeight,
+            (gx, gy) => gameState.pieces.some(p => p.x === gx && p.y === gy)
+          );
+          if (!landed) {
+            console.warn(`[Bot] Column full at (${placeX},${placeY}) in game ${gameId}`);
+            clearTimeout(safetyTimer);
+            return;
+          }
+          placeX = landed.x;
+          placeY = landed.y;
+        } else if (gameState.pieces.some(p => p.x === placeX && p.y === placeY)) {
           console.warn(`[Bot] Placement square occupied (${placeX},${placeY}) in game ${gameId}`);
           clearTimeout(safetyTimer);
           return;
@@ -20344,12 +20394,44 @@ async function _processBotTurnInner(io, gameId, gameState, precomputedMove = nul
           return;
         }
 
-        // Standard win check (capture / elimination / etc.)
+        // Standard win check (capture / elimination / etc.), which is also
+        // where a line or a connection is noticed.
         const botPlaceWinResult = checkWinCondition(gameState, botSurroundRemoved);
         if (botPlaceWinResult.gameOver) {
           await finishBotGame(io, gameId, gameState, botPlaceWinResult, placeMoveRecord, {});
           clearTimeout(safetyTimer);
           return;
+        }
+
+        /*
+         * Nowhere left to put anything, and nothing able to move - the same end
+         * the human placement path applies, and here for the same reason. The
+         * piece-count branch above only fires for games that use that
+         * condition, so noughts and crosses against the computer would
+         * otherwise fill up and sit there with neither side able to act.
+         */
+        {
+          const botBoardFull = gameState.pieces.length >= totalSquares;
+          const botAnyoneCanMove = botBoardFull && gameState.pieces.some((pc) => {
+            try {
+              return (getPossibleMovesForPiece(pc, gameState.pieces, gameState.gameType, 0) || []).length > 0;
+            } catch (_) { return false; }
+          });
+          if (botBoardFull && !botAnyoneCanMove && !gameState.gameType?.piece_count_condition) {
+            const botLoser = gameState.gameType?.no_moves_condition
+              ? gameState.players.find(p => p.position === gameState.currentTurn)
+              : null;
+            const botStallWinner = botLoser
+              ? gameState.players.find(p => p.id !== botLoser.id)
+              : null;
+            await finishBotGame(io, gameId, gameState, {
+              gameOver: true,
+              winner: botStallWinner ? botStallWinner.id : null,
+              reason: botLoser ? 'no_moves' : 'board_full_draw',
+            }, placeMoveRecord, {});
+            clearTimeout(safetyTimer);
+            return;
+          }
         }
 
         // Update DB and broadcast
