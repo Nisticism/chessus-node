@@ -5,6 +5,16 @@ import styles from "./changelog.module.scss";
 const changelogData = [
   {
     date: "September 15, 2026",
+    title: "Puzzles show you what just happened",
+    items: [
+      "A puzzle now plays the opponent's last move onto the board before you start. It holds for a second, slides the piece in over half a second, and then hands over — so you can see what you are answering instead of arriving cold.",
+      "On the home page, on a puzzle's own page, and in the Discord activity. The board is locked while the move is arriving, so a fast answer cannot land on a position that is still moving.",
+      "A piece that leaps — a knight, or anything with a ratio move — travels its actual path rather than sliding diagonally through squares it never visits.",
+      "A new Antichess puzzle: “Make them take it”. Antichess is won by losing everything and a capture is compulsory, so the answer is to put your last pawn somewhere the rook has no choice.",
+    ],
+  },
+  {
+    date: "September 15, 2026",
     title: "A puzzle that won for the other side",
     items: [
       "Fixed two Antichess puzzles whose answer handed the game to the opponent. Both asked you to stalemate them — and in Antichess the stalemated player WINS, so doing it lost. You were told you had solved it while looking at a defeat.",

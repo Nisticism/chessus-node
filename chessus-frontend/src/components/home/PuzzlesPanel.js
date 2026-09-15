@@ -8,6 +8,7 @@ import { isSilverSupporter } from "../../helpers/supporterTiers";
 import useBoardViewport from "../common/useBoardViewport";
 import { MOVE_DOT_BACKGROUNDS, getMoveDotType } from "../../helpers/moveEngine";
 import PlacementTray from "../common/PlacementTray";
+import useSetupMoveReplay from "../common/useSetupMoveReplay";
 import { expandPlaceable, placesPieces } from "../../helpers/placement";
 import PuzzleBoard from "../puzzles/PuzzleBoard";
 import styles from "./puzzlespanel.module.scss";
@@ -266,6 +267,28 @@ const PuzzlesPanel = () => {
   const shape = aspect >= 1.25 ? 'wide' : (aspect <= 0.8 ? 'tall' : 'square');
 
   /** Play a move, or hand off to the full page when it needs a chooser. */
+  /*
+   * The opponent's last move, played onto the card before anyone touches it.
+   *
+   * Same hook the puzzle's own page uses: `shownBoard` is the pre-move
+   * position while it runs and the real one after, and `replaying` gates every
+   * way of acting on the board.
+   */
+  const {
+    displayBoard: shownBoard,
+    replaying,
+    overlay: replayPiece,
+  } = useSetupMoveReplay({
+    boardRef,
+    squareSize: vp.squareSize,
+    board,
+    setupMove: puzzle?.setup_move,
+    imageFor,
+    // Nothing to replay once it is over, or for somebody who already solved it
+    // and is looking at their own line.
+    enabled: !finished && !daily?.solvedByYou,
+  });
+
   const tryMove = useCallback(async (fromKey, x, y) => {
     if (!puzzle || busy || finished) return;
     const [fy, fx] = fromKey.split(',').map(Number);
@@ -342,12 +365,13 @@ const PuzzlesPanel = () => {
 
   const hoverSquare = useCallback(async (x, y) => {
     // A held piece or a drag in progress owns the dots; hover must not fight it.
-    if (!puzzle || finished || picked || drag) return;
+    // Nor may it describe a board the opponent's move is still arriving on.
+    if (!puzzle || finished || picked || drag || replaying) return;
     if (!board?.[`${y},${x}`]) { setHints([]); return; }
     const moves = await loadHints(x, y);
     // The pointer may have moved on while the request was out.
     setHints((prev) => (picked || drag ? prev : moves));
-  }, [puzzle, finished, picked, drag, board, loadHints]);
+  }, [puzzle, finished, picked, drag, replaying, board, loadHints]);
 
   const unhoverSquare = useCallback(() => {
     if (picked || drag) return;
@@ -365,7 +389,9 @@ const PuzzlesPanel = () => {
   }, [vp.squareSize, boardWidth, boardHeight]);
 
   const startPress = useCallback((e, x, y) => {
-    if (!puzzle || busy || finished) return;
+    // `replaying`: a piece picked up mid-replay would be dragged off a
+    // position that is about to change under it.
+    if (!puzzle || busy || finished || replaying) return;
     const key = `${y},${x}`;
     const here = board?.[key];
     if (!here || Number(here.player_id) !== Number(puzzle.side_to_move)) return;
@@ -373,7 +399,7 @@ const PuzzlesPanel = () => {
     setVerdict(null);
     setDrag({ fromKey: key, x: e.clientX, y: e.clientY });
     loadHints(x, y).then(setHints);
-  }, [puzzle, busy, finished, board, loadHints]);
+  }, [puzzle, busy, finished, replaying, board, loadHints]);
 
   /*
    * The move and release listeners live on the window, not the board: a drag
@@ -440,7 +466,7 @@ const PuzzlesPanel = () => {
   }, [puzzle, busy, finished, trayPick, navigate]);
 
   const clickSquare = useCallback((x, y) => {
-    if (!puzzle || busy || finished) return;
+    if (!puzzle || busy || finished || replaying) return;
     if (trayPick) { tryPlace(x, y); return; }
     const key = `${y},${x}`;
     const here = board?.[key];
@@ -454,13 +480,15 @@ const PuzzlesPanel = () => {
     }
     if (picked === key) { setPicked(null); setHints([]); return; }
     tryMove(picked, x, y);
-  }, [puzzle, busy, finished, board, picked, tryMove, loadHints, trayPick, tryPlace]);
+  }, [puzzle, busy, finished, replaying, board, picked, tryMove, loadHints, trayPick, tryPlace]);
 
+  // Built from the REPLAY's board, so the squares show the pre-move position
+  // while the opponent's move is arriving and the real one afterwards.
   const bySquare = useMemo(() => {
     const map = new Map();
-    for (const [key, pl] of Object.entries(board || {})) map.set(key, pl);
+    for (const [key, pl] of Object.entries(shownBoard || {})) map.set(key, pl);
     return map;
-  }, [board]);
+  }, [shownBoard]);
 
   const squareClass = useCallback((x, y) => {
     const key = `${y},${x}`;
@@ -535,6 +563,10 @@ const PuzzlesPanel = () => {
 
   return (
     <section className={styles["puzzles-section"]} aria-label="Puzzles">
+      {/* The opponent's last move, in flight. */}
+      {replayPiece && (
+        <img src={replayPiece.src} alt={replayPiece.alt} style={replayPiece.style} draggable={false} />
+      )}
       {drag && dragSrc && (
         <img
           className={styles["drag-piece"]}
@@ -596,7 +628,7 @@ const PuzzlesPanel = () => {
                 heldKey={trayPick?.key}
                 onPick={(item) => { setTrayPick(item); setPicked(null); setHints([]); }}
                 label="Answer by placing"
-                disabled={busy || finished}
+                disabled={busy || finished || replaying}
                 imageFor={(item) => imageFor({
                   piece_id: item.template.piece_id,
                   image_location: item.template.image_location,

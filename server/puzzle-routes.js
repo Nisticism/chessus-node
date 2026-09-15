@@ -647,6 +647,13 @@ function registerPuzzleRoutes(app, {
           creator_username: row.creator_username,
           attempt_count: row.attempt_count,
           solve_count: row.solve_count,
+          /*
+           * The move that led into the position, so the home card and the
+           * Discord activity can PLAY it before the solver starts - the same
+           * thing the puzzle's own page does. It gives nothing away: it is
+           * what the opponent already did, and the answer is what comes next.
+           */
+          setup_move: safeParse(row.setup_move),
           // What may be put down, when the answer is a placement rather than a
           // move. Empty for every game that does not place pieces.
           ...placementPayload(row),

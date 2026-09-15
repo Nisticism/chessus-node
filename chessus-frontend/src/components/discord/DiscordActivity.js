@@ -4,6 +4,7 @@ import API_URL from "../../global/global";
 import useBoardViewport from "../common/useBoardViewport";
 import { MOVE_DOT_BACKGROUNDS, getMoveDotType } from "../../helpers/moveEngine";
 import PlacementTray from "../common/PlacementTray";
+import useSetupMoveReplay from "../common/useSetupMoveReplay";
 import { expandPlaceable, placesPieces } from "../../helpers/placement";
 import PuzzleBoard from "../puzzles/PuzzleBoard";
 import useDiscordSdk from "./useDiscordSdk";
@@ -486,8 +487,29 @@ export default function DiscordActivity() {
     return { x, y };
   }, [vp.squareSize, boardWidth, boardHeight]);
 
+  /*
+   * The opponent's last move, played onto the board before the solver starts -
+   * the same hook the site's own boards use, so a puzzle opens the same way in
+   * Discord as it does on the page.
+   */
+  const {
+    displayBoard: shownBoard,
+    replaying,
+    overlay: replayPiece,
+  } = useSetupMoveReplay({
+    boardRef,
+    squareSize: vp.squareSize,
+    board,
+    setupMove: puzzle?.setup_move,
+    imageFor,
+    // Nothing to replay once it is over, or for somebody reopening a line they
+    // have already solved today.
+    enabled: !finished && !found.length,
+  });
+
   const startPress = useCallback((e, x, y) => {
-    if (!puzzle || busy || finished) return;
+    // `replaying`: the position is still arriving.
+    if (!puzzle || busy || finished || replaying) return;
     const key = `${y},${x}`;
     const here = board?.[key];
     if (!here || Number(here.player_id) !== Number(puzzle.side_to_move)) return;
@@ -495,7 +517,7 @@ export default function DiscordActivity() {
     setVerdict(null);
     setDrag({ fromKey: key, x: e.clientX, y: e.clientY });
     loadHints(x, y).then(setHints);
-  }, [puzzle, busy, finished, board, loadHints]);
+  }, [puzzle, busy, finished, replaying, board, loadHints]);
 
   useEffect(() => {
     if (!drag) return undefined;
@@ -569,7 +591,7 @@ export default function DiscordActivity() {
   }, [puzzle, busy, finished, trayPick, found, attempts, awaitHandshake]);
 
   const clickSquare = useCallback((x, y) => {
-    if (!puzzle || busy || finished) return;
+    if (!puzzle || busy || finished || replaying) return;
     if (trayPick) { tryPlace(x, y); return; }
     const key = `${y},${x}`;
     const here = board?.[key];
@@ -582,14 +604,14 @@ export default function DiscordActivity() {
     }
     if (picked === key) { setPicked(null); setHints([]); return; }
     tryMove(picked, x, y);
-  }, [puzzle, busy, finished, board, picked, tryMove, loadHints, trayPick, tryPlace]);
+  }, [puzzle, busy, finished, replaying, board, picked, tryMove, loadHints, trayPick, tryPlace]);
 
   const hoverSquare = useCallback(async (x, y) => {
-    if (!puzzle || finished || picked || drag) return;
+    if (!puzzle || finished || picked || drag || replaying) return;
     if (!board?.[`${y},${x}`]) { setHints([]); return; }
     const moves = await loadHints(x, y);
     setHints((prev) => (picked || drag ? prev : moves));
-  }, [puzzle, finished, picked, drag, board, loadHints]);
+  }, [puzzle, finished, picked, drag, replaying, board, loadHints]);
 
   const unhoverSquare = useCallback(() => {
     if (picked || drag) return;
@@ -597,11 +619,13 @@ export default function DiscordActivity() {
   }, [picked, drag]);
 
   // --------------------------------------------------------------- render --
+  // From the REPLAY's board: the pre-move position while the opponent's move
+  // is arriving, the real one afterwards.
   const bySquare = useMemo(() => {
     const map = new Map();
-    for (const [key, pl] of Object.entries(board || {})) map.set(key, pl);
+    for (const [key, pl] of Object.entries(shownBoard || {})) map.set(key, pl);
     return map;
-  }, [board]);
+  }, [shownBoard]);
 
   const squareClass = useCallback((x, y) => {
     const key = `${y},${x}`;
@@ -719,6 +743,10 @@ export default function DiscordActivity() {
           onSquareMouseLeave={unhoverSquare}
           boardRef={boardRef}
         />
+        {/* The opponent's last move, in flight. */}
+        {replayPiece && (
+          <img src={replayPiece.src} alt={replayPiece.alt} style={replayPiece.style} draggable={false} />
+        )}
         {drag && dragSrc && (
           <img
             className={styles["drag-piece"]}
@@ -742,7 +770,7 @@ export default function DiscordActivity() {
         onPick={(item) => { setTrayPick(item); setPicked(null); setHints([]); }}
         label="Answer by placing"
         tone="discord"
-        disabled={busy || finished}
+        disabled={busy || finished || replaying}
         imageFor={(item) => imageFor({
           piece_id: item.template.piece_id,
           image_location: item.template.image_location,

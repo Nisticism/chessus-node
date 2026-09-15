@@ -171,7 +171,7 @@ function createDailyPuzzle({ db_pool }) {
       `SELECT d.puzzle_date, d.puzzle_id, d.game_type_id,
               p.title, p.description, p.goal, p.goal_description, p.side_to_move,
               p.solution_depth, p.rating, p.rating_sample_count, p.hide_rating,
-              p.attempt_count, p.solve_count, p.creator_id, p.position,
+              p.attempt_count, p.solve_count, p.creator_id, p.position, p.setup_move,
               u.username AS creator_username,
               gt.game_name, gt.board_width, gt.board_height,
               -- What the game lets a player put down. The home board needs it

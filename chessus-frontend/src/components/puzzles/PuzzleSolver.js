@@ -15,6 +15,7 @@ import useBoardViewport from "../common/useBoardViewport";
 import BoardZoomControls from "../common/BoardZoomControls";
 import PuzzleBoard from "./PuzzleBoard";
 import PlacementTray from "../common/PlacementTray";
+import useSetupMoveReplay from "../common/useSetupMoveReplay";
 import { expandPlaceable, placesPieces } from "../../helpers/placement";
 import styles from "./puzzlesolver.module.scss";
 
@@ -650,13 +651,38 @@ const PuzzleSolver = () => {
    * alone so the page still scrolls under a finger - tapping the piece and then
    * the destination is the touch path.
    */
+  /*
+   * The opponent's last move, played onto the board before the solver starts.
+   *
+   * `shown` is what every square below reads instead of `placements`: the
+   * pre-move position while it runs, the real one after. `replaying` gates
+   * every way of acting on the board - see submit and the click handler - so a
+   * fast solver cannot answer a position that is still arriving.
+   */
+  const {
+    displayBoard: shown,
+    replaying,
+    overlay: replayPiece,
+  } = useSetupMoveReplay({
+    boardRef,
+    squareSize: vp.squareSize,
+    board: placements,
+    setupMove: puzzle?.setup_move,
+    imageFor: (piece) => imageFor(piece, pieceDataMap),
+    // Nothing to replay once they have started, or on a finished puzzle they
+    // have come back to look at.
+    enabled: !playedMoves.length && !finished,
+  });
+
   const startPress = useCallback((e, x, y) => {
-    if (busy || finished || e.pointerType === 'touch' || e.button !== 0) return;
+    // `replaying`: the opponent's move is still arriving, and a piece picked up
+    // mid-replay would be dragged off a position that is about to change.
+    if (busy || finished || replaying || e.pointerType === 'touch' || e.button !== 0) return;
     const k = keyOf(x, y);
     const here = placements[k];
     if (!here || Number(here.player_id) !== Number(puzzle?.side_to_move)) return;
     pendingRef.current = { fromKey: k, startX: e.clientX, startY: e.clientY };
-  }, [busy, finished, placements, puzzle]);
+  }, [busy, finished, replaying, placements, puzzle]);
 
   useEffect(() => {
     const DRAG_THRESHOLD_PX = 4;
@@ -702,7 +728,7 @@ const PuzzleSolver = () => {
   }, [drag, squareAtPoint, playFrom, hoverPiece, enginePieces]);
 
   const handleSquareClick = useCallback((x, y) => {
-    if (busy || finished) return;
+    if (busy || finished || replaying) return;
     const k = keyOf(x, y);
     const here = placements[k];
     /*
@@ -731,7 +757,7 @@ const PuzzleSolver = () => {
     }
     if (selected === k) { setSelected(null); return; }
     playFrom(selected, x, y);
-  }, [busy, finished, selected, placements, puzzle, playFrom, trayPick, submit]);
+  }, [busy, finished, replaying, selected, placements, puzzle, playFrom, trayPick, submit]);
 
   const sendFeedback = async () => {
     setFeedbackNotice(null);
@@ -775,7 +801,7 @@ const PuzzleSolver = () => {
    */
   const squareState = (x, y) => {
     const k = keyOf(x, y);
-    const rawPiece = placements[k];
+    const rawPiece = shown[k];
 
     /*
      * Fog and hidden pieces, applied at the point of drawing.
@@ -798,7 +824,7 @@ const PuzzleSolver = () => {
 
   const squareClass = (x, y) => {
     const { k, fogged } = squareState(x, y);
-    const mine = placements[k] && Number(placements[k].player_id) === Number(puzzle.side_to_move);
+    const mine = shown[k] && Number(shown[k].player_id) === Number(puzzle.side_to_move);
     return [
       selected === k ? styles["selected"] : '',
       fogged ? styles["fogged"] : '',
@@ -867,6 +893,10 @@ const PuzzleSolver = () => {
           }}
         />
       )}
+      {/* The opponent's last move, in flight. */}
+      {replayPiece && (
+        <img src={replayPiece.src} alt={replayPiece.alt} style={replayPiece.style} draggable={false} />
+      )}
       <h1>{puzzle.title || 'Puzzle'}</h1>
       <p className={styles["subtitle"]}>
         {puzzle.game_name && <>in <Link to={`/games/${puzzle.game_type_id}`}>{puzzle.game_name}</Link></>}
@@ -889,7 +919,7 @@ const PuzzleSolver = () => {
               onSquareClick={handleSquareClick}
               onSquarePointerDown={startPress}
               onSquareMouseEnter={(x, y) => {
-                if (!finished && !selected && !drag) {
+                if (!finished && !selected && !drag && !replaying) {
                   hoverPiece(enginePieces.find((e) => e.x === x && e.y === y));
                 }
               }}
@@ -905,7 +935,7 @@ const PuzzleSolver = () => {
             heldKey={trayPick?.key}
             onPick={(item) => { setTrayPick(item); setSelected(null); }}
             label="Answer by placing"
-            disabled={busy || finished}
+            disabled={busy || finished || replaying}
             /*
              * image_location, not image_url: the template's image_url is one
              * fixed picture, and these pieces differ by owner - a black stone
