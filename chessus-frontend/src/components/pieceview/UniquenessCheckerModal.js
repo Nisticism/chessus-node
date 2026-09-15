@@ -29,32 +29,66 @@ const UniquenessCheckerModal = ({ piece, pieceId, currentUser, onClose }) => {
 
   const [search, setSearch] = useState('');
   const [results, setResults] = useState([]);
+  /*
+   * The comparer used to ask for the first ten matches and show those, full
+   * stop - so searching "pawn", which matches forty-five pieces, silently
+   * offered ten of them and gave no sign the rest existed. It pages now.
+   */
+  const [searchPage, setSearchPage] = useState(1);
+  const [searchTotal, setSearchTotal] = useState(0);
   const [searchLoading, setSearchLoading] = useState(false);
   const [compareData, setCompareData] = useState(null);
   const [compareLoading, setCompareLoading] = useState(false);
   const [compareError, setCompareError] = useState('');
   const [compareTab, setCompareTab] = useState('differences');
 
+  // A new search term starts again from the first page.
+  useEffect(() => { setSearchPage(1); }, [search]);
+
   // Debounced piece search for the comparer.
+  const SEARCH_PAGE_SIZE = 10;
   useEffect(() => {
     const term = search.trim();
-    if (term.length < 2) { setResults([]); return undefined; }
+    if (term.length < 2) { setResults([]); setSearchTotal(0); return undefined; }
     let active = true;
     setSearchLoading(true);
     const t = setTimeout(async () => {
       try {
-        const res = await PiecesService.getPieces(1, 10, 'newest', term);
+        const res = await PiecesService.getPieces(searchPage, SEARCH_PAGE_SIZE, 'newest', term);
         const list = (res.data?.pieces || res.data?.data || res.data || [])
           .filter((p) => String(p.id) !== String(pieceId));
-        if (active) setResults(list);
+        if (active) {
+          setResults(list);
+          setSearchTotal(Number(res.data?.pagination?.total) || list.length);
+        }
       } catch {
-        if (active) setResults([]);
+        if (active) { setResults([]); setSearchTotal(0); }
       } finally {
         if (active) setSearchLoading(false);
       }
     }, 350);
     return () => { active = false; clearTimeout(t); };
-  }, [search, pieceId]);
+  }, [search, searchPage, pieceId]);
+
+  const searchPages = Math.max(1, Math.ceil(searchTotal / SEARCH_PAGE_SIZE));
+
+  /*
+   * Which names appear more than once in what is on screen.
+   *
+   * Two pieces called "Pawn" are indistinguishable in a list of names, and
+   * that is precisely the case somebody opens this tool to sort out - so where
+   * a name repeats, the author is the thing that tells them apart and is shown
+   * more prominently. Computed per page, because that is what the reader is
+   * actually comparing.
+   */
+  const duplicateNames = React.useMemo(() => {
+    const counts = new Map();
+    for (const p of results) {
+      const key = (p.piece_name || '').trim().toLowerCase();
+      counts.set(key, (counts.get(key) || 0) + 1);
+    }
+    return new Set([...counts.entries()].filter(([, n]) => n > 1).map(([k]) => k));
+  }, [results]);
 
   const runScan = async () => {
     if (!piece) return;
@@ -197,23 +231,51 @@ const UniquenessCheckerModal = ({ piece, pieceId, currentUser, onClose }) => {
                     {search.trim().length < 2 ? 'Type at least 2 characters to search.' : 'No pieces found.'}
                   </p>
                 ) : (
-                  results.map((p) => (
-                    <button
-                      key={p.id}
-                      type="button"
-                      className={styles["compare-result-item"]}
-                      onClick={() => selectCompare(p.id)}
-                      disabled={compareLoading}
-                    >
-                      <span>{p.piece_name}</span>
-                      {p.creator_username && (
-                        <span className={styles["compare-result-by"]}>by {p.creator_username}</span>
-                      )}
-                    </button>
-                  ))
+                  results.map((p) => {
+                    const shared = duplicateNames.has((p.piece_name || '').trim().toLowerCase());
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        className={styles["compare-result-item"]}
+                        onClick={() => selectCompare(p.id)}
+                        disabled={compareLoading}
+                      >
+                        <span>{p.piece_name}</span>
+                        {p.creator_username && (
+                          <span className={`${styles["compare-result-by"]} ${shared ? styles["compare-result-by-needed"] : ''}`}>
+                            by {p.creator_username}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })
                 )}
                 {compareLoading && <p className={styles["compare-muted"]}>Comparing…</p>}
               </div>
+
+              {/* Paging, shown only when there is more than one page of it. */}
+              {!searchLoading && searchTotal > SEARCH_PAGE_SIZE && (
+                <div className={styles["compare-pager"]}>
+                  <button
+                    type="button"
+                    onClick={() => setSearchPage((n) => Math.max(1, n - 1))}
+                    disabled={searchPage <= 1 || compareLoading}
+                  >
+                    ← Previous
+                  </button>
+                  <span className={styles["compare-pager-count"]}>
+                    {searchTotal} matches · page {searchPage} of {searchPages}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setSearchPage((n) => Math.min(searchPages, n + 1))}
+                    disabled={searchPage >= searchPages || compareLoading}
+                  >
+                    Next →
+                  </button>
+                </div>
+              )}
             </>
           ) : (
             <>

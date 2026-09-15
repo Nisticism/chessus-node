@@ -2584,9 +2584,24 @@ app.get("/api/pieces", async (req, res) => {
     const [countResult] = await db_pool.query(countQuery, whereParams);
     const total = countResult[0].total;
 
+    /*
+     * Who made it, joined in.
+     *
+     * The list has always carried the author in its SHAPE - callers read
+     * piece.creator_username - and never in its data, because nothing selected
+     * it. So every "by so-and-so" that reads off this endpoint rendered
+     * nothing, which matters most in the uniqueness comparer, where the author
+     * is the only thing telling two pieces of the same name apart.
+     *
+     * Anonymous creators are respected here the same way the games list does
+     * it, rather than by handing out the name and trusting the client.
+     */
+    const creatorJoin = 'LEFT JOIN users pu ON pu.id = p.creator_id';
+    const creatorSelect = ", CASE WHEN p.is_anonymous_creator = 1 THEN 'Anonymous' ELSE pu.username END AS creator_username";
+
     // Get paginated pieces
     const groupBy = joinClause ? 'GROUP BY p.id' : '';
-    const dataQuery = `SELECT p.*${selectExtra} FROM pieces p ${joinClause} ${whereClause} ${groupBy} ${orderClause} LIMIT ? OFFSET ?`;
+    const dataQuery = `SELECT p.*${selectExtra}${creatorSelect} FROM pieces p ${joinClause} ${creatorJoin} ${whereClause} ${groupBy} ${orderClause} LIMIT ? OFFSET ?`;
     const [pieces] = await db_pool.query(dataQuery, [...whereParams, limit, offset]);
 
     res.json({

@@ -311,9 +311,53 @@
   }
 }
 
+/* The author, off to the right of the name and quieter than it: it is there to
+   tell two rows apart, not to be read down the list. The row is already
+   space-between, so this only has to stop itself being squeezed. */
 .compare-result-by {
   color: var(--text-dim);
   font-size: 0.82rem;
+  flex: 0 0 auto;
+  margin-left: auto;
+  opacity: 0.75;
+  white-space: nowrap;
+}
+
+/* Except where two pieces on this page share a NAME, which is exactly the case
+   somebody opened this tool to sort out. There the author is the only thing
+   distinguishing the rows, so it stops being an aside. */
+.compare-result-by-needed {
+  opacity: 1;
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.compare-pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+
+  button {
+    padding: 6px 12px;
+    border-radius: 6px;
+    border: 1px solid var(--panel-border);
+    background: var(--bg-deep);
+    color: var(--text-bright);
+    font: inherit;
+    font-size: 0.85rem;
+    cursor: pointer;
+
+    &:hover:not(:disabled) { border-color: var(--border-bright); }
+    &:disabled { opacity: 0.45; cursor: default; }
+  }
+}
+
+.compare-pager-count {
+  font-size: 0.82rem;
+  color: var(--text-dim);
 }
 
 .compare-muted {
