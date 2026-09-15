@@ -5,6 +5,18 @@ import styles from "./changelog.module.scss";
 const changelogData = [
   {
     date: "September 15, 2026",
+    title: "A puzzle that won for the other side",
+    items: [
+      "Fixed two Antichess puzzles whose answer handed the game to the opponent. Both asked you to stalemate them — and in Antichess the stalemated player WINS, so doing it lost. You were told you had solved it while looking at a defeat.",
+      "Nothing had ever checked that a puzzle's solution wins for the side you play as. Every goal describes something to do — mate them, take that piece, reach that square — and none of them asked who ends up winning, which only matters in a game that inverts an outcome.",
+      "Now every goal is checked against who actually wins, so this cannot happen again to any goal, including ones added later. A draw is still allowed where the goal says it is the best available.",
+      "“Stalemate the opponent” is no longer offered in games where being stalemated wins. There is no one-move version of the right idea there: winning by stalemate means being stalemated yourself, which cannot happen until after your opponent replies.",
+      "The two puzzles have been withdrawn from the daily rotation and the puzzle list. Attempts anybody already recorded against them are untouched.",
+      "Every other puzzle on the site was checked. These two were the only ones.",
+    ],
+  },
+  {
+    date: "September 15, 2026",
     title: "Tic Tac Toe and Connect Four, and presets for your own games",
     items: [
       "Tic Tac Toe and Connect Four are now on the site, published by GridGrove. Both are ordinary GridGrove games — you can play them, build puzzles on them, and start your own game from either of them.",

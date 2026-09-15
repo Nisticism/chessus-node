@@ -106,18 +106,28 @@ const GOAL_DEFS = {
 
   stalemate_them: {
     label: 'Stalemate the opponent',
-    describe: (gt) => (gt.stalemate_win_condition
-      ? 'Stalemate wins this game. Find the move that leaves the opponent with no legal move, and not in check.'
-      : 'Find the move that leaves the opponent with no legal move, and not in check. '
-        + 'In this game that is a draw, not a win - which may be the best available.'),
-    available: (gt) => !!gt.stalemate_win_condition || !!gt.stalemate_draw_condition,
+    describe: () => 'Find the move that leaves the opponent with no legal move, and not in '
+      + 'check. In this game that is a draw, not a win - which may be the best available.',
     /*
-     * Ranked below the goals that actually WIN when stalemate is only a draw.
-     * "Find the stalemate" is a fine puzzle in a stalemate-wins game and an odd
-     * one in a game where it splits the point, so it should not be the first
-     * thing the builder suggests there - or the one a generator reaches for.
+     * NOT offered in a game where being stalemated WINS.
+     *
+     * It used to be, with copy that said "Stalemate wins this game" - which
+     * read as encouragement and was precisely backwards: the rule is that the
+     * STALEMATED player wins, so stalemating your opponent hands them the
+     * game. Two published puzzles were built on that reading.
+     *
+     * There is no one-move version of the right idea either. Winning by
+     * stalemate means being stalemated yourself, and after your move it is
+     * their turn - so it takes at least their reply to reach, which is a line
+     * the checker cannot judge for forcedness anyway.
      */
-    rank: (gt) => (gt.stalemate_win_condition ? 0 : 1),
+    available: (gt) => !gt.stalemate_win_condition && !!gt.stalemate_draw_condition,
+    /*
+     * Ranked below the goals that actually win. Stalemate only ever splits the
+     * point here now, so "find the stalemate" should not be the first thing
+     * the builder suggests - or the one a generator reaches for.
+     */
+    rank: () => 1,
     mechanical: true,
     achieved: (state, side) => {
       const them = other(side);
@@ -797,14 +807,104 @@ function placementCandidates(state, side) {
   return out;
 }
 
+/**
+ * Who, if anybody, wins in this position - INCLUDING by stalemate.
+ *
+ * checkWinCondition does not answer this on its own. Stalemate is decided in
+ * the live game's move handler, not there, so a position where the player to
+ * move has no legal moves comes back from checkWinCondition as
+ * `{ gameOver: false }` - which is how a puzzle could be built whose solution
+ * hands the game to the opponent and have every check pass.
+ *
+ * The order below mirrors that handler exactly, and the order is the whole
+ * point:
+ *
+ *   no_moves_condition      wins outright, and the stalemate rules are skipped
+ *                           entirely when it is set - a player with no legal
+ *                           move LOSES, in check or not.
+ *   in check, no moves      checkmate: the player to move loses.
+ *   stalemate_win_condition the STALEMATED player wins. This is the inverted
+ *                           case, and it takes priority over the draw flag
+ *                           when a game sets both - as Antichess does.
+ *   stalemate_draw          a draw.
+ *   none of the above       nothing happens; the live game skips the turn.
+ *
+ * @param toMove the player whose turn it is in the position being judged
+ * @returns {{winner: number|null, reason: string}|null} - null when the game
+ *   continues, and `winner: null` for a draw.
+ */
+function terminalOutcome(state, toMove, ctx) {
+  const mover = Number(toMove);
+  const opponent = other(mover);
+
+  // Anything the shared win check already decides - capture, elimination, a
+  // line, points, the lot.
+  try {
+    const win = checkWinCondition(state, ctx?.captured);
+    if (win && win.gameOver) {
+      const match = /^puzzle_p(\d+)$/.exec(String(win.winner || ''));
+      return { winner: match ? Number(match[1]) : null, reason: win.reason || 'win' };
+    }
+  } catch (_) { /* fall through to the move-based endings */ }
+
+  const gameType = state.gameType || {};
+  let hasMoves = true;
+  try {
+    hasMoves = (getAllLegalMovesForPlayer(state, mover) || []).length > 0;
+  } catch (_) { return null; }
+  if (hasMoves) return null;
+
+  if (gameType.no_moves_condition) {
+    return { winner: opponent, reason: 'no_moves' };
+  }
+
+  let inCheck = false;
+  try { inCheck = !!checkForCheck(state, mover).inCheck; } catch (_) { inCheck = false; }
+  if (inCheck) {
+    return gameType.mate_condition ? { winner: opponent, reason: 'checkmate' } : null;
+  }
+
+  if (gameType.stalemate_win_condition) {
+    // The stalemated player WINS. Antichess and its relatives.
+    return { winner: mover, reason: 'stalemate_win' };
+  }
+  if (gameType.stalemate_draw_condition !== false && gameType.stalemate_draw_condition !== 0) {
+    return { winner: null, reason: 'stalemate' };
+  }
+  return null;   // no stalemate rule: the live game just skips the turn
+}
+
 function goalMet(goal, state, side, ctx) {
   const def = GOAL_DEFS[goal];
   if (!def || !def.mechanical) return false;
+  let achieved;
   try {
-    return !!def.achieved(state, side, ctx || {});
+    achieved = !!def.achieved(state, side, ctx || {});
   } catch (_) {
     return false;
   }
+  if (!achieved) return false;
+
+  /*
+   * And the game must not have been handed to the OPPONENT.
+   *
+   * Every goal above describes a thing to do; none of them asked who ends up
+   * winning, which is fine until a game inverts an outcome. Antichess is the
+   * case that found this: stalemating the opponent satisfies "stalemate the
+   * opponent" perfectly, and in a game where being stalemated WINS it means
+   * the opponent has just won. A puzzle built on that tells the solver they
+   * have succeeded while showing them a loss.
+   *
+   * Checked here rather than inside each goal so it cannot be forgotten by the
+   * next goal somebody adds. A draw is deliberately allowed through: the
+   * stalemate goal in a stalemate-DRAW game says out loud that it splits the
+   * point, which may be the best available.
+   */
+  const outcome = terminalOutcome(state, other(side), ctx);
+  if (outcome && outcome.winner != null && Number(outcome.winner) !== Number(side)) {
+    return false;
+  }
+  return true;
 }
 
 /* -------------------------------------------------------------- validate -- */
@@ -967,6 +1067,7 @@ module.exports = {
   goalMet,
   playLine,
   buildGameState,
+  terminalOutcome,
   moveKey,
   isPlacementPly,
   placementRules,

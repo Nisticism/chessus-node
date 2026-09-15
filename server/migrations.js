@@ -5416,6 +5416,72 @@ const runMigrations = async () => {
   }
 
   /*
+   * Retire the puzzles that win for the WRONG SIDE.
+   *
+   * A puzzle says "you are player N, find the move", and nothing checked that
+   * the move it wants produces a win for player N. Every goal describes a
+   * thing to DO; none of them asked who ends up winning.
+   *
+   * That is fine until a game inverts an outcome. Antichess is the case:
+   * "stalemate the opponent" is satisfied exactly by stalemating them, and in
+   * a game where the STALEMATED player wins, doing so hands them the game. The
+   * solver was congratulated while looking at a loss.
+   *
+   * It went unnoticed because checkWinCondition does not decide stalemate -
+   * that lives in the live game's move handler - so the position came back as
+   * "the game continues" and nothing further was asked. goalMet now consults
+   * terminalOutcome, which mirrors that handler, so no new puzzle can be built
+   * or generated this way and the goal is no longer offered in such a game.
+   *
+   * This is the existing rows. Found BY RULE rather than by id, because puzzle
+   * ids differ between databases - these were inserted by the seed, which does
+   * not carry them.
+   *
+   * They are unpublished and marked unsolvable rather than deleted: that is
+   * now literally what the validator says about them, it takes them out of the
+   * browse list and out of the daily rotation (which requires
+   * validation_status = 'valid'), and it does not destroy the attempts anybody
+   * already recorded against them.
+   */
+  try {
+    const [wrongSide] = await db_pool.query(
+      `SELECT p.id, p.title, gt.game_name
+       FROM puzzles p JOIN game_types gt ON gt.id = p.game_type_id
+       WHERE p.goal = 'stalemate_them'
+         AND gt.stalemate_win_condition = 1
+         AND (p.is_draft = 0 OR p.validation_status = 'valid')`
+    );
+    if (wrongSide.length) {
+      const ids = wrongSide.map((r) => r.id);
+      /*
+       * Unscheduled first, so a day that was pointing at one is empty and the
+       * scheduler refills it on its next run rather than serving a puzzle that
+       * has just been withdrawn.
+       */
+      const [unscheduled] = await db_pool.query(
+        'DELETE FROM daily_puzzles WHERE puzzle_id IN (?)', [ids]
+      );
+      await db_pool.query(
+        `UPDATE puzzles SET is_draft = 1, validation_status = 'unsolvable',
+                validation_detail = ?, validated_at = NOW()
+         WHERE id IN (?)`,
+        ['Stalemating the opponent hands them the win in this game, so the '
+          + 'recorded solution wins for the other side.', ids]
+      );
+      for (const row of wrongSide) {
+        console.log(`[DB] Retired puzzle ${row.id} "${row.title}" on ${row.game_name} `
+          + '- its solution won for the opponent');
+      }
+      if (unscheduled.affectedRows) {
+        console.log(`[DB] Cleared ${unscheduled.affectedRows} daily slot(s) that pointed at them`);
+      }
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error retiring wrong-side puzzles:', err.message);
+  }
+
+  /*
    * The classic games GridGrove publishes, and the pieces they use.
    *
    * Tic Tac Toe and Connect Four were built locally and had to reach
