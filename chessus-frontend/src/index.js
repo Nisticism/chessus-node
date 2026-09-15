@@ -9,6 +9,7 @@ import { BrowserRouter } from 'react-router-dom';
 import { GoogleOAuthProvider } from '@react-oauth/google';
 import './services/axios-interceptor'; // Initialize axios interceptor
 import { captureLaunchParams } from './helpers/discord-launch-params';
+import { REFERRER_STASH_KEY } from './analytics/GoogleAnalytics';
 
 /*
  * Before anything can navigate.
@@ -87,6 +88,10 @@ captureLaunchParams();
 
 const UI_CACHE_VERSION = process.env.REACT_APP_UI_CACHE_VERSION || '2026-02-20-1';
 
+/**
+ * @returns {Promise<boolean>} true when a reload has been started, meaning this
+ *          document is on its way out and nothing should be rendered into it.
+ */
 const clearAppCachesIfNeeded = async () => {
   const storedVersion = localStorage.getItem('ui_cache_version');
   const hasRefreshFlag = window.location.search.includes('cacheRefreshed=1');
@@ -99,7 +104,7 @@ const clearAppCachesIfNeeded = async () => {
       const nextUrl = `${window.location.pathname}${queryString ? `?${queryString}` : ''}${window.location.hash}`;
       window.history.replaceState(null, '', nextUrl);
     }
-    return;
+    return false;
   }
 
   localStorage.setItem('ui_cache_version', UI_CACHE_VERSION);
@@ -115,11 +120,25 @@ const clearAppCachesIfNeeded = async () => {
   }
 
   if (hasRefreshFlag) {
-    return;
+    return false;
   }
+
+  /*
+   * Keep the real referrer across the reload.
+   *
+   * The reload makes document.referrer this site's own previous URL, so without
+   * this every first-time visitor - the only visit whose source is worth
+   * knowing, an ad click or a link from another site - was recorded as having
+   * arrived from gridgrove.gg. The beacon reads it back on the next load.
+   */
+  try {
+    const ref = String(document.referrer || '');
+    if (ref) window.sessionStorage.setItem(REFERRER_STASH_KEY, ref.slice(0, 300));
+  } catch (_) { /* a stash that cannot be written is only a lost referrer */ }
 
   const separator = window.location.search ? '&' : '?';
   window.location.replace(`${window.location.pathname}${window.location.search}${separator}cacheRefreshed=1${window.location.hash}`);
+  return true;
 };
 
 // Patch Google Identity Services to fix two known issues with @react-oauth/google:
@@ -189,9 +208,25 @@ const renderApp = () => {
   );
 };
 
-clearAppCachesIfNeeded().finally(() => {
-  renderApp();
-});
+/*
+ * Do not render into a document that is already leaving.
+ *
+ * On a first visit - and on every visit after a UI version bump - the function
+ * above reloads the page to clear stale caches. window.location.replace does
+ * not stop the script, so the app used to mount, run its effects and send a
+ * page-view beacon for a page nobody would ever see, and then the reload sent a
+ * second one. Roughly a third of all recorded views were that first, discarded
+ * load. Skipping the render skips the whole wasted mount, not only the beacon.
+ *
+ * The timer is a backstop: if the navigation somehow does not happen, the app
+ * still appears rather than leaving a blank page.
+ */
+clearAppCachesIfNeeded()
+  .catch(() => false)
+  .then((reloading) => {
+    if (!reloading) { renderApp(); return; }
+    setTimeout(renderApp, 3000);
+  });
 
 // If you want to start measuring performance in your app, pass a function
 // to log results (for example: reportWebVitals(console.log))

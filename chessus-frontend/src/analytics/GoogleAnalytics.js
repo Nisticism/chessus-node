@@ -24,6 +24,32 @@ function getVisitorId() {
 
 let _firstView = true;
 
+/*
+ * The referrer, as it was before the cache-clearing reload in index.js.
+ *
+ * That reload makes document.referrer this site's own previous URL, so without
+ * this every first-time visitor - the only visit whose source is worth knowing
+ * - was recorded as having come from gridgrove.gg. The stash is read once and
+ * dropped, and only ever REPLACES a same-origin referrer, so an ordinary
+ * internal navigation still reports what it really was.
+ */
+export const REFERRER_STASH_KEY = 'gg:preRefreshReferrer';
+
+function firstViewReferrer() {
+  const here = String(document.referrer || '');
+  let stashed = null;
+  try {
+    stashed = window.sessionStorage.getItem(REFERRER_STASH_KEY);
+    if (stashed) window.sessionStorage.removeItem(REFERRER_STASH_KEY);
+  } catch (_) { /* no stash is the ordinary case */ }
+  if (!stashed) return here;
+  try {
+    // Only stand in for the reload's own footprint. Anything else is real.
+    if (!here || new URL(here).origin === window.location.origin) return stashed;
+  } catch (_) { return stashed; }
+  return here;
+}
+
 // initGA name kept so existing imports don't need to change.
 export const initGA = () => { getVisitorId(); };
 
@@ -39,7 +65,7 @@ export const trackPageView = (path /*, title */) => {
     const payload = {
       path: String(path || window.location.pathname || '/').split('?')[0].slice(0, 300),
       visitorId: getVisitorId(),
-      referrer: _firstView ? String(document.referrer || '').slice(0, 300) : '',
+      referrer: _firstView ? firstViewReferrer().slice(0, 300) : '',
       utmSource: (params.get('utm_source') || '').slice(0, 100),
       utmMedium: (params.get('utm_medium') || '').slice(0, 100),
       utmCampaign: (params.get('utm_campaign') || '').slice(0, 100),
