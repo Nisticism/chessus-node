@@ -477,6 +477,14 @@
 .btn { background: var(--accent-primary, #4a7fd4); color: #fff; }
 .btn-secondary { background: var(--panel-bg-start, #24344f); color: var(--text-heading); }
 
+/* The link out to the puzzle's own page, under the heading and centred with
+   it so it reads as part of the title block rather than as a stray control. */
+.open-live {
+  margin: -12px 0 20px;
+  text-align: center;
+  font-size: 14px;
+}
+
 .link-btn {
   background: none;
   border: none;

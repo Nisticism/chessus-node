@@ -105,6 +105,13 @@ export default function useDiscordSdk() {
     status: 'connecting', sdk: null, token: null, user: null, error: null,
   });
 
+  /*
+   * Kept apart from `state` so the handshake's own transitions - which replace
+   * the whole object each time - cannot drop it. It is diagnostic: which
+   * application id the handshake used, and which one the build was carrying.
+   */
+  const [ids, setIds] = useState({ appId: null, envAppId: null });
+
   useEffect(() => {
     /*
      * Tell the server what went wrong, because nothing else can.
@@ -162,7 +169,36 @@ export default function useDiscordSdk() {
       return undefined;
     }
 
-    const clientId = process.env.REACT_APP_DISCORD_CLIENT_ID;
+    /*
+     * Which application Discord thinks it is launching.
+     *
+     * The handshake carries a client_id, and the Discord client answers it only
+     * for the application it actually launched. Hand it a different id - an
+     * older test application, a build whose env var was never updated - and
+     * nothing is rejected: the message is simply never answered. From in here
+     * that is indistinguishable from a dead channel, and it looks exactly like
+     * "sdk.ready did not settle", three attempts over, with nothing else to go
+     * on. It is worth ruling out first because it cannot be seen any other way.
+     *
+     * The URL settles it. An activity is served from
+     * <application_id>.discordsays.com, so the host names the application
+     * beyond argument, and it outranks the build's own idea when the two
+     * disagree. The env var still matters everywhere else - it is what a
+     * browser tab has - so it stays the default and the host only overrides.
+     */
+    const envClientId = process.env.REACT_APP_DISCORD_CLIENT_ID;
+    const hostMatch = /^(\d{15,25})\.discordsays\.com$/i.exec(window.location.hostname || '');
+    const hostClientId = hostMatch ? hostMatch[1] : null;
+    const clientId = hostClientId || envClientId;
+    setIds({ appId: clientId || null, envAppId: envClientId || null });
+
+    if (hostClientId && envClientId && hostClientId !== envClientId) {
+      report('client-id-mismatch',
+        `REACT_APP_DISCORD_CLIENT_ID is ${envClientId} but this activity is served from `
+        + `${window.location.hostname}. Using the host's id. Set the build's id to `
+        + `${hostClientId} so the token exchange matches too.`);
+    }
+
     if (!clientId) {
       setState({
         status: 'error', sdk: null, token: null, user: null,
@@ -381,5 +417,5 @@ export default function useDiscordSdk() {
     return () => { cancelled = true; };
   }, []);
 
-  return state;
+  return { ...state, ...ids };
 }

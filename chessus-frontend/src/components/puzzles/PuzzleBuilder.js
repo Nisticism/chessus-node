@@ -1262,6 +1262,29 @@ const PuzzleBuilder = () => {
     <div className={`${styles["builder-page"]}${isSkinnyBoard ? ` ${styles["skinny"]}` : ''}`}>
       <h1>{savedId ? 'Edit Puzzle' : 'New Puzzle'}{game ? ` — ${game.game_name}` : ''}</h1>
 
+      {/*
+        * The way out to the puzzle itself.
+        *
+        * Editing ends with wanting to see the thing played, and there was no
+        * route to it from here - the puzzle's own page had to be found again
+        * from the game. A draft is included: its page is visible to whoever can
+        * edit it, which is exactly whoever is reading this.
+        *
+        * A new tab, so a half-finished edit is not navigated away from.
+        */}
+      {!!savedId && (
+        <p className={styles["open-live"]}>
+          <a
+            href={`/games/${gameId}/puzzles/${savedId}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={styles["link-btn"]}
+          >
+            Open this puzzle{isDraft ? ' (draft preview)' : ''} ↗
+          </a>
+        </p>
+      )}
+
       {/* Page-level controls, deliberately not inside the board column: they need
           a readable width, and keeping them there forced a floor on that column
           that stranded empty space beside skinny boards. */}

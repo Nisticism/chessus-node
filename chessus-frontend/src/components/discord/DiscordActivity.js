@@ -52,6 +52,19 @@ const sameOrigin = (url) => {
 
 const API = IN_DISCORD ? sameOrigin(API_URL) : API_URL;
 
+/*
+ * Where the real site lives - which inside the frame is NOT window.location.
+ *
+ * The activity is served from <app id>.discordsays.com, so building a link out
+ * of window.location.origin produced a link to Discord's own proxy host. That
+ * is why "Open on GridGrove" did nothing: the client was being handed a URL
+ * that is not a public web page, and the one thing it will not do is open it in
+ * a browser. Links OUT have to be absolute to the site, which is the opposite
+ * of every request the frame makes.
+ */
+const SITE_ORIGIN = (process.env.REACT_APP_API_URL || '').replace(/\/+$/, '')
+  || (typeof window !== 'undefined' ? window.location.origin : '');
+
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";
 const resolveUrl = (p) => {
   if (!p) return null;
@@ -176,7 +189,24 @@ export default function DiscordActivity() {
   useEffect(() => { tokenRef.current = discord.token; }, [discord.token]);
 
   const HANDSHAKE_GRACE_MS = 3000;
+  /*
+   * Paid ONCE, not on every move.
+   *
+   * The grace above is about the FIRST answer of a session - the one that can
+   * beat the handshake to the server. Charging it again on every move of a
+   * multi-move line turned a slow handshake into a slow board: a handshake
+   * that never settles keeps the status on 'connecting' for the better part of
+   * forty seconds, and each move inside that window sat here for three of them
+   * before it was even sent. That is the delay between moves that the site's
+   * own boards do not have, and it was never the animation.
+   *
+   * One wait is all the intent needs. If the handshake has not arrived by the
+   * end of it, it is not going to arrive in time for the move after either.
+   */
+  const handshakeWaitedRef = useRef(false);
   const awaitHandshake = useCallback(async () => {
+    if (handshakeWaitedRef.current) return;
+    handshakeWaitedRef.current = true;
     if (statusRef.current !== 'connecting') return;
     const until = Date.now() + HANDSHAKE_GRACE_MS;
     while (statusRef.current === 'connecting' && Date.now() < until) {
@@ -355,21 +385,42 @@ export default function DiscordActivity() {
     }
   }, [puzzle, board, found]);
 
-  /** Open the full puzzle page in the player's browser, outside Discord. */
-  const openOnSite = useCallback(() => {
-    if (!puzzle) return;
-    const url = `${window.location.origin}/games/${puzzle.game_type_id}/puzzles/${puzzle.id}`;
-    /*
-     * `openExternalLink` asks the Discord client to open a real browser. A bare
-     * window.open inside the iframe is blocked, so without this the link
-     * silently does nothing.
-     */
-    if (discord.sdk?.commands?.openExternalLink) {
-      discord.sdk.commands.openExternalLink({ url }).catch(() => {});
-    } else {
-      window.open(url, '_blank', 'noopener');
-    }
-  }, [puzzle, discord.sdk]);
+  /** The puzzle's address on the site itself, not on Discord's proxy host. */
+  const siteUrl = useMemo(
+    () => (puzzle ? `${SITE_ORIGIN}/games/${puzzle.game_type_id}/puzzles/${puzzle.id}` : null),
+    [puzzle]
+  );
+
+  /*
+   * Open the full puzzle page in the player's browser, outside Discord.
+   *
+   * `openExternalLink` asks the Discord client to open a real browser, and it
+   * is the only reliable way out of the frame - but it is an RPC command, so it
+   * only answers once the handshake has. Asked while the handshake is dead it
+   * neither resolves nor rejects, and a `.catch()` on a promise that never
+   * settles is a button that does nothing at all.
+   *
+   * So it is only tried when the SDK is actually ready, it is raced against a
+   * short timeout, and the anchor underneath is left to do its ordinary job in
+   * every other case - including an ordinary browser tab, where there is no SDK
+   * and never was a problem.
+   */
+  const openOnSite = useCallback((e) => {
+    if (!siteUrl) return;
+    const cmd = discord.status === 'ready' && discord.sdk?.commands?.openExternalLink;
+    if (!cmd) return;   // let the anchor navigate
+
+    if (e) e.preventDefault();
+    let handled = false;
+    const fallback = setTimeout(() => {
+      if (handled) return;
+      handled = true;
+      window.open(siteUrl, '_blank', 'noopener');
+    }, 1500);
+    Promise.resolve(discord.sdk.commands.openExternalLink({ url: siteUrl }))
+      .then(() => { handled = true; clearTimeout(fallback); })
+      .catch(() => { /* the timeout above is the fallback */ });
+  }, [siteUrl, discord.sdk, discord.status]);
 
   const tryMove = useCallback(async (fromKey, x, y) => {
     if (!puzzle || busy || finished) return;
@@ -828,9 +879,15 @@ export default function DiscordActivity() {
         <p className={`${styles["verdict"]} ${styles[`v-${verdict.status}`] || ''}`}>
           {verdict.text}
           {verdict.status === 'handoff' && (
-            <button type="button" className={styles["link-btn"]} onClick={openOnSite}>
+            <a
+              className={styles["link-btn"]}
+              href={siteUrl || '#'}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={openOnSite}
+            >
               Open on GridGrove
-            </button>
+            </a>
           )}
         </p>
       )}
@@ -856,9 +913,18 @@ export default function DiscordActivity() {
         <span className={styles["muted"]}>
           {attempts === 0 ? 'No attempts yet' : `${attempts} ${attempts === 1 ? 'try' : 'tries'} today`}
         </span>
-        <button type="button" className={styles["link-btn"]} onClick={openOnSite}>
+        {/* An anchor, not a button: when the SDK handshake is dead there is no
+            openExternalLink to call, and an ordinary link is the only way out
+            of the frame that does not depend on it. */}
+        <a
+          className={styles["link-btn"]}
+          href={siteUrl || '#'}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={openOnSite}
+        >
           Open on GridGrove
-        </button>
+        </a>
       </footer>
 
       {/*
@@ -889,6 +955,14 @@ export default function DiscordActivity() {
             try { window.localStorage.setItem('gg:probe', '1'); window.localStorage.removeItem('gg:probe'); return 'ok'; }
             catch (_) { return 'blocked'; }
           })()}`}
+          {/* The application id the handshake used, and - when they differ -
+              the one this build was carrying. Discord answers the handshake
+              only for the application it launched, so a mismatch here is a
+              ready() that never settles and nothing else to see. */}
+          {discord.appId ? ` · app ${discord.appId}` : ' · app (none)'}
+          {discord.envAppId && discord.envAppId !== discord.appId
+            ? ` (build says ${discord.envAppId} — set REACT_APP_DISCORD_CLIENT_ID to ${discord.appId})`
+            : ''}
         </p>
       )}
 

@@ -5,6 +5,15 @@ import styles from "./changelog.module.scss";
 const changelogData = [
   {
     date: "September 15, 2026",
+    title: "The Discord activity links out properly, and plays without pausing",
+    items: [
+      "“Open on GridGrove” in the Discord activity now opens the puzzle on the site. It was building the link out of the address Discord serves the activity from rather than gridgrove.gg, so the client was handed a link it would not follow — and the button did nothing. It is also an ordinary link now, so it still works when the Discord sign-in has not gone through.",
+      "Removed a pause between moves in the Discord activity. Every move waited up to three seconds for the Discord sign-in to settle before it was sent, which on a launch where the sign-in never settles meant every move of a puzzle. It now waits once, on the first move of a session, which is all it was ever meant to do.",
+      "The puzzle editor now links to the puzzle’s own page, so you can play what you just edited without going back through the game to find it. Drafts included — they are visible to whoever can edit them.",
+    ],
+  },
+  {
+    date: "September 15, 2026",
     title: "Multi-move puzzles are solvable on the home page, and the opponent moves",
     items: [
       "Fixed a bug that made multi-move puzzles unsolvable on the home-page card: the first move was accepted, but every second move was rejected wherever you played it. A piece that had already moved was being quoted by the square it sat on rather than the square it started from, which is the name the answer is checked against — so the correct move never matched. The puzzle's own page was unaffected.",
