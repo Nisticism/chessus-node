@@ -87,7 +87,7 @@ const parseVetoSig = (sig) => {
   };
 };
 // Algebraic square label (a1-style) for a board of the given height.
-const vetoSquareLabel = (p, boardHeight) => p ? `${String.fromCharCode(97 + p.x)}${boardHeight - p.y}` : '?';
+const vetoSquareLabel = (p, boardHeight) => p ? `${colToFile(p.x)}${boardHeight - p.y}` : '?';
 
 
 // Limited-reserve helpers. When a game type has `finite_reserve`, `gameState.reserves`
@@ -7244,7 +7244,7 @@ const LiveGame = () => {
               const perTurn = vetoMyBudget?.perTurnRemaining ?? Math.max(1, Math.min(5, Number(gt.veto_per_turn_limit) || 1));
               const perGame = vetoMyBudget?.perGameRemaining;
               const bh = gt?.board_height || 8;
-              const sq = (p) => p ? `${String.fromCharCode(97 + p.x)}${bh - p.y}` : '?';
+              const sq = (p) => p ? `${colToFile(p.x)}${bh - p.y}` : '?';
               return (
                 <div className={styles["veto-panel"]}>
                   <div className={styles["veto-title"]}>Veto phase — ban your opponent's moves</div>
@@ -7331,7 +7331,7 @@ const LiveGame = () => {
                     .filter(([, sq]) => parseInt(sq.playerId) === parseInt(playerPosition))
                     .map(([key]) => {
                       const [row, col] = key.split(',').map(Number);
-                      return `${String.fromCharCode(97 + col)}${row + 1}`;
+                      return `${colToFile(col)}${row + 1}`;
                     });
 
                   const isControlling = controlledSquares.length > 0;
@@ -8025,7 +8025,7 @@ const LiveGame = () => {
         <div className={styles["promotion-modal-overlay"]} onClick={handlePlacementCancel}>
           <div className={styles["promotion-modal"]} onClick={(e) => e.stopPropagation()}>
             <h3>Place a Piece</h3>
-            <p>Select which piece to place at {String.fromCharCode(97 + placementTarget.x)}{placementTarget.y + 1}:</p>
+            <p>Select which piece to place at {colToFile(placementTarget.x)}{placementTarget.y + 1}:</p>
             <div className={styles["promotion-options"]}>
               {(gameState?.otherGameData?.placeable_pieces || []).map((piece, index) => {
                 if (!isPlaceableEligible(piece, currentPlayer?.position)) return null; // not deployable by this player

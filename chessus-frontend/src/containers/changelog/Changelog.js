@@ -5,6 +5,15 @@ import styles from "./changelog.module.scss";
 const changelogData = [
   {
     date: "September 15, 2026",
+    title: "Board coordinates on wide boards",
+    items: [
+      "Fixed the file letters on boards wider than 26 columns. After “z” they ran into { | } ~ and then into unprintable characters — Giant Chess, at 48 columns, showed a row of empty boxes.",
+      "They now continue the way a spreadsheet does: after z comes aa, then ab, and so on. Giant Chess reads a through av.",
+      "Fixed everywhere a square is named, not just where it was noticed: the game page, the live game board and its move list, the sandbox, the piece and special-square pickers in the game wizard, the admin replay viewer, and the “you must capture at…” message a forced-capture game sends.",
+    ],
+  },
+  {
+    date: "September 15, 2026",
     title: "Games with a broken starting position cannot be started",
     items: [
       "A game whose opening position is already decided — both sides in checkmate, a side with nothing to play, nobody able to move at all — can no longer have new games started on it. The scan already found these and wrote the reason on the game's page; the game still sat in the lobby for anyone to start.",

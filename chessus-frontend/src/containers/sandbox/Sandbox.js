@@ -7,7 +7,7 @@ import API_URL from "../../global/global";
 import authHeader from "../../services/auth-header";
 import PiecesService from "../../services/pieces.service";
 import PieceSelector from "../../components/gamewizard/PieceSelector";
-import { canRangedAttackTo, isRangedPathClear, isDestinationClear, doesPieceOccupySquare, getSquareHighlightStyle, canHopCaptureToUtil, canPieceMoveTo as canPieceMoveToUtil, canCaptureOnMoveTo as canCaptureOnMoveToUtil } from "../../helpers/pieceMovementUtils";
+import { canRangedAttackTo, isRangedPathClear, isDestinationClear, doesPieceOccupySquare, getSquareHighlightStyle, canHopCaptureToUtil, canPieceMoveTo as canPieceMoveToUtil, canCaptureOnMoveTo as canCaptureOnMoveToUtil, colToFile } from "../../helpers/pieceMovementUtils";
 import styles from "./sandbox.module.scss";
 import { isMobileDevice, isTouchDevice } from "../../helpers/mobileUtils";
 import ToggleSwitch from "../../components/common/ToggleSwitch";
@@ -3760,7 +3760,7 @@ const Sandbox = () => {
             <div className={styles["file-labels"]} style={{ gridTemplateColumns: `repeat(${boardWidth}, ${squareSize}px)` }}>
               {Array.from({ length: boardWidth }, (_, col) => {
                 const fileIndex = boardFlipped ? (boardWidth - 1 - col) : col;
-                return <div key={col} className={styles["file-label"]}>{String.fromCharCode(97 + fileIndex)}</div>;
+                return <div key={col} className={styles["file-label"]}>{colToFile(fileIndex)}</div>;
               })}
             </div>
           </div>

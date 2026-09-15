@@ -2,6 +2,7 @@ import React, { useState, useCallback, useEffect, useRef } from "react";
 import axios from "../../services/axios-interceptor";
 import API_URL from "../../global/global";
 import authHeader from "../../services/auth-header";
+import { colToFile } from "../../helpers/pieceMovementUtils";
 
 /* -----------------------------------------------------------------------
    Piece abbreviation helper
@@ -155,16 +156,17 @@ function getPlayerStyle(player) {
 }
 
 /**
- * Convert a 0-based column index to a chess file letter.
- * Columns 0–25 → a–z; 26–51 → aa–az; 52–77 → ba–bz; etc.
- * Mirrors the Rust engine's col_to_file() in selfplay.rs.
+ * Square names come from the shared helper rather than a local copy.
+ *
+ * This file used to carry its own, described as mirroring the Rust engine's
+ * col_to_file() in selfplay.rs. The two agree exactly for every column up to
+ * 701 - which is every board anybody will build - and both of the old versions
+ * walked off the same cliff one column later, into '{' and beyond. The shared
+ * one keeps going properly (zz, aaa, aab), so past 701 columns a replay would
+ * now be LABELLED correctly while the Rust side's own logs still would not.
+ * Fixing that means rebuilding the engine binary, which is not worth doing for
+ * a board nobody has.
  */
-function colToFile(col) {
-  if (col < 26) return String.fromCharCode(97 + col);
-  const first  = String.fromCharCode(97 + Math.floor(col / 26) - 1);
-  const second = String.fromCharCode(97 + (col % 26));
-  return first + second;
-}
 
 /** Convert internal (x, y) coords to chess notation, e.g. (4, 6) on 8×8 → "e2". */
 function toChessNotation(x, y, boardHeight) {

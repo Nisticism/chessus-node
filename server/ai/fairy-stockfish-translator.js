@@ -802,6 +802,12 @@ function buildVariantINI(gameType, pieceDefs, placements, charMap) {
  *   chessus x=0  -> 'a', x=1 -> 'b', ...
  */
 function fileChar(x) {
+  /*
+   * PROTOCOL, not prose - see square-label.js. This is what Fairy-Stockfish
+   * reads in a FEN, so it stays as the engine defines it rather than using the
+   * multi-letter naming the boards display. The engine has no file past 'z'
+   * and does not support boards that wide.
+   */
   return String.fromCharCode(97 + x); // 0 -> 'a'
 }
 

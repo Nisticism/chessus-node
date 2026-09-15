@@ -889,14 +889,33 @@ export const isRangedPathClear = (fromX, fromY, toX, toY, piece, allPieces, piec
  * @returns {string} File notation (a, b, c, ..., z, aa, ab, ...)
  */
 export const colToFile = (col) => {
-  if (col < 0) return '';
-  if (col < 26) {
-    return String.fromCharCode(97 + col); // a-z
+  // null and undefined are not column zero. A caller that means the first
+  // column says 0; anything else is a mistake and should read as blank rather
+  // than silently as 'a'.
+  if (col === null || col === undefined) return '';
+  const n = Math.floor(Number(col));
+  if (!Number.isFinite(n) || n < 0) return '';
+
+  /*
+   * Bijective base-26: a..z, then aa..az, ba.., zz, aaa, and onwards.
+   *
+   * The obvious `String.fromCharCode(97 + col)` walks straight past 'z' into
+   * '{', '|', '}', '~' and then into control characters, which is what the
+   * file labels under a 30-wide board were showing. The two-letter version
+   * that replaced it was right as far as 'zz' and then walked off the same
+   * cliff one column later.
+   *
+   * "Bijective" is the part that matters: there is no zero digit, so the
+   * column after 'z' is 'aa' rather than 'ba' - the same numbering
+   * spreadsheets use, and the one anybody reading a wide board will expect.
+   */
+  let out = '';
+  let remaining = n;
+  while (remaining >= 0) {
+    out = String.fromCharCode(97 + (remaining % 26)) + out;
+    remaining = Math.floor(remaining / 26) - 1;
   }
-  // For columns 26+, use multi-letter notation
-  const firstLetter = String.fromCharCode(97 + Math.floor(col / 26) - 1);
-  const secondLetter = String.fromCharCode(97 + (col % 26));
-  return firstLetter + secondLetter;
+  return out;
 };
 
 /**

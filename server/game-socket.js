@@ -18,6 +18,7 @@ const { findAnyWinningLine, findWinningLine, describeLineRule } = require('./win
  * preview, so there has to be one place that is the authority.
  */
 const { gravityOf, restingSquare, describeGravity } = require('./board-gravity');
+const { colToFile } = require('./square-label');
 
 // Verbose per-move debug logging is gated behind an env var so PM2 isn't
 // hammered with disk I/O during normal play. Set VERBOSE_GAME_LOG=1 to enable.
@@ -13754,7 +13755,10 @@ async function validateAndApplyMove(gameState, move, options = {}) {
       if (detail) {
         const pieceName = detail.piece.piece_name || `Piece #${detail.piece.id}`;
         const victimName = detail.victim.piece_name || `Piece #${detail.victim.id}`;
-        const fileLetter = String.fromCharCode(97 + detail.target.x);
+        // Through the shared helper: this string is shown to the player, and
+        // on a board wider than 26 columns the raw arithmetic names the square
+        // with a punctuation mark.
+        const fileLetter = colToFile(detail.target.x);
         const rankNumber = (gameState.gameType?.board_height || 8) - detail.target.y;
         const kindLabel = detail.kind === 'ranged' ? 'ranged-attack' : detail.kind === 'enpassant' ? 'en passant' : 'capture';
         console.log(`[forced_capture] Rejecting move from player ${currentPlayer.position}. Available ${kindLabel}: ${pieceName} (${detail.piece.x},${detail.piece.y}) -> ${victimName} (${detail.victim.x},${detail.victim.y}) via ${fileLetter}${rankNumber}`);

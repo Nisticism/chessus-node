@@ -4,6 +4,7 @@ import StandardButton from "../standardbutton/StandardButton";
 import NumberInput from "../common/NumberInput";
 import ToggleSwitch from "../common/ToggleSwitch";
 import InfoTooltip from "../piecewizard/InfoTooltip";
+import { colToFile } from "../../helpers/pieceMovementUtils";
 
 const SpecialSquareSelector = ({ 
   onSelect, 
@@ -21,7 +22,7 @@ const SpecialSquareSelector = ({
   onRemoveRow,  // (row: number) => void — clears all special squares in this row
 }) => {
   // Algebraic notation helpers
-  const toFile = (col) => String.fromCharCode(97 + (col ?? 0));
+  const toFile = (col) => colToFile(col ?? 0);
   const toRank = (row) => (boardHeight ?? 8) - (row ?? 0);
   const [fillRow, setFillRow] = useState(false);
   const [selectedType, setSelectedType] = useState(currentType || null);

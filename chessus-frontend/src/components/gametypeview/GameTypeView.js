@@ -13,7 +13,8 @@ import {
   canRangedAttackTo as canRangedAttackToUtil,
   canHopCaptureToUtil,
   getSquareHighlightStyle,
-  getDirectionChangeMoves
+  getDirectionChangeMoves,
+  colToFile
 } from "../../helpers/pieceMovementUtils";
 
 import { applySvgStretchBackground } from "../../helpers/svgStretchUtils";
@@ -1967,7 +1968,7 @@ const GameTypeView = () => {
       const promoByRestriction = {}; // key: restriction string → array of coord strings
       Object.entries(specialSquares.promotion).forEach(([key, cfg]) => {
         const [row, col] = key.split(',').map(Number);
-        const coord = `${String.fromCharCode(97 + col)}${row + 1}`;
+        const coord = `${colToFile(col)}${row + 1}`;
         const raw = (cfg && cfg.appliesToPlayer) || 'all';
         // Normalize legacy 'both' value
         const restriction = raw === 'both' ? 'all' : raw;
@@ -2147,7 +2148,7 @@ const GameTypeView = () => {
       const lines = entries.map(([key, cfg]) => {
         const [row, col] = key.split(',').map(Number);
         const bonus = Math.min(8, Math.max(1, Number(cfg?.rangeBonus) || 1));
-        return `• ${String.fromCharCode(97 + col)}${row + 1} — Range Bonus +${bonus}`;
+        return `• ${colToFile(col)}${row + 1} — Range Bonus +${bonus}`;
       });
       specialRulesContent.push(
         `**Range Squares**\nA piece standing on a Range Square has its movement, capture, and attack range increased by the listed bonus while it is on that square.\n\n${lines.join('\n')}`
@@ -2165,7 +2166,7 @@ const GameTypeView = () => {
         const piece = cfg?.requireSpecificPiece
           ? 'only pieces marked **Can Control Squares**'
           : 'any piece';
-        return `• ${String.fromCharCode(97 + col)}${row + 1} — must be held for ${turns} ${consec}turn${turns > 1 ? 's' : ''} by ${piece} (${playerLabel(cfg?.appliesToPlayer)})`;
+        return `• ${colToFile(col)}${row + 1} — must be held for ${turns} ${consec}turn${turns > 1 ? 's' : ''} by ${piece} (${playerLabel(cfg?.appliesToPlayer)})`;
       });
       specialRulesContent.push(
         `**Control Squares**\nWhen the Control Squares win condition is enabled, players must hold these squares according to their per-square rules.\n\n${lines.join('\n')}`
@@ -2218,7 +2219,7 @@ const GameTypeView = () => {
       };
       const coordFor = (key) => {
         const [row, col] = key.split(',').map(Number);
-        return `${String.fromCharCode(97 + col)}${row + 1}`;
+        return `${colToFile(col)}${row + 1}`;
       };
       // Group squares with identical configurations together so we render one line per config
       // (instead of repeating the same description for every square individually).
@@ -3878,7 +3879,7 @@ Delete the game and its puzzles anyway?`)) {
                     style={{ gridTemplateColumns: `repeat(${game.board_width}, ${squareSize}px)` }}
                   >
                     {Array.from({ length: game.board_width }, (_, i) => (
-                      <div key={i} className={styles["gtv-file-label"]}>{String.fromCharCode(97 + i)}</div>
+                      <div key={i} className={styles["gtv-file-label"]}>{colToFile(i)}</div>
                     ))}
                   </div>
                 </div>

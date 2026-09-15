@@ -23,6 +23,13 @@ function toInt(v, fallback = 0) {
   const n = parseInt(v, 10);
   return Number.isFinite(n) ? n : fallback;
 }
+/*
+ * PROTOCOL, not prose. This is the file letter Fairy-Stockfish itself reads in
+ * a FEN, so it stays as the engine defines it - deliberately NOT the
+ * multi-letter colToFile the boards display. The engine has no notion of a
+ * file past 'z' and does not support boards that wide, so "fixing" this would
+ * corrupt the conversation rather than improve it.
+ */
 function fileChar(x) { return String.fromCharCode(97 + x); }
 function squareName(x, y, boardHeight) {
   const rank = (boardHeight != null) ? (boardHeight - y) : y;

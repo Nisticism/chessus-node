@@ -6,6 +6,7 @@ import InfoTooltip from "../piecewizard/InfoTooltip";
 import NumberInput from "../common/NumberInput";
 import ToggleSwitch from "../common/ToggleSwitch";
 import { normalizePromotionOverride, serializePromotionOverride } from "../../helpers/promotionOverride";
+import { colToFile } from "../../helpers/pieceMovementUtils";
 
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";
 
@@ -53,7 +54,7 @@ const PieceSelector = ({
   onPieceUnlocked,          // (pieceId, password) => void — remember an unlock for the save payload
 }) => {
   // Algebraic notation helpers
-  const toFile = (col) => String.fromCharCode(97 + (col ?? 0));
+  const toFile = (col) => colToFile(col ?? 0);
   const toRank = (row) => (boardHeight ?? 8) - (row ?? 0);
   const [pieces, setPieces] = useState(preloadedPieces || []);
   const [searchTerm, setSearchTerm] = useState("");
