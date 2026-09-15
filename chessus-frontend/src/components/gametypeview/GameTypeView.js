@@ -3275,11 +3275,23 @@ Delete the game and its puzzles anyway?`)) {
           >
             {hasUpvoted ? '▲' : '△'} {upvoteCount}
           </button>
-          <button 
-            onClick={() => navigate(`/play/games?gameTypeId=${gameId}`)} 
+          {/*
+            * A game whose opening position is already decided cannot be
+            * played, so the button says so instead of sending somebody to a
+            * lobby where starting one is refused. The server refuses it too -
+            * this is the courtesy, not the rule.
+            */}
+          <button
+            onClick={game.initial_state_warning
+              ? undefined
+              : () => navigate(`/play/games?gameTypeId=${gameId}`)}
             className={styles["play-button"]}
+            disabled={!!game.initial_state_warning}
+            title={game.initial_state_warning
+              ? 'This game cannot be played until its starting position is fixed.'
+              : undefined}
           >
-            ♟ Play this Game
+            {game.initial_state_warning ? '⚠ Cannot be played yet' : '♟ Play this Game'}
           </button>
           {aiAnalysisAvailable && (
             <button
@@ -3694,7 +3706,11 @@ Delete the game and its puzzles anyway?`)) {
             }}
           >
             <strong style={{ color: '#ff8484' }}>⚠️ Starting Position Issue:</strong>{' '}
-            {game.initial_state_warning} The game's creator should edit this game so the starting position is not already decided.
+            {game.initial_state_warning}{' '}
+            <strong>New games cannot be started on it until this is fixed.</strong>{' '}
+            The game's creator should edit this game so the starting position is not already
+            decided. Games already in progress are unaffected, and the Sandbox can still be
+            used to try a fix out.
           </div>
         )}
 

@@ -4039,6 +4039,33 @@ function initializeSocket(server) {
           } catch (_) { /* ignore malformed JSON */ }
         }
 
+        /*
+         * --- Starting position enforcement ---
+         *
+         * A game whose opening position is already decided - both sides in
+         * checkmate, a side with nothing to play, nobody able to move at all -
+         * cannot be played, only discovered to be broken. The scan already
+         * found these and wrote the reason onto the row; until now that was a
+         * banner on the game's page and nothing more, so the game stayed in
+         * the lobby and people kept starting it.
+         *
+         * Blocked for everybody INCLUDING the creator, because letting them
+         * start one would be letting them play the broken thing rather than
+         * fix it. The reason travels with the refusal so the message says what
+         * is wrong rather than just no, and the sandbox is still there for
+         * trying a fix out.
+         *
+         * Games already in progress are untouched. This is the door, not a
+         * sweep of the building.
+         */
+        if (gameType.initial_state_warning) {
+          return socket.emit("error", {
+            code: 'INITIAL_STATE_INVALID',
+            message: `This game cannot be started: ${gameType.initial_state_warning} `
+              + 'Its creator needs to fix the starting position first.',
+          });
+        }
+
         // --- Restricted game enforcement ---
         if (gameType.is_restricted) {
           const numericHost = parseInt(hostId, 10);
@@ -4815,6 +4842,17 @@ function initializeSocket(server) {
 
         if (!gameType) {
           return socket.emit("error", { message: "Game type not found" });
+        }
+
+        // Same starting-position gate as createGame. A guest is no more able to
+        // play a game that is decided before it begins than anybody else, and
+        // leaving this door open would be leaving the game in the lobby.
+        if (gameType.initial_state_warning) {
+          return socket.emit("error", {
+            code: 'INITIAL_STATE_INVALID',
+            message: `This game cannot be started: ${gameType.initial_state_warning} `
+              + 'Its creator needs to fix the starting position first.',
+          });
         }
 
         // Validate startingMode against game type's configured allowed modes (same guard as createGame).
@@ -22027,40 +22065,64 @@ function evaluateInitialPosition(gameType, initialPieces) {
     toMoveLegalCount = -1; // unknown; skip downstream checks
   }
 
-  // Piece-placement actions (Othello-style "place" moves) also count as
-  // legal moves. If the game type allows placing new pieces and at least
-  // one legal placement exists for the player to move, do not flag the
-  // position as "no legal moves".
-  let placementMovesAvailable = 0;
-  try {
-    const otherData = state.otherGameData || {};
-    if (otherData.place_pieces_action) {
+  /*
+   * Piece-placement actions count as legal moves. A game whose pieces cannot
+   * move is not stuck if its players can put new ones down - that is how Go,
+   * noughts and crosses and Connect Four are played at all.
+   *
+   * Written as a function of the player because the "can anybody act" check
+   * below has to ask it of BOTH sides, not only the one to move.
+   */
+  const placementsFor = (player) => {
+    try {
+      const otherData = state.otherGameData || {};
+      if (!otherData.place_pieces_action) return 0;
       const boardWidth = gameType.board_width || 8;
       const boardHeight = gameType.board_height || 8;
       const placeable = Array.isArray(otherData.placeable_pieces) ? otherData.placeable_pieces : [];
+
       // If flanking is required, only flanking-valid squares count.
       if (otherData.flanking_captures && otherData.must_flank) {
         try {
-          const valid = getValidFlankingPlacements(state, toMove);
-          placementMovesAvailable = valid.length * Math.max(1, placeable.length);
-        } catch (e) { /* ignore */ }
-      } else {
-        // Otherwise any empty square is a valid placement target.
-        let emptySquares = 0;
-        for (let y = 0; y < boardHeight; y++) {
-          for (let x = 0; x < boardWidth; x++) {
-            if (!state.pieces.find(p => p.x === x && p.y === y && !p._occupied)) {
-              emptySquares++;
-            }
+          const valid = getValidFlankingPlacements(state, player);
+          return valid.length * Math.max(1, placeable.length);
+        } catch (e) { return 0; }
+      }
+
+      const occupied = (gx, gy) => !!state.pieces.find(p => p.x === gx && p.y === gy && !p._occupied);
+      const piecesToPlace = placeable.length > 0 ? placeable.length : 1;
+
+      /*
+       * On a gravity board a column offers ONE square, not one per empty
+       * space - a piece dropped anywhere in it lands at the foot. Counting
+       * every empty square would still be non-zero here, so this is about
+       * being right rather than about the flag: a board whose every column is
+       * full has no placements at all, and the old count said it had plenty.
+       */
+      const gravity = gravityOf(gameType);
+      if (gravity) {
+        const landing = new Set();
+        for (let x = 0; x < boardWidth; x++) {
+          for (let y = 0; y < boardHeight; y++) {
+            const at = restingSquare(gravity, { x, y }, boardWidth, boardHeight, occupied);
+            if (at) landing.add(`${at.y},${at.x}`);
           }
         }
-        const piecesToPlace = placeable.length > 0 ? placeable.length : 1;
-        placementMovesAvailable = emptySquares * piecesToPlace;
+        return landing.size * piecesToPlace;
       }
+
+      let emptySquares = 0;
+      for (let y = 0; y < boardHeight; y++) {
+        for (let x = 0; x < boardWidth; x++) if (!occupied(x, y)) emptySquares++;
+      }
+      return emptySquares * piecesToPlace;
+    } catch (e) {
+      console.warn('[initial-state] placement availability check threw:', e.message);
+      return 0;
     }
-  } catch (e) {
-    console.warn('[initial-state] placement availability check threw:', e.message);
-  }
+  };
+
+  const placementMovesAvailable = placementsFor(toMove);
 
   if (gameType.mate_condition && toMoveLegalCount === 0 && placementMovesAvailable === 0) {
     try {
@@ -22103,6 +22165,40 @@ function evaluateInitialPosition(gameType, initialPieces) {
         reason: `Player ${toMove} starts with no legal moves (stalemated) and the game would end in a draw immediately.`,
       };
     }
+
+    /*
+     * Nobody can act, and no rule says what that means.
+     *
+     * The three branches above cover the games that DECIDE on having no legal
+     * move. A game with none of those rules does something different: the live
+     * engine emits a stalemate notice and skips the turn. That is survivable
+     * when only one side is stuck, because the opponent may yet free them - so
+     * one side alone is deliberately not flagged.
+     *
+     * When NEITHER side can act it is not survivable. Nothing can happen that
+     * would change the position, so the two players hand the turn back and
+     * forth forever. That is not a decided game; it is an unplayable one, and
+     * it is the case this check was missing - it only ever looked at the
+     * player to move.
+     */
+    let opponentCanAct = true;
+    try {
+      opponentCanAct = (getAllLegalMovesForPlayer(state, opponent) || []).length > 0
+        || placementsFor(opponent) > 0;
+    } catch (e) {
+      // Unknown rather than none: never flag on a question we could not ask.
+      opponentCanAct = true;
+    }
+    if (!opponentCanAct) {
+      return {
+        decided: true,
+        type: 'invalid',
+        code: 'nobody_can_move',
+        reason: 'Neither player has a legal move or placement in the starting position, '
+          + 'and the game has no rule for what that means - so no move can ever be made '
+          + 'and the game cannot be played.',
+      };
+    }
   }
 
   // --- 5. Master win-condition pass (handles instant-loss flags, control
@@ -22116,6 +22212,8 @@ function evaluateInitialPosition(gameType, initialPieces) {
           case 'capture': return 'Starting position already satisfies the capture win condition.';
           case 'control': return 'Starting position already satisfies the control-squares win condition.';
           case 'lose_all': return 'Starting position already satisfies the anti-chess win condition.';
+          case 'line': return 'Starting position already contains a winning line of pieces.';
+          case 'connection': return 'Starting position already connects two sides of the board.';
           case 'insufficient_material': return 'Starting position has insufficient material — the game would end in a draw.';
           default: return `Starting position already satisfies a win condition (${result.reason}).`;
         }
