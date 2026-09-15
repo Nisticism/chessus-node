@@ -12,6 +12,12 @@ const { Worker } = require('worker_threads');
  * self-contained and worth being able to test without a game around it.
  */
 const { findAnyWinningLine, findWinningLine, describeLineRule } = require('./win-line');
+/*
+ * Board gravity - a placed piece falls to one edge. Its own module for the
+ * same reason: the walk is self-contained and the client mirrors it to draw a
+ * preview, so there has to be one place that is the authority.
+ */
+const { gravityOf, restingSquare, describeGravity } = require('./board-gravity');
 
 // Verbose per-move debug logging is gated behind an env var so PM2 isn't
 // hammered with disk I/O during normal play. Set VERBOSE_GAME_LOG=1 to enable.
@@ -6779,20 +6785,53 @@ function initializeSocket(server) {
         // Handle piece placement action (Othello-style)
         const otherData = gameState.otherGameData || {};
         if (move.type === 'place' && otherData.place_pieces_action) {
-          const placeX = move.to?.x;
-          const placeY = move.to?.y;
           const boardWidth = gameState.gameType?.board_width || 8;
           const boardHeight = gameState.gameType?.board_height || 8;
 
+          const clickedX = move.to?.x;
+          const clickedY = move.to?.y;
+
           // Validate placement target is within bounds
-          if (placeX == null || placeY == null || placeX < 0 || placeX >= boardWidth || placeY < 0 || placeY >= boardHeight) {
+          if (clickedX == null || clickedY == null || clickedX < 0 || clickedX >= boardWidth || clickedY < 0 || clickedY >= boardHeight) {
             return socket.emit("error", { message: "Invalid placement position" });
           }
 
-          // Validate square is empty
-          const existingPiece = gameState.pieces.find(p => p.x === placeX && p.y === placeY);
-          if (existingPiece) {
-            return socket.emit("error", { message: "Square is already occupied" });
+          /*
+           * Gravity, resolved HERE rather than trusted from the client.
+           *
+           * On a gravity board the player picks a column, not a square, so the
+           * square they clicked is a request and this is the answer. Doing it
+           * server-side means a client that sent a square in mid-air - by bug
+           * or on purpose - still gets the piece where the rule says it goes.
+           *
+           * restingSquare returns null when the column is full, which is what
+           * replaces the plain "is this square empty" test below: on a gravity
+           * board the honest refusal is "there is no room in that column",
+           * not "that square is taken".
+           */
+          const gravity = gravityOf(gameState.gameType);
+          let placeX = clickedX;
+          let placeY = clickedY;
+
+          if (gravity) {
+            const landed = restingSquare(
+              gravity, { x: clickedX, y: clickedY }, boardWidth, boardHeight,
+              (gx, gy) => gameState.pieces.some(p => p.x === gx && p.y === gy)
+            );
+            if (!landed) {
+              return socket.emit("error", { message: "That column is full" });
+            }
+            placeX = landed.x;
+            placeY = landed.y;
+            // Everything below records the move, so it must record where the
+            // piece actually landed rather than where the pointer was.
+            move.to = { x: placeX, y: placeY };
+          } else {
+            // Validate square is empty
+            const existingPiece = gameState.pieces.find(p => p.x === placeX && p.y === placeY);
+            if (existingPiece) {
+              return socket.emit("error", { message: "Square is already occupied" });
+            }
           }
 
           // Validate placement restrictions (per-square restriction + confinement zone)

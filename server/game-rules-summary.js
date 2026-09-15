@@ -15,6 +15,7 @@
  */
 
 const { describeLineRule } = require('./win-line');
+const { describeGravity } = require('./board-gravity');
 
 const T = (v) => v === true || v === 1 || v === '1';
 const I = (v) => { const n = parseInt(v, 10); return Number.isFinite(n) ? n : 0; };
@@ -72,6 +73,13 @@ function summariseRules(gameType) {
     item(T(gt.line_condition),
       gt.line_win_type === 'edge_to_edge' ? 'Connect the sides' : 'Make a line',
       describeLineRule(gt) || 'Win by arranging your pieces into a line.'),
+    /*
+     * Gravity changes how a turn is TAKEN rather than how the game is won, but
+     * it earns a line here for the same reason: a solver who does not know the
+     * board drops pieces cannot read the position in front of them.
+     */
+    item(!!describeGravity(gt), 'The board drops pieces',
+      describeGravity(gt) || ''),
     item(I(gt.points_to_win) > 0, 'Points',
       `Score ${I(gt.points_to_win)} points from captures to win.`),
     item(T(gt.value_condition), 'Material value',

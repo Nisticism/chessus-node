@@ -1415,6 +1415,30 @@ const migrations = [
   { table: 'game_types', column: 'line_directions', sql: "ALTER TABLE game_types ADD COLUMN line_directions VARCHAR(16) NOT NULL DEFAULT 'all'", description: "Which directions count: 'all', 'orthogonal' or 'diagonal'." },
   { table: 'game_types', column: 'line_edges', sql: "ALTER TABLE game_types ADD COLUMN line_edges VARCHAR(16) NOT NULL DEFAULT 'either'", description: "Which pair of sides an edge_to_edge chain must join." },
   { table: 'game_types', column: 'line_same_piece_type', sql: "ALTER TABLE game_types ADD COLUMN line_same_piece_type TINYINT(1) NOT NULL DEFAULT 0", description: "Whether a line has to be all one piece type, rather than any of yours." },
+  /*
+   * "However wide the board is" as an alternative to a fixed number.
+   *
+   * Anybody recreating noughts and crosses looks for this - the answer on a 3x3
+   * is three, on a 4x4 it is four, and having to restate the board size in a
+   * second field is the kind of thing that silently goes wrong when the board
+   * is later resized. Mutually exclusive with line_length, which is ignored
+   * while this is on.
+   */
+  { table: 'game_types', column: 'line_length_matches_board', sql: "ALTER TABLE game_types ADD COLUMN line_length_matches_board TINYINT(1) NOT NULL DEFAULT 0", description: "Take the line length from the board size instead of a fixed number." },
+
+  /*
+   * Board gravity: placed pieces fall to one side.
+   *
+   * Connect Four is the reason. With placement, a piece that cannot move and
+   * the line condition, the only missing part was that a piece dropped into a
+   * column has to land at the bottom rather than stay where it was put - and
+   * that both players have to look at the board the same way up, since a
+   * gravity game has a real top and bottom that a flipped board would invert.
+   *
+   * A direction rather than a flag so the same rule covers a board that fills
+   * from any edge. 'off' is the default and means the feature is not in use.
+   */
+  { table: 'game_types', column: 'board_gravity', sql: "ALTER TABLE game_types ADD COLUMN board_gravity VARCHAR(8) NOT NULL DEFAULT 'off'", description: "Which way placed pieces fall: 'off', 'down', 'up', 'left' or 'right'." },
 
   { table: 'tournaments', column: 'is_correspondence', sql: "ALTER TABLE tournaments ADD COLUMN is_correspondence TINYINT(1) NOT NULL DEFAULT 0", description: "Whether this tournament's matches are played as correspondence games." },
   { table: 'tournaments', column: 'correspondence_days', sql: "ALTER TABLE tournaments ADD COLUMN correspondence_days INT DEFAULT NULL", description: "Days per move for a correspondence tournament." },

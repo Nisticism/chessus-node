@@ -72,14 +72,28 @@ function lineRules(gameType) {
     ? gameType.line_edges
     : 'either';
 
+  /*
+   * The length is either a number the creator chose or the board's own size,
+   * never both - line_length is simply ignored while the board is deciding.
+   *
+   * The SMALLER of the two dimensions, so a line of that length can be made in
+   * any direction the game allows. Taking the larger would make a run across a
+   * 7x6 board possible and a run down it impossible, which is not what anybody
+   * means by "match the board".
+   */
+  const boardWidth = parseInt(gameType.board_width, 10) || 8;
+  const boardHeight = parseInt(gameType.board_height, 10) || 8;
   const rawLength = parseInt(gameType.line_length, 10);
-  const length = Number.isFinite(rawLength) ? Math.max(2, Math.min(64, rawLength)) : 3;
+  const length = gameType.line_length_matches_board
+    ? Math.max(2, Math.min(boardWidth, boardHeight))
+    : (Number.isFinite(rawLength) ? Math.max(2, Math.min(64, rawLength)) : 3);
 
   return {
     winType,
     length,
     directions,
     edges,
+    matchesBoard: !!gameType.line_length_matches_board,
     samePieceType: !!gameType.line_same_piece_type,
   };
 }
@@ -257,6 +271,7 @@ function describeLineRule(gameType) {
       + `, joined ${how}${rules.samePieceType ? ', all of one piece type' : ''}.`;
   }
   return `Get ${rules.length} of your pieces in a row, ${how}`
+    + `${rules.matchesBoard ? ' - the length of the board' : ''}`
     + `${rules.samePieceType ? ', all of one piece type' : ''}.`;
 }
 

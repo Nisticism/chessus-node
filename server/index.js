@@ -4025,9 +4025,22 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
       line_condition:                        gameData.line_condition ? 1 : 0,
       line_win_type:                         gameData.line_win_type === 'edge_to_edge' ? 'edge_to_edge' : 'in_a_row',
       line_length:                           Math.max(2, Math.min(64, parseInt(gameData.line_length, 10) || 3)),
+      line_length_matches_board:             gameData.line_length_matches_board ? 1 : 0,
       line_directions:                       ['orthogonal', 'diagonal', 'all'].includes(gameData.line_directions) ? gameData.line_directions : 'all',
       line_edges:                            ['horizontal', 'vertical', 'either'].includes(gameData.line_edges) ? gameData.line_edges : 'either',
       line_same_piece_type:                  gameData.line_same_piece_type ? 1 : 0,
+      /*
+       * Board gravity. Only meaningful alongside piece placement - a board that
+       * drops pieces you cannot place is a rule with nothing to apply to - so a
+       * game without placement stores 'off' whatever the form said. Placement
+       * lives in other_game_data, which arrives as JSON text.
+       */
+      board_gravity:                         (() => {
+        if (!['down', 'up', 'left', 'right'].includes(gameData.board_gravity)) return 'off';
+        let od = gameData.other_game_data;
+        if (typeof od === 'string') { try { od = JSON.parse(od); } catch (_) { od = {}; } }
+        return od?.place_pieces_action ? gameData.board_gravity : 'off';
+      })(),
       promotion_condition:                   gameData.promotion_condition || false,
       lose_all_pieces_condition:             gameData.lose_all_pieces_condition || false,
       stalemate_win_condition:               gameData.stalemate_win_condition || false,
@@ -9036,9 +9049,22 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
       line_condition:                        gameData.line_condition ? 1 : 0,
       line_win_type:                         gameData.line_win_type === 'edge_to_edge' ? 'edge_to_edge' : 'in_a_row',
       line_length:                           Math.max(2, Math.min(64, parseInt(gameData.line_length, 10) || 3)),
+      line_length_matches_board:             gameData.line_length_matches_board ? 1 : 0,
       line_directions:                       ['orthogonal', 'diagonal', 'all'].includes(gameData.line_directions) ? gameData.line_directions : 'all',
       line_edges:                            ['horizontal', 'vertical', 'either'].includes(gameData.line_edges) ? gameData.line_edges : 'either',
       line_same_piece_type:                  gameData.line_same_piece_type ? 1 : 0,
+      /*
+       * Board gravity. Only meaningful alongside piece placement - a board that
+       * drops pieces you cannot place is a rule with nothing to apply to - so a
+       * game without placement stores 'off' whatever the form said. Placement
+       * lives in other_game_data, which arrives as JSON text.
+       */
+      board_gravity:                         (() => {
+        if (!['down', 'up', 'left', 'right'].includes(gameData.board_gravity)) return 'off';
+        let od = gameData.other_game_data;
+        if (typeof od === 'string') { try { od = JSON.parse(od); } catch (_) { od = {}; } }
+        return od?.place_pieces_action ? gameData.board_gravity : 'off';
+      })(),
       promotion_condition:                   gameData.promotion_condition || false,
       lose_all_pieces_condition:             gameData.lose_all_pieces_condition || false,
       stalemate_win_condition:               gameData.stalemate_win_condition || false,

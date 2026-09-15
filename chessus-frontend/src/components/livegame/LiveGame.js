@@ -45,6 +45,7 @@ import { createMoveEngine, getMoveDotType, MOVE_DOT_BACKGROUNDS } from "../../he
 import { totalMaterialValue } from "../../utils/pieceValueEstimator";
 import { getFallbackPieceImage } from "../../utils/pieceFallback";
 import { isTouchDevice } from "../../helpers/mobileUtils";
+import { gravityOf, restingSquare } from "../../helpers/boardGravity";
 import { toggleUpvote, getUpvoteStatus } from "../../actions/games";
 import useFairyStockfish from "../../hooks/useFairyStockfish";
 import {
@@ -3925,11 +3926,32 @@ const LiveGame = () => {
       // Check for piece placement action (Othello-style) — only if left-click placement is enabled.
       // By default placement is triggered via right-click; this left-click path is an opt-in for mobile.
       const otherData = gameState.otherGameData || {};
-      const canPlace = placementUseLeftClick && isMyTurn && otherData.place_pieces_action && !clickedPiece && 
-        (gameState.status === 'active' || gameState.status === 'ready');
+      /*
+       * A gravity board accepts a click on an occupied square, because the
+       * click picks a COLUMN and the piece falls past whatever is in it. The
+       * !clickedPiece test is right for every other placement game and wrong
+       * for this one.
+       */
+      const canPlace = placementUseLeftClick && isMyTurn && otherData.place_pieces_action
+        && (!clickedPiece || !!boardGravity)
+        && (gameState.status === 'active' || gameState.status === 'ready');
       if (canPlace) {
+        const gw = gameState.gameType?.board_width || 8;
+        const gh = gameState.gameType?.board_height || 8;
+        const landing = boardGravity
+          ? restingSquare(boardGravity, { x, y }, gw, gh,
+            (gx, gy) => !!findPieceAtSquare(parsePieces(gameState.pieces || []), gx, gy))
+          : { x, y };
+        if (boardGravity && !landing) {
+          showIllegalMoveWarning("That column is full");
+          setSelectedPiece(null);
+          setValidMoves([]);
+          return;
+        }
+        const dropX = landing.x;
+        const dropY = landing.y;
         // Check if the square is allowed for the current player (restriction + confinement)
-        const isRestrictedToOther = !isDeployAllowed(specialSquares, currentPlayer?.position, x, y);
+        const isRestrictedToOther = !isDeployAllowed(specialSquares, currentPlayer?.position, dropX, dropY);
         if (isRestrictedToOther) {
           showIllegalMoveWarning("You cannot place a piece on this square");
           setSelectedPiece(null);
@@ -3943,12 +3965,12 @@ const LiveGame = () => {
           // Single piece type — place directly without modal
           submitMove(parseInt(gameId), {
             type: 'place',
-            to: { x, y },
+            to: { x: dropX, y: dropY },
             placePieceId: placeablePieces[0].piece_id
           });
         } else if (placeablePieces.length > 1) {
           // Multiple piece types — show placement modal
-          setPlacementTarget({ x, y });
+          setPlacementTarget({ x: dropX, y: dropY });
           setShowPlacementModal(true);
         } else {
           // No placeable pieces configured
@@ -4421,11 +4443,27 @@ const LiveGame = () => {
     setDragValidMoves([]);
   }, [draggedPiece, dragValidMoves, isMyTurn, isMyRepositionTurn, myRepositionsDone, gameState, submitMove, submitReposition, sendPremove, gameId, inCheck, currentPlayer, soundEnabledRef, calculateValidMoves, pendingMove, showPromotionModal, castleArmedSquare, castleHoldSquare, vetoDoneThisTurn, vetoWindow, vetoMyBudget, reactiveMoveLocked]);
 
+  /** Which way placed pieces fall in this game, or null. */
+  const boardGravity = useMemo(
+    () => gravityOf(gameState?.gameType),
+    [gameState?.gameType]
+  );
+
   // Check if board should be flipped (player 2 sees board from their perspective)
   const shouldFlipBoard = useMemo(() => {
     if (!currentPlayer) return false;
+    /*
+     * A gravity board is never flipped, for either player.
+     *
+     * Flipping is right when "forward" is a direction relative to you - your
+     * pieces nearest, theirs across the board. A board where pieces FALL has a
+     * real top and a real bottom that are the same for everybody, and showing
+     * player 2 an upside-down one would show them their pieces falling
+     * upwards. Connect Four is the case: both players look at the same grid.
+     */
+    if (boardGravity) return false;
     return currentPlayer.position === 2;
-  }, [currentPlayer]);
+  }, [currentPlayer, boardGravity]);
 
   // Compute captured pieces for each player from move history
   const capturedPieces = useMemo(() => {
@@ -5083,9 +5121,30 @@ const LiveGame = () => {
       if (otherData.place_pieces_action) {
         const pieces = parsePieces(gameState.pieces || []);
         const clickedPiece = findPieceAtSquare(pieces, x, y);
-        if (!clickedPiece) {
+        /*
+         * On a gravity board the click picks a COLUMN, so landing on an
+         * occupied square is normal - the piece falls to the first free one
+         * above it. The square that matters for every check below is where it
+         * comes to rest, which the server resolves again for itself.
+         */
+        const gw = gameState.gameType?.board_width || 8;
+        const gh = gameState.gameType?.board_height || 8;
+        const landing = boardGravity
+          ? restingSquare(boardGravity, { x, y }, gw, gh,
+            (gx, gy) => !!findPieceAtSquare(pieces, gx, gy))
+          : { x, y };
+        if (boardGravity && !landing) {
+          showIllegalMoveWarning("That column is full");
+          rightClickDataRef.current = null;
+          return;
+        }
+        // Where it will actually come to rest - the same square for a board
+        // without gravity, and the foot of the column for one with it.
+        const dropX = landing.x;
+        const dropY = landing.y;
+        if (!clickedPiece || boardGravity) {
           // Check if the square is allowed for the current player (restriction + confinement)
-          const isRestrictedToOther = !isDeployAllowed(specialSquares, currentPlayer?.position, x, y);
+          const isRestrictedToOther = !isDeployAllowed(specialSquares, currentPlayer?.position, dropX, dropY);
           if (isRestrictedToOther) {
             showIllegalMoveWarning("You cannot place a piece on this square");
             rightClickDataRef.current = null;
@@ -5098,11 +5157,11 @@ const LiveGame = () => {
             } else if (placeablePieces.length === 1) {
               submitMove(parseInt(gameId), {
                 type: 'place',
-                to: { x, y },
+                to: { x: dropX, y: dropY },
                 placePieceId: placeablePieces[0].piece_id
               });
             } else if (placeablePieces.length > 1) {
-              setPlacementTarget({ x, y });
+              setPlacementTarget({ x: dropX, y: dropY });
               setShowPlacementModal(true);
             }
             rightClickDataRef.current = null;
@@ -5139,7 +5198,7 @@ const LiveGame = () => {
       setValidMoves([]);
     }
     rightClickDataRef.current = null;
-  }, [selectedPiece, validMoves, isMyTurn, gameState, submitMove, gameId, premove, sendClearPremove, rangedSelectedPiece, sendPremove, showIllegalMoveWarning, placementUseLeftClick, currentPlayer, specialSquares, setPlacementTarget, setShowPlacementModal, canReachStepByStepRanged, setPremove, isRangedPathClear, pendingMove, showPromotionModal, vetoDoneThisTurn, vetoWindow, vetoSelection]);
+  }, [selectedPiece, validMoves, isMyTurn, gameState, submitMove, gameId, premove, sendClearPremove, rangedSelectedPiece, sendPremove, showIllegalMoveWarning, placementUseLeftClick, currentPlayer, specialSquares, setPlacementTarget, setShowPlacementModal, canReachStepByStepRanged, setPremove, isRangedPathClear, pendingMove, showPromotionModal, vetoDoneThisTurn, vetoWindow, vetoSelection, boardGravity]);
 
   // Handle resign
   const handleResign = () => {

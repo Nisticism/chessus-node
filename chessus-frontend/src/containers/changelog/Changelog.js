@@ -4,6 +4,16 @@ import styles from "./changelog.module.scss";
 
 const changelogData = [
   {
+    date: "September 15, 2026",
+    title: "Board gravity, and two games to try it on",
+    items: [
+      "New setting under Place Pieces Action: board gravity. Placed pieces fall towards one edge instead of staying where they were put, so a player picks a column and the piece lands on the first free space. Down, up, left or right.",
+      "A board with gravity is never flipped for player 2. Every other game turns the board round so your own pieces are nearest you, which is right when “forward” means something relative to you — but a board where things fall has a real top and bottom, and showing one player their pieces falling upward would be nonsense.",
+      "The line win condition can now take its length from the board instead of a fixed number, so a 3×3 needs three in a row and a 5×5 needs five — and it stays right if you resize the board later. On a board that is not square it uses the shorter side. Setting it turns the number field off; they are two answers to one question.",
+      "Tic Tac Toe and Connect Four are now on the site, both published by GridGrove, so anyone can play them — and build puzzles on them, since GridGrove's games are open to everyone.",
+    ],
+  },
+  {
     date: "September 14, 2026",
     title: "Win by making a line",
     items: [

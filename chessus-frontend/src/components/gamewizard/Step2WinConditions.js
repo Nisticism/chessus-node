@@ -162,19 +162,39 @@ const Step2WinConditions = ({ gameData, updateGameData }) => {
           </label>
 
           {gameData.line_win_type !== 'edge_to_edge' && (
-            <label className={styles["sub-label"]}>
-              <span className={styles["condition-toggle-title"]}>
-                How many in a row
-                <InfoTooltip text="Three on a 3x3 board is noughts and crosses. Five is gomoku. Four with a board that drops pieces to the bottom is Connect Four." />
-              </span>
-              <input
-                type="number"
-                min={2}
-                max={64}
-                value={gameData.line_length ?? 3}
-                onChange={(e) => handleChange("line_length", parseInt(e.target.value, 10) || 3)}
-              />
-            </label>
+            <>
+              <div className={styles["sub-label"]}>
+                <ToggleSwitch
+                  checked={gameData.line_length_matches_board === true}
+                  onChange={(val) => handleChange("line_length_matches_board", val)}
+                  size="small"
+                  label={
+                    <span className={styles["condition-toggle-title"]}>
+                      Match the board size
+                      <InfoTooltip text="Take the length from the board instead of a fixed number, so a 3x3 board needs three in a row and a 5x5 needs five — and it stays right if you resize the board later. On a board that is not square it uses the shorter side, so the line is makeable in every direction. On a large board this makes winning very hard, which is the honest consequence rather than a reason to hide the option." />
+                    </span>
+                  }
+                />
+              </div>
+
+              {/* Mutually exclusive: while the board decides the length, a
+                  number here would be a second answer to the same question. */}
+              {gameData.line_length_matches_board !== true && (
+                <label className={styles["sub-label"]}>
+                  <span className={styles["condition-toggle-title"]}>
+                    How many in a row
+                    <InfoTooltip text="Three on a 3x3 board is noughts and crosses. Five is gomoku. Four, on a board with gravity switched on, is Connect Four." />
+                  </span>
+                  <input
+                    type="number"
+                    min={2}
+                    max={64}
+                    value={gameData.line_length ?? 3}
+                    onChange={(e) => handleChange("line_length", parseInt(e.target.value, 10) || 3)}
+                  />
+                </label>
+              )}
+            </>
           )}
 
           {gameData.line_win_type === 'edge_to_edge' && (
@@ -745,6 +765,30 @@ const Step2WinConditions = ({ gameData, updateGameData }) => {
           updateGameData({ other_game_data: JSON.stringify(data, null, 2) });
         }}
       >
+        {/*
+          * Gravity belongs to placement and lives inside it: a board that drops
+          * pieces you cannot place is a rule with nothing to apply to. The
+          * server stores 'off' regardless if placement is not on, so the two
+          * cannot disagree.
+          */}
+        <div className={styles["sub-field"]}>
+          <label className={styles["sub-label"]}>
+            <span className={styles["condition-toggle-title"]}>
+              Board gravity
+              <InfoTooltip text="Placed pieces fall towards one edge instead of staying where they were put, so a player chooses a column rather than a square — and the piece lands on the first free space. This also makes both players see the board the same way up, since a board with a real top and bottom would be upside down for one of them otherwise. Together with a piece that cannot move and a four-in-a-row line condition, this is Connect Four." />
+            </span>
+            <select
+              value={gameData.board_gravity || 'off'}
+              onChange={(e) => handleChange("board_gravity", e.target.value)}
+            >
+              <option value="off">Off — a piece stays where it is placed</option>
+              <option value="down">Pieces fall to the bottom</option>
+              <option value="up">Pieces rise to the top</option>
+              <option value="left">Pieces slide to the left</option>
+              <option value="right">Pieces slide to the right</option>
+            </select>
+          </label>
+        </div>
         <div className={styles["sub-field"]}>
           <ToggleSwitch
             checked={otherData.finite_reserve === true}
