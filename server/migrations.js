@@ -5626,10 +5626,19 @@ async function seedDailyPoolPuzzles() {
     return 0;
   }
 
+  /*
+   * What is already here, keyed by GAME AND TITLE rather than by game alone.
+   *
+   * It used to be one seeded puzzle per game, which was right for the original
+   * bulk seed and wrong for everything after it: a game that already had one
+   * could never receive another, so a replacement for a withdrawn puzzle would
+   * be silently skipped on exactly the databases that needed it. The original
+   * entries are one per game anyway, so nothing about them changes.
+   */
   const [already] = await db_pool.query(
-    'SELECT DISTINCT game_type_id FROM puzzles WHERE creator_id = ?', [owner.id]
+    'SELECT game_type_id, title FROM puzzles WHERE creator_id = ?', [owner.id]
   );
-  const done = new Set(already.map(r => r.game_type_id));
+  const done = new Set(already.map(r => `${r.game_type_id}::${r.title || ''}`));
 
   const { fingerprintGame } = require('./game-fingerprint');
 
@@ -5637,7 +5646,7 @@ async function seedDailyPoolPuzzles() {
   let skippedMissingGame = 0;
   let skippedDrifted = 0;
   for (const p of puzzles) {
-    if (done.has(p.game_type_id)) continue;
+    if (done.has(`${p.game_type_id}::${p.title || ''}`)) continue;
     // The seed is built against one database's ids; a game that is not on this
     // server is skipped rather than failing the whole migration.
     const [[game]] = await db_pool.query(

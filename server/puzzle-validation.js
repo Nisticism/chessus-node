@@ -916,6 +916,127 @@ function goalMet(goal, state, side, ctx) {
  * non-VALID status as something to show the creator, never as a reason to
  * refuse the save.
  */
+
+/**
+ * Every move this player can ACTUALLY make from this position.
+ *
+ * getAllLegalMovesForPlayer is a generator, not an arbiter: it enumerates what
+ * the pieces reach and leaves the rules that refuse a move to the engine. In a
+ * forced-capture game it happily lists all fourteen rook moves when thirteen of
+ * them would be rejected. So each candidate is offered to the engine, on its
+ * own copy of the position, and only the ones it accepts are counted.
+ *
+ * En passant and placements are added the way the one-ply checker adds them,
+ * because the generator cannot see them - and a missed candidate here would
+ * make a position look MORE forced than it is, which is the direction that
+ * matters.
+ *
+ * Capped, because this is a move application per candidate. Over the cap it
+ * returns null, meaning "too many to establish", and the caller falls back to
+ * the honest "your call" answer.
+ */
+async function trulyLegalMoves(state, player, cap = 80) {
+  const candidates = [
+    ...(getAllLegalMovesForPlayer(state, player) || []),
+    ...enPassantCandidates(state, player),
+    ...placementCandidates(state, player),
+  ];
+  if (candidates.length > cap) return null;
+
+  const accepted = [];
+  for (const candidate of candidates) {
+    const trial = { ...state, pieces: JSON.parse(JSON.stringify(state.pieces)), moveHistory: [] };
+    trial.currentTurn = player;
+    // eslint-disable-next-line no-await-in-loop -- the engine mutates the
+    // pieces it is given, so these must not overlap.
+    const res = await applyPly(trial, candidate, { autoPromote: true });
+    if (res.ok || res.needsPromotionChoice) accepted.push(candidate);
+  }
+  return accepted;
+}
+
+/**
+ * Was every one of the opponent's replies in this line their ONLY legal move?
+ *
+ * The note at the top of this file says a longer line cannot be judged for
+ * forcedness, because the replies are the creator's script rather than an
+ * engine's best defence. That is true when the opponent has a choice. It is
+ * not true when they have exactly one move - and a forced-capture game
+ * produces that constantly, which is the whole mechanism behind a bait in
+ * antichess.
+ *
+ * Returns { forced, checked }. forced is false the moment a reply had an
+ * alternative, or a position had too many candidates to establish.
+ */
+async function repliesWereForced(puzzle, gameType, line) {
+  const state = buildGameState(puzzle, gameType);
+  let toMove = Number(puzzle.side_to_move);
+  let checked = 0;
+
+  for (let i = 0; i < line.length; i++) {
+    if (i % 2 === 1) {
+      // eslint-disable-next-line no-await-in-loop
+      const legal = await trulyLegalMoves(state, toMove);
+      if (!legal || legal.length !== 1) return { forced: false, checked };
+      if (moveKey(legal[0]) !== moveKey(line[i])) return { forced: false, checked };
+      checked++;
+    }
+    state.currentTurn = toMove;
+    // eslint-disable-next-line no-await-in-loop
+    const res = await applyPly(state, line[i], { autoPromote: true });
+    if (!res.ok) return { forced: false, checked };
+    toMove = other(toMove);
+  }
+  return { forced: checked > 0, checked };
+}
+
+/**
+ * Which OTHER opening moves also win by force, if any.
+ *
+ * Asked only when the replies are forced, and only for a two-ply line - which
+ * is what a bait is: your move, their one answer. Anything longer becomes a
+ * search, and a search is what this file deliberately does not do.
+ *
+ * For each alternative first move the opponent's replies are enumerated the
+ * same honest way; if EVERY reply leaves the goal met, that alternative forces
+ * the result too and the puzzle has more than one answer.
+ *
+ * Returns null when there were too many candidates to establish.
+ */
+async function otherForcedWins(puzzle, gameType, intended) {
+  const side = Number(puzzle.side_to_move);
+  const first = await trulyLegalMoves(buildGameState(puzzle, gameType), side);
+  if (!first) return null;
+
+  const others = [];
+  for (const candidate of first) {
+    if (boardMoveKey(candidate) === boardMoveKey(intended)) continue;
+
+    const state = buildGameState(puzzle, gameType);
+    state.currentTurn = side;
+    // eslint-disable-next-line no-await-in-loop
+    const mine = await applyPly(state, candidate, { autoPromote: true });
+    if (!mine.ok) continue;
+
+    // eslint-disable-next-line no-await-in-loop
+    const replies = await trulyLegalMoves(state, other(side));
+    if (!replies || !replies.length) continue;
+
+    let alwaysWins = true;
+    for (const reply of replies) {
+      const after = { ...state, pieces: JSON.parse(JSON.stringify(state.pieces)), moveHistory: [] };
+      after.currentTurn = other(side);
+      // eslint-disable-next-line no-await-in-loop
+      const res = await applyPly(after, reply, { autoPromote: true });
+      if (!res.ok) { alwaysWins = false; break; }
+      after.currentTurn = side;
+      if (!goalMet(puzzle.goal, after, side, res)) { alwaysWins = false; break; }
+    }
+    if (alwaysWins) others.push(candidate);
+  }
+  return others;
+}
+
 async function validatePuzzle(puzzle, gameType) {
   const line = Array.isArray(puzzle.solution_line)
     ? puzzle.solution_line
@@ -952,6 +1073,52 @@ async function validatePuzzle(puzzle, gameType) {
     played.state.currentTurn = other(side);
     const reached = isMechanical && goalMet(puzzle.goal, played.state, side, played.ctx);
     const moves = Math.ceil(line.length / 2);
+
+    /*
+     * A line whose every reply was FORCED is as checkable as a one-move
+     * puzzle, and should not be filed under "your call".
+     *
+     * The caveat at the top of this file - that replies are the creator's
+     * script rather than a best defence - holds when the opponent has a
+     * choice. It does not hold when they have exactly one move, which a
+     * forced-capture game produces constantly. That is the mechanism behind a
+     * bait in antichess: you offer the piece where taking it is the only thing
+     * they are allowed to do.
+     *
+     * Claimed only when the goal is genuinely reached, the replies were
+     * forced, AND no other opening move forces the same result - the same
+     * standard the one-move check applies, so "valid" means the same thing
+     * whichever branch produced it. Two plies only; past that this is a search.
+     */
+    if (isMechanical && reached && line.length === 2) {
+      const forced = await repliesWereForced(puzzle, gameType, line);
+      if (forced.forced) {
+        const rivals = await otherForcedWins(puzzle, gameType, intended);
+        if (rivals && !rivals.length) {
+          return {
+            status: VALIDATION.VALID,
+            solutions: [intended],
+            intendedWorks: true,
+            goalReached: true,
+            forcedLine: true,
+            detail: "the opponent's reply is their only legal move, and no other move of yours "
+              + 'forces the same result - so this is checked, not merely plausible.',
+          };
+        }
+        if (rivals && rivals.length) {
+          return {
+            status: VALIDATION.AMBIGUOUS,
+            solutions: [intended, ...rivals],
+            intendedWorks: true,
+            goalReached: true,
+            forcedLine: true,
+            detail: `${rivals.length + 1} different moves force the same result. That is allowed - `
+              + 'solvers may simply find another one.',
+          };
+        }
+      }
+    }
+
     return {
       status: VALIDATION.NOT_CHECKABLE,
       solutions: [intended],

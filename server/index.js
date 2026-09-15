@@ -678,7 +678,32 @@ function dedupeUploadedFile(file) {
 const { runMigrations } = require("./migrations");
 
 // Run migrations to add any missing columns
-runMigrations().then(() => {
+runMigrations().then(async () => {
+  /*
+   * Top the daily puzzle queue back up.
+   *
+   * Nothing did this automatically. fillQueue was reachable only from a button
+   * in the admin panel, and there is no cron - so a day nobody had scheduled
+   * simply had no puzzle, which is how a deploy ended with the daily puzzle
+   * missing and no error anywhere to say why.
+   *
+   * Safe to run on every boot: it only fills days that are EMPTY, and only
+   * from puzzles that already passed validation and whose creators opted in.
+   * A day an admin scheduled by hand is left exactly as they left it.
+   *
+   * Non-fatal. A server that cannot schedule a puzzle should still serve the
+   * site.
+   */
+  try {
+    const { createDailyPuzzle } = require('./daily-puzzle');
+    const result = await createDailyPuzzle({ db_pool }).fillQueue({ scheduledBy: null });
+    if (result?.scheduled?.length) {
+      console.log(`[daily] Scheduled ${result.scheduled.length} day(s), through ${result.filledThrough}`);
+    }
+  } catch (e) {
+    console.warn('[daily] Could not top up the puzzle queue:', e.message);
+  }
+
   // After migrations, mark any orphaned AI training jobs as interrupted.
   try {
     const trainingManager = require('./ai/training-manager');

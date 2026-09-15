@@ -16422,6 +16422,65 @@
       ],
       "solution_depth": 1,
       "validation_detail": null
+    },
+    {
+      "game_type_id": 50,
+      "game_name": "Antichess",
+      "game_fingerprint": "1e12bb94c3ad72960085681ee605e42f",
+      "title": "Make them take it",
+      "description": "Antichess is won by losing everything, and a capture is compulsory. You have one pawn left. Put it somewhere the rook has no choice.",
+      "position": [
+        {
+          "piece_id": 21,
+          "player_id": 1,
+          "x": 0,
+          "y": 6
+        },
+        {
+          "piece_id": 15,
+          "player_id": 2,
+          "x": 5,
+          "y": 5
+        }
+      ],
+      "side_to_move": 1,
+      "setup_move": {
+        "from": {
+          "x": 7,
+          "y": 5
+        },
+        "to": {
+          "x": 5,
+          "y": 5
+        }
+      },
+      "goal": "lose_all_pieces",
+      "goal_description": null,
+      "solution_line": [
+        {
+          "from": {
+            "x": 0,
+            "y": 6
+          },
+          "to": {
+            "x": 0,
+            "y": 5
+          },
+          "pieceId": "21_6_0"
+        },
+        {
+          "from": {
+            "x": 5,
+            "y": 5
+          },
+          "to": {
+            "x": 0,
+            "y": 5
+          },
+          "pieceId": "15_5_5"
+        }
+      ],
+      "solution_depth": 1
     }
   ]
 }
