@@ -3709,9 +3709,9 @@ Delete the game and its puzzles anyway?`)) {
             <strong style={{ color: '#ff8484' }}>⚠️ Starting Position Issue:</strong>{' '}
             {game.initial_state_warning}{' '}
             <strong>New games cannot be started on it until this is fixed.</strong>{' '}
-            The game's creator should edit this game so the starting position is not already
-            decided. Games already in progress are unaffected, and the Sandbox can still be
-            used to try a fix out.
+            The game's creator should edit the game to resolve it. Games already in progress
+            are unaffected, and the Sandbox will still load this position, which is a useful
+            place to work out a fix.
           </div>
         )}
 

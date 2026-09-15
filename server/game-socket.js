@@ -21817,6 +21817,44 @@ function buildSyntheticInitialState(gameType, pieces, currentTurn = 1) {
 }
 
 /**
+ * The placements a game type's board still SHOWS but the engine cannot load.
+ *
+ * Only meaningful once the hydrated piece array has come back empty. A game
+ * type stores its layout twice: `pieces_string` is a self-contained snapshot
+ * (it carries each piece's name and image inline, which is what the game page
+ * draws), while `game_type_pieces` holds one row per square with a foreign key
+ * to `pieces`. That key is ON DELETE CASCADE, so deleting a piece silently
+ * takes every placement of it with it - and the snapshot keeps drawing a full
+ * board over an engine position that is now empty.
+ *
+ * A game whose junction rows were merely never written does not stay in this
+ * state: `scripts/backfill-game-type-pieces.js` rebuilds them from the
+ * snapshot on every boot, and the one thing that stops it is the foreign key
+ * refusing a piece that no longer exists. So an empty junction under a
+ * populated snapshot means the pieces were deleted.
+ *
+ * @returns {Array<{piece_id: number, piece_name: string}>} one entry per
+ *          orphaned square, empty when the board really is bare.
+ */
+function placementsWithoutPieces(gameType) {
+  if (!gameType || !gameType.pieces_string) return [];
+  let parsed;
+  try {
+    parsed = typeof gameType.pieces_string === 'string'
+      ? JSON.parse(gameType.pieces_string)
+      : gameType.pieces_string;
+  } catch (e) { return []; }
+  if (!parsed || typeof parsed !== 'object') return [];
+
+  const entries = Array.isArray(parsed) ? parsed : Object.values(parsed);
+  return entries
+    // Multi-tile pieces occupy several squares but are placed once; the extra
+    // squares are bookkeeping, not lost pieces.
+    .filter(p => p && p.piece_id && !p._occupied && !p._anchorKey)
+    .map(p => ({ piece_id: p.piece_id, piece_name: p.piece_name || '' }));
+}
+
+/**
  * Evaluate whether the given starting position is already in a decided
  * (win / loss / draw) state for the player to move. This is intentionally
  * conservative — it only flags states the live engine would actually call
@@ -21859,6 +21897,36 @@ function evaluateInitialPosition(gameType, initialPieces) {
     } catch (e) { /* ignore parse errors */ }
 
     if (!hasPiecePlacement) {
+      /*
+       * "No pieces" has two very different causes, and telling a creator the
+       * wrong one sends them looking at a board that appears perfectly fine.
+       *
+       * The board a creator SEES on the game page is drawn from
+       * `pieces_string`, a self-contained snapshot of the layout. The board
+       * the ENGINE builds comes from the `game_type_pieces` junction rows,
+       * which carry a foreign key to `pieces` with ON DELETE CASCADE. Delete
+       * a piece and every placement of it vanishes from the junction while
+       * the snapshot keeps drawing it - so the game looks fully set up and
+       * starts completely empty.
+       *
+       * That is a different problem from an untouched board, and the fix is
+       * different too, so it gets its own message naming the pieces that went
+       * missing.
+       */
+      const orphaned = placementsWithoutPieces(gameType);
+      if (orphaned.length) {
+        const names = [...new Set(orphaned.map(p => p.piece_name).filter(Boolean))];
+        const named = names.length ? ` (${names.join(', ')})` : '';
+        return {
+          decided: true,
+          type: 'invalid',
+          code: 'pieces_deleted',
+          reason: `The board still shows ${orphaned.length} piece${orphaned.length === 1 ? '' : 's'}, `
+            + `but the piece${names.length === 1 ? '' : 's'} they were placed from${named} `
+            + `${names.length === 1 ? 'has' : 'have'} since been deleted, so a new game would start `
+            + 'with an empty board. Edit the game and place pieces that still exist.',
+        };
+      }
       return {
         decided: true,
         type: 'invalid',
