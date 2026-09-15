@@ -306,6 +306,19 @@
 .verdict-wrong  { color: #e8a44c; }
 .verdict-error  { color: #dc7c6a; }
 
+/* The signed-in solver's rating move, shown the same way the puzzle's own page
+   shows it once a puzzle is decided. */
+.rating-change {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-dim);
+
+  strong { color: var(--text-heading); }
+}
+.delta-up   { color: #5fd0a4; margin-left: 6px; }
+.delta-down { color: #e8a44c; margin-left: 6px; }
+
 .daily-actions {
   margin-top: auto;
   display: flex;

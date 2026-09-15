@@ -5,6 +5,16 @@ import styles from "./changelog.module.scss";
 const changelogData = [
   {
     date: "September 15, 2026",
+    title: "A wrong move no longer throws the puzzle away",
+    items: [
+      "Get a move wrong and the puzzle now keeps what you have found. It takes the wrong piece back to where it was, tells you it missed, and lets you try again from the same position — instead of dropping you back at the opening move to replay the whole thing.",
+      "The daily puzzle on the home page now counts towards your puzzle rating when you are signed in, and shows the rating change once you solve it or miss, exactly as the puzzle's own page does. A puzzle only ever moves your rating once — on your first solve or your first miss.",
+      "Every puzzle board plays the piece the instant you move it, rather than waiting on the server to answer first — and puts it back if the move turns out not to be allowed.",
+      "Fixed the move dots on the home-page and Discord boards past the first move of a multi-move puzzle: they were being worked out from the opening position, so hovering a piece that had already moved lit up the wrong squares, or none.",
+    ],
+  },
+  {
+    date: "September 15, 2026",
     title: "Solve the whole puzzle on the home page",
     items: [
       "A multi-move puzzle now plays out in full on the home page. Finding the first move used to bounce you to the puzzle's own page to finish; now your move and the opponent's answer play on the card, and it tells you how many moves are left until you have it.",

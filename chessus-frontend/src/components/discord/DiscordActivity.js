@@ -325,14 +325,21 @@ export default function DiscordActivity() {
     const key = `${y},${x}`;
     if (hintCache.current.has(key)) return hintCache.current.get(key);
     try {
-      const { data } = await axios.get(`${API}puzzles/${puzzle.id}/moves`, { params: { x, y } });
+      // The current position, so a piece that has already moved lights up the
+      // right squares - past move one the opening board no longer has it there.
+      const { data } = await axios.post(`${API}game-types/${puzzle.game_type_id}/puzzle-moves`, {
+        position: Object.values(board || {}),
+        side_to_move: puzzle.side_to_move,
+        setup_move: found.length ? null : puzzle.setup_move,
+        x, y,
+      });
       const moves = data?.moves || [];
       hintCache.current.set(key, moves);
       return moves;
     } catch (_) {
       return [];
     }
-  }, [puzzle]);
+  }, [puzzle, board, found]);
 
   /** Open the full puzzle page in the player's browser, outside Discord. */
   const openOnSite = useCallback(() => {
@@ -453,20 +460,15 @@ export default function DiscordActivity() {
         });
       } else {
         /*
-         * Wrong, and the line restarts from the beginning - the prefix rule the
-         * solve endpoint applies means a half-right line cannot be resumed from
-         * the middle.
+         * Off the line. The guess comes back off but the moves already found
+         * stay, so they retry from where they were rather than replaying the
+         * whole line from the start.
          */
-        setFound([]);
+        setBoard(before);
         setAttempts((n) => n + 1);
         setVerdict({ status: 'wrong', text: 'Not that one. Try again.' });
         if (data.discord) setProgress((p) => ({ ...(p || {}), player: { ...(p?.player || {}), ...data.discord } }));
-        if (daily?.puzzle?.position) {
-          const map = {};
-          for (const pl of daily.puzzle.position) map[`${pl.y},${pl.x}`] = pl;
-          setBoard(map);
-          hintCache.current = new Map();
-        }
+        hintCache.current = new Map();
       }
     } catch (_) {
       // Nothing was judged, so the guess has to come back off the board.
@@ -475,7 +477,7 @@ export default function DiscordActivity() {
     } finally {
       setBusy(false);
     }
-  }, [puzzle, busy, finished, board, found, daily, attempts, awaitHandshake]);
+  }, [puzzle, busy, finished, board, found, attempts, awaitHandshake]);
 
   // ----------------------------------------------------------- interaction --
   const squareAt = useCallback((clientX, clientY) => {
@@ -555,6 +557,20 @@ export default function DiscordActivity() {
       placePieceId: Number(trayPick.template.piece_id),
       to: { x, y },
     };
+    // Put the piece down straight away; the server's board replaces this the
+    // moment it answers, and a rejected placement takes it back off.
+    const before = board;
+    const player = trayPick.player || Number(puzzle.side_to_move) || 1;
+    setBoard((prev) => ({
+      ...prev,
+      [`${y},${x}`]: {
+        piece_id: Number(trayPick.template.piece_id),
+        player_id: player,
+        piece_name: trayPick.template.name || null,
+        image_location: trayPick.template.image_location || null,
+        x, y,
+      },
+    }));
     try {
       const moves = [...found, move];
       await awaitHandshake();
@@ -579,16 +595,19 @@ export default function DiscordActivity() {
           text: left === 1 ? 'Good. One move left.' : `Good. ${left} moves left.`,
         });
       } else {
+        // Off the line: take the guess back off and keep what was found.
+        setBoard(before);
         setAttempts((n) => n + 1);
         setVerdict({ status: 'wrong', text: 'Not that one. Try again.' });
       }
     } catch (_) {
+      setBoard(before);
       setVerdict({ status: 'error', text: 'Could not check that just now.' });
     } finally {
       setBusy(false);
       setTrayPick(null);
     }
-  }, [puzzle, busy, finished, trayPick, found, attempts, awaitHandshake]);
+  }, [puzzle, busy, finished, trayPick, board, found, attempts, awaitHandshake]);
 
   const clickSquare = useCallback((x, y) => {
     if (!puzzle || busy || finished || replaying) return;

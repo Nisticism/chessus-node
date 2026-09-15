@@ -166,6 +166,17 @@ const PuzzlesPanel = () => {
   const [found, setFound] = useState([]);
   // Bumped to re-arm the opponent's-move animation when the puzzle restarts.
   const [replayKey, setReplayKey] = useState(0);
+  /*
+   * The signed-in solver's rating move, shown once the puzzle is decided -
+   * exactly what the puzzle's own page shows, so a solve on the card counts and
+   * reads the same. The server's first-attempt rule is what fills this in, and
+   * only ever once per puzzle.
+   */
+  const [ratingChange, setRatingChange] = useState(null);
+  const [ratingNote, setRatingNote] = useState(null);
+  // When this attempt began, for the solve's duration. Reset per puzzle and on
+  // a restart.
+  const [startedAt, setStartedAt] = useState(() => Date.now());
   // Where the held piece may go, from the server. The dots are what make the
   // board playable rather than a picture you can click at.
   const [hints, setHints] = useState([]);
@@ -207,6 +218,9 @@ const PuzzlesPanel = () => {
         setHints([]);
         setLastTry(null);
         setFound([]);
+        setRatingChange(null);
+        setRatingNote(null);
+        setStartedAt(Date.now());
         hintCache.current = new Map();
         if (data?.puzzle?.position) {
           const map = {};
@@ -323,6 +337,9 @@ const PuzzlesPanel = () => {
     setHints([]);
     setLastTry(null);
     setTrayPick(null);
+    setRatingChange(null);
+    setRatingNote(null);
+    setStartedAt(Date.now());
     hintCache.current = new Map();
     setReplayKey((k) => k + 1);
   }, [freshBoard]);
@@ -340,13 +357,23 @@ const PuzzlesPanel = () => {
       to: { x, y },
       pieceId: mover?.id || `${mover?.piece_id}_${fy}_${fx}`,
     };
+
+    /*
+     * Move the piece now, ask the server afterwards - the same as the solver
+     * page and the Discord activity. `before` is the position the guess is made
+     * against, so every outcome below rebuilds from it rather than layering on
+     * the optimistic board, and anything the server rejects puts the piece back.
+     */
+    const before = board;
+    setBoard((prev) => applyMove(prev, move));
+
     try {
       const info = await axios.post(
         `${API_URL}game-types/${puzzle.game_type_id}/puzzle-move-info`,
         {
-          position: Object.values(board || {}),
+          position: Object.values(before || {}),
           side_to_move: puzzle.side_to_move,
-          setup_move: puzzle.setup_move,
+          setup_move: found.length ? null : puzzle.setup_move,
           move,
         },
         { headers: authHeader() }
@@ -354,6 +381,7 @@ const PuzzlesPanel = () => {
 
       // A promotion needs a piece chooser, which belongs on the solver page.
       if (info?.data?.promotes) {
+        setBoard(before);
         navigate(`/games/${puzzle.game_type_id}/puzzles/${puzzle.id}`);
         return;
       }
@@ -366,26 +394,29 @@ const PuzzlesPanel = () => {
       const attemptLine = [...found, move];
       const { data } = await axios.post(
         `${API_URL}puzzles/${puzzle.id}/solve`,
-        { moves: attemptLine },
+        { moves: attemptLine, duration_ms: Date.now() - startedAt },
         { headers: authHeader() }
       );
+      if (data.rating) setRatingChange(data.rating);
+      else if (data.ratingNote) setRatingNote(data.ratingNote);
+
       if (data.solved) {
         setFound(attemptLine);
-        // Everything from this move to the end of the line, replayed onto the
-        // board it started from - the server's version carries the promotion
-        // piece, so it replaces the guess rather than stacking on it.
-        setBoard((prev) => data.position
+        // This move to the end of the line, replayed onto the board it started
+        // from - the server's version carries the promotion piece, so it
+        // replaces the guess rather than stacking on it.
+        setBoard(data.position
           ? fromServerPosition(data.position)
           : (data.solution || attemptLine).slice(found.length * 2)
-              .reduce((cells, ply) => applyMove(cells, ply), prev));
+              .reduce((cells, ply) => applyMove(cells, ply), before));
         setVerdict({ status: 'solved', text: 'That is it — solved.' });
       } else if (data.status === 'continue') {
         // Right so far: play the move, then the answer the creator wrote for
         // it, so the board shows the position the next move starts from.
         setFound(attemptLine);
-        setBoard((prev) => data.position
+        setBoard(data.position
           ? fromServerPosition(data.position)
-          : applyMove(applyMove(prev, move), data.reply));
+          : applyMove(applyMove(before, move), data.reply));
         setLastTry(data.reply ? { x: data.reply.to.x, y: data.reply.to.y } : { x, y });
         hintCache.current = new Map();
         const left = (data.movesTotal || 0) - (data.movesPlayed || 0);
@@ -394,19 +425,20 @@ const PuzzlesPanel = () => {
           text: left === 1 ? 'Good — one move left.' : `Good — ${left} moves left.`,
         });
       } else {
-        // Off the line. The prefix rule means a half-right line cannot resume
-        // from the middle, so it restarts from the opening position.
-        setFound([]);
-        setBoard(freshBoard());
-        hintCache.current = new Map();
+        // Off the line. The guess comes back off, but the moves already found
+        // stay, so they try again from where they were rather than starting the
+        // whole puzzle over.
+        setBoard(before);
+        setLastTry({ x, y });
         setVerdict({ status: 'wrong', text: 'Not that one. Try again.' });
       }
     } catch (_) {
+      setBoard(before);
       setVerdict({ status: 'error', text: 'Could not submit that move.' });
     } finally {
       setBusy(false);
     }
-  }, [puzzle, busy, finished, board, navigate, found, freshBoard]);
+  }, [puzzle, busy, finished, board, navigate, found, startedAt]);
 
   /** This piece's moves, from the cache when we already asked. */
   const loadHints = useCallback(async (x, y) => {
@@ -414,16 +446,26 @@ const PuzzlesPanel = () => {
     const key = `${y},${x}`;
     if (hintCache.current.has(key)) return hintCache.current.get(key);
     try {
-      const { data } = await axios.get(`${API_URL}puzzles/${puzzle.id}/moves`, {
-        params: { x, y },
-      });
+      // The CURRENT position, not the puzzle's opening one: past the first move
+      // the piece to move sits somewhere the starting board never had it, so the
+      // stored-position endpoint would light up the wrong squares, or none.
+      const { data } = await axios.post(
+        `${API_URL}game-types/${puzzle.game_type_id}/puzzle-moves`,
+        {
+          position: Object.values(board || {}),
+          side_to_move: puzzle.side_to_move,
+          setup_move: found.length ? null : puzzle.setup_move,
+          x, y,
+        },
+        { headers: authHeader() }
+      );
       const moves = data?.moves || [];
       hintCache.current.set(key, moves);
       return moves;
     } catch (_) {
       return [];
     }
-  }, [puzzle]);
+  }, [puzzle, board, found]);
 
   const hoverSquare = useCallback(async (x, y) => {
     // A held piece or a drag in progress owns the dots; hover must not fight it.
@@ -505,13 +547,29 @@ const PuzzlesPanel = () => {
       placePieceId: Number(trayPick.template.piece_id),
       to: { x, y },
     };
+    // Show the piece down straight away; the server's board replaces this the
+    // moment it answers, and a rejected placement takes it back off.
+    const before = board;
+    const player = trayPick.player || Number(puzzle.side_to_move) || 1;
+    setBoard((prev) => ({
+      ...prev,
+      [`${y},${x}`]: {
+        piece_id: Number(trayPick.template.piece_id),
+        player_id: player,
+        piece_name: trayPick.template.name || null,
+        image_location: trayPick.template.image_location || null,
+        x, y,
+      },
+    }));
     try {
       const attemptLine = [...found, move];
       const { data } = await axios.post(
         `${API_URL}puzzles/${puzzle.id}/solve`,
-        { moves: attemptLine },
+        { moves: attemptLine, duration_ms: Date.now() - startedAt },
         { headers: authHeader() }
       );
+      if (data.rating) setRatingChange(data.rating);
+      else if (data.ratingNote) setRatingNote(data.ratingNote);
       if (data.position) setBoard(fromServerPosition(data.position));
       if (data.solved) {
         setFound(attemptLine);
@@ -527,18 +585,19 @@ const PuzzlesPanel = () => {
           text: left === 1 ? 'Good — one move left.' : `Good — ${left} moves left.`,
         });
       } else {
-        // Off the line: the whole thing restarts from the opening position.
-        setFound([]);
-        setBoard(freshBoard());
+        // Off the line: take the guess back off and keep what was found, so the
+        // next try continues rather than restarting the puzzle.
+        setBoard(before);
         setVerdict({ status: 'wrong', text: 'Not this one. Try another square.' });
       }
     } catch (_) {
+      setBoard(before);
       setVerdict({ status: 'error', text: 'Could not check that just now.' });
     } finally {
       setBusy(false);
       setTrayPick(null);
     }
-  }, [puzzle, busy, finished, trayPick, found, freshBoard]);
+  }, [puzzle, busy, finished, trayPick, board, found, startedAt]);
 
   const clickSquare = useCallback((x, y) => {
     if (!puzzle || busy || finished || replaying) return;
@@ -784,6 +843,17 @@ const PuzzlesPanel = () => {
                   <p className={`${styles["verdict"]} ${styles[`verdict-${verdict.status}`]}`}>
                     {verdict.text}
                   </p>
+                )}
+                {ratingChange && (
+                  <p className={styles["rating-change"]}>
+                    Puzzle rating {ratingChange.before} → <strong>{ratingChange.after}</strong>{' '}
+                    <span className={ratingChange.delta >= 0 ? styles["delta-up"] : styles["delta-down"]}>
+                      {ratingChange.delta >= 0 ? `+${ratingChange.delta}` : ratingChange.delta}
+                    </span>
+                  </p>
+                )}
+                {!ratingChange && ratingNote && (
+                  <p className={styles["muted"]}>{ratingNote}</p>
                 )}
                 <div className={styles["daily-actions"]}>
                   {finished ? (
