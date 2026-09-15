@@ -5,6 +5,24 @@ import styles from "./changelog.module.scss";
 const changelogData = [
   {
     date: "September 15, 2026",
+    title: "Games with a broken starting position cannot be started",
+    items: [
+      "A game whose opening position is already decided — both sides in checkmate, a side with nothing to play, nobody able to move at all — can no longer have new games started on it. The scan already found these and wrote the reason on the game's page; the game still sat in the lobby for anyone to start.",
+      "The refusal quotes the reason, so it says what is wrong rather than just no. Games already in progress are unaffected, and the Sandbox still works for trying a fix out.",
+      "The scan itself learned two things. It only ever asked whether the player to move had a legal move; it asks both players now, and flags a position where NEITHER can act — a game that can never make a single move, which nothing caught before.",
+      "And it understands the newer rules: an empty board is fine when pieces are placed rather than moved, a gravity board offers one landing square per column rather than one per empty space, and a starting position that already contains a winning line is named as such.",
+    ],
+  },
+  {
+    date: "September 15, 2026",
+    title: "Renaming a daily puzzle",
+    items: [
+      "The Puzzle of the Day panel can rename a scheduled puzzle in place, and links straight to it — Open to play it, Edit to change the position itself in the builder.",
+      "A generated title like “Mate in one” says nothing about the puzzle, and the day it goes out is the day that matters.",
+    ],
+  },
+  {
+    date: "September 15, 2026",
     title: "Puzzles show you what just happened",
     items: [
       "A puzzle now plays the opponent's last move onto the board before you start. It holds for a second, slides the piece in over half a second, and then hands over — so you can see what you are answering instead of arriving cold.",

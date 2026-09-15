@@ -30,6 +30,16 @@ export default function DailyPuzzlePanel() {
   const [assignDate, setAssignDate] = useState('');
   const [assignId, setAssignId] = useState('');
   const [review, setReview] = useState(null);
+  /*
+   * The row being renamed, if any: { id, title }.
+   *
+   * A daily puzzle's name is the one thing an admin wants to change in a
+   * hurry - a generated title like "Mate in one" says nothing about the
+   * puzzle, and the day it goes out is the day it matters. Everything else
+   * about a puzzle is the builder's job, which is what the Edit link beside
+   * this is for.
+   */
+  const [renaming, setRenaming] = useState(null);
 
   const load = useCallback(async () => {
     setError(null);
@@ -81,6 +91,30 @@ export default function DailyPuzzlePanel() {
     );
   };
 
+  /*
+   * Renaming goes through the ordinary puzzle update, not a special admin
+   * route: staff already have permission there, and a second endpoint that
+   * writes the same column would be a second place for the rules about it to
+   * drift. A title change does not reset validation - only the position, the
+   * solution or the goal do.
+   */
+  const saveRename = () => {
+    const title = (renaming?.title || '').trim();
+    if (!renaming?.id) return;
+    if (!title) {
+      setNotice({ tone: 'error', text: 'A puzzle needs a name' });
+      return;
+    }
+    act(
+      () => axios.put(
+        `${API_URL}puzzles/${renaming.id}`,
+        { title },
+        { headers: authHeader() }
+      ),
+      'Renamed'
+    ).then(() => setRenaming(null));
+  };
+
   const fill = () => act(
     () => axios.post(`${API_URL}admin/daily-puzzles/fill`, {}, { headers: authHeader() }),
     'Queue filled'
@@ -125,14 +159,51 @@ export default function DailyPuzzlePanel() {
           {date === today && <strong> · today</strong>}
         </td>
         <td>
-          #{r.puzzle_id} {r.title || <em>Untitled</em>}
-          {!r.allow_daily && <span title="Creator has since opted out"> ⚠ opted out</span>}
-          {r.validation_status !== 'valid' && <span title="No longer validating cleanly"> ⚠ {r.validation_status}</span>}
+          {renaming?.id === r.puzzle_id ? (
+            <span className={styles["inline-edit"]}>
+              <input
+                type="text"
+                value={renaming.title}
+                autoFocus
+                maxLength={120}
+                onChange={(e) => setRenaming({ ...renaming, title: e.target.value })}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') saveRename();
+                  if (e.key === 'Escape') setRenaming(null);
+                }}
+              />
+              <button disabled={busy} onClick={saveRename}>Save</button>
+              <button disabled={busy} onClick={() => setRenaming(null)}>Cancel</button>
+            </span>
+          ) : (
+            <>
+              #{r.puzzle_id} {r.title || <em>Untitled</em>}
+              {!r.allow_daily && <span title="Creator has since opted out"> ⚠ opted out</span>}
+              {r.validation_status !== 'valid' && <span title="No longer validating cleanly"> ⚠ {r.validation_status}</span>}
+            </>
+          )}
         </td>
         <td>{r.game_name} <small>({r.board_width}×{r.board_height})</small></td>
         <td>{r.creator_username || '—'}</td>
         <td>{r.scheduled_by_username ? `by ${r.scheduled_by_username}` : 'auto'}</td>
         <td>
+          {/*
+            * Rename here, everything else in the builder. Admins and owners
+            * can edit any puzzle, so the Edit link opens this one directly
+            * rather than only working for whoever wrote it.
+            */}
+          <button disabled={busy} onClick={() => setRenaming({ id: r.puzzle_id, title: r.title || '' })}>
+            Rename
+          </button>
+          {' '}
+          <a href={`/games/${r.game_type_id}/puzzles/${r.puzzle_id}`} target="_blank" rel="noreferrer">
+            Open
+          </a>
+          {' '}
+          <a href={`/games/${r.game_type_id}/puzzles/${r.puzzle_id}/edit`} target="_blank" rel="noreferrer">
+            Edit
+          </a>
+          {' '}
           <button disabled={busy} onClick={() => clearDay(date)}>Clear</button>
         </td>
       </tr>

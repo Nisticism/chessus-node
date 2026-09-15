@@ -898,3 +898,23 @@
     cursor: not-allowed;
   }
 }
+
+/* Renaming a row in place - the daily puzzle queue, where the name is the one
+   thing worth changing without leaving the table. */
+.inline-edit {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+
+  input {
+    min-width: 200px;
+    padding: 5px 8px;
+    border-radius: 4px;
+    border: 1px solid var(--panel-border, #3a3d44);
+    background: var(--bg-deep, #1a1a2e);
+    color: var(--text-bright, #e8e8e8);
+    font: inherit;
+    font-size: 0.9em;
+  }
+}
