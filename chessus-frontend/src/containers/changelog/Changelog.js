@@ -10,6 +10,7 @@ const changelogData = [
       "“Open on GridGrove” in the Discord activity now opens the puzzle on the site. It was building the link out of the address Discord serves the activity from rather than gridgrove.gg, so the client was handed a link it would not follow — and the button did nothing. It is also an ordinary link now, so it still works when the Discord sign-in has not gone through.",
       "Removed a pause between moves in the Discord activity. Every move waited up to three seconds for the Discord sign-in to settle before it was sent, which on a launch where the sign-in never settles meant every move of a puzzle. It now waits once, on the first move of a session, which is all it was ever meant to do.",
       "The puzzle editor now links to the puzzle’s own page, so you can play what you just edited without going back through the game to find it. Drafts included — they are visible to whoever can edit them.",
+      "Past daily puzzles are playable in Discord. Every daily post now names the puzzle it was posted about, so pressing Play on last week’s post opens last week’s puzzle instead of today’s — the board in the message and the board you get are finally the same one. The activity says which day it is showing, and solving an old one counts towards your total but not towards your streak, which only today’s puzzle can move.",
     ],
   },
   {

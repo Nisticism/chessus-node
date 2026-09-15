@@ -8,6 +8,7 @@ import useSetupMoveReplay from "../common/useSetupMoveReplay";
 import { expandPlaceable, placesPieces } from "../../helpers/placement";
 import PuzzleBoard from "../puzzles/PuzzleBoard";
 import useDiscordSdk from "./useDiscordSdk";
+import { launchedPuzzleId } from "../../helpers/discord-launch-params";
 import styles from "./discordactivity.module.scss";
 
 /*
@@ -131,6 +132,15 @@ const applyMove = (cells, move, recorded) => {
 export default function DiscordActivity() {
   const discord = useDiscordSdk();
 
+  /*
+   * Which puzzle this launch is about.
+   *
+   * Read once and kept, because everything below has to agree on it: the board,
+   * the progress panel and the solve all have to be about the SAME puzzle, and
+   * a post that named one is the only thing that knows which.
+   */
+  const launchedId = useMemo(() => launchedPuzzleId(), []);
+
   const [daily, setDaily] = useState(null);
   const [loading, setLoading] = useState(true);
   const [progress, setProgress] = useState(null);   // streak + today's state
@@ -232,7 +242,12 @@ export default function DiscordActivity() {
     let cancelled = false;
     (async () => {
       try {
-        const { data } = await axios.get(`${API}puzzles/daily`);
+        const { data } = await axios.get(`${API}puzzles/daily`, {
+          // The puzzle this launch names, when it names one. A post's Play
+          // button carries the id of the puzzle it was posted about, so an old
+          // post opens its own puzzle rather than whatever is scheduled today.
+          params: launchedId ? { puzzle: launchedId } : {},
+        });
         if (cancelled) return;
         setDaily(data);
         if (data?.puzzle?.position) {
@@ -250,7 +265,7 @@ export default function DiscordActivity() {
 
     })();
     return () => { cancelled = true; };
-  }, []);
+  }, [launchedId]);
 
   // Identity, separately, once Discord has vouched for someone. Failure here
   // costs a streak, never the puzzle.
@@ -259,7 +274,12 @@ export default function DiscordActivity() {
     let cancelled = false;
     (async () => {
       try {
-        const { data } = await axios.get(`${API}discord/me`, { headers: discordHeaders });
+        const { data } = await axios.get(`${API}discord/me`, {
+          headers: discordHeaders,
+          // Ask about the puzzle actually on the board. Without this, opening a
+          // post from last week would report today's solve against it.
+          params: launchedId ? { puzzle: launchedId } : {},
+        });
         if (cancelled) return;
         setProgress(data);
         setAttempts(Number(data?.today?.attempts) || 0);
@@ -294,9 +314,27 @@ export default function DiscordActivity() {
       } catch (_) { /* progress is a nicety; the puzzle still plays */ }
     })();
     return () => { cancelled = true; };
-  }, [discord.token, discordHeaders]);
+  }, [discord.token, discordHeaders, launchedId]);
 
   const puzzle = daily?.puzzle || null;
+
+  /*
+   * The day this puzzle ran, when that is not today. Formatted from the date
+   * key rather than parsed as a Date: "2026-09-08" parsed as a Date is UTC
+   * midnight, which in a western timezone reads as the day before.
+   */
+  const pastDate = useMemo(() => {
+    const key = daily?.date;
+    if (!key || !launchedId) return null;
+    const [y, m, d] = String(key).split('-').map(Number);
+    if (!y || !m || !d) return null;
+    const today = new Date();
+    const isToday = today.getFullYear() === y && today.getMonth() + 1 === m && today.getDate() === d;
+    if (isToday) return null;
+    return new Date(y, m - 1, d).toLocaleDateString(undefined, {
+      month: 'short', day: 'numeric', year: 'numeric',
+    });
+  }, [daily?.date, launchedId]);
 
   /*
    * Tell Discord what this player is doing, for their PROFILE.
@@ -800,7 +838,11 @@ export default function DiscordActivity() {
     return (
       <div className={styles["activity"]}>
         <h1 className={styles["title"]}>Puzzle of the Day</h1>
-        <p className={styles["muted"]}>There is no puzzle scheduled for today. Check back tomorrow.</p>
+        <p className={styles["muted"]}>
+          {launchedId
+            ? 'That puzzle is no longer available.'
+            : 'There is no puzzle scheduled for today. Check back tomorrow.'}
+        </p>
       </div>
     );
   }
@@ -813,6 +855,10 @@ export default function DiscordActivity() {
           <p className={styles["sub"]}>
             {puzzle.game_name}
             {puzzle.goal_label ? ` · ${puzzle.goal_label}` : ''}
+            {/* Said only when it is NOT today's. Opening an old post should be
+                obvious about which day it is offering, or a player will read a
+                puzzle they have never seen as one they somehow missed. */}
+            {pastDate ? ` · from ${pastDate}` : ''}
           </p>
         </div>
         {player && (

@@ -541,6 +541,92 @@ function registerPuzzleRoutes(app, {
    * do its job. `?date=` reads a past day; future days are refused so the queue
    * cannot be read ahead.
    */
+  /*
+   * One daily-puzzle payload, however the row was found.
+   *
+   * Shared by the by-date path and the by-id path a Discord post uses, because
+   * the two differ only in which row they looked up - and a second copy of this
+   * is a second place for the card and the board to disagree about what a
+   * puzzle is.
+   */
+  async function dailyPayload(row, date, user) {
+    let solvedByYou = false;
+    if (user?.id) {
+      const [[hit]] = await db_pool.query(
+        'SELECT 1 AS n FROM puzzle_attempts WHERE puzzle_id = ? AND user_id = ? AND solved = 1 LIMIT 1',
+        [row.puzzle_id, user.id]
+      );
+      solvedByYou = !!hit;
+    }
+
+    /*
+     * The position travels with the card so the home page can DRAW the puzzle.
+     * That is the whole draw for a passer-by - a block of text about puzzles
+     * is not one - and showing the position gives nothing away: the solution
+     * is the secret, and it stays on the server as it does everywhere else.
+     *
+     * Only what the board needs to paint a square: who is on it and what it
+     * looks like.
+     */
+    const stored = safeParse(row.position, []) || [];
+    const pieceIds = [...new Set(stored.map(p => Number(p.piece_id)).filter(Boolean))];
+    let art = new Map();
+    if (pieceIds.length) {
+      const [pieceRows] = await db_pool.query(
+        `SELECT id, piece_name, image_location FROM pieces WHERE id IN (${pieceIds.map(() => '?').join(',')})`,
+        pieceIds
+      );
+      art = new Map(pieceRows.map(r => [Number(r.id), r]));
+    }
+    const position = stored.map((pl) => {
+      const def = art.get(Number(pl.piece_id)) || {};
+      return {
+        piece_id: pl.piece_id,
+        player_id: Number(pl.player_id ?? pl.team ?? 1),
+        x: Number(pl.x),
+        y: Number(pl.y),
+        piece_name: pl.piece_name || def.piece_name || null,
+        image_url: pl.image_url || null,
+        image_location: pl.image_location || def.image_location || null,
+      };
+    });
+
+    const ratingPublic = isRatingPublic(row);
+    return {
+      date,
+      solvedByYou,
+      puzzle: {
+        id: row.puzzle_id,
+        game_type_id: row.game_type_id,
+        game_name: row.game_name,
+        board_width: row.board_width,
+        board_height: row.board_height,
+        position,
+        title: row.title,
+        description: row.description,
+        goal: row.goal,
+        goal_label: GOAL_DEFS[row.goal]?.label || null,
+        side_to_move: row.side_to_move,
+        solution_depth: row.solution_depth,
+        creator_username: row.creator_username,
+        attempt_count: row.attempt_count,
+        solve_count: row.solve_count,
+        /*
+         * The move that led into the position, so the home card and the
+         * Discord activity can PLAY it before the solver starts - the same
+         * thing the puzzle's own page does. It gives nothing away: it is
+         * what the opponent already did, and the answer is what comes next.
+         */
+        setup_move: safeParse(row.setup_move),
+        // What may be put down, when the answer is a placement rather than a
+        // move. Empty for every game that does not place pieces.
+        ...placementPayload(row),
+        rating: ratingPublic ? row.rating : null,
+        rating_sample_count: ratingPublic ? row.rating_sample_count : null,
+      },
+    };
+  }
+
   app.get('/api/puzzles/daily', optionalAuthenticate, async (req, res) => {
     try {
       /*
@@ -560,6 +646,28 @@ function registerPuzzleRoutes(app, {
 
       const today = dailyPuzzle.todayKey();
       let date = /^\d{4}-\d{2}-\d{2}$/.test(req.query.date || '') ? req.query.date : today;
+
+      /*
+       * ?puzzle=N asks for one puzzle by identity rather than by day.
+       *
+       * A Discord post names the puzzle it is about and then stays in its
+       * channel for good, so its Play button has to open THAT puzzle however
+       * long afterwards it is clicked - not whatever is scheduled that morning,
+       * which is what a date-shaped question would answer.
+       *
+       * Restricted to puzzles that have already been a daily, so this is not a
+       * way to read the queue ahead or to pull an arbitrary puzzle through a
+       * route meant for the schedule. `date` becomes the day it ran, which is
+       * what the caller should show.
+       */
+      const askedFor = parseInt(req.query.puzzle, 10);
+      if (Number.isInteger(askedFor) && askedFor > 0) {
+        const scheduled = await dailyPuzzle.forPuzzleId(askedFor, today);
+        if (!scheduled) {
+          return res.json({ date: null, puzzle: null, solvedByYou: false });
+        }
+        return res.json(await dailyPayload(scheduled, scheduled.puzzle_date, req.user));
+      }
 
       /*
        * ?preview=N walks N days FORWARD, for checking the card against boards of
@@ -586,81 +694,7 @@ function registerPuzzleRoutes(app, {
         return res.json({ date, puzzle: null, solvedByYou: false });
       }
 
-      let solvedByYou = false;
-      if (req.user?.id) {
-        const [[hit]] = await db_pool.query(
-          'SELECT 1 AS n FROM puzzle_attempts WHERE puzzle_id = ? AND user_id = ? AND solved = 1 LIMIT 1',
-          [row.puzzle_id, req.user.id]
-        );
-        solvedByYou = !!hit;
-      }
-
-      /*
-       * The position travels with the card so the home page can DRAW the puzzle.
-       * That is the whole draw for a passer-by - a block of text about puzzles
-       * is not one - and showing the position gives nothing away: the solution
-       * is the secret, and it stays on the server as it does everywhere else.
-       *
-       * Only what the board needs to paint a square: who is on it and what it
-       * looks like.
-       */
-      const stored = safeParse(row.position, []) || [];
-      const pieceIds = [...new Set(stored.map(p => Number(p.piece_id)).filter(Boolean))];
-      let art = new Map();
-      if (pieceIds.length) {
-        const [pieceRows] = await db_pool.query(
-          `SELECT id, piece_name, image_location FROM pieces WHERE id IN (${pieceIds.map(() => '?').join(',')})`,
-          pieceIds
-        );
-        art = new Map(pieceRows.map(r => [Number(r.id), r]));
-      }
-      const position = stored.map((pl) => {
-        const def = art.get(Number(pl.piece_id)) || {};
-        return {
-          piece_id: pl.piece_id,
-          player_id: Number(pl.player_id ?? pl.team ?? 1),
-          x: Number(pl.x),
-          y: Number(pl.y),
-          piece_name: pl.piece_name || def.piece_name || null,
-          image_url: pl.image_url || null,
-          image_location: pl.image_location || def.image_location || null,
-        };
-      });
-
-      const ratingPublic = isRatingPublic(row);
-      res.json({
-        date,
-        solvedByYou,
-        puzzle: {
-          id: row.puzzle_id,
-          game_type_id: row.game_type_id,
-          game_name: row.game_name,
-          board_width: row.board_width,
-          board_height: row.board_height,
-          position,
-          title: row.title,
-          description: row.description,
-          goal: row.goal,
-          goal_label: GOAL_DEFS[row.goal]?.label || null,
-          side_to_move: row.side_to_move,
-          solution_depth: row.solution_depth,
-          creator_username: row.creator_username,
-          attempt_count: row.attempt_count,
-          solve_count: row.solve_count,
-          /*
-           * The move that led into the position, so the home card and the
-           * Discord activity can PLAY it before the solver starts - the same
-           * thing the puzzle's own page does. It gives nothing away: it is
-           * what the opponent already did, and the answer is what comes next.
-           */
-          setup_move: safeParse(row.setup_move),
-          // What may be put down, when the answer is a placement rather than a
-          // move. Empty for every game that does not place pieces.
-          ...placementPayload(row),
-          rating: ratingPublic ? row.rating : null,
-          rating_sample_count: ratingPublic ? row.rating_sample_count : null,
-        },
-      });
+      res.json(await dailyPayload(row, date, req.user));
     } catch (err) {
       // A missing daily_puzzles table (migration not yet run) should leave the
       // home page working, not break it.

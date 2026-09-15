@@ -23,6 +23,16 @@ const KEY = 'gg:discord:launch-params';
 /** The parameter names that matter. Presence of frame_id is the signal. */
 const REQUIRED = ['frame_id', 'instance_id', 'platform'];
 
+/*
+ * Also worth keeping, though nothing breaks without it.
+ *
+ * custom_id is the id of the button that launched the activity, which is how a
+ * daily post says WHICH puzzle it was about. It has to survive the same
+ * navigations the three above do, or a post from last week quietly opens
+ * today's puzzle - the failure it exists to prevent.
+ */
+const OPTIONAL = ['custom_id'];
+
 /**
  * Remember this launch's parameters, if this looks like a launch.
  *
@@ -36,7 +46,7 @@ export function captureLaunchParams() {
     const params = new URLSearchParams(search);
     if (!params.get('frame_id')) return;
     const keep = new URLSearchParams();
-    for (const name of REQUIRED) {
+    for (const name of [...REQUIRED, ...OPTIONAL]) {
       const v = params.get(name);
       if (v) keep.set(name, v);
     }
@@ -68,6 +78,28 @@ export function getLaunchParams() {
 /** Whether this page is running as a Discord activity. */
 export function isDiscordLaunch() {
   return !!getLaunchParams().get('frame_id');
+}
+
+/**
+ * Which puzzle this launch is about, when the launch names one.
+ *
+ * The daily post's Play button carries `gridgrove:play-daily:<puzzle id>`, and
+ * Discord passes that custom_id through to the activity. A post is permanent
+ * and a schedule is not, so the id in the button is the only thing that still
+ * means the same puzzle a week later.
+ *
+ * Returns null for a launch with no id - the app shelf, an older post, a button
+ * from before this existed - and the caller then asks for today's, which is
+ * what all of those mean.
+ *
+ * @returns {number|null}
+ */
+export function launchedPuzzleId() {
+  const raw = getLaunchParams().get('custom_id') || '';
+  const m = /^gridgrove:play-daily:(\d+)$/.exec(raw);
+  if (!m) return null;
+  const id = Number(m[1]);
+  return Number.isInteger(id) && id > 0 ? id : null;
 }
 
 /**

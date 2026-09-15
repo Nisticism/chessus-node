@@ -184,14 +184,32 @@ function registerDiscordRoutes(app, { db_pool }) {
         [req.discord.id]
       );
 
-      const date = dailyPuzzle.todayKey();
-      const today = await dailyPuzzle.forDate(date);
+      /*
+       * Which puzzle the activity is actually showing.
+       *
+       * Usually today's, but a Discord post's Play button names the puzzle it
+       * was posted about, and that post stays in its channel for good - so the
+       * activity can be opened on a puzzle from last week. Reporting today's
+       * progress for it would be worse than reporting none: it would announce
+       * a solve for a puzzle in front of the player that they have not solved,
+       * and replay the wrong answer onto the board.
+       *
+       * Falls back to today whenever the id is absent or is not a puzzle that
+       * has run, which is the same answer as before for every other caller.
+       */
+      const askedFor = parseInt(req.query.puzzle, 10);
+      const todayKey = dailyPuzzle.todayKey();
+      const asked = (Number.isInteger(askedFor) && askedFor > 0)
+        ? await dailyPuzzle.forPuzzleId(askedFor, todayKey)
+        : null;
+      const today = asked || await dailyPuzzle.forDate(todayKey);
+      const date = asked ? asked.puzzle_date : todayKey;
 
       /*
-       * Today's state, so the activity can open on "you solved it in 2" instead
-       * of offering a puzzle the player has already finished. Attempts are
-       * counted from the attempt rows rather than a counter on the player, so
-       * the number survives the player record being rebuilt.
+       * That puzzle's state, so the activity can open on "you solved it in 2"
+       * instead of offering a puzzle the player has already finished. Attempts
+       * are counted from the attempt rows rather than a counter on the player,
+       * so the number survives the player record being rebuilt.
        */
       let todayState = { solved: false, attempts: 0 };
       if (today) {

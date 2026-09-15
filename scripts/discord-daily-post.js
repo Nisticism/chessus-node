@@ -48,9 +48,6 @@
  *                         as the app (below).
  *   DISCORD_POST_SITE_URL Where to read the puzzle and board from. Falls back
  *                         to SITE_URL, then to localhost. Overridden by --site.
- *   DISCORD_APP_ID        Optional. When set, the LINK button deep-links to the
- *                         activity instead of the website. Not needed for the
- *                         real button - that launches the activity by itself.
  *   DISCORD_BOT_TOKEN     Optional. With DISCORD_CHANNEL_ID, posts as the app
  *   DISCORD_CHANNEL_ID    and the button becomes a real one. Both or neither.
  *   DISCORD_BUTTON_STYLE  Optional, default 3 (green). 1 blurple, 2 grey,
@@ -99,8 +96,6 @@ const SITE = String(
 const PUBLIC = String(
   arg('public-url', null) || process.env.SITE_URL || SITE
 ).replace(/\/+$/, '');
-const APP_ID = process.env.DISCORD_APP_ID || null;
-
 /*
  * Posting as the application, which is what makes a real button possible.
  *
@@ -183,9 +178,21 @@ function prettyDate(key) {
   // The puzzle page lives under its game, which is how every link on the site
   // reaches it - a bare /puzzles/:id is not a route.
   const puzzleUrl = `${PUBLIC}/games/${puzzle.game_type_id}/puzzles/${puzzle.id}`;
-  const playUrl = APP_ID
-    ? `https://discord.com/activities/${APP_ID}`
-    : puzzleUrl;
+
+  /*
+   * The LINK-button fallback points at the puzzle's own page, never at the
+   * activity.
+   *
+   * A deep link to the activity - https://discord.com/activities/<app id> - can
+   * only say "open GridGrove", not which puzzle, so it opens whatever is
+   * scheduled the day it is CLICKED. On the morning it was posted that is the
+   * same thing; a week later it is the wrong puzzle, and the post is still
+   * sitting in the channel offering it. The site link names the puzzle and
+   * keeps naming it, which is what a post about a specific puzzle should do.
+   *
+   * The real button below has no such problem: it carries the puzzle's id.
+   */
+  const playUrl = puzzleUrl;
 
   const depth = Number(puzzle.solution_depth) || 1;
   const moveWord = depth === 1 ? 'one move' : `${depth} moves`;
@@ -237,7 +244,21 @@ function prettyDate(key) {
           type: 2,
           style: BUTTON_STYLE,
           label: 'Play now',
-          custom_id: PLAY_DAILY_ID,
+          /*
+           * The puzzle's id, appended.
+           *
+           * Discord hands a button's custom_id back on the click AND passes it
+           * to the activity it launches, so this is how a post says which
+           * puzzle it is about. Without it the button could only mean "open
+           * GridGrove", and a post from last week opened today's puzzle - the
+           * board in the message and the board in the activity disagreeing,
+           * with the message being the one that was right.
+           *
+           * The handler matches on the prefix, so a button already sitting in
+           * a channel from before this existed still works and still means
+           * today's puzzle.
+           */
+          custom_id: `${PLAY_DAILY_ID}:${puzzle.id}`,
         }
         /*
          * The fallback. Style 5 is the only kind a plain channel webhook may

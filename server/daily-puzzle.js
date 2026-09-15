@@ -165,10 +165,13 @@ const DAILY_DISCRETION =
   + "schedule, replace or remove any day's puzzle at any time, for any reason.";
 
 function createDailyPuzzle({ db_pool }) {
-  /** The scheduled puzzle for a date, or null if nothing is scheduled. */
-  const forDate = async (dateKey) => {
-    const [[row]] = await db_pool.query(
-      `SELECT d.puzzle_date, d.puzzle_id, d.game_type_id,
+  /*
+   * Everything a card or a board needs about a scheduled puzzle. Written once
+   * because forDate and forPuzzleId differ only in how they find the row, and
+   * two copies of a twenty-column select would drift.
+   */
+  const SCHEDULED_SELECT = `
+      SELECT DATE_FORMAT(d.puzzle_date, '%Y-%m-%d') AS puzzle_date, d.puzzle_id, d.game_type_id,
               p.title, p.description, p.goal, p.goal_description, p.side_to_move,
               p.solution_depth, p.rating, p.rating_sample_count, p.hide_rating,
               p.attempt_count, p.solve_count, p.creator_id, p.position, p.setup_move,
@@ -180,9 +183,44 @@ function createDailyPuzzle({ db_pool }) {
        FROM daily_puzzles d
        JOIN puzzles p ON p.id = d.puzzle_id
        JOIN game_types gt ON gt.id = d.game_type_id
-       LEFT JOIN users u ON u.id = p.creator_id
-       WHERE d.puzzle_date = ? LIMIT 1`,
+       LEFT JOIN users u ON u.id = p.creator_id`;
+
+  /** The scheduled puzzle for a date, or null if nothing is scheduled. */
+  const forDate = async (dateKey) => {
+    const [[row]] = await db_pool.query(
+      `${SCHEDULED_SELECT} WHERE d.puzzle_date = ? LIMIT 1`,
       [dateKey]
+    );
+    return row || null;
+  };
+
+  /**
+   * A puzzle by its OWN id, as long as it has been a daily puzzle already.
+   *
+   * What a Discord post needs. The post names a specific puzzle and stays in
+   * the channel for good, so clicking Play on it a week later has to open the
+   * puzzle in the post rather than whatever is scheduled that morning - which
+   * means looking a puzzle up by identity, not by the day it happens to be.
+   *
+   * Two things this is careful about. It refuses anything not scheduled on or
+   * before today, so the queue still cannot be read ahead - the whole point of
+   * scheduling is that tomorrow's puzzle is not spoilable, and an id is as good
+   * a way to ask as a date. And when a puzzle has been scheduled more than once
+   * it answers with the most recent day, because that is the one a player would
+   * be thinking of.
+   *
+   * @param {number} puzzleId
+   * @param {string} todayKeyValue Today, so "not yet" is decided in the same
+   *                               timezone the rest of the schedule uses.
+   */
+  const forPuzzleId = async (puzzleId, todayKeyValue) => {
+    const id = Number(puzzleId);
+    if (!Number.isInteger(id) || id <= 0) return null;
+    const [[row]] = await db_pool.query(
+      `${SCHEDULED_SELECT}
+       WHERE d.puzzle_id = ? AND d.puzzle_date <= ?
+       ORDER BY d.puzzle_date DESC LIMIT 1`,
+      [id, todayKeyValue]
     );
     return row || null;
   };
@@ -326,7 +364,7 @@ function createDailyPuzzle({ db_pool }) {
     return row?.n ?? 0;
   };
 
-  return { forDate, fillQueue, eligibleCount, todayKey, addDays, HORIZON_DAYS };
+  return { forDate, forPuzzleId, fillQueue, eligibleCount, todayKey, addDays, HORIZON_DAYS };
 }
 
 module.exports = {
