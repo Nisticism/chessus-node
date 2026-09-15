@@ -1,0 +1,21 @@
+{
+  "_comment": "Artwork for the classic games GridGrove publishes. The SVGs are carried HERE rather than in uploads/, which is gitignored and lives on a mounted volume in production - so a deploy would otherwise create rows pointing at images that were never sent. The migration writes each file into the uploads directory if it is missing, then creates the pieces and the games. Filenames are the sha256 of the contents, matching how uploads are named everywhere else, so rewriting a file can never produce a different name for the same drawing.",
+  "art": {
+    "cross": {
+      "file": "cc8d980e370a7db33aca3bb2bccd5c0fffe9a1304ffdc5d98c86e87da144ba50.svg",
+      "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 100 100\"><g stroke-linecap=\"round\" fill=\"none\"><g stroke=\"#1b1b1b\" stroke-width=\"20\" opacity=\"0.55\"><line x1=\"24\" y1=\"24\" x2=\"76\" y2=\"76\"/><line x1=\"76\" y1=\"24\" x2=\"24\" y2=\"76\"/></g><g stroke=\"#e4564a\" stroke-width=\"13\"><line x1=\"24\" y1=\"24\" x2=\"76\" y2=\"76\"/><line x1=\"76\" y1=\"24\" x2=\"24\" y2=\"76\"/></g></g></svg>\n"
+    },
+    "nought": {
+      "file": "481fd892454b818c26742d172eb798c498ec6b0c922eaba2d3075d5db84d4c77.svg",
+      "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 100 100\"><circle cx=\"50\" cy=\"50\" r=\"31\" fill=\"none\" stroke=\"#1b1b1b\" stroke-width=\"20\" opacity=\"0.55\"/><circle cx=\"50\" cy=\"50\" r=\"31\" fill=\"none\" stroke=\"#54b3ea\" stroke-width=\"13\"/></svg>\n"
+    },
+    "red": {
+      "file": "b67174ebfe43bd320519a2ee9d89bfa4469c8497401f35b7965589922a8a5dd9.svg",
+      "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 100 100\"><circle cx=\"50\" cy=\"50\" r=\"40\" fill=\"#d8453c\" stroke=\"#7d2420\" stroke-width=\"5\"/><circle cx=\"50\" cy=\"50\" r=\"24\" fill=\"none\" stroke=\"#b3332c\" stroke-width=\"5\"/></svg>\n"
+    },
+    "yellow": {
+      "file": "08306a006f38409afb3b376d185384d9563578317461292b405ebbc60fe19187.svg",
+      "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 100 100\"><circle cx=\"50\" cy=\"50\" r=\"40\" fill=\"#e9c235\" stroke=\"#8a6f14\" stroke-width=\"5\"/><circle cx=\"50\" cy=\"50\" r=\"24\" fill=\"none\" stroke=\"#c9a422\" stroke-width=\"5\"/></svg>\n"
+    }
+  }
+}

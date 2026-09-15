@@ -1,4 +1,5 @@
 const db_pool = require("../configs/db");
+const { seedClassicGames, adoptClassicGamePieces } = require('./classic-games');
 
 /**
  * Check if a table exists
@@ -5412,6 +5413,36 @@ const runMigrations = async () => {
     await seedPoolDecisions();
   } catch (err) {
     console.error('Error seeding puzzle-pool decisions:', err.message);
+  }
+
+  /*
+   * The classic games GridGrove publishes, and the pieces they use.
+   *
+   * Tic Tac Toe and Connect Four were built locally and had to reach
+   * production somehow. Doing it here rather than by hand means the same two
+   * games exist on every database, with the same rules, owned by the same
+   * account - and that a fresh database gets them without anybody remembering.
+   */
+  try {
+    const made = await seedClassicGames();
+    if (made) migrationsRun++;
+  } catch (err) {
+    console.error('Error seeding the classic games:', err.message);
+  }
+
+  /*
+   * And the pieces those games are made of belong to GridGrove too.
+   *
+   * A chess pawn is not anybody's creation in the sense the rest of the piece
+   * library is, and leaving the official Chess game's pieces under a personal
+   * account means the Classic Pieces filter shows a tray of stones and marks
+   * while the pawns and knights sit under somebody's name.
+   */
+  try {
+    const moved = await adoptClassicGamePieces();
+    if (moved) migrationsRun++;
+  } catch (err) {
+    console.error('Error reassigning classic game pieces:', err.message);
   }
 };
 

@@ -342,6 +342,12 @@ const pieceCredits = {
     "license": "Apache 2.0 (https://github.com/LexLuengas/chessnut-pieces/blob/master/LICENSE.txt)",
     "source": "https://sharechess.github.io"
   },
+  "classics/base": {
+    "author": "GridGrove",
+    "variantBy": "",
+    "license": "Original artwork made for GridGrove, free to use on this site",
+    "source": "https://gridgrove.gg"
+  },
   "companion/base": {
     "author": "David L. Brown",
     "variantBy": "",
