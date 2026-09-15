@@ -2511,6 +2511,16 @@ app.get("/api/pieces", async (req, res) => {
     const sort = req.query.sort || 'newest';
     const search = req.query.search || '';
     const creatorId = req.query.creatorId ? parseInt(req.query.creatorId) : null;
+    /*
+     * Filter by who made it, by NAME. For the Classic Pieces filter, which
+     * asks for GridGrove's own - the client cannot ask by id because the
+     * platform account's id is a different number on every database.
+     *
+     * Kept separate from creatorId on purpose: it does NOT turn on the
+     * my-own-pieces behaviour below (drafts and pending names stay hidden),
+     * because asking for somebody by name is asking as a visitor.
+     */
+    const creatorUsername = String(req.query.creatorUsername || '').trim().slice(0, 64);
 
     // Build WHERE clause
     let whereClause = '';
@@ -2520,6 +2530,11 @@ app.get("/api/pieces", async (req, res) => {
     if (creatorId) {
       conditions.push('p.creator_id = ?');
       whereParams.push(creatorId);
+    }
+
+    if (creatorUsername) {
+      conditions.push('p.creator_id = (SELECT id FROM users WHERE username = ? LIMIT 1)');
+      whereParams.push(creatorUsername);
     }
 
     // Draft pieces are private: only surfaced when a creator views their own list

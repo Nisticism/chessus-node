@@ -14,13 +14,17 @@ import axios from "../services/axios-interceptor";
 import API_URL from "../global/global";
 import authHeader from "../services/auth-header";
 
-export const getGames = (page = 1, limit = 20, sort = 'newest', winCondition = '', search = '', creatorId = '', includeDrafts = '') => async (dispatch) => {
+export const getGames = (page = 1, limit = 20, sort = 'newest', winCondition = '', search = '', creatorId = '', includeDrafts = '', creatorUsername = '') => async (dispatch) => {
   try {
     const params = { page, limit, sort };
     if (winCondition) params.winCondition = winCondition;
     if (search) params.search = search;
     if (creatorId) params.creatorId = creatorId;
     if (includeDrafts) params.includeDrafts = includeDrafts;
+    // Filtering to one account BY NAME - the Classic Games filter, which asks
+    // for GridGrove's own. By name because the account's id differs per
+    // database, so nothing on the client may hard-code one.
+    if (creatorUsername) params.creatorUsername = creatorUsername;
     const response = await axios.get(API_URL + "games", {
       params,
       headers: authHeader()

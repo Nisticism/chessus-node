@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Link, useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from "react-redux";
 import { getPieces, deletePiece } from "../../actions/pieces";
 import Pagination from "../pagination/Pagination";
 import styles from "./piecelist.module.scss";
+import { PLATFORM_ACCOUNT_USERNAME } from "../../helpers/platform-account";
 
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";
 
@@ -24,12 +25,29 @@ const PieceList = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
 
+  /*
+   * The arguments for one fetch of the list, in one place - the same
+   * derivation was written out at both call sites, so a filter added to the
+   * effect alone would quietly revert the next time the list refetched.
+   *
+   * "Classic" is everything GridGrove owns, asked for by name because the
+   * account's id differs per database.
+   */
+  const fetchArgs = useCallback((page) => {
+    const mine = sortBy === 'my_pieces' && currentUser;
+    return [
+      page, 20,
+      (sortBy === 'my_pieces' || sortBy === 'classic') ? 'newest' : sortBy,
+      searchQuery,
+      mine ? currentUser.id : '',
+      mine ? 'true' : '',
+      sortBy === 'classic' ? PLATFORM_ACCOUNT_USERNAME : '',
+    ];
+  }, [sortBy, currentUser, searchQuery]);
+
   useEffect(() => {
-    const creatorId = sortBy === 'my_pieces' && currentUser ? currentUser.id : '';
-    const actualSort = sortBy === 'my_pieces' ? 'newest' : sortBy;
-    const includeDrafts = sortBy === 'my_pieces' && currentUser ? 'true' : '';
-    dispatch(getPieces(currentPage, 20, actualSort, searchQuery, creatorId, includeDrafts));
-  }, [currentPage, sortBy, searchQuery, currentUser, dispatch]);
+    dispatch(getPieces(...fetchArgs(currentPage)));
+  }, [currentPage, fetchArgs, dispatch]);
 
   const handleSortChange = (e) => {
     setSortBy(e.target.value);
@@ -129,10 +147,7 @@ const PieceList = () => {
       setShowAlert(true);
       // Force a fresh fetch after delete
       setTimeout(() => {
-        const creatorId = sortBy === 'my_pieces' && currentUser ? currentUser.id : '';
-        const actualSort = sortBy === 'my_pieces' ? 'newest' : sortBy;
-        const includeDrafts = sortBy === 'my_pieces' && currentUser ? 'true' : '';
-        dispatch(getPieces(currentPage, 20, actualSort, searchQuery, creatorId, includeDrafts));
+        dispatch(getPieces(...fetchArgs(currentPage)));
       }, 100);
     } catch (error) {
       console.error("Error deleting piece:", error);
@@ -343,6 +358,7 @@ const PieceList = () => {
                 <option value="newest">Newest</option>
                 <option value="most_used">Most Used in Games</option>
                 <option value="alphabetical">Alphabetical</option>
+                <option value="classic">Classic Pieces</option>
                 {currentUser && <option value="my_pieces">My Pieces</option>}
               </select>
             </div>
@@ -371,7 +387,7 @@ const PieceList = () => {
       {/* Pieces Section */}
       <section className={styles["pieces-section"]}>
         <div className={styles["section-header"]}>
-          <h2>{sortBy === 'my_pieces' ? '🎨 My Pieces' : '🌍 All Pieces'}</h2>
+          <h2>{sortBy === 'my_pieces' ? '🎨 My Pieces' : (sortBy === 'classic' ? '🏛️ Classic Pieces' : '🌍 All Pieces')}</h2>
           <span className={styles["piece-count"]}>
             {totalCount} total piece{totalCount !== 1 ? 's' : ''}
           </span>

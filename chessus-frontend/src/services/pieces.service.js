@@ -3,11 +3,13 @@ import authHeader from "./auth-header";
 
 import API_URL from "../global/global.js";
 
-const getPieces = async (page = 1, limit = 20, sort = 'newest', search = '', creatorId = '', includeDrafts = '') => {
+const getPieces = async (page = 1, limit = 20, sort = 'newest', search = '', creatorId = '', includeDrafts = '', creatorUsername = '') => {
   const params = { page, limit, sort };
   if (search) params.search = search;
   if (creatorId) params.creatorId = creatorId;
   if (includeDrafts) params.includeDrafts = 'true';
+  // The Classic Pieces filter: one account's pieces, asked for by name.
+  if (creatorUsername) params.creatorUsername = creatorUsername;
   const response = await axios.get(API_URL + "pieces", { 
     params,
     headers: authHeader() 

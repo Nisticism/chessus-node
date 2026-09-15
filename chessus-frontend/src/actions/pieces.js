@@ -7,9 +7,9 @@ import {
   INVALIDATE_PIECE_VALUE_CACHE,
 } from "./types";
 
-export const getPieces = (page = 1, limit = 20, sort = 'newest', search = '', creatorId = '', includeDrafts = '') => async (dispatch) => {
+export const getPieces = (page = 1, limit = 20, sort = 'newest', search = '', creatorId = '', includeDrafts = '', creatorUsername = '') => async (dispatch) => {
   try {
-    const response = await PiecesService.getPieces(page, limit, sort, search, creatorId, includeDrafts);
+    const response = await PiecesService.getPieces(page, limit, sort, search, creatorId, includeDrafts, creatorUsername);
     dispatch({
       type: LIST_PIECES,
       payload: response.data,

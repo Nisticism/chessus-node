@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Link, useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from "react-redux";
 import { getGames, deleteGame, toggleUpvote } from "../../actions/games";
 import Pagination from "../pagination/Pagination";
 import styles from "./gamelist.module.scss";
+import { PLATFORM_ACCOUNT_USERNAME } from "../../helpers/platform-account";
 
 const GameList = () => {
   const { user: currentUser } = useSelector((state) => state.authReducer);
@@ -23,12 +24,34 @@ const GameList = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
 
+  /*
+   * The arguments for one fetch of the list.
+   *
+   * The same derivation was written out at three call sites - the effect, the
+   * refetch after a delete, and the refetch after an upvote - so a filter
+   * added to one of them worked until you deleted something and the list
+   * quietly reverted. Classic Games would have been the fourth time.
+   *
+   * "Classic" is everything GridGrove owns: the games that shipped with the
+   * site, rather than a hand-kept list of what counts as a classic. Asked for
+   * by name, because the account's id differs per database.
+   */
+  const fetchArgs = useCallback((page) => {
+    const mine = sortBy === 'my_games' && currentUser;
+    return [
+      page, 20,
+      (sortBy === 'my_games' || sortBy === 'classic') ? 'newest' : sortBy,
+      winConditionFilter,
+      searchQuery,
+      mine ? currentUser.id : '',
+      mine ? 'true' : '',
+      sortBy === 'classic' ? PLATFORM_ACCOUNT_USERNAME : '',
+    ];
+  }, [sortBy, currentUser, winConditionFilter, searchQuery]);
+
   useEffect(() => {
-    const creatorId = sortBy === 'my_games' && currentUser ? currentUser.id : '';
-    const actualSort = sortBy === 'my_games' ? 'newest' : sortBy;
-    const includeDrafts = sortBy === 'my_games' && currentUser ? 'true' : '';
-    dispatch(getGames(currentPage, 20, actualSort, winConditionFilter, searchQuery, creatorId, includeDrafts));
-  }, [currentPage, sortBy, winConditionFilter, searchQuery, currentUser, dispatch]);
+    dispatch(getGames(...fetchArgs(currentPage)));
+  }, [currentPage, fetchArgs, dispatch]);
 
   const handleSortChange = (e) => {
     setSortBy(e.target.value);
@@ -119,10 +142,7 @@ const GameList = () => {
       setShowAlert(true);
       // Force a fresh fetch after delete
       setTimeout(() => {
-        const creatorId = sortBy === 'my_games' && currentUser ? currentUser.id : '';
-        const actualSort = sortBy === 'my_games' ? 'newest' : sortBy;
-        const includeDrafts = sortBy === 'my_games' && currentUser ? 'true' : '';
-        dispatch(getGames(currentPage, 20, actualSort, winConditionFilter, searchQuery, creatorId, includeDrafts));
+        dispatch(getGames(...fetchArgs(currentPage)));
       }, 100);
     } catch (error) {
       console.error("Error deleting game:", error);
@@ -178,10 +198,7 @@ Delete the game and its puzzles anyway?`)) {
       const result = await toggleUpvote(gameId);
       setUpvotedGames(prev => ({ ...prev, [gameId]: result.upvoted }));
       // Update the count in the redux store games list
-      const creatorId = sortBy === 'my_games' && currentUser ? currentUser.id : '';
-      const actualSort = sortBy === 'my_games' ? 'newest' : sortBy;
-      const includeDrafts = sortBy === 'my_games' && currentUser ? 'true' : '';
-      dispatch(getGames(currentPage, 20, actualSort, winConditionFilter, searchQuery, creatorId, includeDrafts));
+      dispatch(getGames(...fetchArgs(currentPage)));
     } catch (err) {
       console.error("Error toggling upvote:", err);
     }
@@ -392,6 +409,7 @@ Delete the game and its puzzles anyway?`)) {
                 <option value="most_upvoted">Most Upvoted</option>
                 <option value="last_played">Recently Played</option>
                 <option value="alphabetical">Alphabetical</option>
+                <option value="classic">Classic Games</option>
                 {currentUser && <option value="my_games">My Games</option>}
               </select>
             </div>
@@ -415,7 +433,7 @@ Delete the game and its puzzles anyway?`)) {
       {/* Games Section */}
       <section className={styles["games-section"]}>
         <div className={styles["section-header"]}>
-          <h2>{sortBy === 'my_games' ? '♟️ My Games' : '🌍 All Games'}</h2>
+          <h2>{sortBy === 'my_games' ? '♟️ My Games' : (sortBy === 'classic' ? '🏛️ Classic Games' : '🌍 All Games')}</h2>
           <span className={styles["game-count"]}>
             {totalCount} total game{totalCount !== 1 ? 's' : ''}
           </span>
