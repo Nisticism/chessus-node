@@ -5,6 +5,15 @@ import styles from "./changelog.module.scss";
 const changelogData = [
   {
     date: "September 15, 2026",
+    title: "Solve the whole puzzle on the home page",
+    items: [
+      "A multi-move puzzle now plays out in full on the home page. Finding the first move used to bounce you to the puzzle's own page to finish; now your move and the opponent's answer play on the card, and it tells you how many moves are left until you have it.",
+      "“Play it again” restarts the puzzle where you are, rather than opening it elsewhere — the title still links to the full page for anyone who wants it. Restarting replays the opponent's opening move, and that move now animates on a plain refresh too, not only the first time you ever see the puzzle.",
+      "The Discord activity already played its puzzles out in place; this brings the website's card in line with it.",
+    ],
+  },
+  {
+    date: "September 15, 2026",
     title: "Board coordinates on wide boards",
     items: [
       "Fixed the file letters on boards wider than 26 columns. After “z” they ran into { | } ~ and then into unprintable characters — Giant Chess, at 48 columns, showed a row of empty boxes.",

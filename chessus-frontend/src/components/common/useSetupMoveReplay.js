@@ -42,11 +42,26 @@ const useSetupMoveReplay = ({
   setupMove,
   imageFor,
   enabled = true,
+  replayKey,
 }) => {
   const [progress, setProgress] = useState(null);   // null = not running
   const [done, setDone] = useState(false);
   const frameRef = useRef(null);
   const timerRef = useRef(null);
+
+  /*
+   * A caller can re-arm the replay by changing `replayKey` - the home card's
+   * "Play it again" bumps it so a puzzle already seen animates the opponent's
+   * move afresh. Ignored on mount and when the key is not provided, so the
+   * other two boards keep their once-only behaviour.
+   */
+  const prevKeyRef = useRef(replayKey);
+  useEffect(() => {
+    if (prevKeyRef.current === replayKey) return;
+    prevKeyRef.current = replayKey;
+    setProgress(null);
+    setDone(false);
+  }, [replayKey]);
 
   const prefersReducedMotion = useMemo(() => {
     try {

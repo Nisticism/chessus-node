@@ -156,6 +156,16 @@ const PuzzlesPanel = () => {
   const [picked, setPicked] = useState(null);  // "y,x" of the held piece
   const [verdict, setVerdict] = useState(null);
   const [busy, setBusy] = useState(false);
+  /*
+   * A multi-move puzzle is played out on the card now, rather than handed off
+   * to its own page. Every solver move found so far is re-sent with the next
+   * one - the solve endpoint is stateless and interleaves the opponent's
+   * replies - so this is the same list PuzzleSolver and the Discord activity
+   * keep.
+   */
+  const [found, setFound] = useState([]);
+  // Bumped to re-arm the opponent's-move animation when the puzzle restarts.
+  const [replayKey, setReplayKey] = useState(0);
   // Where the held piece may go, from the server. The dots are what make the
   // board playable rather than a picture you can click at.
   const [hints, setHints] = useState([]);
@@ -196,6 +206,7 @@ const PuzzlesPanel = () => {
         setPicked(null);
         setHints([]);
         setLastTry(null);
+        setFound([]);
         hintCache.current = new Map();
         if (data?.puzzle?.position) {
           const map = {};
@@ -284,10 +295,37 @@ const PuzzlesPanel = () => {
     board,
     setupMove: puzzle?.setup_move,
     imageFor,
-    // Nothing to replay once it is over, or for somebody who already solved it
-    // and is looking at their own line.
-    enabled: !finished && !daily?.solvedByYou,
+    // Nothing to replay once it is over, or once they are mid-line. Not gated
+    // on having solved it before: the card always opens on the fresh position,
+    // so the opponent's move should play in every time - including after a
+    // refresh - the same way it does on the puzzle's own page.
+    enabled: !finished && !found.length,
+    replayKey,
   });
+
+  /** A fresh copy of the opening position, for a restart or a wrong guess. */
+  const freshBoard = useCallback(() => {
+    const map = {};
+    for (const pl of (puzzle?.position || [])) map[`${pl.y},${pl.x}`] = { ...pl };
+    return map;
+  }, [puzzle]);
+
+  /*
+   * Start the puzzle over on the card itself. Everything the solver built up is
+   * cleared and the opponent's opening move is re-armed, so "Play it again"
+   * replays the position from the top rather than sending them elsewhere.
+   */
+  const restart = useCallback(() => {
+    setBoard(freshBoard());
+    setFound([]);
+    setVerdict(null);
+    setPicked(null);
+    setHints([]);
+    setLastTry(null);
+    setTrayPick(null);
+    hintCache.current = new Map();
+    setReplayKey((k) => k + 1);
+  }, [freshBoard]);
 
   const tryMove = useCallback(async (fromKey, x, y) => {
     if (!puzzle || busy || finished) return;
@@ -325,18 +363,42 @@ const PuzzlesPanel = () => {
         move.castlingDirection = info.data.castling.castlingDirection;
       }
 
+      const attemptLine = [...found, move];
       const { data } = await axios.post(
         `${API_URL}puzzles/${puzzle.id}/solve`,
-        { moves: [move] },
+        { moves: attemptLine },
         { headers: authHeader() }
       );
       if (data.solved) {
-        setBoard((prev) => applyMove(prev, move, data.solution?.[0]));
+        setFound(attemptLine);
+        // Everything from this move to the end of the line, replayed onto the
+        // board it started from - the server's version carries the promotion
+        // piece, so it replaces the guess rather than stacking on it.
+        setBoard((prev) => data.position
+          ? fromServerPosition(data.position)
+          : (data.solution || attemptLine).slice(found.length * 2)
+              .reduce((cells, ply) => applyMove(cells, ply), prev));
         setVerdict({ status: 'solved', text: 'That is it — solved.' });
       } else if (data.status === 'continue') {
-        // A longer line than the card can show; finish it on its own page.
-        navigate(`/games/${puzzle.game_type_id}/puzzles/${puzzle.id}`);
+        // Right so far: play the move, then the answer the creator wrote for
+        // it, so the board shows the position the next move starts from.
+        setFound(attemptLine);
+        setBoard((prev) => data.position
+          ? fromServerPosition(data.position)
+          : applyMove(applyMove(prev, move), data.reply));
+        setLastTry(data.reply ? { x: data.reply.to.x, y: data.reply.to.y } : { x, y });
+        hintCache.current = new Map();
+        const left = (data.movesTotal || 0) - (data.movesPlayed || 0);
+        setVerdict({
+          status: 'continue',
+          text: left === 1 ? 'Good — one move left.' : `Good — ${left} moves left.`,
+        });
       } else {
+        // Off the line. The prefix rule means a half-right line cannot resume
+        // from the middle, so it restarts from the opening position.
+        setFound([]);
+        setBoard(freshBoard());
+        hintCache.current = new Map();
         setVerdict({ status: 'wrong', text: 'Not that one. Try again.' });
       }
     } catch (_) {
@@ -344,7 +406,7 @@ const PuzzlesPanel = () => {
     } finally {
       setBusy(false);
     }
-  }, [puzzle, busy, finished, board, navigate]);
+  }, [puzzle, busy, finished, board, navigate, found, freshBoard]);
 
   /** This piece's moves, from the cache when we already asked. */
   const loadHints = useCallback(async (x, y) => {
@@ -444,17 +506,30 @@ const PuzzlesPanel = () => {
       to: { x, y },
     };
     try {
+      const attemptLine = [...found, move];
       const { data } = await axios.post(
         `${API_URL}puzzles/${puzzle.id}/solve`,
-        { moves: [move] },
+        { moves: attemptLine },
         { headers: authHeader() }
       );
       if (data.position) setBoard(fromServerPosition(data.position));
       if (data.solved) {
+        setFound(attemptLine);
         setVerdict({ status: 'solved', text: 'That is it — solved.' });
       } else if (data.status === 'continue') {
-        navigate(`/games/${puzzle.game_type_id}/puzzles/${puzzle.id}`);
+        // Played out in place, the same as a move-based line: keep what has
+        // been found and let the next placement continue it.
+        setFound(attemptLine);
+        hintCache.current = new Map();
+        const left = (data.movesTotal || 0) - (data.movesPlayed || 0);
+        setVerdict({
+          status: 'continue',
+          text: left === 1 ? 'Good — one move left.' : `Good — ${left} moves left.`,
+        });
       } else {
+        // Off the line: the whole thing restarts from the opening position.
+        setFound([]);
+        setBoard(freshBoard());
         setVerdict({ status: 'wrong', text: 'Not this one. Try another square.' });
       }
     } catch (_) {
@@ -463,7 +538,7 @@ const PuzzlesPanel = () => {
       setBusy(false);
       setTrayPick(null);
     }
-  }, [puzzle, busy, finished, trayPick, navigate]);
+  }, [puzzle, busy, finished, trayPick, found, freshBoard]);
 
   const clickSquare = useCallback((x, y) => {
     if (!puzzle || busy || finished || replaying) return;
@@ -711,16 +786,29 @@ const PuzzlesPanel = () => {
                   </p>
                 )}
                 <div className={styles["daily-actions"]}>
-                  <Link
-                    to={`/games/${puzzle.game_type_id}/puzzles/${puzzle.id}`}
-                    className={styles["btn-primary"]}
-                  >
-                    {solved ? 'See the full puzzle' : (daily.solvedByYou ? 'Play it again' : 'Open on its own page')}
-                  </Link>
-                  {verdict?.status === 'wrong' && (
-                    <button className={styles["btn-link"]} onClick={() => setVerdict(null)}>
-                      Clear
-                    </button>
+                  {finished ? (
+                    <>
+                      <button
+                        type="button"
+                        className={styles["btn-primary"]}
+                        onClick={restart}
+                      >
+                        Play it again
+                      </button>
+                      <Link
+                        to={`/games/${puzzle.game_type_id}/puzzles/${puzzle.id}`}
+                        className={styles["btn-secondary"]}
+                      >
+                        See the full puzzle
+                      </Link>
+                    </>
+                  ) : (
+                    <Link
+                      to={`/games/${puzzle.game_type_id}/puzzles/${puzzle.id}`}
+                      className={styles["btn-secondary"]}
+                    >
+                      Open on its own page
+                    </Link>
                   )}
                 </div>
               </div>
