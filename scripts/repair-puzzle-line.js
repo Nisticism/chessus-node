@@ -28,6 +28,8 @@
  *   --checks-only  explore only the solver's checking moves. Much cheaper and
  *               finds nearly every short forced mate, but it is a heuristic: a
  *               negative result under it is not a proof, and is labelled.
+ *   --retitle   also correct a title whose move count no longer matches - only
+ *               the "... in <number>" shape, and only with --write.
  *
  * It reports what it found and, with --write, replaces solution_line,
  * solution_depth and the validation verdict. It will not invent a position or a
@@ -82,6 +84,33 @@ const BUDGET = (() => {
  * as "none exists".
  */
 const CHECKS_ONLY = process.argv.includes('--checks-only');
+
+/*
+ * --retitle: also correct a title that names the wrong number of moves.
+ *
+ * Off by default, because a title is editorial and this script has no business
+ * rewriting prose. But "Mate in two" on a four-move line is not prose, it is a
+ * wrong number in a fixed phrase, and leaving it means the puzzle still lies to
+ * the solver after its line has been put right. So this handles exactly that
+ * shape - "<anything> in <number word>" - and refuses anything else rather than
+ * guessing.
+ */
+const RETITLE = process.argv.includes('--retitle');
+
+const NUMBER_WORDS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight'];
+
+/**
+ * The same title with its move count corrected, or null when the title is not
+ * of a shape this dares to touch.
+ */
+const retitled = (title, depth) => {
+  const word = NUMBER_WORDS[depth];
+  if (!word || !title) return null;
+  const m = /^(.*\bin )(zero|one|two|three|four|five|six|seven|eight|\d+)(\b.*)$/i.exec(title);
+  if (!m) return null;
+  const next = `${m[1]}${word}${m[3]}`;
+  return next === title ? null : next;
+};
 if (!ID) { console.error('[repair] --id <puzzle id> is required'); process.exit(1); }
 
 if (!FORCE_LOCAL) {
@@ -338,13 +367,36 @@ const meets = (state, player, res, goal) => {
     console.log('\nDry run - nothing written. Re-run with --write to apply.');
     process.exit(0);
   }
+  /*
+   * The detail records who established WHAT.
+   *
+   * The site validator answers "not checkable" for anything past two plies by
+   * design, and that is the status this writes - promoting a line to 'valid' on
+   * this script's own word is exactly the mistake that put a false
+   * "Fairy-Stockfish proved a forced mate in N" on these rows. But the search
+   * above really did check every reply, and saying so, attributed, is worth more
+   * than dropping it.
+   */
+  const detail = `${verdict.detail || 'line replayed'} `
+    + `[scripts/repair-puzzle-line.js verified this ${depth}-move line is forced: every reply the `
+    + `opponent has at each of their turns is answered`
+    + `${CHECKS_ONLY ? '; the search explored only checking moves, so a shorter line may exist' : ''}]`;
+
+  const newTitle = RETITLE ? retitled(puzzle.title, depth) : null;
   await db_pool.query(
     `UPDATE puzzles
      SET solution_line = ?, solution_depth = ?, validation_status = ?, validation_detail = ?,
-         validated_at = NOW()
+         validated_at = NOW()${newTitle ? ', title = ?' : ''}
      WHERE id = ?`,
-    [JSON.stringify(chosen), depth, verdict.status, verdict.detail || null, ID]
+    newTitle
+      ? [JSON.stringify(chosen), depth, verdict.status, detail, newTitle, ID]
+      : [JSON.stringify(chosen), depth, verdict.status, detail, ID]
   );
   console.log(`\nWrote a ${depth}-move line to puzzle ${ID}.`);
+  if (newTitle) console.log(`Retitled: ${JSON.stringify(puzzle.title)} -> ${JSON.stringify(newTitle)}`);
+  else if (RETITLE && depth !== (Number(puzzle.solution_depth) || 1)) {
+    console.log(`NOT retitled: ${JSON.stringify(puzzle.title)} is not an "... in <number>" title.`
+      + ' Rename it by hand.');
+  }
   process.exit(0);
 })().catch((e) => { console.error(e.stack); process.exit(1); });
