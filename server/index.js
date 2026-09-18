@@ -795,6 +795,9 @@ app.get("/api/supporter-perks", async (req, res) => {
       goldMinDonation: GOLD_MIN_DONATION,
       freePuzzlesPerGame: PUZZLE_FREE_PER_GAME,
       dailyPuzzleCap: PUZZLE_DAILY_CAP,
+      // Who the daily cap does not apply to, so the donation page can say so
+      // without a second copy of the rule. See puzzleCreateAllowance.
+      dailyPuzzleCapExemptTiers: ['gold', 'staff'],
       gameLimits: {
         free: {
           live: await setting('game_limit_live', 4),
@@ -3017,16 +3020,18 @@ const canUseCustomBoardColors = async (userId) => {
  *    DAILY ceiling is the honest tool: nobody hand-authors twenty good puzzles
  *    in a day, and a bot that wants to needs twenty days.
  */
-const PUZZLE_CREATE_MIN_DONATION = 5;   // Silver
 const PUZZLE_FREE_PER_GAME = 3;         // Free accounts, per game type
-const PUZZLE_DAILY_CAP = 20;            // Everyone, including supporters
+const PUZZLE_DAILY_CAP = 20;            // Free and Silver. Gold and staff: none.
 
 /**
  * May this user add a puzzle to this game right now?
  *
+ * `dailyLimit` is null for anybody the daily ceiling does not apply to, the same
+ * way `perGameLimit` is - so "no limit" has one spelling here.
+ *
  * @returns {{allowed: boolean, reason: string|null, tier: string,
  *            perGameLimit: number|null, perGameUsed: number,
- *            dailyLimit: number, dailyUsed: number}}
+ *            dailyLimit: number|null, dailyUsed: number}}
  */
 const puzzleCreateAllowance = async (userId, gameTypeId = null) => {
   const deny = (reason) => ({
@@ -3041,12 +3046,32 @@ const puzzleCreateAllowance = async (userId, gameTypeId = null) => {
   );
   if (!row) return deny('Sign in to build puzzles.');
 
+  /*
+   * Read against the site's own tier thresholds rather than a number of this
+   * file's own, so "Silver" and "Gold" mean here exactly what they mean on the
+   * badge, in the game limits and on the donation page.
+   */
   const staff = hasAdminRole(row.role);
-  const supporter = staff || parseFloat(row.total_donations || 0) >= PUZZLE_CREATE_MIN_DONATION;
-  const tier = staff ? 'staff' : (supporter ? 'supporter' : 'free');
+  const donations = parseFloat(row.total_donations || 0);
+  const gold = donations >= GOLD_MIN_DONATION;
+  const supporter = staff || gold || donations >= SILVER_MIN_DONATION;
+  const tier = staff ? 'staff' : (gold ? 'gold' : (supporter ? 'silver' : 'free'));
 
-  // The daily ceiling applies to everyone; staff are exempt so a moderator can
-  // seed or repair a batch without tripping over a limit meant for scripts.
+  /*
+   * Who the daily ceiling does not apply to.
+   *
+   * It was never about storage - a puzzle is a small blob of JSON - but about a
+   * script flooding the browsable list and the daily rotation. Gold is not that
+   * script: it is somebody who has paid $50 to use the thing, and telling them
+   * to come back tomorrow is the wrong answer to a problem they are not. If one
+   * of them ever does flood the list it is a person to talk to, which is a
+   * better tool than a number.
+   *
+   * Staff for the older reason: a moderator seeding or repairing a batch must
+   * not trip over a limit meant for scripts.
+   */
+  const uncapped = staff || gold;
+
   const [[{ n: dailyUsed }]] = await db_pool.query(
     'SELECT COUNT(*) AS n FROM puzzles WHERE creator_id = ? AND created_at >= NOW() - INTERVAL 1 DAY',
     [userId]
@@ -3065,14 +3090,16 @@ const puzzleCreateAllowance = async (userId, gameTypeId = null) => {
     tier,
     perGameLimit: supporter ? null : PUZZLE_FREE_PER_GAME,
     perGameUsed,
-    dailyLimit: PUZZLE_DAILY_CAP,
+    dailyLimit: uncapped ? null : PUZZLE_DAILY_CAP,
     dailyUsed,
   };
 
-  if (!staff && dailyUsed >= PUZZLE_DAILY_CAP) {
+  if (!uncapped && dailyUsed >= PUZZLE_DAILY_CAP) {
     return {
       ...base, allowed: false,
-      reason: `That is ${PUZZLE_DAILY_CAP} puzzles today, which is the daily limit for everyone. Come back tomorrow.`,
+      reason: `That is ${PUZZLE_DAILY_CAP} puzzles today, which is the daily limit. `
+        + 'Come back tomorrow, or Gold Supporters build without a daily limit at all.',
+      requiresSupporter: true,
     };
   }
   if (!supporter && gameTypeId && perGameUsed >= PUZZLE_FREE_PER_GAME) {

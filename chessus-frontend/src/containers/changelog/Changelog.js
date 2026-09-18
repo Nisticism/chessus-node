@@ -9,6 +9,7 @@ const changelogData = [
     items: [
       "Fixed a promotion in a puzzle showing as the pawn that made it. The board relocates pieces as you play, which describes every move except this one — a promotion replaces the piece, and nothing on the page knew what it had become, so a queen sat on the last rank wearing a pawn’s picture for the rest of the puzzle. The server now sends the position it worked out whenever a line promotes, so the piece is redrawn correctly on the puzzle page, the home card and the Discord activity alike.",
       "The puzzle builder had the same gap, and worse than cosmetically: after recording a promoting move, the next move of the line was being offered against a board that still said pawn, so the move dots were a pawn’s. The promoted piece is now what the board shows and what the following move is checked against.",
+      "Gold Supporters have no puzzle limit at all — not even the 20-a-day ceiling that applies to everyone else. The per-game limit for free accounts and the daily ceiling for Silver are unchanged.",
     ],
   },
   {

@@ -24,6 +24,7 @@ const PERK_FALLBACK = {
   silverMinDonation: 5,
   goldMinDonation: 50,
   freePuzzlesPerGame: 3,
+  dailyPuzzleCap: 20,
   gameLimits: {
     free: { live: 4, correspondence: 12 },
     silver: { live: 10, correspondence: 40 },
@@ -569,8 +570,9 @@ const Donate = () => {
               <ul className={styles.perkList}>
                 <li>
                   <strong>Build as many puzzles as you like.</strong> Everyone can build
-                  {' '}{perks.freePuzzlesPerGame} puzzles per game; Silver removes the cap.
-                  Solving puzzles is free for everyone, always.
+                  {' '}{perks.freePuzzlesPerGame} puzzles per game; Silver removes that cap,
+                  leaving only the {perks.dailyPuzzleCap}-a-day ceiling that keeps scripts
+                  off the list. Solving puzzles is free for everyone, always.
                 </li>
                 <li>
                   <strong>More games at once.</strong> {perks.gameLimits.silver.live} live games and
@@ -597,6 +599,11 @@ const Donate = () => {
               <ul className={styles.perkList}>
                 <li>
                   <strong>Everything Silver Supporters get</strong>, plus:
+                </li>
+                <li>
+                  <strong>No puzzle limit at all.</strong> Not even the
+                  {' '}{perks.dailyPuzzleCap}-a-day one. Build as many as you want, whenever
+                  you want.
                 </li>
                 <li>
                   <strong>More games again.</strong> {perks.gameLimits.gold.live} live games and
