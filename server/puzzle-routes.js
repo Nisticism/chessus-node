@@ -2187,34 +2187,52 @@ function registerPuzzleRoutes(app, {
       }
 
       /*
-       * The board after everything just played, for games the client cannot
+       * The board after everything just played, for the moves the client cannot
        * work out for itself.
        *
        * A solver applies its own moves optimistically - piece leaves here,
        * lands there - and that is a complete description of a move in almost
-       * every game. It is not a complete description of a PLACEMENT: a stone
-       * put down in Go can remove a group of six on the far side of the board,
-       * and nothing on the client knows the surround rule.
+       * every game. Two kinds of move it does not describe:
        *
-       * Computed only for games that place pieces, so a chess puzzle costs
-       * exactly what it did before. Best-effort: if the replay fails the client
-       * keeps its own guess, which is what it had anyway.
+       * A PLACEMENT. A stone put down in Go can remove a group of six on the
+       * far side of the board, and nothing on the client knows the surround
+       * rule.
+       *
+       * A PROMOTION. The piece that arrives is not the piece that left, and a
+       * client that only relocates pieces has nothing to redraw it from - so a
+       * promoting pawn stayed a pawn on the board, on every one of the three
+       * places a puzzle is played. The name and the image only exist on the
+       * `pieces` row the engine swapped in, which is here and not there.
+       *
+       * Everything else still costs what it did before: the replay is skipped
+       * for a line that neither places nor promotes, which is almost all of
+       * them. Best-effort - if the replay fails the client keeps its own guess,
+       * which is what it had anyway.
        */
       let resultingPosition;
       try {
+        const upTo = solved || revealed ? line : line.slice(0, matched * 2);
+        // A promoting ply is recognisable without touching the database, so ask
+        // the cheap question before the narrow column read below.
+        const promotes = upTo.some(ply => ply && ply.promotionPieceId != null);
+
         /*
-         * Gated on one narrow column read before anything expensive happens.
-         * Almost every puzzle is in a game that does not place pieces, and
-         * those must not start paying for a replay they will never use.
+         * One narrow column read, always - it is a single-row primary-key
+         * select next to the several writes this route already makes, and its
+         * answer is needed twice: to decide whether a placement line needs
+         * replaying at all, and further down to name the pieces a placement
+         * game can put on the board. Skipping it for a promoting line would
+         * lose the second of those in a game that does both.
+         *
+         * What must stay gated is the REPLAY below, which is the expensive part.
          */
         const [[placeCheck]] = await db_pool.query(
           'SELECT other_game_data FROM game_types WHERE id = ? LIMIT 1', [puzzle.game_type_id]
         );
         const placesPieces = !!placementRules(placeCheck);
 
-        if (placesPieces && (inProgress || solved || revealed)) {
+        if ((placesPieces || promotes) && (inProgress || solved || revealed)) {
           const rules = await loadRulesFor(puzzle);
-          const upTo = solved || revealed ? line : line.slice(0, matched * 2);
           const replayed = await playLine(
             {
               position: await hydratePosition(rules, safeParse(puzzle.position, [])),
@@ -2255,6 +2273,13 @@ function registerPuzzleRoutes(app, {
                 player_id: Number(pc.team ?? pc.player_id),
                 piece_name: pc.piece_name || look.piece_name || null,
                 image_location: pc.image_location || look.image_location || null,
+                /*
+                 * The one already-resolved image, when the engine has it.
+                 * Promotion sets it, and it is the one every board prefers -
+                 * it carries a per-game image_index override, which picking
+                 * out of image_location by player number cannot.
+                 */
+                image_url: pc.image_url || look.image_url || null,
                 x: Number(pc.x), y: Number(pc.y),
               };
             });

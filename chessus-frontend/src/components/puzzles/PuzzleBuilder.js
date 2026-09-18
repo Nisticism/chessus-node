@@ -70,6 +70,20 @@ const imageFor = (placement, pieceDataMap) => {
   return null;
 };
 
+/**
+ * The `pieces` row id inside a promotion id.
+ *
+ * A promotion option is identified by a BOARD id where the piece has a square
+ * in the starting position - "690_0_0" is piece 690 on a1 - and by a bare id
+ * where it does not (a piece reachable only by promotion). The id is submitted
+ * verbatim, because that is what the server matches the recorded answer
+ * against; only the artwork lookup needs the number in front of it.
+ */
+const promotionPieceNumber = (value) => {
+  const n = parseInt(String(value ?? ''), 10);
+  return Number.isFinite(n) && n > 0 ? n : null;
+};
+
 // Matches the server's cap. A line is [your move, their reply, ...].
 const MAX_MOVES_PER_SIDE = 8;
 const MAX_PLIES = MAX_MOVES_PER_SIDE * 2;
@@ -404,7 +418,16 @@ const PuzzleBuilder = () => {
   // Piece definitions for anything on the board, so images survive a placement
   // written against an old asset host.
   useEffect(() => {
-    const ids = [...new Set(Object.values(placements).map((p) => p.piece_id).filter(Boolean))];
+    const ids = [...new Set([
+      ...Object.values(placements).map((p) => p.piece_id),
+      /*
+       * What the line promotes INTO, which is a piece that need not be anywhere
+       * on the board yet. Without it the promoted square draws as a blank: the
+       * replay clears the pawn's image on purpose so the piece is looked up by
+       * its new id, and the lookup has to have happened.
+       */
+      ...solutionLine.map((ply) => promotionPieceNumber(ply?.promotionPieceId)),
+    ].filter(Boolean))];
     const missing = ids.filter((id) => !pieceDataMap[id]);
     if (!missing.length) return;
     let cancelled = false;
@@ -418,7 +441,7 @@ const PuzzleBuilder = () => {
       }
     })();
     return () => { cancelled = true; };
-  }, [placements, pieceDataMap]);
+  }, [placements, solutionLine, pieceDataMap]);
 
   /*
    * The tray: what this game lets a player put on the board, and for whom.
@@ -538,6 +561,25 @@ const PuzzleBuilder = () => {
         id: mover.id || `${mover.piece_id}_${ply.from.y}_${ply.from.x}`,
         x: ply.to.x,
         y: ply.to.y,
+        /*
+         * A promotion is the one move where the piece that arrives is not the
+         * piece that left, so spreading the mover through - right for every
+         * other move - is wrong here twice over. The picture stayed a pawn's,
+         * and worse, the NEXT ply of the line was then recorded against a board
+         * that still said pawn: the dots came from a pawn's movement and the
+         * move-info probe was asked about a position that could not occur.
+         *
+         * The name and image are cleared rather than guessed, so the board
+         * looks the new piece up by its id - which is what pieceDataMap and the
+         * effect that fills it are for.
+         */
+        ...(promotionPieceNumber(ply.promotionPieceId) != null ? {
+          piece_id: promotionPieceNumber(ply.promotionPieceId),
+          piece_name: null,
+          image_location: null,
+          image_url: null,
+          ...(ply.promotionPlayer != null ? { player_id: Number(ply.promotionPlayer) } : {}),
+        } : {}),
       };
 
       /*

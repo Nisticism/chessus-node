@@ -84,7 +84,53 @@ const fromServerPosition = (list) => {
   return out;
 };
 
-const applyPly = (cells, ply) => {
+/**
+ * The `pieces` row id inside a promotion id.
+ *
+ * A promotion option is identified by a BOARD id where the piece has a square
+ * in the starting position - "690_0_0" is piece 690 on a1 - and by a bare id
+ * where it does not (a piece reachable only by promotion). The id is submitted
+ * verbatim, because that is what the server matches the recorded answer
+ * against; only the artwork lookup needs the number in front of it.
+ */
+const promotionPieceNumber = (value) => {
+  const n = parseInt(String(value ?? ''), 10);
+  return Number.isFinite(n) && n > 0 ? n : null;
+};
+
+/**
+ * What a promoting ply turns the piece INTO, as fields to lay over the mover.
+ *
+ * A promotion is the one move where the piece that arrives is not the piece
+ * that left, and spreading the mover through - which is right for every other
+ * move - kept the pawn's name and artwork on the last rank for good. A pawn
+ * that stays a pawn there is not a cosmetic problem either: the dots drawn for
+ * its next move come from what the board says it is.
+ *
+ * `art` is the name and image when the caller knows them - the chooser is
+ * handed both with each option - and null when it does not, in which case the
+ * board falls back to looking the piece up by its new id rather than showing
+ * the old one's picture with the new one's rules.
+ *
+ * Nothing is returned for a ply that does not promote, so this is safe to
+ * spread onto every move.
+ */
+const promotedInto = (ply, art) => {
+  if (ply?.promotionPieceId == null) return null;
+  const pieceId = promotionPieceNumber(ply.promotionPieceId);
+  if (pieceId == null) return null;
+  return {
+    piece_id: pieceId,
+    piece_name: art?.piece_name || null,
+    image_location: art?.image_location || null,
+    // Cleared deliberately: it is the pawn's resolved picture, and it wins over
+    // image_location everywhere, so leaving it would undo the whole swap.
+    image_url: null,
+    ...(ply.promotionPlayer != null ? { player_id: Number(ply.promotionPlayer) } : {}),
+  };
+};
+
+const applyPly = (cells, ply, art = null) => {
   /*
    * A placement puts a NEW piece down rather than moving one. What it CAPTURES
    * is not worked out here: a stone played in Go can take a group on the far
@@ -123,6 +169,7 @@ const applyPly = (cells, ply) => {
     // twice, or a pawn double-stepping after it has already stepped.
     hasMoved: true,
     moveCount: (Number(mover.moveCount) || 0) + 1,
+    ...promotedInto(ply, art),
   };
 
   /*
@@ -451,7 +498,15 @@ const PuzzleSolver = () => {
     ) || []);
   }, [moveEngine, enginePieces, board, boardWidth, boardHeight]);
 
-  const submit = useCallback(async (move) => {
+  /*
+   * `art` is the promoted piece's name and image, for the optimistic board only.
+   *
+   * Passed beside the move rather than on it: the submitted line is stored
+   * verbatim in puzzle_attempts, and an image_location is a JSON array of paths
+   * that has no business being written there once per attempt. The server
+   * already knows what piece the id names.
+   */
+  const submit = useCallback(async (move, art = null) => {
     setBusy(true);
     setLastTry(move);
     const attemptLine = [...playedMoves, move];
@@ -467,7 +522,7 @@ const PuzzleSolver = () => {
      * rejects puts the piece back.
      */
     const before = placements;
-    setPlacements((prev) => applyPly(prev, move));
+    setPlacements((prev) => applyPly(prev, move, art));
 
     try {
       const { data } = await axios.post(
@@ -511,7 +566,7 @@ const PuzzleSolver = () => {
         // replaces the guess rather than stacking on top of it.
         setPlacements(data.position
           ? fromServerPosition(data.position)
-          : line.slice(playedMoves.length * 2).reduce(applyPly, before));
+          : line.slice(playedMoves.length * 2).reduce((cells, ply) => applyPly(cells, ply), before));
         setSolution(line);
         setOutcome('solved');
         return;
@@ -544,7 +599,7 @@ const PuzzleSolver = () => {
       if (data.position) {
         setPlacements(fromServerPosition(data.position));
       } else if (Array.isArray(line)) {
-        setPlacements((prev) => line.slice(playedMoves.length * 2).reduce(applyPly, prev));
+        setPlacements((prev) => line.slice(playedMoves.length * 2).reduce((cells, ply) => applyPly(cells, ply), prev));
       }
       if (data.rating) setRatingChange(data.rating);
       setOutcome('revealed');
@@ -615,6 +670,17 @@ const PuzzleSolver = () => {
       ...pending.move,
       promotionPieceId: option.id,
       ...(option.player != null ? { promotionPlayer: option.player } : {}),
+    }, {
+      /*
+       * The chosen piece's artwork, for the optimistic board.
+       *
+       * The server answers a promoting line with the whole resulting position
+       * and that is the authority - but it answers after a round trip, and
+       * until it does the board is showing this move. Without this the piece
+       * the solver just chose appears as the pawn it was.
+       */
+      piece_name: option.piece_name || null,
+      image_location: option.image_location || null,
     });
   }, [pendingPromotion, submit]);
 

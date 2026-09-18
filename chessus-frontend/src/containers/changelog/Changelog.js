@@ -4,6 +4,14 @@ import styles from "./changelog.module.scss";
 
 const changelogData = [
   {
+    date: "September 18, 2026",
+    title: "A promoted piece looks like what it became",
+    items: [
+      "Fixed a promotion in a puzzle showing as the pawn that made it. The board relocates pieces as you play, which describes every move except this one — a promotion replaces the piece, and nothing on the page knew what it had become, so a queen sat on the last rank wearing a pawn’s picture for the rest of the puzzle. The server now sends the position it worked out whenever a line promotes, so the piece is redrawn correctly on the puzzle page, the home card and the Discord activity alike.",
+      "The puzzle builder had the same gap, and worse than cosmetically: after recording a promoting move, the next move of the line was being offered against a board that still said pawn, so the move dots were a pawn’s. The promoted piece is now what the board shows and what the following move is checked against.",
+    ],
+  },
+  {
     date: "September 15, 2026",
     title: "The Discord activity links out properly, and plays without pausing",
     items: [
