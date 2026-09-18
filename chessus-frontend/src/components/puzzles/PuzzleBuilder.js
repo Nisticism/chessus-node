@@ -5,6 +5,7 @@ import axios from "../../services/axios-interceptor";
 import API_URL from "../../global/global";
 import authHeader from "../../services/auth-header";
 import { MOVE_DOT_BACKGROUNDS, getMoveDotType } from "../../helpers/moveEngine";
+import { applyPromotionDefinition, promotionPieceNumber } from "../../helpers/pieceMovementUtils";
 import { getGameById } from "../../actions/games";
 import { getPieceById } from "../../actions/pieces";
 import { useDispatch } from "react-redux";
@@ -68,20 +69,6 @@ const imageFor = (placement, pieceDataMap) => {
     }
   } catch (_) { /* fall through */ }
   return null;
-};
-
-/**
- * The `pieces` row id inside a promotion id.
- *
- * A promotion option is identified by a BOARD id where the piece has a square
- * in the starting position - "690_0_0" is piece 690 on a1 - and by a bare id
- * where it does not (a piece reachable only by promotion). The id is submitted
- * verbatim, because that is what the server matches the recorded answer
- * against; only the artwork lookup needs the number in front of it.
- */
-const promotionPieceNumber = (value) => {
-  const n = parseInt(String(value ?? ''), 10);
-  return Number.isFinite(n) && n > 0 ? n : null;
 };
 
 // Matches the server's cap. A line is [your move, their reply, ...].
@@ -550,7 +537,7 @@ const PuzzleBuilder = () => {
       const mover = next[fromKey];
       if (!mover) return;
       delete next[fromKey];
-      next[keyOf(ply.to.x, ply.to.y)] = {
+      const landed = {
         ...mover,
         /*
          * Stamp the board id the first time a piece moves, from the square it
@@ -561,26 +548,30 @@ const PuzzleBuilder = () => {
         id: mover.id || `${mover.piece_id}_${ply.from.y}_${ply.from.x}`,
         x: ply.to.x,
         y: ply.to.y,
-        /*
-         * A promotion is the one move where the piece that arrives is not the
-         * piece that left, so spreading the mover through - right for every
-         * other move - is wrong here twice over. The picture stayed a pawn's,
-         * and worse, the NEXT ply of the line was then recorded against a board
-         * that still said pawn: the dots came from a pawn's movement and the
-         * move-info probe was asked about a position that could not occur.
-         *
-         * The name and image are cleared rather than guessed, so the board
-         * looks the new piece up by its id - which is what pieceDataMap and the
-         * effect that fills it are for.
-         */
-        ...(promotionPieceNumber(ply.promotionPieceId) != null ? {
-          piece_id: promotionPieceNumber(ply.promotionPieceId),
-          piece_name: null,
-          image_location: null,
-          image_url: null,
-          ...(ply.promotionPlayer != null ? { player_id: Number(ply.promotionPlayer) } : {}),
-        } : {}),
       };
+
+      /*
+       * A promotion is the one move where the piece that arrives is not the
+       * piece that left, so relocating the mover - right for every other move -
+       * was wrong here twice over. The picture stayed a pawn's, and worse, the
+       * NEXT ply of the line was then recorded against a board that still said
+       * pawn: the dots came from a pawn's movement and the move-info probe was
+       * asked about a position that could not occur.
+       *
+       * Through applyPromotionDefinition, the same swap the game replay makes,
+       * so what survives a promotion is decided in one place. The labels are
+       * cleared rather than guessed, leaving the board to look the new piece up
+       * by its id - which is what pieceDataMap and the effect that fills it are
+       * for.
+       */
+      const promotedId = promotionPieceNumber(ply.promotionPieceId);
+      if (promotedId != null) {
+        applyPromotionDefinition(landed, {
+          piece_id: promotedId, piece_name: null, image_location: null, image_url: null,
+        });
+        if (ply.promotionPlayer != null) landed.player_id = Number(ply.promotionPlayer);
+      }
+      next[keyOf(ply.to.x, ply.to.y)] = landed;
 
       /*
        * Castling moves two pieces. The partner jumps to the far side of the

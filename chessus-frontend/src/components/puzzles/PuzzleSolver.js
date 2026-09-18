@@ -17,6 +17,7 @@ import PuzzleBoard from "./PuzzleBoard";
 import PlacementTray from "../common/PlacementTray";
 import useSetupMoveReplay from "../common/useSetupMoveReplay";
 import { expandPlaceable, placesPieces } from "../../helpers/placement";
+import { applyPromotionDefinition, promotionPieceNumber } from "../../helpers/pieceMovementUtils";
 import styles from "./puzzlesolver.module.scss";
 
 /*
@@ -85,49 +86,37 @@ const fromServerPosition = (list) => {
 };
 
 /**
- * The `pieces` row id inside a promotion id.
- *
- * A promotion option is identified by a BOARD id where the piece has a square
- * in the starting position - "690_0_0" is piece 690 on a1 - and by a bare id
- * where it does not (a piece reachable only by promotion). The id is submitted
- * verbatim, because that is what the server matches the recorded answer
- * against; only the artwork lookup needs the number in front of it.
- */
-const promotionPieceNumber = (value) => {
-  const n = parseInt(String(value ?? ''), 10);
-  return Number.isFinite(n) && n > 0 ? n : null;
-};
-
-/**
- * What a promoting ply turns the piece INTO, as fields to lay over the mover.
+ * Turn the piece that just promoted into what it promoted to, in place.
  *
  * A promotion is the one move where the piece that arrives is not the piece
- * that left, and spreading the mover through - which is right for every other
- * move - kept the pawn's name and artwork on the last rank for good. A pawn
- * that stays a pawn there is not a cosmetic problem either: the dots drawn for
- * its next move come from what the board says it is.
+ * that left, so relocating it - right for every other move - kept the pawn's
+ * name and artwork on the last rank for good. Not merely cosmetic either: the
+ * dots drawn for the piece's next move come from what the board says it is.
  *
- * `art` is the name and image when the caller knows them - the chooser is
- * handed both with each option - and null when it does not, in which case the
- * board falls back to looking the piece up by its new id rather than showing
- * the old one's picture with the new one's rules.
+ * The swap itself is applyPromotionDefinition, which the game replay has always
+ * used - so what survives a promotion (the square, the owner, what the piece
+ * has done) is decided in one place rather than restated here.
  *
- * Nothing is returned for a ply that does not promote, so this is safe to
- * spread onto every move.
+ * `art` is the promoted piece's name and image when the caller has them: the
+ * chooser is handed both with every option. Without them the labels are cleared
+ * rather than guessed, so the board looks the piece up by its new id - which is
+ * what pieceDataMap and the effect that fills it are for - instead of showing
+ * the old piece's picture with the new one's rules.
  */
-const promotedInto = (ply, art) => {
-  if (ply?.promotionPieceId == null) return null;
-  const pieceId = promotionPieceNumber(ply.promotionPieceId);
-  if (pieceId == null) return null;
-  return {
+const applyPromotionToCell = (cell, ply, art) => {
+  const pieceId = promotionPieceNumber(ply?.promotionPieceId);
+  if (pieceId == null) return;
+  applyPromotionDefinition(cell, {
     piece_id: pieceId,
     piece_name: art?.piece_name || null,
     image_location: art?.image_location || null,
     // Cleared deliberately: it is the pawn's resolved picture, and it wins over
     // image_location everywhere, so leaving it would undo the whole swap.
     image_url: null,
-    ...(ply.promotionPlayer != null ? { player_id: Number(ply.promotionPlayer) } : {}),
-  };
+  });
+  // Cross-player and neutral promotion: the piece may not stay yours. The owner
+  // is preserved by applyPromotionDefinition, so it is set after it.
+  if (ply.promotionPlayer != null) cell.player_id = Number(ply.promotionPlayer);
 };
 
 const applyPly = (cells, ply, art = null) => {
@@ -158,7 +147,7 @@ const applyPly = (cells, ply, art = null) => {
   if (!mover) return cells;
   const next = { ...cells };
   delete next[fromKey];
-  next[keyOf(ply.to.x, ply.to.y)] = {
+  const landed = {
     // A piece keeps the id it had on its starting square, so a second move by
     // the same piece quotes that one rather than its current square.
     ...mover,
@@ -169,8 +158,10 @@ const applyPly = (cells, ply, art = null) => {
     // twice, or a pawn double-stepping after it has already stepped.
     hasMoved: true,
     moveCount: (Number(mover.moveCount) || 0) + 1,
-    ...promotedInto(ply, art),
   };
+  // A fresh object, so mutating it is nobody else's business.
+  applyPromotionToCell(landed, ply, art);
+  next[keyOf(ply.to.x, ply.to.y)] = landed;
 
   /*
    * Castling moves two pieces. The partner lands on the far side of the square

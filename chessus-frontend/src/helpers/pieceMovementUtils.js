@@ -1233,12 +1233,37 @@ const PROMOTION_PRESERVED_KEYS = new Set([
   'hasMoved', 'has_moved', 'current_hp', 'turnsAlive', 'moveCount',
 ]);
 
-const applyPromotionDefinition = (piece, template) => {
+/**
+ * Turn a piece on the board INTO the piece it promoted to, in place.
+ *
+ * Everything about the type is taken from the template; everything about the
+ * square - who owns it, where it is, what it has done - is kept. Exported
+ * because a promotion happens in three places now (the replay, the puzzle
+ * solver's board and the puzzle builder's line preview) and the list of what
+ * survives a promotion is the thing that must not be written out four times.
+ *
+ * Mutates `piece`, so hand it one you own.
+ */
+export const applyPromotionDefinition = (piece, template) => {
   if (!piece || !template) return;
   for (const key of Object.keys(template)) {
     if (PROMOTION_PRESERVED_KEYS.has(key)) continue;
     piece[key] = template[key];
   }
+};
+
+/**
+ * The `pieces` row id inside a promotion id.
+ *
+ * A promotion option is identified by a BOARD id where the piece has a square
+ * in the starting position - "690_0_0" is piece 690 on a1 - and by a bare id
+ * where it does not (a piece only ever reached by promoting). The id is
+ * submitted and stored verbatim, because that is what an answer is matched
+ * against; only a lookup of the piece itself needs the number in front of it.
+ */
+export const promotionPieceNumber = (value) => {
+  const n = parseInt(String(value ?? ''), 10);
+  return Number.isFinite(n) && n > 0 ? n : null;
 };
 
 /**
