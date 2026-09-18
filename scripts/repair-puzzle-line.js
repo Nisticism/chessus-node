@@ -22,9 +22,12 @@
  *               max 4). The cost is the opponent's branching to the power of the
  *               depth, so a position where they have three replies is a hundred
  *               times cheaper than one where they have thirty.
- *   --budget N  ceiling on move applications. When it is exhausted the search
- *               says so, and "none found" then means "not found", NOT "does not
+ *   --budget N  ceiling on ENGINE CALLS. When it is exhausted the search says
+ *               so, and "none found" then means "not found", NOT "does not
  *               exist" - a distinction worth keeping.
+ *   --checks-only  explore only the solver's checking moves. Much cheaper and
+ *               finds nearly every short forced mate, but it is a heuristic: a
+ *               negative result under it is not a proof, and is labelled.
  *
  * It reports what it found and, with --write, replaces solution_line,
  * solution_depth and the validation verdict. It will not invent a position or a
@@ -52,12 +55,33 @@ const MAX_DEPTH = (() => {
   const n = i >= 0 ? Number(process.argv[i + 1]) : 2;
   return Number.isFinite(n) && n >= 1 ? Math.min(n, 4) : 2;
 })();
-/* A hard ceiling on move applications, so a deep search cannot run forever. */
+/*
+ * A hard ceiling on ENGINE CALLS - every applyPly, wherever it happens.
+ *
+ * An earlier version counted candidate moves instead, which undercounted the
+ * real work by roughly the branching factor: enumerating a player's moves costs
+ * one applyPly per candidate on its own, before any of them is explored. A
+ * "budget" of 400,000 moves was several hours of engine, which is not a budget.
+ */
 const BUDGET = (() => {
   const i = process.argv.indexOf('--budget');
-  const n = i >= 0 ? Number(process.argv[i + 1]) : 2000000;
-  return Number.isFinite(n) && n > 0 ? n : 2000000;
+  const n = i >= 0 ? Number(process.argv[i + 1]) : 250000;
+  return Number.isFinite(n) && n > 0 ? n : 250000;
 })();
+
+/*
+ * --checks-only: consider only the solver's moves that leave the opponent in
+ * check.
+ *
+ * This is a HEURISTIC and it changes what a negative result means. A forced mate
+ * usually proceeds by check - the opponent must not be given a free move - so
+ * pruning to checks finds the overwhelming majority of short forced mates at a
+ * fraction of the cost. But it is not exhaustive: quiet moves can force mate
+ * (zugzwang, and any position where every opponent move walks into one). So with
+ * this flag, "none found" means exactly that, and is printed as such rather than
+ * as "none exists".
+ */
+const CHECKS_ONLY = process.argv.includes('--checks-only');
 if (!ID) { console.error('[repair] --id <puzzle id> is required'); process.exit(1); }
 
 if (!FORCE_LOCAL) {
@@ -82,7 +106,7 @@ const { hydratePosition } = require(path.join(ROOT, 'server/puzzle-hydrate'));
 const {
   buildGameState, applyPly, goalMet, terminalOutcome, validatePuzzle,
 } = require(path.join(ROOT, 'server/puzzle-validation'));
-const { getAllLegalMovesForPlayer } = require(path.join(ROOT, 'server/game-socket'));
+const { getAllLegalMovesForPlayer, checkForCheck } = require(path.join(ROOT, 'server/game-socket'));
 
 const other = (n) => (Number(n) === 1 ? 2 : 1);
 const sq = (p) => `(${p.x},${p.y})`;
@@ -114,7 +138,7 @@ const expandedMoves = async (state, player, cap = 400) => {
     const probe = clone(state);
     probe.currentTurn = player;
     // eslint-disable-next-line no-await-in-loop
-    const first = await applyPly(probe, cand, { autoPromote: false });
+    const first = await applyCounted(probe, cand, { autoPromote: false });
     if (first.needsPromotionChoice) {
       for (const o of (first.promotionEligible?.options || [])) {
         out.push({
@@ -133,11 +157,18 @@ const expandedMoves = async (state, player, cap = 400) => {
   return out;
 };
 
+/* Every engine call goes through here, so the budget counts what it costs. */
+let engineCalls = 0;
+const applyCounted = async (state, move, opts) => {
+  engineCalls++;
+  return applyPly(state, move, opts);
+};
+
 /** Play a move on a copy; { state, res } when it is legal, else null. */
 const play = async (state, player, move) => {
   const next = clone(state);
   next.currentTurn = player;
-  const res = await applyPly(next, move, { autoPromote: false });
+  const res = await applyCounted(next, move, { autoPromote: false });
   return res.ok ? { state: next, res } : null;
 };
 
@@ -201,21 +232,28 @@ const meets = (state, player, res, goal) => {
    * branching to the power of the depth, and that varies by three orders of
    * magnitude across positions.
    */
-  let spent = 0;
+  let exhausted = false;
   const forcedWin = async (state, movesLeft) => {
     if (movesLeft <= 0) return null;
     const mineHere = await expandedMoves(state, side);
     if (!mineHere) return null;
 
     for (const m of mineHere) {
-      if (spent > BUDGET) return null;
-      spent++;
+      if (engineCalls > BUDGET) { exhausted = true; return null; }
       const played = await play(state, side, m.move);
       if (!played) continue;
       if (meets(played.state, side, played.res, goal)) return [m];
 
       // Not a win yet, and no moves left to make it one.
       if (movesLeft <= 1) continue;
+
+      /*
+       * The prune. A move that does not check hands the opponent a free move,
+       * and in a short forced mate they almost never get one - so exploring
+       * only checks finds nearly every such mate for a fraction of the work.
+       * Heuristic, and the verdict says so.
+       */
+      if (CHECKS_ONLY && !checkForCheck(played.state, other(side)).inCheck) continue;
 
       const replies = await expandedMoves(played.state, other(side));
       if (!replies) continue;
@@ -226,8 +264,7 @@ const meets = (state, player, res, goal) => {
       let principal = null;
       let holds = true;
       for (const r of replies) {
-        if (spent > BUDGET) { holds = false; break; }
-        spent++;
+        if (engineCalls > BUDGET) { exhausted = true; holds = false; break; }
         const afterReply = await play(played.state, other(side), r.move);
         if (!afterReply) continue;
         // eslint-disable-next-line no-await-in-loop
@@ -245,10 +282,13 @@ const meets = (state, player, res, goal) => {
   for (let d = 2; d <= MAX_DEPTH; d++) {
     // eslint-disable-next-line no-await-in-loop
     const line = await forcedWin(buildGameState(base, rules.game), d);
+    const caveat = exhausted
+      ? ' - BUDGET EXHAUSTED, so "none" means not found, not impossible'
+      : (CHECKS_ONLY && d > 1 ? ' - among checking moves only' : '');
     console.log(`FORCED IN ${d}: ${line ? 'yes' : 'none'}`
-      + `  (${spent} positions tried${spent > BUDGET ? ', BUDGET EXHAUSTED - "none" is not a proof' : ''})`);
+      + `  (${engineCalls} engine calls${caveat})`);
     if (line) { found = line; foundDepth = d; break; }
-    if (spent > BUDGET) break;
+    if (exhausted) break;
   }
   if (found) {
     console.log('\nthe forced line:');
