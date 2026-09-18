@@ -15,6 +15,7 @@ import useBoardViewport from "../common/useBoardViewport";
 import BoardZoomControls from "../common/BoardZoomControls";
 import PuzzleBoard from "./PuzzleBoard";
 import PlacementTray from "../common/PlacementTray";
+import PromotionChooser from "../common/PromotionChooser";
 import useSetupMoveReplay from "../common/useSetupMoveReplay";
 import { expandPlaceable, placesPieces } from "../../helpers/placement";
 import { applyPromotionDefinition, promotionPieceNumber } from "../../helpers/pieceMovementUtils";
@@ -1239,52 +1240,15 @@ const PuzzleSolver = () => {
         </div>
       </div>
 
-      {/*
-        * Promotion. The move is not submitted until the piece is chosen, because
-        * the choice is part of the answer - promoting to a rook when the line
-        * says queen is a different move, not a near miss.
-        */}
-      {!!pendingPromotion && (
-        <div
-          className={styles["promo-backdrop"]}
-          role="dialog"
-          aria-modal="true"
-          aria-label="Choose what this piece promotes to"
-        >
-          <div className={styles["promo-dialog"]}>
-            <h3>What does it become?</h3>
-            <p>Your move promotes. Pick the piece.</p>
-            <div className={styles["promo-options"]}>
-              {pendingPromotion.options.map((o) => {
-                const src = imageFor(
-                  {
-                    piece_id: o.id,
-                    image_location: o.image_location,
-                    player_id: o.player ?? puzzle.side_to_move,
-                  },
-                  pieceDataMap
-                );
-                return (
-                  <button
-                    key={`${o.id}:${o.player ?? 'own'}`}
-                    className={styles["promo-option"]}
-                    onClick={() => choosePromotion(o)}
-                  >
-                    {src
-                      ? <img src={src} alt="" draggable={false} />
-                      : <span className={styles["piece-fallback"]}>{(o.piece_name || '?').charAt(0)}</span>}
-                    <span>{o.piece_name}</span>
-                    {o.player === 0 && <em>neutral</em>}
-                    {o.player != null && o.player !== 0 && <em>Player {o.player}</em>}
-                  </button>
-                );
-              })}
-            </div>
-            <button className={styles["btn-secondary"]} onClick={() => setPendingPromotion(null)}>
-              Take the move back
-            </button>
-          </div>
-        </div>
+      {/* One dialog for all three boards: see components/common/PromotionChooser. */}
+      {pendingPromotion && (
+        <PromotionChooser
+          options={pendingPromotion.options}
+          defaultPlayer={puzzle.side_to_move}
+          imageFor={(placement) => imageFor(placement, pieceDataMap)}
+          onChoose={choosePromotion}
+          onCancel={() => setPendingPromotion(null)}
+        />
       )}
     </div>
   );

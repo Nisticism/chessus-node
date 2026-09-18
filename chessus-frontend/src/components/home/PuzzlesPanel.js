@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { useSelector } from "react-redux";
 import axios from "../../services/axios-interceptor";
 import authHeader from "../../services/auth-header";
@@ -8,6 +8,8 @@ import { isSilverSupporter } from "../../helpers/supporterTiers";
 import useBoardViewport from "../common/useBoardViewport";
 import { MOVE_DOT_BACKGROUNDS, getMoveDotType } from "../../helpers/moveEngine";
 import PlacementTray from "../common/PlacementTray";
+import PromotionChooser from "../common/PromotionChooser";
+import { applyPromotionDefinition, promotionPieceNumber } from "../../helpers/pieceMovementUtils";
 import useSetupMoveReplay from "../common/useSetupMoveReplay";
 import { expandPlaceable, placesPieces } from "../../helpers/placement";
 import PuzzleBoard from "../puzzles/PuzzleBoard";
@@ -72,7 +74,7 @@ const fromServerPosition = (list) => {
   return out;
 };
 
-const applyMove = (cells, move, recorded) => {
+const applyMove = (cells, move, recorded, promotionArt = null) => {
   const m = recorded || move;
   if (!cells || !m?.from || !m?.to) return cells;
   const fromKey = `${m.from.y},${m.from.x}`;
@@ -80,7 +82,7 @@ const applyMove = (cells, move, recorded) => {
   if (!mover) return cells;
   const next = { ...cells };
   delete next[fromKey];
-  next[`${m.to.y},${m.to.x}`] = {
+  const landed = {
     ...mover,
     // Keep the id the piece had on its STARTING square, so a later move by the
     // same piece quotes that square, not its current one. The solve check keys
@@ -90,6 +92,30 @@ const applyMove = (cells, move, recorded) => {
     x: m.to.x,
     y: m.to.y,
   };
+
+  /*
+   * A promotion replaces the piece rather than moving it, so the labels have to
+   * be replaced too - otherwise the card shows a pawn on the last rank until the
+   * server's authoritative position lands. Through the replay's own helper, so
+   * what survives a promotion is decided in one place.
+   *
+   * This card has no piece-definition map to fall back on, so the art is only
+   * cleared when there is something to put in its place; an empty square reads
+   * worse than the old picture for the moment before the server answers.
+   */
+  const promotedId = promotionPieceNumber(m.promotionPieceId);
+  if (promotedId != null) {
+    applyPromotionDefinition(landed, {
+      piece_id: promotedId,
+      ...(promotionArt ? {
+        piece_name: promotionArt.piece_name || null,
+        image_location: promotionArt.image_location || null,
+        image_url: null,
+      } : {}),
+    });
+    if (m.promotionPlayer != null) landed.player_id = Number(m.promotionPlayer);
+  }
+  next[`${m.to.y},${m.to.x}`] = landed;
 
   // Castling moves two pieces; the partner lands the far side of the king.
   if (m.isCastling && m.castlingWith) {
@@ -149,7 +175,6 @@ const timeUntilNextPuzzle = () => {
 
 const PuzzlesPanel = () => {
   const { user: currentUser } = useSelector((state) => state.authReducer);
-  const navigate = useNavigate();
   const [daily, setDaily] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -195,6 +220,12 @@ const PuzzlesPanel = () => {
   // The piece held from the tray, in a game whose answer is a placement.
   const [trayPick, setTrayPick] = useState(null);
   const [lastTry, setLastTry] = useState(null);
+  /*
+   * A promotion waiting on the solver. Held with the board it was played
+   * against, because the guess is not on the board while the dialog is open and
+   * the answer has to be sent against the position it was made in.
+   */
+  const [pendingPromotion, setPendingPromotion] = useState(null);
   // Development only: how many days ahead of today we are previewing.
   const [preview, setPreview] = useState(0);
   /*
@@ -355,6 +386,7 @@ const PuzzlesPanel = () => {
     setHints([]);
     setLastTry(null);
     setTrayPick(null);
+    setPendingPromotion(null);
     setRatingChange(null);
     setRatingNote(null);
     setStartedAt(Date.now());
@@ -363,53 +395,21 @@ const PuzzlesPanel = () => {
     setReplayKey((k) => k + 1);
   }, [freshBoard, puzzle]);
 
-  const tryMove = useCallback(async (fromKey, x, y) => {
-    if (!puzzle || busy || finished) return;
-    const [fy, fx] = fromKey.split(',').map(Number);
-    const mover = board?.[fromKey];
-    setPicked(null);
-    setHints([]);
+  /*
+   * Send a move and act on the verdict.
+   *
+   * Split out of tryMove so a promotion can interrupt: the lookup below stops to
+   * ask which piece it becomes, and this is what the answer resumes into. `art`
+   * is the chosen piece's name and image, for the optimistic board only.
+   */
+  const submitMove = useCallback(async (move, before, art = null) => {
+    if (!puzzle) return;
+    const { x, y } = move.to;
     setBusy(true);
     setLastTry({ x, y });
-    const move = {
-      from: { x: fx, y: fy },
-      to: { x, y },
-      pieceId: mover?.id || `${mover?.piece_id}_${fy}_${fx}`,
-    };
-
-    /*
-     * Move the piece now, ask the server afterwards - the same as the solver
-     * page and the Discord activity. `before` is the position the guess is made
-     * against, so every outcome below rebuilds from it rather than layering on
-     * the optimistic board, and anything the server rejects puts the piece back.
-     */
-    const before = board;
-    setBoard((prev) => applyMove(prev, move));
+    setBoard((prev) => applyMove(prev, move, null, art));
 
     try {
-      const info = await axios.post(
-        `${API_URL}game-types/${puzzle.game_type_id}/puzzle-move-info`,
-        {
-          position: Object.values(before || {}),
-          side_to_move: puzzle.side_to_move,
-          setup_move: found.length ? null : puzzle.setup_move,
-          move,
-        },
-        { headers: authHeader() }
-      ).catch(() => null);
-
-      // A promotion needs a piece chooser, which belongs on the solver page.
-      if (info?.data?.promotes) {
-        setBoard(before);
-        navigate(`/games/${puzzle.game_type_id}/puzzles/${puzzle.id}`);
-        return;
-      }
-      if (info?.data?.castling) {
-        move.isCastling = true;
-        move.castlingWith = info.data.castling.castlingWith;
-        move.castlingDirection = info.data.castling.castlingDirection;
-      }
-
       const attemptLine = [...found, move];
       const { data } = await axios.post(
         `${API_URL}puzzles/${puzzle.id}/solve`,
@@ -464,7 +464,75 @@ const PuzzlesPanel = () => {
     } finally {
       setBusy(false);
     }
-  }, [puzzle, busy, finished, board, navigate, found, startedAt]);
+  }, [puzzle, found, startedAt]);
+
+  /*
+   * Ask what the move actually is, then send it.
+   *
+   * A promotion stops here rather than being sent: the piece is part of the
+   * answer, so it has to be chosen first. That used to mean leaving the home
+   * card for the puzzle's own page mid-puzzle - the card could start a puzzle it
+   * could not finish. The dialog is the same one the puzzle page uses.
+   */
+  const tryMove = useCallback(async (fromKey, x, y) => {
+    if (!puzzle || busy || finished) return;
+    const [fy, fx] = fromKey.split(',').map(Number);
+    const mover = board?.[fromKey];
+    setPicked(null);
+    setHints([]);
+    setLastTry({ x, y });
+    const move = {
+      from: { x: fx, y: fy },
+      to: { x, y },
+      pieceId: mover?.id || `${mover?.piece_id}_${fy}_${fx}`,
+    };
+
+    // The position the guess is made against, so every outcome rebuilds from it.
+    const before = board;
+    setBusy(true);
+    try {
+      const info = await axios.post(
+        `${API_URL}game-types/${puzzle.game_type_id}/puzzle-move-info`,
+        {
+          position: Object.values(before || {}),
+          side_to_move: puzzle.side_to_move,
+          setup_move: found.length ? null : puzzle.setup_move,
+          move,
+        },
+        { headers: authHeader() }
+      ).catch(() => null);
+
+      if (info?.data?.castling) {
+        move.isCastling = true;
+        move.castlingWith = info.data.castling.castlingWith;
+        move.castlingDirection = info.data.castling.castlingDirection;
+      }
+
+      if (info?.data?.promotes && Array.isArray(info.data.options) && info.data.options.length) {
+        setBusy(false);
+        setPendingPromotion({ move, before, options: info.data.options });
+        return;
+      }
+    } catch (_) {
+      // The lookup is an improvement, not a gate - send the move as it stands.
+    }
+    await submitMove(move, before);
+  }, [puzzle, busy, finished, board, found, submitMove]);
+
+  const choosePromotion = useCallback((option) => {
+    const pending = pendingPromotion;
+    setPendingPromotion(null);
+    if (!pending) return;
+    submitMove(
+      {
+        ...pending.move,
+        promotionPieceId: option.id,
+        ...(option.player != null ? { promotionPlayer: option.player } : {}),
+      },
+      pending.before,
+      { piece_name: option.piece_name || null, image_location: option.image_location || null },
+    );
+  }, [pendingPromotion, submitMove]);
 
   /** This piece's moves, from the cache when we already asked. */
   const loadHints = useCallback(async (x, y) => {
@@ -795,6 +863,21 @@ const PuzzlesPanel = () => {
                   player_id: item.player || 1,
                 })}
               />
+
+              {/* The same dialog the puzzle's own page uses, so a promotion can
+                  be finished here instead of sending the solver away. */}
+              {pendingPromotion && (
+                <PromotionChooser
+                  options={pendingPromotion.options}
+                  defaultPlayer={puzzle.side_to_move}
+                  imageFor={imageFor}
+                  onChoose={choosePromotion}
+                  onCancel={() => {
+                    setBoard(pendingPromotion.before);
+                    setPendingPromotion(null);
+                  }}
+                />
+              )}
 
               <div className={styles["daily-info"]}>
                 <h3 className={styles["daily-title"]}>

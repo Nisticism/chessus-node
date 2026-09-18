@@ -4,8 +4,10 @@ import API_URL from "../../global/global";
 import useBoardViewport from "../common/useBoardViewport";
 import { MOVE_DOT_BACKGROUNDS, getMoveDotType } from "../../helpers/moveEngine";
 import PlacementTray from "../common/PlacementTray";
+import PromotionChooser from "../common/PromotionChooser";
 import useSetupMoveReplay from "../common/useSetupMoveReplay";
 import { expandPlaceable, placesPieces } from "../../helpers/placement";
+import { applyPromotionDefinition, promotionPieceNumber } from "../../helpers/pieceMovementUtils";
 import PuzzleBoard from "../puzzles/PuzzleBoard";
 import useDiscordSdk from "./useDiscordSdk";
 import { launchedPuzzleId } from "../../helpers/discord-launch-params";
@@ -97,7 +99,7 @@ const fromServerPosition = (list) => {
   return out;
 };
 
-const applyMove = (cells, move, recorded) => {
+const applyMove = (cells, move, recorded, promotionArt = null) => {
   const m = recorded || move;
   if (!cells || !m?.from || !m?.to) return cells;
   const fromKey = `${m.from.y},${m.from.x}`;
@@ -105,7 +107,7 @@ const applyMove = (cells, move, recorded) => {
   if (!mover) return cells;
   const next = { ...cells };
   delete next[fromKey];
-  next[`${m.to.y},${m.to.x}`] = {
+  const landed = {
     ...mover,
     // Keep the id the piece had on its STARTING square, so a later move by the
     // same piece quotes that square, not its current one - the solve check keys
@@ -114,6 +116,27 @@ const applyMove = (cells, move, recorded) => {
     x: m.to.x,
     y: m.to.y,
   };
+
+  /*
+   * A promotion replaces the piece rather than moving it. Through the replay's
+   * own helper, so what survives a promotion is decided in one place. The art is
+   * only cleared when there is something to put in its place: this frame has no
+   * piece-definition map to look a piece up in, and a blank square would read
+   * worse than the old picture for the moment before the server answers.
+   */
+  const promotedId = promotionPieceNumber(m.promotionPieceId);
+  if (promotedId != null) {
+    applyPromotionDefinition(landed, {
+      piece_id: promotedId,
+      ...(promotionArt ? {
+        piece_name: promotionArt.piece_name || null,
+        image_location: promotionArt.image_location || null,
+        image_url: null,
+      } : {}),
+    });
+    if (m.promotionPlayer != null) landed.player_id = Number(m.promotionPlayer);
+  }
+  next[`${m.to.y},${m.to.x}`] = landed;
 
   if (m.isCastling && m.castlingWith) {
     const pKey = `${m.castlingWith.y},${m.castlingWith.x}`;
@@ -166,6 +189,12 @@ export default function DiscordActivity() {
   // The opponent move currently sliding in - the setup move, then each reply.
   const [animMove, setAnimMove] = useState(null);
   const [attempts, setAttempts] = useState(0);
+  /*
+   * A promotion waiting on the solver, with the board it was played against -
+   * the guess is off the board while the dialog is open, and the answer has to
+   * be sent against the position it was made in.
+   */
+  const [pendingPromotion, setPendingPromotion] = useState(null);
   // The one-time code for joining this Discord id to a GridGrove account.
   const [linkCode, setLinkCode] = useState(null);
 
@@ -460,64 +489,21 @@ export default function DiscordActivity() {
       .catch(() => { /* the timeout above is the fallback */ });
   }, [siteUrl, discord.sdk, discord.status]);
 
-  const tryMove = useCallback(async (fromKey, x, y) => {
-    if (!puzzle || busy || finished) return;
-    const [fy, fx] = fromKey.split(',').map(Number);
-    const mover = board?.[fromKey];
-    setPicked(null);
-    setHints([]);
+  /*
+   * Send a move and act on the verdict.
+   *
+   * Split out of the lookup below so a promotion can interrupt: the lookup stops
+   * to ask which piece it becomes, and this is what the answer resumes into.
+   * `art` is the chosen piece's name and image, for the optimistic board only.
+   */
+  const submitMove = useCallback(async (move, before, art = null) => {
+    if (!puzzle) return;
+    const { x, y } = move.to;
     setBusy(true);
     setLastTry({ x, y });
-
-    const move = {
-      from: { x: fx, y: fy },
-      to: { x, y },
-      pieceId: mover?.id || `${mover?.piece_id}_${fy}_${fx}`,
-    };
-
-    /*
-     * Move the piece now, ask the server afterwards.
-     *
-     * The round trip is a move-info call and a solve call, and waiting for both
-     * before anything happened left the piece sitting under the cursor for long
-     * enough to read as a dropped input - the same flash the live games had
-     * before they moved optimistically. The board is a guess until the server
-     * answers; `before` is what it is a guess AGAINST, so every outcome below
-     * rebuilds from that rather than from the guess, and a rejected move puts
-     * the piece back.
-     */
-    const before = board;
-    setBoard((prev) => applyMove(prev, move));
+    setBoard((prev) => applyMove(prev, move, null, art));
 
     try {
-      const info = await axios.post(
-        `${API}game-types/${puzzle.game_type_id}/puzzle-move-info`,
-        {
-          position: Object.values(board || {}),
-          side_to_move: puzzle.side_to_move,
-          setup_move: puzzle.setup_move,
-          move,
-        }
-      ).catch(() => null);
-
-      /*
-       * A promotion needs a piece chooser, and a custom game's promotion list is
-       * not something to cram into this frame. The player is sent to the real
-       * page in their browser, which is the honest answer rather than guessing
-       * a piece for them.
-       */
-      if (info?.data?.promotes) {
-        setBoard(before);
-        setVerdict({ status: 'handoff', text: 'That move promotes — finish it on the site.' });
-        setBusy(false);
-        return;
-      }
-      if (info?.data?.castling) {
-        move.isCastling = true;
-        move.castlingWith = info.data.castling.castlingWith;
-        move.castlingDirection = info.data.castling.castlingDirection;
-      }
-
       const moves = [...found, move];
       // Give the handshake its last moment before this is filed as anonymous,
       // then read the token as it stands NOW rather than as it was on mount.
@@ -587,7 +573,77 @@ export default function DiscordActivity() {
     } finally {
       setBusy(false);
     }
-  }, [puzzle, busy, finished, board, found, attempts, awaitHandshake]);
+  }, [puzzle, found, attempts, awaitHandshake]);
+
+  /*
+   * Ask what the move actually is, then send it.
+   *
+   * A promotion stops here rather than being sent: the piece is part of the
+   * answer, so it has to be chosen first. This used to give up instead - "that
+   * move promotes, finish it on the site" - which inside Discord means leaving
+   * the thing you were playing in, for a puzzle you had already half solved.
+   * A custom game's promotion list turns out to fit in this frame perfectly
+   * well; it is the same dialog the site uses.
+   */
+  const tryMove = useCallback(async (fromKey, x, y) => {
+    if (!puzzle || busy || finished) return;
+    const [fy, fx] = fromKey.split(',').map(Number);
+    const mover = board?.[fromKey];
+    setPicked(null);
+    setHints([]);
+    setLastTry({ x, y });
+
+    const move = {
+      from: { x: fx, y: fy },
+      to: { x, y },
+      pieceId: mover?.id || `${mover?.piece_id}_${fy}_${fx}`,
+    };
+
+    // The position the guess is made against, so every outcome rebuilds from it.
+    const before = board;
+    setBusy(true);
+    try {
+      const info = await axios.post(
+        `${API}game-types/${puzzle.game_type_id}/puzzle-move-info`,
+        {
+          position: Object.values(before || {}),
+          side_to_move: puzzle.side_to_move,
+          setup_move: found.length ? null : puzzle.setup_move,
+          move,
+        }
+      ).catch(() => null);
+
+      if (info?.data?.castling) {
+        move.isCastling = true;
+        move.castlingWith = info.data.castling.castlingWith;
+        move.castlingDirection = info.data.castling.castlingDirection;
+      }
+
+      if (info?.data?.promotes && Array.isArray(info.data.options) && info.data.options.length) {
+        setBusy(false);
+        setPendingPromotion({ move, before, options: info.data.options });
+        return;
+      }
+    } catch (_) {
+      // The lookup is an improvement, not a gate - send the move as it stands.
+    }
+    await submitMove(move, before);
+  }, [puzzle, busy, finished, board, found, submitMove]);
+
+  const choosePromotion = useCallback((option) => {
+    const pending = pendingPromotion;
+    setPendingPromotion(null);
+    if (!pending) return;
+    submitMove(
+      {
+        ...pending.move,
+        promotionPieceId: option.id,
+        ...(option.player != null ? { promotionPlayer: option.player } : {}),
+      },
+      pending.before,
+      { piece_name: option.piece_name || null, image_location: option.image_location || null },
+    );
+  }, [pendingPromotion, submitMove]);
 
   // ----------------------------------------------------------- interaction --
   const squareAt = useCallback((clientX, clientY) => {
@@ -921,20 +977,26 @@ export default function DiscordActivity() {
         })}
       />
 
+      {/* The same dialog the site uses, toned for Discord's own dark surface.
+          A promotion is answered here now rather than sending the player out of
+          the frame they were playing in. */}
+      {pendingPromotion && (
+        <PromotionChooser
+          options={pendingPromotion.options}
+          defaultPlayer={puzzle.side_to_move}
+          imageFor={imageFor}
+          onChoose={choosePromotion}
+          onCancel={() => {
+            setBoard(pendingPromotion.before);
+            setPendingPromotion(null);
+          }}
+          tone="discord"
+        />
+      )}
+
       {verdict && (
         <p className={`${styles["verdict"]} ${styles[`v-${verdict.status}`] || ''}`}>
           {verdict.text}
-          {verdict.status === 'handoff' && (
-            <a
-              className={styles["link-btn"]}
-              href={siteUrl || '#'}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={openOnSite}
-            >
-              Open on GridGrove
-            </a>
-          )}
         </p>
       )}
 

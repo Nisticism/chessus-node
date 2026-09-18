@@ -5,6 +5,15 @@ import styles from "./changelog.module.scss";
 const changelogData = [
   {
     date: "September 18, 2026",
+    title: "Finish a puzzle where you started it",
+    items: [
+      "A promoting move can now be answered on the home-page card and inside the Discord activity, not only on the puzzle’s own page. The card used to navigate you away mid-puzzle and Discord used to say “finish it on the site” — both of which meant a board that could start a puzzle it could not finish. All three now show the same piece chooser.",
+      "Fixed the Discord activity failing to sign in after every update. The app was reloading itself once to clear stale caches, and inside Discord that reload broke the handshake with the Discord client outright — silently, with no error, which is why it looked like a slow connection and why it worked the second time you opened it. The activity no longer reloads itself.",
+      "Signing in to the Discord activity no longer asks for authorisation again after a failed connection. A handshake that could not reach Discord was throwing away a perfectly good sign-in on its way out.",
+    ],
+  },
+  {
+    date: "September 18, 2026",
     title: "A promoted piece looks like what it became",
     items: [
       "Fixed a promotion in a puzzle showing as the pawn that made it. The board relocates pieces as you play, which describes every move except this one — a promotion replaces the piece, and nothing on the page knew what it had become, so a queen sat on the last rank wearing a pawn’s picture for the rest of the puzzle. The server now sends the position it worked out whenever a line promotes, so the piece is redrawn correctly on the puzzle page, the home card and the Discord activity alike.",

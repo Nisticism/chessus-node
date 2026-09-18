@@ -1,0 +1,106 @@
+/* The promotion dialog, shared by the puzzle page, the home card and the
+   Discord activity. Lifted out of puzzlesolver.module.scss unchanged, so the
+   page it came from looks exactly as it did. */
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: grid;
+  place-items: center;
+  z-index: 60;
+  padding: 16px;
+}
+
+.dialog {
+  background: var(--panel-bg-start, #1b2740);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  padding: 20px;
+  max-width: 480px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+
+  h3 { margin: 0; color: var(--text-heading); }
+  p { margin: 0; font-size: 14px; color: var(--text-secondary); }
+}
+
+.options { display: flex; flex-wrap: wrap; gap: 10px; }
+
+.option {
+  flex: 1 1 92px;
+  min-width: 92px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-heading);
+  font-size: 13px;
+  cursor: pointer;
+
+  img { width: 44px; height: 44px; object-fit: contain; }
+  em { font-size: 11px; color: var(--text-muted, #8b97ad); font-style: normal; }
+
+  &:hover, &:focus-visible { border-color: #5fd0a4; background: rgba(95, 208, 164, 0.12); }
+}
+
+.fallback {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-heading);
+}
+
+.cancel {
+  align-self: flex-start;
+  padding: 8px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-heading);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+
+  &:hover { border-color: rgba(255, 255, 255, 0.4); }
+}
+
+/* Discord draws its own dark surface behind the activity, and the site's panel
+   tokens are not defined there - the same reason PlacementTray has a tone. */
+.tone-discord {
+  .dialog {
+    background: #2b2d31;
+    border-color: #3f4147;
+
+    h3 { color: #f2f3f5; }
+    p { color: #b5bac1; }
+  }
+
+  .option {
+    border-color: #3f4147;
+    background: #1e1f22;
+    color: #f2f3f5;
+
+    em { color: #b5bac1; }
+
+    &:hover, &:focus-visible { border-color: #5865f2; background: rgba(88, 101, 242, 0.16); }
+  }
+
+  .fallback { color: #f2f3f5; }
+
+  .cancel {
+    border-color: #3f4147;
+    color: #f2f3f5;
+
+    &:hover { border-color: #5865f2; }
+  }
+}
