@@ -95,8 +95,14 @@ export function isDiscordLaunch() {
  * @returns {number|null}
  */
 export function launchedPuzzleId() {
-  const raw = getLaunchParams().get('custom_id') || '';
-  const m = /^gridgrove:play-daily:(\d+)$/.exec(raw);
+  const raw = String(getLaunchParams().get('custom_id') || '');
+  /*
+   * Deliberately loose about the shape around the number. The contract is the
+   * prefix and a trailing id, and an anchored match would hand back null over a
+   * separator or a suffix - which is indistinguishable, from the player's side,
+   * from the bug this exists to fix.
+   */
+  const m = /play-daily[:\-_](\d+)/.exec(raw);
   if (!m) return null;
   const id = Number(m[1]);
   return Number.isInteger(id) && id > 0 ? id : null;

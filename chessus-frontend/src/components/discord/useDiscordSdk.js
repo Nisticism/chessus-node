@@ -90,6 +90,34 @@ function clearCachedToken(clientId) {
   try { window.localStorage.removeItem(tokenKey(clientId)); } catch (_) { /* ignore */ }
 }
 
+/*
+ * How often a failed RPC handshake may cost the player a consent prompt.
+ *
+ * `authenticate` failing is treated as evidence that a cached token has been
+ * revoked, and the recovery is to ask for consent again. That is a fair guess
+ * once. It is a bad guess every launch: authenticate can fail for reasons that
+ * have nothing to do with the token - the RPC channel not answering, the
+ * rpc.activities.write scope not being granted - and then the guess becomes a
+ * prompt on every single launch, for a token that was working the whole time.
+ * That is the "it keeps asking me to authorize" report.
+ *
+ * So the attempt is remembered, and not repeated for a day. A genuinely revoked
+ * token still recovers; a flaky channel costs presence and asks nothing.
+ */
+const REAUTH_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+const reauthKey = (clientId) => `gg:discord:reauth:${clientId}`;
+
+function reauthAllowed(clientId) {
+  try {
+    const at = Number(window.localStorage.getItem(reauthKey(clientId)));
+    return !Number.isFinite(at) || !at || Date.now() - at > REAUTH_COOLDOWN_MS;
+  } catch (_) { return true; }
+}
+
+function markReauth(clientId) {
+  try { window.localStorage.setItem(reauthKey(clientId), String(Date.now())); } catch (_) { /* ignore */ }
+}
+
 /**
  * @returns {{
  *   status: 'outside'|'connecting'|'ready'|'error',
@@ -296,6 +324,14 @@ export default function useDiscordSdk() {
     let stage = 'ready';
 
     /*
+     * The steps where a failure might actually be the stored token's fault, and
+     * so the only ones that may throw it away. Everything else - the handshake
+     * above all - is a channel problem, and a channel problem must not cost the
+     * player their consent.
+     */
+    const TOKEN_STAGES = new Set(['authorize', 'token-exchange']);
+
+    /*
      * A step that never settles is worse than one that fails.
      *
      * The last launch produced no token, no error and no report - which no
@@ -368,11 +404,16 @@ export default function useDiscordSdk() {
         /*
          * The RPC session, which is what setActivity needs. Best effort.
          *
-         * A CACHED token that is refused here is a token Discord no longer
-         * accepts - revoked, or expired earlier than it claimed - so the cache is
-         * dropped and consent asked for once. A FRESH token refused here is a
-         * working token and a failed RPC handshake, which costs presence and
-         * nothing else, so it is logged and the puzzle carries on.
+         * A FRESH token refused here is a working token and a failed RPC
+         * handshake, which costs presence and nothing else, so it is logged and
+         * the puzzle carries on.
+         *
+         * A CACHED token refused here MIGHT be a token Discord no longer accepts
+         * - revoked, or expired earlier than it claimed - and re-asking for
+         * consent is the only way to recover from that. But it might equally be
+         * the channel, and the difference is not visible from here, so the
+         * re-ask is rationed: once a day at most (see REAUTH_COOLDOWN_MS).
+         * Otherwise a channel that never works prompts on every launch.
          */
         try {
           const auth = await sdk.commands.authenticate({ access_token: token });
@@ -384,6 +425,17 @@ export default function useDiscordSdk() {
             console.warn('[discord] authenticate failed; presence is off but the token is good:', rpcErr?.message);
             return;
           }
+          if (!reauthAllowed(clientId)) {
+            /*
+             * Already tried this recently. The token stays, so the streak still
+             * counts; only presence is missing, and nothing is asked of the
+             * player for the second time today.
+             */
+            report('authenticate-failed-holding',
+              `authenticate refused a cached token again (${rpcErr?.message}); keeping it rather than re-prompting`);
+            return;
+          }
+          markReauth(clientId);
           clearCachedToken(clientId);
           token = await authorizeFresh();
           if (cancelled) return;
@@ -401,8 +453,22 @@ export default function useDiscordSdk() {
          * A failed handshake is not a failed puzzle. The activity falls back to
          * playing anonymously - no streak, no record - rather than showing an
          * error where a board should be.
+         *
+         * WHAT IS NOT THROWN AWAY: the token.
+         *
+         * This used to clear the cache on every failure, whatever the failure
+         * was - so a `sdk.ready` that never settled discarded a perfectly good
+         * access token on its way out, and the next launch had to ask for
+         * consent again. That is the "it keeps asking me to authorize" report:
+         * the token was never the thing that was broken, and a handshake that
+         * cannot reach the Discord client says nothing at all about whether
+         * Discord still accepts our token.
+         *
+         * Cleared only for the steps that are ABOUT the token - authorize, the
+         * exchange - where a stored value really may be the problem. `ready` and
+         * the SDK constructor leave it alone.
          */
-        clearCachedToken(clientId);
+        if (TOKEN_STAGES.has(stage)) clearCachedToken(clientId);
         report(stage, err?.message || String(err));
         setState({
           status: 'error', sdk, token: null, user: null,
