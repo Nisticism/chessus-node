@@ -8,7 +8,7 @@ import reportWebVitals from './reportWebVitals';
 import { BrowserRouter } from 'react-router-dom';
 import { GoogleOAuthProvider } from '@react-oauth/google';
 import './services/axios-interceptor'; // Initialize axios interceptor
-import { captureLaunchParams } from './helpers/discord-launch-params';
+import { captureLaunchParams, isDiscordLaunch } from './helpers/discord-launch-params';
 import { REFERRER_STASH_KEY } from './analytics/GoogleAnalytics';
 
 /*
@@ -120,6 +120,36 @@ const clearAppCachesIfNeeded = async () => {
   }
 
   if (hasRefreshFlag) {
+    return false;
+  }
+
+  /*
+   * NEVER reload inside the Discord activity. This one is load-bearing.
+   *
+   * The Discord SDK posts its handshake to the parent window with
+   * `document.referrer` as the postMessage targetOrigin - see
+   * getRPCServerSource in @discord/embedded-app-sdk. On a launch, that referrer
+   * is the Discord client's own URL, the targetOrigin matches the parent, and
+   * the handshake is delivered.
+   *
+   * After a reload it is no longer Discord's URL: it is OUR page, on
+   * <app id>.discordsays.com. The targetOrigin then names an origin the parent
+   * window is not, so the browser drops the message with no error at all -
+   * nothing thrown, nothing logged, no reply - and sdk.ready() waits forever.
+   * That is the "sdk.ready did not settle" this activity has been reporting, and
+   * retrying cannot fix it because a document's referrer never changes.
+   *
+   * It fires on the FIRST launch after every deploy, because that is when
+   * UI_CACHE_VERSION last changed - which is exactly the "it fails when the app
+   * is updated, and works the next time" shape, and the same observation the
+   * retry loop in useDiscordSdk was written to paper over as a race.
+   *
+   * The caches are cleared above either way; only the navigation is skipped. An
+   * activity is loaded fresh by Discord on every launch, so the stale-bundle
+   * problem the reload exists for barely applies to it - and a stale bundle is
+   * worth far less than a handshake.
+   */
+  if (isDiscordLaunch()) {
     return false;
   }
 
