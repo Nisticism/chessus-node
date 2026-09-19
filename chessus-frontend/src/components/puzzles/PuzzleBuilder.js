@@ -142,6 +142,16 @@ const PuzzleBuilder = () => {
    * Declining is one click and needs nobody's permission.
    */
   const [allowDaily, setAllowDaily] = useState(true);
+  /*
+   * Whether only the recorded final move counts.
+   *
+   * OFF by default, which means a solver who finds a DIFFERENT move that
+   * achieves the goal has solved it. Composing a line that is provably the only
+   * one is hard, and telling somebody staring at a checkmate that they are
+   * wrong is a worse failure than accepting a second answer. A creator who has
+   * checked can say so.
+   */
+  const [requireExactLine, setRequireExactLine] = useState(false);
   const [dailyInfo, setDailyInfo] = useState(null);      // requirements, lazily fetched
   const [dailyModalOpen, setDailyModalOpen] = useState(false);
 
@@ -349,6 +359,7 @@ const PuzzleBuilder = () => {
         setHideRating(!!p.hide_rating);
         setIsDraft(p.is_draft === undefined ? true : !!p.is_draft);
         setAllowDaily(p.allow_daily === undefined ? true : !!p.allow_daily);
+        setRequireExactLine(!!p.require_exact_line);
         if (p.setup_move) setSetupMove(p.setup_move);
         if (Array.isArray(p.solution_line)) setSolutionLine(p.solution_line.filter(Boolean));
       } catch (err) {
@@ -1074,6 +1085,7 @@ const PuzzleBuilder = () => {
     setup_move: setupMove,
     hide_rating: hideRating,
     allow_daily: allowDaily,
+    require_exact_line: requireExactLine,
     solution_line: solutionLine,
   });
 
@@ -1547,6 +1559,31 @@ const PuzzleBuilder = () => {
               </button>
             </p>
           )}
+
+          {/*
+            * Two answers to the same position is the ordinary case, not a
+            * failure - a mate in two often has two mating moves at the end. By
+            * default any last move that achieves the goal counts, so a solver
+            * who finds one of them is not told they are wrong while looking at
+            * a checkmate. Turning this on is a claim the creator is making
+            * about their own line, so the wording says what it costs.
+            */}
+          <label className={styles["checkbox-field"]}>
+            <input
+              type="checkbox"
+              checked={requireExactLine}
+              onChange={(e) => setRequireExactLine(e.target.checked)}
+            />
+            <span>
+              Accept only my exact solution
+              <small className={styles["field-hint"]}>
+                Off by default: any final move that achieves the goal is accepted, so a
+                solver who finds a different mate still solves it. Turn this on only if
+                you have checked that your line is the only one — otherwise a correct
+                answer can be marked wrong.
+              </small>
+            </span>
+          </label>
 
           {!!allowance && allowance.perGameLimit != null && (
             <p className={styles["allowance-note"]}>

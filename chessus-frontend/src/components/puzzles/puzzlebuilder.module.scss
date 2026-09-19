@@ -367,13 +367,25 @@
 
 .checkbox-field {
   display: flex;
-  align-items: center;
+  /* Start rather than centre, so a label carrying an explanation underneath
+     keeps its box beside the first line instead of floating to the middle. */
+  align-items: flex-start;
   gap: 8px;
   font-size: 15px;
   color: var(--text-heading);
   cursor: pointer;
 
-  input { width: 16px; height: 16px; }
+  input { width: 16px; height: 16px; margin-top: 2px; flex: 0 0 auto; }
+  > span { display: block; }
+}
+
+/* The cost of a setting, said under it rather than in a tooltip nobody opens. */
+.field-hint {
+  display: block;
+  margin-top: 4px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-secondary);
 }
 
 .solution-readout {

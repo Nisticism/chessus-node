@@ -16,7 +16,11 @@
 const {
   validatePuzzle, moveKey, GOALS, GOAL_DEFS, MECHANICAL_GOALS, VALIDATION,
   goalsForGameType, describeGoal, buildGameState, playLine, applyPly, placementRules,
+  goalMet, terminalOutcome,
 } = require('./puzzle-validation');
+
+/** The other player. Two players, so this is the whole of it. */
+const otherSide = (n) => (Number(n) === 1 ? 2 : 1);
 const {
   getPromotionOptions, checkPromotionEligibility, getAllLegalMovesForPlayer,
   getPossibleMovesForPiece,
@@ -1746,8 +1750,9 @@ function registerPuzzleRoutes(app, {
       const [result] = await db_pool.query(
         `INSERT INTO puzzles
           (game_type_id, creator_id, title, description, position, side_to_move, setup_move,
-           goal, goal_description, solution_line, solution_depth, allow_daily, is_draft)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1)`,
+           goal, goal_description, solution_line, solution_depth, allow_daily,
+           require_exact_line, is_draft)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,1)`,
         [
           gameTypeId, req.user.id,
           (title || '').slice(0, MAX_TITLE) || null,
@@ -1762,6 +1767,13 @@ function registerPuzzleRoutes(app, {
           solverPlies(line).length,
           // Opted in unless the creator said otherwise.
           allow_daily === false ? 0 : 1,
+          /*
+           * OFF unless the creator asks for it: a solver who finds a different
+           * move that achieves the goal has solved the puzzle. Turning it on
+           * says "I have checked, my line is the only one" - which is a claim
+           * most puzzles cannot make and none should have to make by default.
+           */
+          req.body?.require_exact_line ? 1 : 0,
         ]
       );
       const created = await loadPuzzle(result.insertId);
@@ -1793,6 +1805,7 @@ function registerPuzzleRoutes(app, {
       if (b.allow_daily !== undefined) set('allow_daily', b.allow_daily ? 1 : 0);
       if (b.goal_description !== undefined) set('goal_description', (b.goal_description || '').slice(0, 255) || null);
       if (b.hide_rating !== undefined) set('hide_rating', b.hide_rating ? 1 : 0);
+      if (b.require_exact_line !== undefined) set('require_exact_line', b.require_exact_line ? 1 : 0);
       if (b.solution_line !== undefined) {
         const { line, error: lineError } = sanitizeLine(b.solution_line);
         if (lineError) return res.status(400).send({ message: lineError });
@@ -2016,6 +2029,82 @@ function registerPuzzleRoutes(app, {
       let matched = 0;
       while (matched < submitted.length && matched < mine.length
              && moveKey(submitted[matched]) === moveKey(mine[matched])) matched++;
+
+      /*
+       * A DIFFERENT move that finishes the puzzle counts.
+       *
+       * The line is one answer, not the only one. A mate in two can easily have
+       * two mating moves at the end - today's daily does, and a solver who found
+       * the other one was told "not that one" while looking at a checkmate. That
+       * is the site calling a correct answer wrong, which is worse than any
+       * ambiguity it was protecting.
+       *
+       * Deliberately narrow:
+       *
+       *   THE LAST MOVE ONLY. A dual in the middle changes the position the
+       *   creator's scripted replies were written for, so the rest of the line
+       *   would no longer be about the game being played. At the end there is
+       *   no rest.
+       *
+       *   A MECHANICAL GOAL ONLY. "Checkmate" the engine can decide; "win
+       *   material" it cannot, and guessing would accept anything.
+       *
+       *   IT MUST ACTUALLY REACH THE GOAL, replayed through the same engine the
+       *   recorded line is replayed through. Being legal is not enough.
+       *
+       * The recorded line still decides everything else - the score, the reply
+       * shown, the position sent back - so a solver taking the alternative gets
+       * the same treatment as one taking the intended move.
+       *
+       * A creator who HAS checked that their line is the only one can turn this
+       * off per puzzle (require_exact_line). It is off by default because the
+       * common case is a creator who has not checked, and for them accepting a
+       * correct answer is the safer failure.
+       */
+      let altFinish = false;
+      if (!revealed
+          && !puzzle.require_exact_line
+          && mine.length > 0
+          && matched === mine.length - 1
+          && submitted.length === mine.length
+          && MECHANICAL_GOALS.has(puzzle.goal)) {
+        try {
+          const rules = await loadRulesFor(puzzle);
+          const state = buildGameState({
+            position: await hydratePosition(rules, safeParse(puzzle.position, [])),
+            initial_pieces: await loadStartingRoster(rules),
+            side_to_move: puzzle.side_to_move,
+            setup_move: safeParse(puzzle.setup_move),
+            game_type_id: puzzle.game_type_id,
+          }, rules.game);
+
+          // Replay the agreed prefix: the solver's matched moves and the
+          // creator's replies to them, in the order they are played.
+          const prefix = line.slice(0, matched * 2);
+          let ok = true;
+          for (let i = 0; i < prefix.length; i++) {
+            state.currentTurn = i % 2 === 0 ? Number(puzzle.side_to_move) : otherSide(puzzle.side_to_move);
+            // eslint-disable-next-line no-await-in-loop
+            const step = await applyPly(state, prefix[i], { autoPromote: true });
+            if (!step.ok) { ok = false; break; }
+          }
+
+          if (ok) {
+            state.currentTurn = Number(puzzle.side_to_move);
+            const attempt = await applyPly(state, submitted[matched], { autoPromote: false });
+            if (attempt.ok) {
+              state.currentTurn = otherSide(puzzle.side_to_move);
+              const term = terminalOutcome(state, otherSide(puzzle.side_to_move), attempt);
+              altFinish = goalMet(puzzle.goal, state, puzzle.side_to_move, attempt)
+                || !!(term && Number(term.winner) === Number(puzzle.side_to_move));
+            }
+          }
+        } catch (err) {
+          // The recorded line still stands; this only ever ADDS an answer.
+          console.warn(`[puzzle] could not test an alternative finish for ${puzzle.id}: ${err.message}`);
+        }
+        if (altFinish) matched = mine.length;
+      }
 
       const wrong = !revealed && matched < submitted.length;
       const solved = !revealed && !wrong && mine.length > 0 && matched === mine.length;

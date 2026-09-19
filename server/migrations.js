@@ -923,6 +923,17 @@ const migrations = [
     description: "Add hide_rating to puzzles (creator can suppress the public rating)"
   },
   {
+    table: 'puzzles',
+    column: 'require_exact_line',
+    // Default 0: a solver who finds a DIFFERENT move that achieves the goal has
+    // solved the puzzle. Composing a line that is provably the only one is hard,
+    // and telling somebody looking at a checkmate that they are wrong is worse
+    // than the ambiguity. A creator who has checked their line and wants exactly
+    // it can turn this on.
+    sql: "ALTER TABLE puzzles ADD COLUMN require_exact_line TINYINT(1) NOT NULL DEFAULT 0",
+    description: "Add require_exact_line to puzzles (only the recorded final move counts)"
+  },
+  {
     table: 'users',
     column: 'puzzles_solved',
     sql: "ALTER TABLE users ADD COLUMN puzzles_solved INT UNSIGNED NOT NULL DEFAULT 0",
