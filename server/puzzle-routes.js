@@ -582,6 +582,25 @@ function registerPuzzleRoutes(app, {
       const def = art.get(Number(pl.piece_id)) || {};
       return {
         piece_id: pl.piece_id,
+        /*
+         * The piece's BOARD IDENTITY, and it has to travel.
+         *
+         * moveKey folds pieceId in, so an answer only matches when the board a
+         * player is looking at names the piece the way the recorded line does.
+         * This payload used to omit `id`, so the home card and the Discord
+         * activity derived one from the square - while the puzzle's own page,
+         * which comes through hydratePosition, kept the id STORED in the
+         * position. For a puzzle mined out of a real game those two disagree:
+         * the stored id is the square the piece started on in that game, not
+         * the one it now stands on. Today's daily is one - its rook is
+         * "15_7_7" on its own page and "15_4_2" on the card - so the same
+         * correct move solved the puzzle in one place and was rejected in the
+         * other two.
+         *
+         * Same fallback hydratePosition uses, so a position with no stored id
+         * is named identically by all three.
+         */
+        id: pl.id || `${pl.piece_id}_${Number(pl.y)}_${Number(pl.x)}`,
         player_id: Number(pl.player_id ?? pl.team ?? 1),
         x: Number(pl.x),
         y: Number(pl.y),
@@ -2270,6 +2289,14 @@ function registerPuzzleRoutes(app, {
               const look = art.get(Number(pc.piece_id)) || {};
               return {
                 piece_id: Number(pc.piece_id),
+                /*
+                 * Carried for the same reason the daily card's position carries
+                 * it: a board rebuilt from this payload has to keep naming
+                 * pieces the way the line does, or the NEXT move of a multi-move
+                 * puzzle stops matching. The engine never renames a piece, so
+                 * this is still the id it had on its starting square.
+                 */
+                id: pc.id,
                 player_id: Number(pc.team ?? pc.player_id),
                 piece_name: pc.piece_name || look.piece_name || null,
                 image_location: pc.image_location || look.image_location || null,
