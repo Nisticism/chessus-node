@@ -81,15 +81,93 @@ async function readLive(db_pool, gameTypeId) {
   const ids = new Set(placements.map((p) => Number(p.piece_id)).filter(Boolean));
   for (const extra of piecesNamedIn(game)) ids.add(extra);
 
+  /*
+   * Promotion targets named PER PLACEMENT, which is where most of them live.
+   *
+   * A game can set its promotion list three different ways, and this used to
+   * see only one of them: the game-level column. "Darkness 3x12" configures its
+   * pawn through game_type_pieces.promotion_pieces_override - [Knight, Bishop,
+   * Rook] - so the Rook was never loaded, and a Rook standing on a puzzle board
+   * hydrated from `byId.get(15) || {}`: an empty definition, with no movement
+   * and no capture. The engine then said "Piece cannot capture to that square"
+   * about a rook staring down an open file at a king, in a game where taking it
+   * was not only legal but compulsory.
+   */
+  for (const row of placements) {
+    for (const extra of idsIn(row.promotion_pieces_override)) ids.add(extra);
+  }
+
   let pieces = [];
   if (ids.size) {
     const list = [...ids];
     [pieces] = await db_pool.query(
       `SELECT * FROM pieces WHERE id IN (${list.map(() => '?').join(',')})`, list
     );
+
+    /*
+     * And the third way: a piece's OWN default promotion list, which is only
+     * visible once the piece has been read. One extra round trip, and only when
+     * it names something new - a promotion target that promotes further is the
+     * rare case, so this closes rather than loops.
+     */
+    const more = new Set();
+    for (const row of pieces) {
+      for (const extra of idsIn(row.promotion_pieces_ids)) if (!ids.has(extra)) more.add(extra);
+      for (const extra of idsIn(row.promotion_options)) if (!ids.has(extra)) more.add(extra);
+    }
+    if (more.size) {
+      const extraList = [...more];
+      const [extraRows] = await db_pool.query(
+        `SELECT * FROM pieces WHERE id IN (${extraList.map(() => '?').join(',')})`, extraList
+      );
+      pieces = pieces.concat(extraRows);
+    }
   }
 
   return { game, pieces, placements };
+}
+
+/**
+ * Piece ids inside a stored promotion list, whatever shape it is in.
+ *
+ * These columns have collected three encodings over time: a JSON array of ids,
+ * a JSON array of {id, player} objects (cross-player and neutral promotion),
+ * and - in older rows - a bare comma-separated string. All three mean the same
+ * thing and all three appear on production.
+ */
+function idsIn(raw) {
+  const out = new Set();
+  const collect = (value) => {
+    if (value == null) return;
+    let v = value;
+    if (typeof v === 'string') {
+      try { v = JSON.parse(v); } catch (_) {
+        for (const part of String(value).split(',')) {
+          const num = Number(String(part).trim());
+          if (Number.isFinite(num) && num > 0) out.add(num);
+        }
+        return;
+      }
+    }
+    if (Array.isArray(v)) {
+      for (const n of v) {
+        if (n && typeof n === 'object') {
+          const num = Number(n.id ?? n.piece_id);
+          if (Number.isFinite(num) && num > 0) out.add(num);
+        } else {
+          const num = Number(n);
+          if (Number.isFinite(num) && num > 0) out.add(num);
+        }
+      }
+    } else if (v && typeof v === 'object') {
+      for (const inner of Object.values(v)) collect(inner);
+    } else {
+      const num = Number(v);
+      if (Number.isFinite(num) && num > 0) out.add(num);
+    }
+  };
+  collect(raw);
+  return out;
 }
 
 /**
@@ -124,6 +202,15 @@ function piecesNamedIn(game) {
     }
   };
 
+  /*
+   * NOTE: game_types has no promotion_pieces_ids column on production - this
+   * collect() has never returned anything. It is left in place because the
+   * schema is not the same everywhere and costs nothing, but it must not be
+   * mistaken for the working path: promotion targets are configured per
+   * placement (game_type_pieces.promotion_pieces_override) and per piece
+   * (pieces.promotion_pieces_ids), and readLive reads both. Believing this line
+   * was doing the job is what left promoted pieces with no definition at all.
+   */
   collect(game.promotion_pieces_ids);
   // The starting layout names its own pieces, and a game can start with a piece
   // that has no junction row.

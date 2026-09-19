@@ -1600,7 +1600,12 @@ const PuzzleBuilder = () => {
                       )}
                       {!!ply.promotionPieceId && (
                         <span className={styles["ply-promo"]}>
-                          {' '}= {pieceDataMap[ply.promotionPieceId]?.piece_name || `piece #${ply.promotionPieceId}`}
+                          {/* Keyed by the piece NUMBER: a promotion id is board-shaped
+                              ("15_8_1") where the piece has a starting square, and
+                              pieceDataMap is keyed by the id alone - so the raw value
+                              missed every time and the line read "= piece #15_8_1". */}
+                          {' '}= {pieceDataMap[promotionPieceNumber(ply.promotionPieceId)]?.piece_name
+                            || `piece #${promotionPieceNumber(ply.promotionPieceId) ?? ply.promotionPieceId}`}
                         </span>
                       )}
                     </li>
