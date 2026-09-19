@@ -497,3 +497,41 @@
 
 .turn-p1 { background: #f0f0f0; }
 .turn-p2 { background: #202020; }
+
+/* Stepping through a revealed answer. Lifted from the match review's controls
+   so the two read as the same thing - see matchview.module.scss .review-controls. */
+.review-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+
+  button {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: #ccc;
+    border-radius: 6px;
+    padding: 4px 12px;
+    cursor: pointer;
+    font-size: 0.9rem;
+
+    &:hover:not(:disabled) {
+      background: rgba(255, 255, 255, 0.2);
+      color: var(--text-heading);
+    }
+
+    &:disabled {
+      opacity: 0.3;
+      cursor: default;
+    }
+  }
+}
+
+/* Where in the answer the board currently is, so the arrows are not the only
+   thing telling you. */
+.review-where {
+  font-size: 13px;
+  color: var(--text-secondary);
+}

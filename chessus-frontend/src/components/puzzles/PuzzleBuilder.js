@@ -175,6 +175,10 @@ const PuzzleBuilder = () => {
   const [pendingPromotion, setPendingPromotion] = useState(null);
 
   const [checkResult, setCheckResult] = useState(null);
+  // The uniqueness search's answer, kept apart from the line check: they ask
+  // different questions and a creator should be able to see both at once.
+  const [uniqueness, setUniqueness] = useState(null);
+  const [checkingUnique, setCheckingUnique] = useState(false);
   const [busy, setBusy] = useState(false);
   const [savedId, setSavedId] = useState(puzzleId ? Number(puzzleId) : null);
   /*
@@ -1208,6 +1212,66 @@ const PuzzleBuilder = () => {
     }
   };
 
+  /*
+   * "How many answers does this have, and is mine the fastest?"
+   *
+   * A different question from Check puzzle, which asks whether the recorded line
+   * can be played and reaches the goal. This one searches: shortest forced win
+   * first, then how many moves achieve it. It saves first, because the search
+   * runs against the stored puzzle rather than whatever is on screen.
+   */
+  const checkUniqueness = async () => {
+    const id = await save();
+    if (!id) return;
+    setCheckingUnique(true);
+    setUniqueness(null);
+    try {
+      const { data } = await axios.post(
+        `${API_URL}puzzles/${id}/uniqueness`, {}, { headers: authHeader() });
+      setUniqueness(data);
+    } catch (err) {
+      setUniqueness({
+        verdict: 'error',
+        summary: err?.response?.data?.message || 'Could not check this puzzle.',
+      });
+    } finally {
+      setCheckingUnique(false);
+    }
+  };
+
+  /*
+   * The sentences under a uniqueness verdict, assembled here rather than as
+   * nested && branches inside the JSX.
+   *
+   * Not only for readability: react-hooks/rules-of-hooks analyses this
+   * component's code paths, and at ~1800 lines it is close enough to whatever
+   * its limit is that adding two more conditional JSX branches made it report
+   * every hook in the file as conditionally called - 24 false positives, since
+   * every hook here sits above the component's only early return. Fewer
+   * branches in the tree, and it is quiet again.
+   */
+  const uniquenessFootnotes = [];
+  if (uniqueness?.engineCalls != null) {
+    uniquenessFootnotes.push(
+      `Searched ${uniqueness.engineCalls.toLocaleString()} positions`
+      + (uniqueness.searchedToDepth
+        ? `, to ${uniqueness.searchedToDepth} ${uniqueness.searchedToDepth === 1 ? 'move' : 'moves'}`
+        : '')
+      + '.');
+  }
+  if (uniqueness?.verdict === 'multiple') {
+    uniquenessFootnotes.push(
+      'Solvers may find any of them, and by default any of them counts. Switch on '
+      + '“Accept only my exact solution” above if you want just yours.');
+  }
+
+  const uniquenessTone = (verdict) => {
+    if (verdict === 'unique') return 'ok';
+    if (verdict === 'multiple') return 'warn';
+    if (verdict === 'none_found' || verdict === 'error') return 'error';
+    return 'info';
+  };
+
   if (!allowed) {
     return (
       <div className={styles["builder-page"]}>
@@ -1669,9 +1733,31 @@ const PuzzleBuilder = () => {
             </div>
           )}
 
+          {/*
+            * The uniqueness search's answer. Shown separately from the line
+            * check because they are different questions, and a creator wants
+            * both: "can my line be played" and "is it the only one".
+            */}
+          {uniqueness && (
+            <div className={`${styles["notice"]} ${styles[`notice-${uniquenessTone(uniqueness.verdict)}`]}`}>
+              {uniqueness.summary}
+              {uniquenessFootnotes.map((note) => (
+                <span key={note} className={styles["check-cost"]}>{note}</span>
+              ))}
+            </div>
+          )}
+
           <div className={styles["form-actions"]}>
             <button className={styles["btn-secondary"]} onClick={check} disabled={busy}>
               {busy ? 'Working…' : 'Check puzzle'}
+            </button>
+            <button
+              className={styles["btn-secondary"]}
+              onClick={checkUniqueness}
+              disabled={busy || checkingUnique}
+              title="Search for the shortest forced win, and count how many moves achieve it"
+            >
+              {checkingUnique ? 'Searching…' : 'How many answers?'}
             </button>
             <button className={styles["btn-secondary"]} onClick={() => save()} disabled={busy}>
               {isDraft ? 'Save draft' : 'Save changes'}
@@ -1687,7 +1773,12 @@ const PuzzleBuilder = () => {
             can be checked automatically; everything else is judged by the people solving it.
             On a longer line the check confirms every move can actually be played, but the
             replies are the ones you wrote, so whether the opponent could defend better is
-            your call.
+            your call.{' '}
+            <strong>How many answers?</strong> goes further: it searches every reply the
+            opponent has, so it can tell you whether your line is genuinely forced, whether a
+            faster one exists, and how many different moves work. A big position may come back
+            “could not establish”, which means the search ran out of room — not that the puzzle
+            is wrong.
           </p>
 
           {/* The same rules panel the solver gets, so the creator can see what

@@ -231,6 +231,7 @@ const PuzzleSolver = () => {
   const [pieceDataMap, setPieceDataMap] = useState({});
 
   const [placements, setPlacements] = useState({});
+  const [startPlacements, setStartPlacements] = useState({});
   const [selected, setSelected] = useState(null);
   /*
    * The piece held from the tray, in a game where the answer is a placement.
@@ -254,6 +255,18 @@ const PuzzleSolver = () => {
   const [progress, setProgress] = useState(null); // { played, total }
   const [attempts, setAttempts] = useState(0);
   const [solution, setSolution] = useState(null);
+  /*
+   * Which step of a revealed answer the board is showing.
+   *
+   *   null  the final position, which is where a reveal lands
+   *   -1    the position the puzzle starts from
+   *   0..n  after that ply of the answer
+   *
+   * Same three-state shape the match review uses, because it is the same idea
+   * and a person who has stepped through one game should not have to learn a
+   * second set of controls.
+   */
+  const [revealStep, setRevealStep] = useState(null);
   const [ratingChange, setRatingChange] = useState(null);
   const [ratingNote, setRatingNote] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -331,6 +344,10 @@ const PuzzleSolver = () => {
         const map = {};
         (p.position || []).forEach((pl) => { map[keyOf(pl.x, pl.y)] = pl; });
         setPlacements(map);
+        // Kept, because the board is played on: stepping through the answer and
+        // starting the puzzle over both need the position as it was handed over,
+        // not as the solver left it.
+        setStartPlacements(map);
       } catch (err) {
         if (!cancelled) setError(err?.response?.data?.message || 'Could not load this puzzle');
       } finally {
@@ -864,6 +881,50 @@ const PuzzleSolver = () => {
 
   const solutionPlies = Array.isArray(solution) ? solution.filter(Boolean) : [];
   const sol = solutionPlies[0] || null;
+
+  /*
+   * The board as it stood after `revealStep` plies of the answer.
+   *
+   * Replayed from the starting position each time rather than stepped forward
+   * and back: a move is not reversible here - a capture removes a piece and
+   * nothing records what it was - so walking backwards would quietly invent
+   * empty squares. Replaying a handful of plies is cheap and always right.
+   */
+  const reviewPlacements = useMemo(() => {
+    // Derived here rather than taken from solutionPlies above: that is a fresh
+    // array every render, which would make this rebuild every render. Depending
+    // on `solution` itself is both correct and stable.
+    const plies = Array.isArray(solution) ? solution.filter(Boolean) : [];
+    if (revealStep == null || !plies.length) return null;
+    if (revealStep < 0) return startPlacements;
+    return plies
+      .slice(0, revealStep + 1)
+      .reduce((cells, ply) => applyPly(cells, ply), startPlacements);
+  }, [revealStep, solution, startPlacements]);
+
+  /*
+   * Start the puzzle over.
+   *
+   * Offered after a reveal because seeing the answer and then playing it is how
+   * a puzzle teaches - but the rating has already been settled by the reveal,
+   * and it is not settled twice. The server decides that; this only has to be
+   * honest about it on the way in.
+   */
+  const playAgain = useCallback(() => {
+    setPlacements(startPlacements);
+    setPlayedMoves([]);
+    setSolution(null);
+    setRevealStep(null);
+    setOutcome(null);
+    setSelected(null);
+    setHoveredMoves([]);
+    setLastTry(null);
+    setError(null);
+    setRatingChange(null);
+    setProgress(null);
+    setAnimMove(puzzle?.setup_move || null);
+    setReplayKey((k) => k + 1);
+  }, [startPlacements, puzzle]);
   const setup = puzzle.setup_move;
 
   /*
@@ -876,7 +937,11 @@ const PuzzleSolver = () => {
    */
   const squareState = (x, y) => {
     const k = keyOf(x, y);
-    const rawPiece = shown[k];
+    /*
+     * Stepping through a revealed answer bypasses the setup-move replay: that
+     * animation is for arriving at the puzzle, and by now the puzzle is over.
+     */
+    const rawPiece = (reviewPlacements || shown)[k];
 
     /*
      * Fog and hidden pieces, applied at the point of drawing.
@@ -1175,6 +1240,47 @@ const PuzzleSolver = () => {
               ) : (
                 <>The answer was ({sol.from.x}, {sol.from.y}) → ({sol.to.x}, {sol.to.y}), highlighted on the board.</>
               )}
+
+              {/*
+                * Step through it. Same controls as the match review, because it
+                * is the same act - reading a game one move at a time - and
+                * somebody who has done it there already knows these.
+                */}
+              {solutionPlies.length > 1 && (
+                <div className={styles["review-controls"]}>
+                  <button
+                    onClick={() => setRevealStep(-1)}
+                    disabled={revealStep === -1}
+                    title="Starting position"
+                  >⏮</button>
+                  <button
+                    onClick={() => setRevealStep((prev) => (
+                      prev == null ? solutionPlies.length - 2 : Math.max(-1, prev - 1)))}
+                    disabled={revealStep === -1}
+                    title="Previous move"
+                  >◀</button>
+                  <button
+                    onClick={() => setRevealStep((prev) => (
+                      prev != null && prev < solutionPlies.length - 2 ? prev + 1 : null))}
+                    disabled={revealStep == null}
+                    title="Next move"
+                  >▶</button>
+                  <button
+                    onClick={() => setRevealStep(null)}
+                    disabled={revealStep == null}
+                    title="Final position"
+                  >⏭</button>
+                  <span className={styles["review-where"]}>
+                    {revealStep == null
+                      ? 'Final position'
+                      : revealStep < 0
+                        ? 'Start'
+                        : `After ${revealStep % 2 === 0
+                          ? `move ${Math.floor(revealStep / 2) + 1}`
+                          : `their reply ${Math.floor(revealStep / 2) + 1}`}`}
+                  </span>
+                </div>
+              )}
             </div>
           )}
           {error && <div className={`${styles["notice"]} ${styles["notice-error"]}`}>{error}</div>}
@@ -1189,6 +1295,17 @@ const PuzzleSolver = () => {
             {outcome !== 'solved' && outcome !== 'revealed' && (
               <button className={styles["btn-secondary"]} onClick={reveal} disabled={busy}>
                 Show me the answer
+              </button>
+            )}
+            {/*
+              * Having seen the answer, play it. That is how a puzzle teaches,
+              * and there is no reason to make somebody reload the page for it.
+              * The rating was already settled by the reveal and is not settled
+              * twice - said out loud rather than discovered afterwards.
+              */}
+            {outcome === 'revealed' && (
+              <button className={styles["btn"]} onClick={playAgain} disabled={busy}>
+                Play this puzzle
               </button>
             )}
             <button className={styles["btn-secondary"]} onClick={() => navigate(`/games/${puzzle.game_type_id}`)}>

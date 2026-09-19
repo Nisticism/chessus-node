@@ -379,6 +379,15 @@
   > span { display: block; }
 }
 
+/* How much work a check did, said next to its verdict - a number a reader can
+   weigh rather than a badge they have to trust. */
+.check-cost {
+  display: block;
+  margin-top: 6px;
+  font-size: 13px;
+  opacity: 0.85;
+}
+
 /* The cost of a setting, said under it rather than in a tooltip nobody opens. */
 .field-hint {
   display: block;
