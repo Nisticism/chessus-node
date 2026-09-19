@@ -29,6 +29,7 @@ const { summariseRules } = require('./game-rules-summary');
 const { renderPuzzle } = require('./puzzle-image');
 const { PLATFORM_ACCOUNT_USERNAME, platformAccountId } = require('./platform-account');
 const { rulesForPuzzle, ensureSnapshot, readLive } = require('./puzzle-snapshot');
+const { analyseUniqueness, describeUniqueness } = require('./puzzle-uniqueness');
 /*
  * Hydration lives in its own module because more than one thing needs it - the
  * routes here and the snapshot backfill - and a second copy of it is exactly
@@ -564,6 +565,14 @@ function registerPuzzleRoutes(app, {
    */
   const cardPositionCache = new Map();
   const CARD_CACHE_MAX = 64;
+
+  /*
+   * Uniqueness results, keyed by puzzle and its updated_at so an edited puzzle
+   * is re-checked rather than answered from before the edit. The search is the
+   * expensive part and its answer does not change while the puzzle does not.
+   */
+  const uniquenessCache = new Map();
+  const UNIQUENESS_CACHE_MAX = 256;
 
   const dailyCardPosition = async (row) => {
     const stored = safeParse(row.position, []) || [];
@@ -1947,6 +1956,102 @@ function registerPuzzleRoutes(app, {
     } catch (err) {
       console.error('POST /api/puzzles/:id/validate:', err);
       res.status(500).send({ message: 'Failed to validate puzzle' });
+    }
+  });
+
+  /*
+   * "Is my answer the only one, and is it the fastest?"
+   *
+   * Validation cannot answer this for a multi-move puzzle and says so - a stored
+   * line scripts one defence, so whether the opponent could have defended better
+   * is outside what checking a line can establish. This runs the search that
+   * settles it: iterative deepening for the shortest forced win, then every
+   * first move that achieves it.
+   *
+   * Open to anyone who can see the puzzle, not just its creator. A solver
+   * deciding whether to trust a puzzle - and there are a lot of generated ones -
+   * has the same question a creator does, and the answer gives nothing away: it
+   * reports HOW MANY answers there are and how hard that was to establish, never
+   * what they are.
+   *
+   * Budgeted, and rate-limited with the same limiter validation uses. The cost is
+   * the opponent's branching to the power of the depth, so a deep puzzle in a
+   * wide game will come back "could not establish" rather than tie up the server
+   * - and that is a real answer, distinct from "not unique".
+   */
+  app.post('/api/puzzles/:id/uniqueness', puzzleValidateLimiter, optionalAuthenticate, async (req, res) => {
+    try {
+      const puzzle = await loadPuzzle(parseInt(req.params.id, 10));
+      if (!puzzle) return res.status(404).send({ message: 'Puzzle not found' });
+      // A draft is its creator's business until they publish it.
+      if (puzzle.is_draft && !canEdit(puzzle, req.user || null)) {
+        return res.status(404).send({ message: 'Puzzle not found' });
+      }
+
+      /*
+       * The rules the puzzle is JUDGED under, not the live game: an answer about
+       * a different rule set is not an answer about this puzzle.
+       */
+      const rules = await loadRulesFor(puzzle);
+      if (!rules) return res.status(400).send({ message: 'Puzzle has no game type' });
+
+      const recordedDepth = Number(puzzle.solution_depth) || 1;
+      /*
+       * Searched to the depth the puzzle CLAIMS, no deeper.
+       *
+       * Iterative deepening starts at 1, so a puzzle whose answer is faster than
+       * it says is still caught - that is the useful finding and it is cheap. The
+       * expensive direction is the other one: proving there is a forced win one
+       * deeper than claimed costs roughly the opponent's branching times as much,
+       * and the answer ("your line is not forced, but a longer one would be") is
+       * worth much less than the wait.
+       */
+      const maxDepth = Math.max(recordedDepth, 1);
+
+      const cached = uniquenessCache.get(`${puzzle.id}:${puzzle.updated_at}`);
+      if (cached) return res.json({ ...cached, cached: true });
+
+      const result = await analyseUniqueness(rules, {
+        position: await hydratePosition(rules, safeParse(puzzle.position, [])),
+        initial_pieces: await loadStartingRoster(rules),
+        side_to_move: puzzle.side_to_move,
+        setup_move: safeParse(puzzle.setup_move),
+        game_type_id: puzzle.game_type_id,
+        goal: puzzle.goal,
+      /*
+       * The budget is set from measurement, not hope. An engine call is a deep
+       * clone plus a move application that queries the database, so it costs
+       * milliseconds, not microseconds - 250,000 of them is over an hour. A
+       * mate-in-one settles in under a hundred calls and a mate-in-two in a few
+       * thousand, so this covers the puzzles the question is usually asked of
+       * and gives up quickly, and visibly, on the ones it is not.
+       */
+      }, { maxDepth, budget: 8000 });
+
+      const payload = {
+        verdict: result.verdict,
+        unique: result.unique,
+        solutionCount: result.solutionCount,
+        minimalDepth: result.minimalDepth,
+        recordedDepth,
+        searchedToDepth: result.maxDepthSearched,
+        engineCalls: result.engineCalls,
+        budgetExhausted: result.budgetExhausted,
+        /*
+         * HOW MANY, never WHICH. The count is what tells a solver how much
+         * checking the puzzle has had; the moves themselves are the answer.
+         */
+        summary: describeUniqueness(result, recordedDepth),
+      };
+
+      if (uniquenessCache.size >= UNIQUENESS_CACHE_MAX) {
+        uniquenessCache.delete(uniquenessCache.keys().next().value);
+      }
+      uniquenessCache.set(`${puzzle.id}:${puzzle.updated_at}`, payload);
+      res.json(payload);
+    } catch (err) {
+      console.error('POST /api/puzzles/:id/uniqueness:', err);
+      res.status(500).send({ message: 'Could not check this puzzle' });
     }
   });
 
