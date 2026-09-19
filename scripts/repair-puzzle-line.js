@@ -201,9 +201,29 @@ const play = async (state, player, move) => {
   return res.ok ? { state: next, res } : null;
 };
 
+/**
+ * Did this position meet the puzzle's GOAL?
+ *
+ * The goal, and nothing else. This used to read
+ *
+ *     goalMet(...) || terminalOutcome(...)
+ *
+ * which conflated two different claims and was wrong twice over. terminalOutcome
+ * reports whatever the live engine would call the end of the game - and that
+ * includes a STALEMATE, whose winner is null. So a checkmate puzzle accepted a
+ * line that ended in a draw: puzzles 33 and 43 were written that way and had to
+ * be redone. It also accepted a win by a condition the goal did not ask for,
+ * which is a different puzzle wearing the same title.
+ *
+ * A terminal outcome is still worth consulting, but only as a WIN FOR THE SOLVER
+ * that the goal function might not have spotted - never as a substitute for the
+ * goal, and never when nobody won.
+ */
 const meets = (state, player, res, goal) => {
   const after = { ...state, currentTurn: other(player) };
-  return goalMet(goal, after, player, res) || !!terminalOutcome(after, other(player), res);
+  if (goalMet(goal, after, player, res)) return true;
+  const term = terminalOutcome(after, other(player), res);
+  return !!(term && Number(term.winner) === Number(player));
 };
 
 (async () => {
@@ -290,6 +310,18 @@ const meets = (state, player, res, goal) => {
       // a win for us - so this move is not the answer.
       if (!replies.length) continue;
 
+      /*
+       * The reply this line SCRIPTS is the one that holds out longest.
+       *
+       * Every reply is answered - that is what makes the line forced - but they
+       * do not all take the same number of moves, and the stored line is what
+       * the puzzle's title and depth end up describing. Scripting the first
+       * reply tried gave puzzle 33 a three-move line while another defence
+       * needed four, so it would have been stored as a "mate in three" that is
+       * really a mate in four. Taking the longest branch makes the line, the
+       * depth and the claim agree, and agree with the worst case - which is what
+       * "mate in N" means.
+       */
       let principal = null;
       let holds = true;
       for (const r of replies) {
@@ -299,7 +331,7 @@ const meets = (state, player, res, goal) => {
         // eslint-disable-next-line no-await-in-loop
         const rest = await forcedWin(afterReply.state, movesLeft - 1);
         if (!rest) { holds = false; break; }
-        if (!principal) principal = [r, ...rest];
+        if (!principal || rest.length > principal.length - 1) principal = [r, ...rest];
       }
       if (holds && principal) return [m, ...principal];
     }
@@ -314,9 +346,15 @@ const meets = (state, player, res, goal) => {
     const caveat = exhausted
       ? ' - BUDGET EXHAUSTED, so "none" means not found, not impossible'
       : (CHECKS_ONLY && d > 1 ? ' - among checking moves only' : '');
-    console.log(`FORCED IN ${d}: ${line ? 'yes' : 'none'}`
+    console.log(`SEARCH TO ${d}: ${line ? `found a ${Math.ceil(line.length / 2)}-move forced line` : 'none'}`
       + `  (${engineCalls} engine calls${caveat})`);
-    if (line) { found = line; foundDepth = d; break; }
+    /*
+     * The depth is a property of the line, not of the search that found it. `d`
+     * is the ceiling the search was allowed; a line found under it can be
+     * shorter, and writing `d` would have labelled puzzle 33's five-ply line as
+     * a four-move puzzle.
+     */
+    if (line) { found = line; foundDepth = Math.ceil(line.length / 2); break; }
     if (exhausted) break;
   }
   if (found) {

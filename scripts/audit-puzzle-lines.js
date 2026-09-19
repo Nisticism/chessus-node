@@ -145,6 +145,19 @@ const expandedMoves = async (state, player, cap = 400) => {
   return out;
 };
 
+/**
+ * Did this position meet the puzzle's GOAL?
+ *
+ * The goal, and nothing else. A terminal outcome counts only when it is a WIN
+ * FOR THIS PLAYER: terminalOutcome also reports stalemate, whose winner is null,
+ * and an `||` against it let a checkmate puzzle accept a line ending in a draw.
+ */
+const meetsGoal = (state, player, res, goal) => {
+  if (goalMet(goal, state, player, res)) return true;
+  const term = terminalOutcome(state, other(player), res);
+  return !!(term && Number(term.winner) === Number(player));
+};
+
 /** Does this move meet the goal, played from here? */
 const reaches = async (state, player, move, goal) => {
   const trial = clone(state);
@@ -152,8 +165,7 @@ const reaches = async (state, player, move, goal) => {
   const res = await applyPly(trial, move, { autoPromote: false });
   if (!res.ok) return null;
   trial.currentTurn = other(player);
-  const met = goalMet(goal, trial, player, res) || !!terminalOutcome(trial, other(player), res);
-  return met ? { state: trial, res } : null;
+  return meetsGoal(trial, player, res, goal) ? { state: trial, res } : null;
 };
 
 /**
@@ -296,8 +308,11 @@ const isForcing = async (base, gameType, first, side, goal) => {
 
     if (played === line.length && MECHANICAL_GOALS.has(goal)) {
       state.currentTurn = other(side);
-      const met = goalMet(goal, state, side, lastRes) || !!terminalOutcome(state, other(side), lastRes);
-      if (!met) problems.push(`goal "${goal}" NOT met at the end of the line`);
+      if (!meetsGoal(state, side, lastRes, goal)) {
+        const term = terminalOutcome(state, other(side), lastRes);
+        problems.push(`goal "${goal}" NOT met at the end of the line`
+          + (term ? ` (the line ends in ${term.reason}${term.winner == null ? ' - a draw' : ''})` : ''));
+      }
     }
 
     /*
