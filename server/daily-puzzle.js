@@ -175,6 +175,10 @@ function createDailyPuzzle({ db_pool }) {
               p.title, p.description, p.goal, p.goal_description, p.side_to_move,
               p.solution_depth, p.rating, p.rating_sample_count, p.hide_rating,
               p.attempt_count, p.solve_count, p.creator_id, p.position, p.setup_move,
+              -- rule_snapshot so the card can hydrate its position through the
+              -- puzzle's own frozen rules rather than the live game, and
+              -- updated_at so anything caching that work knows when to stop.
+              p.rule_snapshot, p.updated_at,
               u.username AS creator_username,
               gt.game_name, gt.board_width, gt.board_height,
               -- What the game lets a player put down. The home board needs it

@@ -549,6 +549,76 @@ function registerPuzzleRoutes(app, {
    * is a second place for the card and the board to disagree about what a
    * puzzle is.
    */
+  /*
+   * What the card draws, hydrated through the puzzle's own rules.
+   *
+   * CACHED, because this is the home page's endpoint and the answer is the same
+   * for every visitor: one puzzle, one position, all day. The key includes
+   * updated_at so an edited puzzle invalidates itself rather than serving a
+   * board that no longer exists. Bounded, because a Discord post can ask for any
+   * past daily by id and an unbounded map keyed by puzzle would grow forever.
+   */
+  const cardPositionCache = new Map();
+  const CARD_CACHE_MAX = 64;
+
+  const dailyCardPosition = async (row) => {
+    const stored = safeParse(row.position, []) || [];
+    if (!stored.length) return [];
+
+    const stamp = row.updated_at instanceof Date
+      ? row.updated_at.getTime()
+      : String(row.updated_at ?? '');
+    const key = `${row.puzzle_id}:${stamp}`;
+    const hit = cardPositionCache.get(key);
+    if (hit) return hit;
+
+    let position;
+    try {
+      const rules = await rulesForPuzzle(db_pool, {
+        id: row.puzzle_id,
+        game_type_id: row.game_type_id,
+        rule_snapshot: row.rule_snapshot,
+      });
+      if (!rules) throw new Error('no rules for this game');
+      const hydrated = await hydratePosition(rules, stored);
+      position = hydrated.map((p) => ({
+        piece_id: Number(p.piece_id),
+        // The whole reason this goes through hydratePosition.
+        id: p.id,
+        player_id: Number(p.player_id),
+        x: Number(p.x),
+        y: Number(p.y),
+        piece_name: p.piece_name || null,
+        image_url: p.image_url || null,
+        image_location: p.image_location || null,
+      }));
+    } catch (err) {
+      /*
+       * A game that has been deleted, or rules that will not load. The card is
+       * worth more than the hydration: fall back to the stored placement with
+       * the id hydratePosition would have derived, which is right for every
+       * puzzle that does not carry one of its own.
+       */
+      console.warn(`[puzzle] daily card could not hydrate puzzle ${row.puzzle_id}: ${err.message}`);
+      position = stored.map((pl) => ({
+        piece_id: Number(pl.piece_id),
+        id: pl.id || `${pl.piece_id}_${Number(pl.y)}_${Number(pl.x)}`,
+        player_id: Number(pl.player_id ?? pl.team ?? 1),
+        x: Number(pl.x),
+        y: Number(pl.y),
+        piece_name: pl.piece_name || null,
+        image_url: pl.image_url || null,
+        image_location: pl.image_location || null,
+      }));
+    }
+
+    if (cardPositionCache.size >= CARD_CACHE_MAX) {
+      cardPositionCache.delete(cardPositionCache.keys().next().value);
+    }
+    cardPositionCache.set(key, position);
+    return position;
+  };
+
   async function dailyPayload(row, date, user) {
     let solvedByYou = false;
     if (user?.id) {
@@ -565,50 +635,24 @@ function registerPuzzleRoutes(app, {
      * is not one - and showing the position gives nothing away: the solution
      * is the secret, and it stays on the server as it does everywhere else.
      *
-     * Only what the board needs to paint a square: who is on it and what it
-     * looks like.
+     * Built by hydratePosition, the same function the puzzle's own page uses,
+     * and then cut down to what a card needs to paint a square.
+     *
+     * It used to build its own position object instead, and the two disagreed
+     * about the one field that decides whether an answer matches: the piece's
+     * board IDENTITY. moveKey folds pieceId in, so a move is only the recorded
+     * move when the board names the piece the way the line does - and this
+     * payload omitted `id` entirely, leaving the card and the Discord activity
+     * to derive one from the square the piece is standing on. For a puzzle
+     * mined out of a real game that is the wrong square: the stored id names
+     * where the piece started in THAT game. One daily had a rook that was
+     * "15_7_7" on its own page and "15_4_2" on the card, so the same correct
+     * move solved it in one place and was refused in the other two.
+     *
+     * Patching the id in would have fixed that instance and left two functions
+     * deciding what a piece is called. This leaves one.
      */
-    const stored = safeParse(row.position, []) || [];
-    const pieceIds = [...new Set(stored.map(p => Number(p.piece_id)).filter(Boolean))];
-    let art = new Map();
-    if (pieceIds.length) {
-      const [pieceRows] = await db_pool.query(
-        `SELECT id, piece_name, image_location FROM pieces WHERE id IN (${pieceIds.map(() => '?').join(',')})`,
-        pieceIds
-      );
-      art = new Map(pieceRows.map(r => [Number(r.id), r]));
-    }
-    const position = stored.map((pl) => {
-      const def = art.get(Number(pl.piece_id)) || {};
-      return {
-        piece_id: pl.piece_id,
-        /*
-         * The piece's BOARD IDENTITY, and it has to travel.
-         *
-         * moveKey folds pieceId in, so an answer only matches when the board a
-         * player is looking at names the piece the way the recorded line does.
-         * This payload used to omit `id`, so the home card and the Discord
-         * activity derived one from the square - while the puzzle's own page,
-         * which comes through hydratePosition, kept the id STORED in the
-         * position. For a puzzle mined out of a real game those two disagree:
-         * the stored id is the square the piece started on in that game, not
-         * the one it now stands on. Today's daily is one - its rook is
-         * "15_7_7" on its own page and "15_4_2" on the card - so the same
-         * correct move solved the puzzle in one place and was rejected in the
-         * other two.
-         *
-         * Same fallback hydratePosition uses, so a position with no stored id
-         * is named identically by all three.
-         */
-        id: pl.id || `${pl.piece_id}_${Number(pl.y)}_${Number(pl.x)}`,
-        player_id: Number(pl.player_id ?? pl.team ?? 1),
-        x: Number(pl.x),
-        y: Number(pl.y),
-        piece_name: pl.piece_name || def.piece_name || null,
-        image_url: pl.image_url || null,
-        image_location: pl.image_location || def.image_location || null,
-      };
-    });
+    const position = await dailyCardPosition(row);
 
     const ratingPublic = isRatingPublic(row);
     return {
