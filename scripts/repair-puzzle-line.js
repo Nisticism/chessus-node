@@ -55,7 +55,10 @@ const ID = (() => {
 const MAX_DEPTH = (() => {
   const i = process.argv.indexOf('--depth');
   const n = i >= 0 ? Number(process.argv[i + 1]) : 2;
-  return Number.isFinite(n) && n >= 1 ? Math.min(n, 4) : 2;
+  // Capped at 6 rather than 4: the budget is the real limit, and it is measured
+  // rather than guessed, so an arbitrary depth ceiling on top of it only stops
+  // honest questions. A deep search that is too expensive says BUDGET EXHAUSTED.
+  return Number.isFinite(n) && n >= 1 ? Math.min(n, 6) : 2;
 })();
 /*
  * A hard ceiling on ENGINE CALLS - every applyPly, wherever it happens.
