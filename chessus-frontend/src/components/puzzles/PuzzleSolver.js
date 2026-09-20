@@ -867,21 +867,6 @@ const PuzzleSolver = () => {
     }
   };
 
-  if (loading) return <div className={styles["solver-page"]}><p>Loading…</p></div>;
-  if (error && !puzzle) return <div className={styles["solver-page"]}><p>{error}</p></div>;
-  if (!puzzle) return null;
-
-  /*
-   * What this game lets the solver put down. Empty for every game that does
-   * not place pieces, so the tray does not appear and nothing changes.
-   */
-  const trayItems = placesPieces(puzzle)
-    ? expandPlaceable(puzzle.placeable_pieces, puzzle.player_count)
-    : [];
-
-  const solutionPlies = Array.isArray(solution) ? solution.filter(Boolean) : [];
-  const sol = solutionPlies[0] || null;
-
   /*
    * The board as it stood after `revealStep` plies of the answer.
    *
@@ -891,9 +876,6 @@ const PuzzleSolver = () => {
    * empty squares. Replaying a handful of plies is cheap and always right.
    */
   const reviewPlacements = useMemo(() => {
-    // Derived here rather than taken from solutionPlies above: that is a fresh
-    // array every render, which would make this rebuild every render. Depending
-    // on `solution` itself is both correct and stable.
     const plies = Array.isArray(solution) ? solution.filter(Boolean) : [];
     if (revealStep == null || !plies.length) return null;
     if (revealStep < 0) return startPlacements;
@@ -925,6 +907,22 @@ const PuzzleSolver = () => {
     setAnimMove(puzzle?.setup_move || null);
     setReplayKey((k) => k + 1);
   }, [startPlacements, puzzle]);
+
+  if (loading) return <div className={styles["solver-page"]}><p>Loading…</p></div>;
+  if (error && !puzzle) return <div className={styles["solver-page"]}><p>{error}</p></div>;
+  if (!puzzle) return null;
+
+  /*
+   * What this game lets the solver put down. Empty for every game that does
+   * not place pieces, so the tray does not appear and nothing changes.
+   */
+  const trayItems = placesPieces(puzzle)
+    ? expandPlaceable(puzzle.placeable_pieces, puzzle.player_count)
+    : [];
+
+  const solutionPlies = Array.isArray(solution) ? solution.filter(Boolean) : [];
+  const sol = solutionPlies[0] || null;
+
   const setup = puzzle.setup_move;
 
   /*
