@@ -1244,11 +1244,13 @@ const PuzzleBuilder = () => {
    * nested && branches inside the JSX.
    *
    * Not only for readability: react-hooks/rules-of-hooks analyses this
-   * component's code paths, and at ~1800 lines it is close enough to whatever
-   * its limit is that adding two more conditional JSX branches made it report
-   * every hook in the file as conditionally called - 24 false positives, since
-   * every hook here sits above the component's only early return. Fewer
-   * branches in the tree, and it is quiet again.
+   * component's code paths, and at ~1800 lines adding two more conditional JSX
+   * branches made it report every hook in the file. Flattening the branches
+   * quietens it, and reads better - but quiet is not the check. The check is
+   * that no hook sits below a conditional return, and it has to be made by
+   * looking. Reading a batch of these warnings as noise is what put a useMemo
+   * under an early return in PuzzleSolver and crashed every puzzle with React
+   * error #310.
    */
   const uniquenessFootnotes = [];
   if (uniqueness?.engineCalls != null) {

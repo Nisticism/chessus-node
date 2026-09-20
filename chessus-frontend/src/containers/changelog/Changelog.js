@@ -4,6 +4,32 @@ import styles from "./changelog.module.scss";
 
 const changelogData = [
   {
+    date: "September 20, 2026",
+    title: "Puzzles load again",
+    items: [
+      "Fixed every puzzle page crashing to a blank screen. Yesterday’s stepper added two pieces of setup below the point where the page returns early while it is still loading, so they ran on some draws of the page and not others — React counts them, and the moment the puzzle finished loading the count changed and it gave up. The page had been reporting this for a day and the report was dismissed as noise.",
+    ],
+  },
+  {
+    date: "September 19, 2026",
+    title: "Ask a puzzle how many answers it has",
+    items: [
+      "The builder has a “How many answers?” button next to Check puzzle. Check puzzle asks whether your line can be played; this asks the different question — whether it is the only line, and whether it is the fastest. It reports how many positions it searched to decide, so you can weigh the verdict rather than take it on faith, and it says “could not establish” rather than guessing when the position is too big to settle.",
+      "Revealing the answer now offers “Play this puzzle” and a way to step through it. The controls are the same ⏮ ◀ ▶ ⏭ as the match review, because it is the same act — reading a game one move at a time — and nobody should have to learn a second set. Playing a puzzle after revealing it does not change your rating; that was settled by the reveal.",
+      "A different move that reaches the goal now solves a puzzle. If the last move of your line is a checkmate and another move is also a checkmate, a solver who finds the second one was being told “not that one” while looking at a mate. Only the final move, and only for goals the engine can adjudicate — a different move in the middle changes the position the rest of the line was written against.",
+      "Creators who want the strict behaviour can have it: “Only my exact line solves this” in the builder turns the above off for one puzzle. It is off by default, because it is a claim most puzzles have not checked and none should have to make by default.",
+      "Retired a daily puzzle that had no forced mate in its position — established exhaustively rather than assumed — and repaired three more whose recorded lines ended in a draw rather than the checkmate they promised.",
+    ],
+  },
+  {
+    date: "September 19, 2026",
+    title: "The same board, wherever you meet a puzzle",
+    items: [
+      "The home-page card and the puzzle’s own page now build their position through the same code. They used to build it separately and disagreed about the one field that decides whether your move matches the recorded answer, which is why the daily could be solvable on one and refuse the same move on the other — in Discord as well, since it reads the card’s data.",
+      "The card also reads the puzzle’s own frozen rules rather than whatever its game says today, so a game edited after a puzzle was published cannot change the puzzle underneath you.",
+    ],
+  },
+  {
     date: "September 18, 2026",
     title: "Finish a puzzle where you started it",
     items: [
