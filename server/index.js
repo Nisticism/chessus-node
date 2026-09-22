@@ -15734,11 +15734,20 @@ app.post("/api/users/:userId/messages", authenticateToken, async (req, res) => {
     if (req.user.id !== userId) {
       return res.status(403).json({ error: "Unauthorized" });
     }
-    const { recipientId, content } = req.body;
-    if (!recipientId || !content || !content.trim()) {
-      return res.status(400).json({ error: "recipientId and content are required" });
+    const { recipientId, content, imageIds } = req.body;
+    /*
+     * A message may be words, pictures, or both - so empty text is allowed
+     * exactly when something is attached. It used to be that a picture was not
+     * a message at all, just a loose row that sorted itself next to one.
+     */
+    const attachments = Array.isArray(imageIds)
+      ? imageIds.map(Number).filter((n) => Number.isInteger(n) && n > 0).slice(0, 5)
+      : [];
+    const text = typeof content === 'string' ? content.trim() : '';
+    if (!recipientId || (!text && !attachments.length)) {
+      return res.status(400).json({ error: "A message needs text or an image" });
     }
-    if (content.length > 2000) {
+    if (text.length > 2000) {
       return res.status(400).json({ error: "Message too long (max 2000 characters)" });
     }
     const recipientIdInt = parseInt(recipientId);
@@ -15760,9 +15769,31 @@ app.post("/api/users/:userId/messages", authenticateToken, async (req, res) => {
       }
     }
 
-    const message = await dbHelpers.sendDirectMessage(userId, recipientIdInt, content.trim());
+    const message = await dbHelpers.sendDirectMessage(userId, recipientIdInt, text);
 
-    // Push real-time notification via socket
+    /*
+     * Claim the uploaded images for this message. They were uploaded ahead of
+     * it - the file has to exist before there is an id to attach - and are
+     * loose until this runs, so a send that fails leaves them loose rather than
+     * half-attached.
+     */
+    if (attachments.length) {
+      const u1 = Math.min(userId, recipientIdInt);
+      const u2 = Math.max(userId, recipientIdInt);
+      message.images = await dbHelpers.attachImagesToMessage(message.id, userId, u1, u2, attachments);
+      /*
+       * Every id was refused - not this sender's, not this conversation's, or
+       * already attached to something else - and there were no words either. It
+       * would otherwise land as an empty bubble, so it is taken back out.
+       */
+      if (!text && !message.images.length) {
+        await db_pool.query('DELETE FROM direct_messages WHERE id = ?', [message.id]);
+        return res.status(400).json({ error: "Those images could not be attached" });
+      }
+    }
+
+    // Push real-time notification via socket. The images ride along, so the
+    // recipient draws one bubble rather than a picture and then some words.
     const io = req.app.get('io');
     if (io) {
       const { userSockets } = require('./game-socket');
@@ -15811,7 +15842,7 @@ app.get("/api/users/:userId/messages/:otherUserId/images", authenticateToken, as
     const u1 = Math.min(userId, otherUserId);
     const u2 = Math.max(userId, otherUserId);
     const [rows] = await db_pool.query(
-      `SELECT id, sender_id, filename, created_at, expires_at
+      `SELECT id, sender_id, message_id, filename, created_at, expires_at
          FROM direct_message_images
         WHERE user1_id = ? AND user2_id = ? AND expires_at > NOW()
         ORDER BY created_at ASC`,
@@ -15891,7 +15922,7 @@ app.post(
        * shape, whatever timezone the database is set to.
        */
       const [[inserted]] = await db_pool.query(
-        `SELECT id, sender_id, filename, created_at, expires_at
+        `SELECT id, sender_id, message_id, filename, created_at, expires_at
            FROM direct_message_images WHERE id = ?`,
         [result.insertId]
       );
@@ -15907,8 +15938,14 @@ app.post(
       // fallback above passes through untouched.
       await dbHelpers.withIsoDates(imageRecord, ['created_at', 'expires_at']);
 
-      // Notify the other participant in real-time
-      const io = req.app.get('io');
+      /*
+       * Tell the other side, unless the caller says the image is about to be
+       * attached to a message - then the message's own event announces it, and
+       * emitting here as well would make the picture appear on its own a moment
+       * before the words it belongs to.
+       */
+      const deferred = String(req.body?.defer ?? req.query?.defer ?? '') === '1';
+      const io = deferred ? null : req.app.get('io');
       if (io) {
         const { userSockets } = require('./game-socket');
         const recipientSocketId = userSockets?.get(otherUserId.toString());

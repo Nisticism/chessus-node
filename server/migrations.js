@@ -4959,8 +4959,48 @@ const runMigrations = async () => {
       console.log('[DB] Created table direct_message_images');
       migrationsRun++;
     }
+
+    /*
+     * An image can now belong to a MESSAGE, so a picture and the words about it
+     * arrive as one thing instead of two bubbles that happen to be next to each
+     * other. NULL means a loose image - everything sent before this existed,
+     * which still renders on its own.
+     *
+     * SET NULL rather than CASCADE on delete: losing the message should not
+     * silently take the picture with it.
+     */
   } catch (err) {
     console.error('Error creating direct_message_images table:', err.message);
+  }
+
+  /*
+   * An image can now belong to a MESSAGE, so a picture and the words about it
+   * arrive as one thing instead of two bubbles that happen to be next to each
+   * other. NULL means a loose image - everything sent before this existed,
+   * which still renders on its own.
+   *
+   * BIGINT UNSIGNED because direct_messages.id is one, and a foreign key whose
+   * column is a different width is simply refused. Its own try/catch so that
+   * failing says so plainly instead of being reported as a problem creating a
+   * table that already exists.
+   *
+   * SET NULL rather than CASCADE on delete: losing the message should not
+   * silently take the picture with it.
+   */
+  try {
+    if (!(await columnExists('direct_message_images', 'message_id'))) {
+      await db_pool.query(
+        `ALTER TABLE direct_message_images
+           ADD COLUMN message_id BIGINT UNSIGNED NULL AFTER sender_id,
+           ADD INDEX idx_dmi_message (message_id),
+           ADD CONSTRAINT fk_dmi_message FOREIGN KEY (message_id)
+               REFERENCES direct_messages(id) ON DELETE SET NULL`
+      );
+      console.log('[DB] Added direct_message_images.message_id');
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding direct_message_images.message_id:', err.message);
   }
 
   // ── Performance indexes for forum queries ────────────────────────────────

@@ -68,9 +68,20 @@ const Inbox = () => {
 
   // Image attachment state
   const [dmImages, setDmImages] = useState([]); // images for the active conversation
-  const [uploadingImage, setUploadingImage] = useState(false);
   const [imageError, setImageError] = useState(null);
   const [lightboxImage, setLightboxImage] = useState(null); // { id, filename, sender_id }
+  /*
+   * Images chosen but NOT yet sent.
+   *
+   * Pasting or picking an image used to upload and post it there and then, so a
+   * screenshot went out on its own before you could say anything about it, and
+   * there was no way back if you pasted the wrong thing. They now sit here as
+   * chips until the message is sent, and go up with it.
+   *
+   * Each holds the File itself and an object URL for the preview, which has to
+   * be released again - see the cleanup below.
+   */
+  const [pending, setPending] = useState([]);   // [{ key, file, url }]
 
   const searchRef = useRef(null);
   const dropdownRef = useRef(null);
@@ -100,6 +111,21 @@ const Inbox = () => {
     }
     dispatch(getMessages(currentUser.id, selectedUserId));
     dispatch(markMessagesRead(currentUser.id, selectedUserId));
+
+    /*
+     * Put the cursor in the message box on opening a conversation.
+     *
+     * Not only a convenience: a paste is only taken when no OTHER text field
+     * has the cursor, and clicking a conversation leaves it in the search box
+     * above the list - so pasting a screenshot straight after choosing who to
+     * send it to did nothing at all.
+     *
+     * Only where there is a mouse. Doing it on a touch screen throws the
+     * keyboard up over the conversation the moment it opens.
+     */
+    if (typeof window !== 'undefined' && window.matchMedia?.('(pointer: fine)')?.matches) {
+      requestAnimationFrame(() => messageInputRef.current?.focus());
+    }
 
     // Fetch existing images for this conversation
     axios
@@ -178,23 +204,55 @@ const Inbox = () => {
     [setSearchParams]
   );
 
+  /*
+   * Send the message and whatever is attached to it, as one thing.
+   *
+   * The files go up first, because a picture has to exist before there is an id
+   * to hang on a message - but they stay LOOSE until the message claims them,
+   * so a send that fails part way leaves uploaded images unattached rather than
+   * a half-sent message. Either text or an image is enough on its own.
+   */
   const handleSendMessage = async (e) => {
     e.preventDefault();
-    if (!newMessage.trim() || !selectedUserId || sendingMessage) return;
+    const text = newMessage.trim();
+    if ((!text && !pending.length) || !selectedUserId || sendingMessage) return;
 
     setSendingMessage(true);
     setError(null);
+    setImageError(null);
     try {
-      await dispatch(sendMessage(currentUser.id, selectedUserId, newMessage.trim()));
+      const uploadedIds = [];
+      for (const item of pending) {
+        const formData = new FormData();
+        formData.append("image", item.file);
+        // defer: the message's own event tells the other side, so the picture
+        // does not arrive a moment before the words it belongs to.
+        formData.append("defer", "1");
+        const res = await axios.post(
+          `${API_URL}users/${currentUser.id}/messages/${selectedUserId}/images`,
+          formData,
+          { headers: { ...authHeader(), "Content-Type": "multipart/form-data" } }
+        );
+        uploadedIds.push(res.data.image.id);
+      }
+
+      await dispatch(sendMessage(currentUser.id, selectedUserId, text, uploadedIds));
       setNewMessage("");
+      pending.forEach((x) => URL.revokeObjectURL(x.url));
+      setPending([]);
     } catch (err) {
-      setError(err?.response?.data?.error || err?.message || "Failed to send message");
+      setError(
+        err?.response?.data?.error ||
+        err?.response?.data?.message ||
+        err?.message ||
+        "Failed to send message"
+      );
     }
     setSendingMessage(false);
   };
 
   const handleImageAttach = () => {
-    if (uploadingImage) return;
+    if (sendingMessage) return;
     setImageError(null);
     fileInputRef.current?.click();
   };
@@ -204,46 +262,54 @@ const Inbox = () => {
    * pasted in. Written once because the two routes in have to agree about the
    * size limit, the per-conversation limit and what happens afterwards.
    */
-  const uploadImage = useCallback(async (file) => {
+  /*
+   * Put an image on the message that is being written. Nothing leaves the
+   * browser here - the checks that can be made now are made now, so a file that
+   * is too big is refused while you can still do something about it rather than
+   * after a round trip.
+   */
+  const attachImage = useCallback((file) => {
     if (!file || !currentUser || !selectedUserId) return;
-
     if (file.size > 1 * 1024 * 1024) {
       setImageError("Image must be 1 MB or smaller.");
       return;
     }
-    if (dmImages.length >= DM_IMAGE_LIMIT) {
-      setImageError(`Maximum ${DM_IMAGE_LIMIT} images per conversation. Older ones expire after 24 hours.`);
-      return;
-    }
-
-    const formData = new FormData();
-    formData.append("image", file);
-
-    setUploadingImage(true);
     setImageError(null);
-    try {
-      const res = await axios.post(
-        `${API_URL}users/${currentUser.id}/messages/${selectedUserId}/images`,
-        formData,
-        { headers: { ...authHeader(), "Content-Type": "multipart/form-data" } }
-      );
-      const newImg = res.data.image;
-      setDmImages((prev) => (prev.some((i) => i.id === newImg.id) ? prev : [...prev, newImg]));
-    } catch (err) {
-      setImageError(
-        err?.response?.data?.error ||
-        err?.response?.data?.message ||
-        "Failed to upload image"
-      );
-    }
-    setUploadingImage(false);
+    setPending((prev) => {
+      if (prev.length + dmImages.length >= DM_IMAGE_LIMIT) {
+        setImageError(`Maximum ${DM_IMAGE_LIMIT} images per conversation. Older ones expire after 24 hours.`);
+        return prev;
+      }
+      return [...prev, { key: `${Date.now()}-${prev.length}`, file, url: URL.createObjectURL(file) }];
+    });
   }, [currentUser, selectedUserId, dmImages.length]);
 
-  const handleFileChange = async (e) => {
+  const removePending = useCallback((key) => {
+    setPending((prev) => {
+      const gone = prev.find((x) => x.key === key);
+      if (gone) URL.revokeObjectURL(gone.url);
+      return prev.filter((x) => x.key !== key);
+    });
+    setImageError(null);
+  }, []);
+
+  /*
+   * Object URLs are held by the browser until they are given back, so anything
+   * still attached when the conversation changes or the page goes away has to
+   * be released - otherwise every screenshot ever pasted stays in memory.
+   */
+  useEffect(() => {
+    return () => setPending((prev) => {
+      prev.forEach((x) => URL.revokeObjectURL(x.url));
+      return [];
+    });
+  }, [selectedUserId]);
+
+  const handleFileChange = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     e.target.value = ""; // reset so same file can be re-selected
-    await uploadImage(file);
+    attachImage(file);
   };
 
   /*
@@ -262,7 +328,7 @@ const Inbox = () => {
     if (!selectedUserId || isNaN(selectedUserId)) return undefined;
 
     const onPaste = (e) => {
-      if (uploadingImage) return;
+      if (sendingMessage) return;
       // Another text field has the cursor - that paste is not ours to take.
       const active = document.activeElement;
       if (active && active !== messageInputRef.current
@@ -284,14 +350,14 @@ const Inbox = () => {
          * that matches what it actually is, rather than being rejected for
          * having no name.
          */
-        uploadImage(new File([blob], `pasted-${Date.now()}.${ext}`, { type: item.type }));
+        attachImage(new File([blob], `pasted-${Date.now()}.${ext}`, { type: item.type }));
         return;
       }
     };
 
     window.addEventListener("paste", onPaste);
     return () => window.removeEventListener("paste", onPaste);
-  }, [selectedUserId, uploadingImage, uploadImage]);
+  }, [selectedUserId, sendingMessage, attachImage]);
 
   const handleDeleteImage = async (imageId) => {
     try {
@@ -377,7 +443,13 @@ const Inbox = () => {
   // Merge messages and images into a single sorted thread
   const threadItems = [
     ...activeMessages.map((m) => ({ ...m, _type: "message", _ts: new Date(m.created_at).getTime() })),
-    ...dmImages.map((img) => ({ ...img, _type: "image", _ts: new Date(img.created_at).getTime() })),
+    /*
+     * Only images that belong to NO message. An attached one is drawn inside
+     * its message's bubble, and would otherwise appear twice.
+     */
+    ...dmImages
+      .filter((img) => !img.message_id)
+      .map((img) => ({ ...img, _type: "image", _ts: new Date(img.created_at).getTime() })),
   ].sort((a, b) => a._ts - b._ts);
 
   return (
@@ -547,7 +619,29 @@ const Inbox = () => {
                       key={item.id || idx}
                       className={`${styles["message-bubble"]} ${isSent ? styles["sent"] : styles["received"]}`}
                     >
-                      <div className={styles["message-content"]}>{renderContent(item.content)}</div>
+                      {/* Pictures sent WITH this message, above its words. */}
+                      {(item.images || []).map((img) => (
+                        <div key={img.id} className={styles["dm-image-wrapper"]}>
+                          <button
+                            className={styles["dm-image-delete-btn"]}
+                            onClick={() => handleDeleteImage(img.id)}
+                            title="Delete image"
+                            aria-label="Delete image"
+                          >
+                            ✕
+                          </button>
+                          <img
+                            src={`${ASSET_URL}/uploads/dm-images/${img.filename}`}
+                            alt="Direct message attachment"
+                            className={styles["dm-image-thumb"]}
+                            onClick={() => setLightboxImage(img)}
+                            draggable={false}
+                          />
+                        </div>
+                      ))}
+                      {item.content ? (
+                        <div className={styles["message-content"]}>{renderContent(item.content)}</div>
+                      ) : null}
                       <div className={styles["message-time"]}>
                         {formatTimeAgo(item.created_at)}
                       </div>
@@ -559,6 +653,29 @@ const Inbox = () => {
 
               {imageError && (
                 <div className={styles["image-error"]}>{imageError}</div>
+              )}
+
+              {/* Attached but not yet sent. */}
+              {pending.length > 0 && (
+                <div className={styles["pending-attachments"]}>
+                  {pending.map((item) => (
+                    <div key={item.key} className={styles["pending-chip"]}>
+                      <img src={item.url} alt="Attachment preview" className={styles["pending-thumb"]} />
+                      <button
+                        type="button"
+                        className={styles["pending-remove"]}
+                        onClick={() => removePending(item.key)}
+                        title="Remove this attachment"
+                        aria-label="Remove attachment"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                  <span className={styles["pending-hint"]}>
+                    {pending.length === 1 ? "1 image" : `${pending.length} images`} will be sent with this message
+                  </span>
+                </div>
               )}
 
               <form className={styles["message-input-form"]} onSubmit={handleSendMessage}>
@@ -573,15 +690,15 @@ const Inbox = () => {
                   type="button"
                   className={styles["attach-btn"]}
                   onClick={handleImageAttach}
-                  disabled={uploadingImage || dmImages.length >= DM_IMAGE_LIMIT}
+                  disabled={sendingMessage || pending.length + dmImages.length >= DM_IMAGE_LIMIT}
                   title={
-                    dmImages.length >= DM_IMAGE_LIMIT
+                    pending.length + dmImages.length >= DM_IMAGE_LIMIT
                       ? `Max ${DM_IMAGE_LIMIT} images per conversation`
                       : "Attach image (max 1 MB) — or paste a screenshot with Ctrl+V"
                   }
                   aria-label="Attach image"
                 >
-                  {uploadingImage ? "..." : <MdImage />}
+                  {sendingMessage ? "..." : <MdImage />}
                 </button>
                 <EmojiPickerButton
                   textareaRef={messageInputRef}
@@ -594,9 +711,20 @@ const Inbox = () => {
                 <input
                   ref={messageInputRef}
                   type="text"
-                  placeholder="Type a message..."
+                  placeholder={pending.length ? "Add a message, or just press Send" : "Type a message..."}
                   value={newMessage}
                   onChange={(e) => setNewMessage(e.target.value)}
+                  /*
+                   * Backspace with nothing left to delete takes the last
+                   * attachment off instead - the same thing every other chat
+                   * box does, and the reason it does not need explaining.
+                   */
+                  onKeyDown={(e) => {
+                    if (e.key === "Backspace" && !newMessage && pending.length) {
+                      e.preventDefault();
+                      removePending(pending[pending.length - 1].key);
+                    }
+                  }}
                   className={styles["message-input"]}
                   maxLength={2000}
                   disabled={sendingMessage}
@@ -604,7 +732,7 @@ const Inbox = () => {
                 <button
                   type="submit"
                   className={styles["send-btn"]}
-                  disabled={!newMessage.trim() || sendingMessage}
+                  disabled={(!newMessage.trim() && !pending.length) || sendingMessage}
                 >
                   {sendingMessage ? "..." : "Send"}
                 </button>

@@ -42,11 +42,13 @@ export const getMessages = (userId, otherUserId, page = 1) => async (dispatch) =
   }
 };
 
-export const sendMessage = (userId, recipientId, content) => async (dispatch) => {
+export const sendMessage = (userId, recipientId, content, imageIds = []) => async (dispatch) => {
   try {
     const response = await axios.post(
       `${API_URL}users/${userId}/messages`,
-      { recipientId, content },
+      // imageIds are images already uploaded and waiting to be claimed; the
+      // server only accepts ones this sender uploaded into this conversation.
+      { recipientId, content, imageIds },
       { headers: authHeader() }
     );
     dispatch({

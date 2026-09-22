@@ -474,6 +474,64 @@
   font-size: 0.65rem;
 }
 
+/* Attached, not yet sent - the row of chips above the composer. */
+.pending-attachments {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.pending-chip {
+  position: relative;
+  display: inline-block;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.pending-thumb {
+  display: block;
+  width: 56px;
+  height: 56px;
+  object-fit: cover;
+  background: rgba(0, 0, 0, 0.25);
+}
+
+/*
+ * Always visible, unlike the delete button on a sent image: this one is the
+ * way back out of a paste you did not mean, so it should not have to be
+ * hunted for.
+ */
+.pending-remove {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.75);
+  border: none;
+  color: #fff;
+  font-size: 0.6rem;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  &:hover {
+    background: rgba(200, 50, 50, 0.9);
+  }
+}
+
+.pending-hint {
+  font-size: 0.75rem;
+  opacity: 0.6;
+}
+
 /* Image error bar */
 .image-error {
   padding: 6px 16px;

@@ -1468,6 +1468,35 @@ const sendDirectMessage = async (senderId, recipientId, content) => {
   return message[0];
 };
 
+/*
+ * Claim loose images for a message that is being sent with them.
+ *
+ * Narrow on purpose: only images this sender uploaded, only in this
+ * conversation, and only ones not already spoken for. A caller cannot attach
+ * somebody else's picture, or steal one out of an earlier message, by passing
+ * its id.
+ */
+const attachImagesToMessage = async (messageId, senderId, u1, u2, imageIds) => {
+  const ids = (Array.isArray(imageIds) ? imageIds : [])
+    .map(Number).filter((n) => Number.isInteger(n) && n > 0).slice(0, 5);
+  if (!ids.length) return [];
+  const marks = ids.map(() => '?').join(',');
+  await query(
+    `UPDATE direct_message_images
+        SET message_id = ?
+      WHERE id IN (${marks}) AND sender_id = ? AND user1_id = ? AND user2_id = ?
+        AND message_id IS NULL`,
+    [messageId, ...ids, senderId, u1, u2]
+  );
+  const rows = await query(
+    `SELECT id, sender_id, message_id, filename, created_at, expires_at
+       FROM direct_message_images WHERE message_id = ? ORDER BY id ASC`,
+    [messageId]
+  );
+  await withIsoDates(rows, ['created_at', 'expires_at']);
+  return rows;
+};
+
 const getConversations = async (userId) => {
   const rows = await query(
     `SELECT 
@@ -1501,6 +1530,36 @@ const getConversations = async (userId) => {
   return rows;
 };
 
+/*
+ * Hang each message's attached images off it, in one query for the batch.
+ *
+ * Done here rather than joined into the message query because a message can
+ * carry several images and a join would multiply the rows.
+ */
+const withAttachedImages = async (messages) => {
+  const ids = messages.map((m) => m.id).filter(Boolean);
+  if (!ids.length) return messages;
+  const marks = ids.map(() => '?').join(',');
+  const rows = await query(
+    `SELECT id, sender_id, message_id, filename, created_at, expires_at
+       FROM direct_message_images
+      WHERE message_id IN (${marks}) AND expires_at > NOW()
+      ORDER BY id ASC`,
+    ids
+  );
+  await withIsoDates(rows, ['created_at', 'expires_at']);
+  const byMessage = new Map();
+  for (const r of rows) {
+    if (!byMessage.has(r.message_id)) byMessage.set(r.message_id, []);
+    byMessage.get(r.message_id).push(r);
+  }
+  for (const m of messages) {
+    const imgs = byMessage.get(m.id);
+    if (imgs) m.images = imgs;
+  }
+  return messages;
+};
+
 const getDirectMessages = async (userId, otherUserId, page = 1, limit = 50, beforeId = null) => {
   if (beforeId) {
     // Keyset pagination: load messages older than beforeId.
@@ -1517,6 +1576,7 @@ const getDirectMessages = async (userId, otherUserId, page = 1, limit = 50, befo
       [userId, otherUserId, otherUserId, userId, beforeId, limit]
     );
     await withIsoDates(messages, ['created_at']);
+    await withAttachedImages(messages);
     return messages.reverse(); // return chronological order
   }
   // Legacy OFFSET path � still used for initial load (page 1).
@@ -1532,6 +1592,7 @@ const getDirectMessages = async (userId, otherUserId, page = 1, limit = 50, befo
     [userId, otherUserId, otherUserId, userId, limit, offset]
   );
   await withIsoDates(messages, ['created_at']);
+  await withAttachedImages(messages);
   return messages.reverse();
 };
 
@@ -1629,6 +1690,7 @@ module.exports = {
   // Direct Messages
   sendDirectMessage,
   withIsoDates,
+  attachImagesToMessage,
   getConversations,
   getDirectMessages,
   markDirectMessagesRead,
