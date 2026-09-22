@@ -217,31 +217,6 @@ const computeGoScores = (pieces, gameType, otherData) => {
 };
 
 // Helper to parse image_location and get the first image URL
-const getFirstImageUrl = (imageLocation) => {
-  if (!imageLocation) return null;
-  
-  try {
-    const images = JSON.parse(imageLocation);
-    if (Array.isArray(images) && images.length > 0) {
-      const imagePath = images[0];
-      if (imagePath.startsWith('http')) {
-        return imagePath;
-      }
-      // Add ASSET_URL prefix if path starts with /
-      return imagePath.startsWith('/') ? `${ASSET_URL}${imagePath}` : `${ASSET_URL}/uploads/pieces/${imagePath}`;
-    }
-  } catch {
-    const imagePath = imageLocation;
-    if (imagePath.startsWith('http')) {
-      return imagePath;
-    }
-    // Add ASSET_URL prefix for all relative paths
-    return imagePath.startsWith('/') ? `${ASSET_URL}${imagePath}` : `${ASSET_URL}/uploads/pieces/${imagePath}`;
-  }
-  
-  return null;
-};
-
 // Helper to get image URL for a specific player (player 1 uses index 0, player 2 uses index 1).
 // Optional imageIndexOverride forces a specific index from the array (per-placement override).
 const getPlayerImageUrl = (imageLocation, playerNumber, imageIndexOverride = null) => {
@@ -6023,7 +5998,30 @@ const LiveGame = () => {
                 // If it's already a full URL, use it; otherwise add ASSET_URL prefix
                 imageUrl = rawPath.startsWith('http') ? rawPath : `${ASSET_URL}${rawPath}`;
               } else if (piece.image_location) {
-                imageUrl = getFirstImageUrl(piece.image_location);
+                /*
+                 * By OWNER, not by index 0.
+                 *
+                 * This is the fallback for a piece that reached the board with
+                 * no resolved image_url - a promotion to an off-board target, a
+                 * piece the server sent without one. Taking the first image
+                 * meant taking player 1's artwork whoever owned the piece, so
+                 * such a piece rendered in the wrong colour.
+                 *
+                 * It showed up at checkmate because gameOver replaces the board
+                 * wholesale with finalState.pieces, which throws away the
+                 * image_url this frame had resolved for itself (see the
+                 * optimistic placement above, which works around the same thing
+                 * locally). Pieces that had looked right all game changed colour
+                 * the moment the game ended.
+                 *
+                 * Same arguments the server's getImageUrlForPlayer takes, so the
+                 * fallback lands on the picture the server would have sent.
+                 */
+                imageUrl = getPlayerImageUrl(
+                  piece.image_location,
+                  piece.is_neutral ? 1 : pieceTeam,
+                  piece.is_neutral ? (piece.neutral_image_index ?? null) : (piece.image_index ?? null)
+                );
               }
               
               // Debug logging

@@ -7,7 +7,7 @@ import PlacementTray from "../common/PlacementTray";
 import PromotionChooser from "../common/PromotionChooser";
 import useSetupMoveReplay from "../common/useSetupMoveReplay";
 import { expandPlaceable, placesPieces } from "../../helpers/placement";
-import { applyPromotionDefinition, promotionPieceNumber } from "../../helpers/pieceMovementUtils";
+import { applyPromotionDefinition, promotionPieceNumber, solvedPliesRemaining } from "../../helpers/pieceMovementUtils";
 import PuzzleBoard from "../puzzles/PuzzleBoard";
 import useDiscordSdk from "./useDiscordSdk";
 import { launchedPuzzleId } from "../../helpers/discord-launch-params";
@@ -520,8 +520,10 @@ export default function DiscordActivity() {
         // play the move twice.
         // `position` arrives only for games whose captures this frame cannot
         // work out - a surrounded group in Go - and is the authority when it does.
-        setBoard(data.position ? fromServerPosition(data.position)
-          : applyMove(before, move, data.solution?.[found.length]));
+        setBoard(data.position
+          ? fromServerPosition(data.position)
+          : solvedPliesRemaining(data.solution, found.length, move)
+              .reduce((cells, ply) => applyMove(cells, ply), before));
         setFound(moves);
         const tries = attempts + 1;
         setVerdict({

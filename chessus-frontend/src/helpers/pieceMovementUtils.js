@@ -1244,6 +1244,30 @@ const PROMOTION_PRESERVED_KEYS = new Set([
  *
  * Mutates `piece`, so hand it one you own.
  */
+/*
+ * The plies a solved puzzle still has to play onto the board.
+ *
+ * A solution line alternates - [mine, theirs, mine, ...] - so the solver's nth
+ * move is at index 2n, and everything from there is what the board has not been
+ * shown yet. Indexing the line by the solver's own move COUNT instead lands on
+ * the opponent's reply, whose piece has already moved; applying it finds an
+ * empty from-square and changes nothing, so the winning move never appears. A
+ * mate in two then ends with the piece sitting on its old square while the
+ * puzzle is judged solved, which is what the Discord activity was doing.
+ *
+ * Exported because all three boards that finish a puzzle - the puzzle page, the
+ * home card and the Discord activity - have to land on the same final position,
+ * and that is one rule, not three.
+ *
+ * `fallback` covers a line the server did not send back: the move just played
+ * is the best guess, and is what the board would have shown anyway.
+ */
+export const solvedPliesRemaining = (line, movesAlreadyFound, fallback) => (
+  Array.isArray(line) && line.length > movesAlreadyFound * 2
+    ? line.slice(movesAlreadyFound * 2)
+    : (fallback ? [fallback] : [])
+);
+
 export const applyPromotionDefinition = (piece, template) => {
   if (!piece || !template) return;
   for (const key of Object.keys(template)) {

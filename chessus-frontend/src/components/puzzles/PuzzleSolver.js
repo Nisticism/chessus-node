@@ -18,7 +18,7 @@ import PlacementTray from "../common/PlacementTray";
 import PromotionChooser from "../common/PromotionChooser";
 import useSetupMoveReplay from "../common/useSetupMoveReplay";
 import { expandPlaceable, placesPieces } from "../../helpers/placement";
-import { applyPromotionDefinition, promotionPieceNumber } from "../../helpers/pieceMovementUtils";
+import { applyPromotionDefinition, promotionPieceNumber, solvedPliesRemaining } from "../../helpers/pieceMovementUtils";
 import styles from "./puzzlesolver.module.scss";
 
 /*
@@ -575,7 +575,8 @@ const PuzzleSolver = () => {
         // replaces the guess rather than stacking on top of it.
         setPlacements(data.position
           ? fromServerPosition(data.position)
-          : line.slice(playedMoves.length * 2).reduce((cells, ply) => applyPly(cells, ply), before));
+          : solvedPliesRemaining(line, playedMoves.length, move)
+              .reduce((cells, ply) => applyPly(cells, ply), before));
         setSolution(line);
         setOutcome('solved');
         return;

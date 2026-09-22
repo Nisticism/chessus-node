@@ -9,7 +9,7 @@ import useBoardViewport from "../common/useBoardViewport";
 import { MOVE_DOT_BACKGROUNDS, getMoveDotType } from "../../helpers/moveEngine";
 import PlacementTray from "../common/PlacementTray";
 import PromotionChooser from "../common/PromotionChooser";
-import { applyPromotionDefinition, promotionPieceNumber } from "../../helpers/pieceMovementUtils";
+import { applyPromotionDefinition, promotionPieceNumber, solvedPliesRemaining } from "../../helpers/pieceMovementUtils";
 import useSetupMoveReplay from "../common/useSetupMoveReplay";
 import { expandPlaceable, placesPieces } from "../../helpers/placement";
 import PuzzleBoard from "../puzzles/PuzzleBoard";
@@ -426,7 +426,7 @@ const PuzzlesPanel = () => {
         // replaces the guess rather than stacking on it.
         setBoard(data.position
           ? fromServerPosition(data.position)
-          : (data.solution || attemptLine).slice(found.length * 2)
+          : solvedPliesRemaining(data.solution, found.length, move)
               .reduce((cells, ply) => applyMove(cells, ply), before));
         setVerdict({ status: 'solved', text: 'That is it — solved.' });
       } else if (data.status === 'continue') {
