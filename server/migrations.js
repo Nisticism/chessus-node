@@ -99,6 +99,20 @@ const runMigration = async (sql, description) => {
  */
 const tableMigrations = [
   {
+    table: 'changelog_entries',
+    sql: `CREATE TABLE IF NOT EXISTS changelog_entries (
+      id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      entry_date DATE NOT NULL,
+      published_at DATETIME NOT NULL,
+      sections JSON NOT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      UNIQUE KEY uniq_changelog_entry_date (entry_date),
+      INDEX idx_changelog_published_at (published_at)
+    )`,
+    description: "Create changelog_entries table (one row per day)"
+  },
+  {
     table: 'pieces',
     sql: `CREATE TABLE IF NOT EXISTS pieces (
       id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,

@@ -10,6 +10,7 @@ import { formatDateTime, parseServerDate } from "../../helpers/date-formatter";
 import AiTrainingPanel from "./AiTrainingPanel";
 import FairyStockfishPanel from "./FairyStockfishPanel";
 import TrafficPanel from "./TrafficPanel";
+import ChangelogPanel from "./ChangelogPanel";
 import DailyPuzzlePanel from "./DailyPuzzlePanel";
 import ConfirmDeleteModal from "../common/ConfirmDeleteModal";
 import ToggleSwitch from "../common/ToggleSwitch";
@@ -297,6 +298,9 @@ const AdminDashboard = () => {
       // DailyPuzzlePanel manages its own data fetching.
     } else if (activeTab === 'traffic') {
       // TrafficPanel manages its own data fetching.
+      setLoading(false);
+    } else if (activeTab === 'changelog') {
+      // ChangelogPanel manages its own data fetching.
       setLoading(false);
     } else {
       fetchData(activeTab, 1);
@@ -3961,6 +3965,13 @@ const AdminDashboard = () => {
           Settings
         </button>
         <button
+          className={`${styles["tab"]} ${activeTab === "changelog" ? styles["active"] : ""}`}
+          onClick={() => handleTabChange("changelog")}
+          style={isAdmin2 ? { display: 'none' } : undefined}
+        >
+          Changelog
+        </button>
+        <button
           className={`${styles["tab"]} ${activeTab === "moderation" ? styles["active"] : ""}`}
           onClick={() => handleTabChange("moderation")}
         >
@@ -4073,6 +4084,7 @@ const AdminDashboard = () => {
             {activeTab === "physical-board-requests" && renderPhysicalBoardRequestsTab()}
             {activeTab === "feature-todo" && renderFeatureTodoTab()}
             {activeTab === "traffic" && <TrafficPanel />}
+            {activeTab === "changelog" && <ChangelogPanel />}
             {activeTab === "settings" && (
               <div className={styles["settings-section"]}>
                 <h3>Site Settings</h3>

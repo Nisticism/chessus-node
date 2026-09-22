@@ -1,8 +1,33 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useSelector } from "react-redux";
+import axios from "axios";
+import API_URL from "../../global/global";
 import styles from "./changelog.module.scss";
 
-const changelogData = [
+/*
+ * The changelog used to live here. This copy now does two jobs, and then stops.
+ *
+ * It is the page's FALLBACK - what a reader sees if the API cannot be reached,
+ * or before the table has been seeded - so a network blip leaves a readable
+ * page rather than an empty one. It is also the IMPORT SOURCE that
+ * scripts/seed-changelog.js parses to fill the table in the first place.
+ *
+ * Once the table is live, this file is frozen: new entries are written through
+ * the admin portal, which is the whole point of the move. Nothing should be
+ * added below after that.
+ */
+const fallbackChangelogData = [
+  {
+    date: "September 22, 2026",
+    title: "A puzzle piece wears its own colour, and the changelog moves out of the app",
+    items: [
+      "Fixed puzzle pieces changing colour the moment a puzzle was solved — a black king turning white, a rook changing sides, every pawn on the board ending up the same colour. The position the site sends back at the end of a puzzle was choosing artwork per piece TYPE rather than per piece, and a white pawn and a black pawn are the same type, so whichever one happened to be stored last lent its picture to all of them. The piece that had just promoted stayed correct, which is why this looked like a promotion bug. 17 published puzzles were affected, including six in Ghostwalker.",
+      "Fixed the winning move of a puzzle not actually moving in the Discord activity. The piece stayed on its old square, and the piece it was meant to capture stayed on the board, while the puzzle was declared solved. It affected every puzzle longer than a single move. The puzzle page and the home-page card were already right, and all three now decide the finishing position with the same shared code rather than three copies of it.",
+      "Win on Promotion has two new options, for games where getting a piece to the far side is the goal. “Only win if the square is empty” asks about the square; “only win if the move captured nothing” asks about the move. They are not the same rule and neither implies the other — an en passant lands on an empty square while still capturing, and a short castle onto your own partner captures nothing while landing on an occupied one. The second option matters most for a piece that dies when it captures, which could previously win a race and be removed from the board for doing it.",
+      "The changelog now lives in the database instead of inside the app. It is one entry per DAY, enforced by the database rather than by whoever is writing, so the same day can no longer be split across several entries in whatever order they happened to be typed. Editing it no longer needs a deploy.",
+      "Every date on this page is now shown in your own local time. Entries used to carry a bare date with no time and no timezone, which meant an update written in the evening could read as tomorrow's news to anyone far enough east. Nothing dated ahead of now is sent at all.",
+    ],
+  },
   {
     date: "September 20, 2026",
     title: "Puzzles load again",
@@ -1066,6 +1091,7 @@ const changelogData = [
     ],
   },
   {
+    date: "May 8, 2026",
     title: "Forum filters, match history game link, physical board improvements, AI analysis persistence, piece abilities",
     items: [
       "Forums (all three pages) now support searching and filtering: sort by Activity, Date Created, Author, Category (general forums), Game (game forums), Replies, or Likes, with ascending/descending toggle. Search queries subject and author name — not post content. Game forum search also matches the game name.",
@@ -2205,12 +2231,78 @@ const changelogData = [
 
 const ENTRIES_PER_PAGE = 5;
 
+/*
+ * The reader's own day for an instant, as a sortable key and as a heading.
+ *
+ * Everything the server sends is a UTC instant. Turning it into a DAY is the
+ * reader's business, not the server's: an entry published at 02:00 UTC on the
+ * 21st happened on the EVENING OF THE 20TH for most of the Americas, and
+ * showing them the 21st is how a changelog ends up describing tomorrow.
+ *
+ * toLocaleDateString with no locale argument follows the browser's own
+ * settings, so the month name and the order of the parts are the reader's too.
+ */
+const localDayOf = (iso) => {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return { key: String(iso), label: String(iso) };
+  return {
+    // Local Y-M-D, not the ISO string, which would be the UTC day again.
+    key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`,
+    label: d.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }),
+  };
+};
+
+/*
+ * The fallback array's dates are plain strings with no time in them, so they
+ * are shown exactly as written. There is nothing to convert: a date with no
+ * instant does not name a moment, which is the very thing being fixed.
+ */
+const fallbackToDays = (entries) => entries.map((e) => ({
+  key: e.date,
+  label: e.date,
+  sections: [{ title: e.title, items: e.items }],
+}));
+
 const Changelog = () => {
   const { changelogEnabled, loaded } = useSelector((state) => state.siteSettings);
   const [page, setPage] = useState(0);
+  const [entries, setEntries] = useState(null);   // null = still loading
 
-  const totalPages = Math.ceil(changelogData.length / ENTRIES_PER_PAGE);
-  const pageEntries = changelogData.slice(page * ENTRIES_PER_PAGE, (page + 1) * ENTRIES_PER_PAGE);
+  useEffect(() => {
+    let alive = true;
+    axios.get(`${API_URL}changelog`)
+      .then(({ data }) => { if (alive) setEntries(Array.isArray(data?.entries) ? data.entries : []); })
+      .catch(() => { if (alive) setEntries([]); });
+    return () => { alive = false; };
+  }, []);
+
+  /*
+   * Group by the READER'S day.
+   *
+   * The database already allows only one entry per UTC day, but two entries a
+   * day apart in UTC can still land on the same local day for somebody far
+   * enough east or west. Grouping here keeps the promise - one heading per day
+   * - for every reader, wherever they are.
+   */
+  const days = useMemo(() => {
+    if (entries === null) return null;
+    /*
+     * Empty for ANY reason - the call failed, or the table has not been seeded
+     * yet - falls back to the bundled copy. A changelog that briefly shows
+     * older news is better than one that says there is none.
+     */
+    if (!entries.length) return fallbackToDays(fallbackChangelogData);
+    const byDay = new Map();
+    for (const e of entries) {
+      const { key, label } = localDayOf(e.published_at);
+      if (!byDay.has(key)) byDay.set(key, { key, label, sections: [] });
+      byDay.get(key).sections.push(...(e.sections || []));
+    }
+    return [...byDay.values()].sort((a, b) => (a.key < b.key ? 1 : -1));
+  }, [entries]);
+
+  const totalPages = days ? Math.ceil(days.length / ENTRIES_PER_PAGE) : 0;
+  const pageEntries = days ? days.slice(page * ENTRIES_PER_PAGE, (page + 1) * ENTRIES_PER_PAGE) : [];
 
   if (!loaded) {
     return (
@@ -2240,15 +2332,31 @@ const Changelog = () => {
         <p className={styles["subtitle"]}>Recent updates and improvements to GridGrove</p>
       </div>
 
-      {pageEntries.map((entry, i) => (
-        <div key={i} className={styles["changelog-entry"]}>
-          <div className={styles["entry-date"]}>{entry.date}</div>
-          <div className={styles["entry-title"]}>{entry.title}</div>
-          <ul className={styles["entry-list"]}>
-            {entry.items.map((item, j) => (
-              <li key={j}>{item}</li>
-            ))}
-          </ul>
+      {days === null && (
+        <div className={styles["changelog-entry"]}>
+          <div className={styles["entry-title"]}>Loading…</div>
+        </div>
+      )}
+
+      {days !== null && days.length === 0 && (
+        <div className={styles["changelog-entry"]}>
+          <div className={styles["entry-title"]}>Nothing here yet.</div>
+        </div>
+      )}
+
+      {pageEntries.map((day) => (
+        <div key={day.key} className={styles["changelog-entry"]}>
+          <div className={styles["entry-date"]}>{day.label}</div>
+          {day.sections.map((section, si) => (
+            <React.Fragment key={si}>
+              {section.title && <div className={styles["entry-title"]}>{section.title}</div>}
+              <ul className={styles["entry-list"]}>
+                {(section.items || []).map((item, j) => (
+                  <li key={j}>{item}</li>
+                ))}
+              </ul>
+            </React.Fragment>
+          ))}
         </div>
       ))}
 

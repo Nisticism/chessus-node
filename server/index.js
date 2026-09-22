@@ -16257,6 +16257,141 @@ app.get("/api/site-settings", async (req, res) => {
 });
 
 // Admin: Get all site settings
+/*
+ * THE CHANGELOG.
+ *
+ * One row per day, and the UNIQUE key on entry_date is what guarantees that -
+ * there is no way to end up with two entries for the same day, whatever order
+ * they are written in. A day's several titled blocks are `sections` inside it.
+ *
+ * published_at is an INSTANT, stored in UTC, and is handed out as an ISO string
+ * with an explicit Z. That matters: the pool runs with dateStrings, so MySQL
+ * returns "2026-09-20 12:00:00" with nothing saying which zone it is in, and a
+ * browser handed that string parses it as LOCAL time. Every reader would then
+ * see the date shifted by their own offset, which is the opposite of the point.
+ * The client turns the instant back into whatever day it was where they are.
+ */
+const changelogDefaultInstant = (date) => {
+  const midday = Date.parse(`${date}T12:00:00Z`);
+  const todayUtc = new Date().toISOString().slice(0, 10);
+  const when = date <= todayUtc ? Math.min(midday, Date.now()) : midday;
+  return new Date(when).toISOString().slice(0, 19).replace('T', ' ');
+};
+
+const changelogRowToJson = (row) => ({
+  id: row.id,
+  entry_date: String(row.entry_date).slice(0, 10),
+  // "YYYY-MM-DD HH:MM:SS" in UTC -> a real ISO instant.
+  published_at: new Date(String(row.published_at).replace(' ', 'T') + 'Z').toISOString(),
+  sections: typeof row.sections === 'string' ? JSON.parse(row.sections) : (row.sections || []),
+});
+
+/* Public: everything already published, newest first. */
+app.get("/api/changelog", async (req, res) => {
+  try {
+    /*
+     * Compared against UTC_TIMESTAMP rather than NOW(): NOW() follows the
+     * server's session timezone and this column is UTC by construction. An
+     * entry dated ahead of now is simply not sent, so nobody can read tomorrow's
+     * news today - which is the whole reason this carries a time at all.
+     */
+    const [rows] = await db_pool.query(
+      `SELECT id, entry_date, published_at, sections FROM changelog_entries
+        WHERE published_at <= UTC_TIMESTAMP() ORDER BY published_at DESC, entry_date DESC`
+    );
+    res.json({ entries: rows.map(changelogRowToJson) });
+  } catch (err) {
+    console.error("Error fetching changelog:", err.message);
+    res.status(500).json({ message: "Failed to load changelog" });
+  }
+});
+
+/* Admin: everything, including anything scheduled ahead of now. */
+app.get("/api/admin/changelog", authenticateAdmin1, async (req, res) => {
+  try {
+    const [rows] = await db_pool.query(
+      `SELECT id, entry_date, published_at, sections FROM changelog_entries
+        ORDER BY published_at DESC, entry_date DESC`
+    );
+    res.json({ entries: rows.map(changelogRowToJson) });
+  } catch (err) {
+    console.error("Error fetching changelog (admin):", err.message);
+    res.status(500).json({ message: "Failed to load changelog" });
+  }
+});
+
+/*
+ * Admin: write one day.
+ *
+ * Addressed BY DATE and upserted, not created by id, because a day is the
+ * thing: saving 2026-09-21 twice edits that day rather than making a second
+ * one. That is the rule enforced in the schema, said again in the only route
+ * that can break it.
+ */
+app.put("/api/admin/changelog/:date", authenticateAdmin1, async (req, res) => {
+  try {
+    const date = String(req.params.date || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return res.status(400).json({ message: "Date must be YYYY-MM-DD" });
+    }
+    const { sections, published_at } = req.body || {};
+    if (!Array.isArray(sections) || sections.length === 0) {
+      return res.status(400).json({ message: "At least one section is required" });
+    }
+    const clean = [];
+    for (const sec of sections) {
+      const items = (Array.isArray(sec?.items) ? sec.items : [])
+        .map((i) => String(i || '').trim()).filter(Boolean);
+      if (!items.length) continue;
+      clean.push({ title: sec?.title ? String(sec.title).trim() : null, items });
+    }
+    if (!clean.length) return res.status(400).json({ message: "Every section was empty" });
+
+    /*
+     * The instant a day is published, when none is given.
+     *
+     * Midday UTC is the anchor, because it is the hour that falls on the same
+     * calendar date in very nearly every timezone - midnight would put the
+     * entry on the previous day for everyone west of here.
+     *
+     * But a day that has ALREADY ARRIVED publishes at the earlier of midday and
+     * now, or an entry written this morning would sit invisible until noon UTC
+     * while its author wondered where it went. A date still in the future keeps
+     * its midday and stays scheduled, which is a thing worth being able to do.
+     */
+    let instant = changelogDefaultInstant(date);
+    if (published_at) {
+      const d = new Date(published_at);
+      if (Number.isNaN(d.getTime())) return res.status(400).json({ message: "published_at is not a date" });
+      instant = d.toISOString().slice(0, 19).replace('T', ' ');
+    }
+
+    await db_pool.query(
+      `INSERT INTO changelog_entries (entry_date, published_at, sections) VALUES (?, ?, ?)
+       ON DUPLICATE KEY UPDATE published_at = VALUES(published_at), sections = VALUES(sections)`,
+      [date, instant, JSON.stringify(clean)]
+    );
+    const [[row]] = await db_pool.query(
+      'SELECT id, entry_date, published_at, sections FROM changelog_entries WHERE entry_date = ?', [date]
+    );
+    res.json({ message: "Changelog saved", entry: changelogRowToJson(row) });
+  } catch (err) {
+    console.error("Error saving changelog entry:", err.message);
+    res.status(500).json({ message: "Failed to save changelog entry" });
+  }
+});
+
+app.delete("/api/admin/changelog/:id", authenticateAdmin1, async (req, res) => {
+  try {
+    const [r] = await db_pool.query('DELETE FROM changelog_entries WHERE id = ?', [Number(req.params.id)]);
+    if (!r.affectedRows) return res.status(404).json({ message: "No such changelog entry" });
+    res.json({ message: "Changelog entry deleted" });
+  } catch (err) {
+    console.error("Error deleting changelog entry:", err.message);
+    res.status(500).json({ message: "Failed to delete changelog entry" });
+  }
+});
+
 app.get("/api/admin/site-settings", authenticateAdmin1, async (req, res) => {
   try {
     const [rows] = await db_pool.query("SELECT * FROM site_settings ORDER BY setting_key");
