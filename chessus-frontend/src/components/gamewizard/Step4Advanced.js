@@ -123,9 +123,13 @@ const Step4Advanced = ({ gameData, updateGameData }) => {
             gameData.hill_condition && "King of the Hill",
             gameData.no_moves_condition && "No Legal Moves",
             gameData.piece_count_condition && "Piece Count",
-            gameData.promotion_condition && (gameData.promotion_condition_requires_empty
-              ? "Win on Promotion (empty square only)"
-              : "Win on Promotion"),
+            gameData.promotion_condition && ("Win on Promotion" + (() => {
+              const limits = [
+                gameData.promotion_condition_requires_empty && "empty square",
+                gameData.promotion_condition_requires_no_capture && "no capture",
+              ].filter(Boolean);
+              return limits.length ? ` (${limits.join(", ")})` : "";
+            })()),
             gameData.lose_all_pieces_condition && "Lose All Pieces",
             gameData.stalemate_win_condition && "Stalemate Win"
           ].filter(Boolean).join(", ") || "Capture (default)"}

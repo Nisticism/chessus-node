@@ -836,7 +836,21 @@ function squarePromotesFor(gameType, piece, destX, destY) {
 function promotionReachWins(gameType, moveResult) {
   if (!moveResult?.promotionEligible || !gameType?.promotion_condition) return false;
   if (gameType.promotion_condition_requires_empty && moveResult.destinationWasOccupied) return false;
+  if (gameType.promotion_condition_requires_no_capture && moveCapturedSomething(moveResult)) return false;
   return true;
+}
+
+/**
+ * Did this move take anything off the board?
+ *
+ * hoppedCaptures covers the checkers-style capture in passing AND the moving
+ * piece's own death under die_on_capture, which is deliberate: both mean a
+ * capture happened, and the second is the whole reason this rule exists.
+ */
+function moveCapturedSomething(moveResult) {
+  return !!moveResult?.captured
+    || (moveResult?.allCaptured?.length > 0)
+    || (moveResult?.hoppedCaptures?.length > 0);
 }
 
 // Does this move land a promotable piece on a promotion square that is theirs

@@ -3778,6 +3778,23 @@ const runMigrations = async () => {
       console.error('Error adding promotion_condition_requires_empty column:', err.message);
     }
 
+    // The companion rule: win only if the move captured NOTHING. Separate from
+    // requires_empty because neither implies the other - see promotionReachWins.
+    // The case that asked for it: a piece with die_on_capture wins the race by
+    // capturing onto the last square, and is removed from the board for doing
+    // it, so the game is won by a piece that is no longer there.
+    try {
+      if (!(await columnExists('game_types', 'promotion_condition_requires_no_capture'))) {
+        await runMigration(
+          `ALTER TABLE game_types ADD COLUMN promotion_condition_requires_no_capture BOOLEAN DEFAULT FALSE COMMENT 'With promotion_condition: only win when the winning move captured nothing'`,
+          "Add promotion_condition_requires_no_capture column to game_types table"
+        );
+        migrationsRun++;
+      }
+    } catch (err) {
+      console.error('Error adding promotion_condition_requires_no_capture column:', err.message);
+    }
+
     // Upgrade pieces_string to MEDIUMTEXT for large game boards
     try {
       const [columns] = await db_pool.query(

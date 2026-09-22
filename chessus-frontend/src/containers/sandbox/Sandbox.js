@@ -82,6 +82,7 @@ const buildRulesFromGameType = (gt) => {
     no_moves_condition: !!gt.no_moves_condition,
     promotion_condition: !!gt.promotion_condition,
     promotion_condition_requires_empty: !!gt.promotion_condition_requires_empty,
+    promotion_condition_requires_no_capture: !!gt.promotion_condition_requires_no_capture,
     lose_all_pieces_condition: !!gt.lose_all_pieces_condition,
     stalemate_win_condition: !!gt.stalemate_win_condition,
     // draw
@@ -2429,7 +2430,8 @@ const Sandbox = () => {
           // immediately - unless the creator asked for an EMPTY square, in which
           // case arriving by capture is just a capture.
           if (rules.promotion_condition
-              && !(rules.promotion_condition_requires_empty && destWasOccupied)) {
+              && !(rules.promotion_condition_requires_empty && destWasOccupied)
+              && !(rules.promotion_condition_requires_no_capture && justCaptured.length > 0)) {
             intermediate.gameOver = { gameOver: true, winner: moved.player_id || moved.team, reason: 'promotion_win' };
           }
         }

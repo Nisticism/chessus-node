@@ -4126,6 +4126,7 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
       promotion_condition:                   gameData.promotion_condition || false,
       // Only meaningful with promotion_condition; harmless stored on its own.
       promotion_condition_requires_empty:    gameData.promotion_condition_requires_empty || false,
+      promotion_condition_requires_no_capture: gameData.promotion_condition_requires_no_capture || false,
       lose_all_pieces_condition:             gameData.lose_all_pieces_condition || false,
       stalemate_win_condition:               gameData.stalemate_win_condition || false,
       stalemate_draw_condition:              gameData.stalemate_draw_condition !== undefined ? !!gameData.stalemate_draw_condition : true,
@@ -9152,6 +9153,7 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
       promotion_condition:                   gameData.promotion_condition || false,
       // Only meaningful with promotion_condition; harmless stored on its own.
       promotion_condition_requires_empty:    gameData.promotion_condition_requires_empty || false,
+      promotion_condition_requires_no_capture: gameData.promotion_condition_requires_no_capture || false,
       lose_all_pieces_condition:             gameData.lose_all_pieces_condition || false,
       stalemate_win_condition:               gameData.stalemate_win_condition || false,
       stalemate_draw_condition:              gameData.stalemate_draw_condition !== undefined ? !!gameData.stalemate_draw_condition : true,

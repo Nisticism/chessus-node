@@ -257,7 +257,18 @@ const Step2WinConditions = ({ gameData, updateGameData }) => {
             label={
               <span className={styles["condition-toggle-title"]}>
                 Only win if the square is <em>empty</em>
-                <InfoTooltip text="By default, reaching a promotion square wins however you got there — including by capturing the piece standing on it. With this option, the square must be unoccupied: arriving by capture does not win, and the move is played as an ordinary capture. Use this for a race game where the goal is to get a piece through to an open square. A capture made on the way — a hop capture, or en passant — still wins, because the square landed on was empty." />
+                <InfoTooltip text="Asks about the SQUARE: it must be unoccupied when your piece lands on it. By default, reaching a promotion square wins however you got there, including by capturing the piece standing on it. With this on, arriving by capture is just an ordinary capture and the game continues. Use it for a race where the goal is to get a piece through to an open square. This is not the same as the 'nothing was captured' option below, and neither one implies the other — a hop capture or an en passant takes a piece standing elsewhere and still lands on an empty square, so it satisfies THIS rule but not that one." />
+              </span>
+            }
+          />
+          <ToggleSwitch
+            checked={gameData.promotion_condition_requires_no_capture === true}
+            onChange={(val) => handleChange("promotion_condition_requires_no_capture", val)}
+            size="small"
+            label={
+              <span className={styles["condition-toggle-title"]}>
+                Only win if the move <em>captured nothing</em>
+                <InfoTooltip text="Asks about the MOVE: it must take nothing off the board. Any capture at all — on the square, in passing like a hop capture, or en passant — means the move does not win. Turn this on when winning by capturing would be strange, and especially when the winning piece has 'dies on capture': without it, that piece can win the race by capturing onto the last square and be removed from the board for doing it, so the game is won by a piece that is no longer there. This is not the same as the 'square is empty' option above, and neither one implies the other — castling a short distance onto your own castling partner lands on an occupied square while capturing nothing, so it satisfies THIS rule but not that one. Turn both on to require a quiet move onto an open square." />
               </span>
             }
           />

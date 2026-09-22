@@ -170,9 +170,10 @@ const GOAL_DEFS = {
        * ordinary promotion rather than a win, the flag says nothing and the
        * move promotes either way.
        */
-      if (state.gameType?.promotion_condition
-          && state.gameType?.promotion_condition_requires_empty
-          && ctx.destinationWasOccupied) return false;
+      if (state.gameType?.promotion_condition) {
+        if (state.gameType.promotion_condition_requires_empty && ctx.destinationWasOccupied) return false;
+        if (state.gameType.promotion_condition_requires_no_capture && ctx.capturedSomething) return false;
+      }
       return true;
     },
   },
@@ -686,6 +687,9 @@ async function applyPly(state, ply, { autoPromote = false } = {}) {
     // server/game-socket.js. A puzzle whose goal is "get there and win" has to
     // agree with the live game about when getting there is a win.
     destinationWasOccupied: !!applied?.destinationWasOccupied,
+    capturedSomething: !!(applied?.captured
+      || applied?.allCaptured?.length
+      || applied?.hoppedCaptures?.length),
     captured: applied?.allCaptured?.length ? applied.allCaptured : (applied?.captured || null),
     movingPiece: state.pieces.find(p => p.id === applied?.movingPiece?.id) || applied?.movingPiece || null,
   };
