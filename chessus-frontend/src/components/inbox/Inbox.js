@@ -21,6 +21,17 @@ import { MdImage } from "react-icons/md";
 
 const API_URL = (process.env.REACT_APP_API_URL || "http://localhost:3001") + "/api/";
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "";
+/*
+ * What a pasted image is allowed to be, and the extension it gets on the way
+ * up. Deliberately the same four types the file picker accepts.
+ */
+const PASTE_EXT_FOR_MIME = {
+  "image/png": "png",
+  "image/jpeg": "jpg",
+  "image/gif": "gif",
+  "image/webp": "webp",
+};
+
 const DM_IMAGE_LIMIT = 5;
 
 const formatTimeAgo = (dateStr) => {
@@ -113,6 +124,7 @@ const Inbox = () => {
       .catch(() => {});
   }, [selectedUserId, conversations, selectedUserInfo]);
 
+
   // Scroll to bottom when messages/images change
   useEffect(() => {
     if (chatContainerRef.current) {
@@ -187,10 +199,13 @@ const Inbox = () => {
     fileInputRef.current?.click();
   };
 
-  const handleFileChange = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    e.target.value = ""; // reset so same file can be re-selected
+  /*
+   * Sending one image, however it was chosen - picked from the file dialog or
+   * pasted in. Written once because the two routes in have to agree about the
+   * size limit, the per-conversation limit and what happens afterwards.
+   */
+  const uploadImage = useCallback(async (file) => {
+    if (!file || !currentUser || !selectedUserId) return;
 
     if (file.size > 1 * 1024 * 1024) {
       setImageError("Image must be 1 MB or smaller.");
@@ -222,7 +237,61 @@ const Inbox = () => {
       );
     }
     setUploadingImage(false);
+  }, [currentUser, selectedUserId, dmImages.length]);
+
+  const handleFileChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = ""; // reset so same file can be re-selected
+    await uploadImage(file);
   };
+
+  /*
+   * Ctrl-V a screenshot straight into the conversation.
+   *
+   * Listening on the window rather than on the text box: a screenshot is
+   * usually taken and pasted in one motion, without clicking into the message
+   * field first, and a paste that does nothing because the cursor was
+   * elsewhere is the kind of thing people try once and give up on.
+   *
+   * It only ever acts on an image sitting in the clipboard, so pasting text
+   * anywhere, or pasting anything at all into another field on the page, is
+   * left completely alone.
+   */
+  useEffect(() => {
+    if (!selectedUserId || isNaN(selectedUserId)) return undefined;
+
+    const onPaste = (e) => {
+      if (uploadingImage) return;
+      // Another text field has the cursor - that paste is not ours to take.
+      const active = document.activeElement;
+      if (active && active !== messageInputRef.current
+          && (active.tagName === "INPUT" || active.tagName === "TEXTAREA")) return;
+
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      for (const item of items) {
+        if (item.kind !== "file") continue;
+        const ext = PASTE_EXT_FOR_MIME[item.type];
+        if (!ext) continue;
+        const blob = item.getAsFile();
+        if (!blob) continue;
+        // Stop the browser also dropping a filename into the message box.
+        e.preventDefault();
+        /*
+         * A pasted screenshot arrives with no name of its own, and the server
+         * checks the EXTENSION as well as the mime type - so it is given one
+         * that matches what it actually is, rather than being rejected for
+         * having no name.
+         */
+        uploadImage(new File([blob], `pasted-${Date.now()}.${ext}`, { type: item.type }));
+        return;
+      }
+    };
+
+    window.addEventListener("paste", onPaste);
+    return () => window.removeEventListener("paste", onPaste);
+  }, [selectedUserId, uploadingImage, uploadImage]);
 
   const handleDeleteImage = async (imageId) => {
     try {
@@ -508,7 +577,7 @@ const Inbox = () => {
                   title={
                     dmImages.length >= DM_IMAGE_LIMIT
                       ? `Max ${DM_IMAGE_LIMIT} images per conversation`
-                      : "Attach image (max 1 MB)"
+                      : "Attach image (max 1 MB) — or paste a screenshot with Ctrl+V"
                   }
                   aria-label="Attach image"
                 >

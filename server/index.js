@@ -15861,7 +15861,31 @@ app.post(
          VALUES (?, ?, ?, ?, ?)`,
         [userId, u1, u2, filename, expiresAt]
       );
-      const imageRecord = {
+      /*
+       * Read the row back rather than describing it from here.
+       *
+       * This used to build the record by hand with `new Date().toISOString()`,
+       * which is a UTC instant with a Z on it - while the GET that lists images
+       * hands back the raw DATETIME, "2026-09-22 06:53:52", with nothing saying
+       * what zone it is in. A browser reads that second form as LOCAL time, so
+       * the two disagreed by the reader's offset from the database's clock.
+       *
+       * The sender is the only one who sees the difference, because the sender
+       * is the only one who gets this response: their freshly uploaded image
+       * took a timestamp four hours away from every other item in the thread,
+       * sorted itself up above the recent messages, and the window scrolled
+       * past it to the bottom. It looked like the upload had not worked, and
+       * came right on a refresh because then everything came from the GET.
+       *
+       * Selecting the same columns the GET selects is what keeps them the same
+       * shape, whatever timezone the database is set to.
+       */
+      const [[inserted]] = await db_pool.query(
+        `SELECT id, sender_id, filename, created_at, expires_at
+           FROM direct_message_images WHERE id = ?`,
+        [result.insertId]
+      );
+      const imageRecord = inserted || {
         id: result.insertId,
         sender_id: userId,
         filename,
