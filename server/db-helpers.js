@@ -1403,6 +1403,55 @@ const getOwnerUserId = async () => {
 
 // ----------------------- Direct Messages ---------------------------
 
+/*
+ * TURNING A STORED DATETIME INTO A REAL INSTANT.
+ *
+ * A DATETIME column carries no timezone. The pool runs with dateStrings, so a
+ * row comes back as "2026-09-22 06:53:52" and nothing in that string says what
+ * clock it was read from - and a browser handed it parses it as LOCAL time.
+ * Production's MySQL is on UTC, so every direct-message timestamp was being
+ * read as the viewer's own offset later than it really was: "x minutes ago"
+ * came out wrong for everyone not sitting in UTC, and anything recent read as
+ * being in the future.
+ *
+ * The offset between the database's clock and UTC is asked for once and kept,
+ * so this works whether the server is on UTC (production) or on something else
+ * (a developer's machine) without either having to be configured anywhere.
+ */
+let _dbUtcOffsetMs = null;
+const dbUtcOffsetMs = async () => {
+  if (_dbUtcOffsetMs !== null) return _dbUtcOffsetMs;
+  try {
+    const rows = await query('SELECT TIMESTAMPDIFF(SECOND, UTC_TIMESTAMP(), NOW()) AS off');
+    _dbUtcOffsetMs = Number(rows?.[0]?.off || 0) * 1000;
+  } catch (_) {
+    _dbUtcOffsetMs = 0;   // best effort: UTC is the right guess for RDS
+  }
+  return _dbUtcOffsetMs;
+};
+
+const toIsoInstant = (value, offsetMs) => {
+  if (value == null) return value;
+  if (value instanceof Date) return value.toISOString();
+  const str = String(value);
+  // Already unambiguous - leave it exactly as it is.
+  if (/[Zz]$|[+-]\d{2}:?\d{2}$/.test(str)) return str;
+  const asIfUtc = Date.parse(str.replace(' ', 'T') + 'Z');
+  if (Number.isNaN(asIfUtc)) return value;
+  return new Date(asIfUtc - offsetMs).toISOString();
+};
+
+/** Rewrite the named columns of a row (or rows) as ISO-8601 UTC. */
+const withIsoDates = async (rows, fields) => {
+  const offset = await dbUtcOffsetMs();
+  const list = Array.isArray(rows) ? rows : [rows];
+  for (const row of list) {
+    if (!row) continue;
+    for (const f of fields) if (f in row) row[f] = toIsoInstant(row[f], offset);
+  }
+  return rows;
+};
+
 const sendDirectMessage = async (senderId, recipientId, content) => {
   const result = await query(
     `INSERT INTO direct_messages (sender_id, recipient_id, content) VALUES (?, ?, ?)`,
@@ -1415,6 +1464,7 @@ const sendDirectMessage = async (senderId, recipientId, content) => {
      WHERE dm.id = ?`,
     [result.insertId]
   );
+  await withIsoDates(message, ['created_at']);
   return message[0];
 };
 
@@ -1447,6 +1497,7 @@ const getConversations = async (userId) => {
      ORDER BY latest.created_at DESC`,
     [userId, userId, userId, userId]
   );
+  await withIsoDates(rows, ['last_message_time']);
   return rows;
 };
 
@@ -1465,6 +1516,7 @@ const getDirectMessages = async (userId, otherUserId, page = 1, limit = 50, befo
         LIMIT ?`,
       [userId, otherUserId, otherUserId, userId, beforeId, limit]
     );
+    await withIsoDates(messages, ['created_at']);
     return messages.reverse(); // return chronological order
   }
   // Legacy OFFSET path � still used for initial load (page 1).
@@ -1479,6 +1531,7 @@ const getDirectMessages = async (userId, otherUserId, page = 1, limit = 50, befo
       LIMIT ? OFFSET ?`,
     [userId, otherUserId, otherUserId, userId, limit, offset]
   );
+  await withIsoDates(messages, ['created_at']);
   return messages.reverse();
 };
 
@@ -1575,6 +1628,7 @@ module.exports = {
   getOwnerUserId,
   // Direct Messages
   sendDirectMessage,
+  withIsoDates,
   getConversations,
   getDirectMessages,
   markDirectMessagesRead,

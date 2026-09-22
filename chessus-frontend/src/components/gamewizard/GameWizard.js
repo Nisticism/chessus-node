@@ -56,6 +56,10 @@ export const gameRowToWizardData = (existingGame) => ({
     promotion_condition: Boolean(existingGame.promotion_condition),
     promotion_condition_requires_empty: Boolean(existingGame.promotion_condition_requires_empty),
     promotion_condition_requires_no_capture: Boolean(existingGame.promotion_condition_requires_no_capture),
+    // Defaults on: a game saved before this existed has nothing here, and the
+    // column's own default is true, so the form has to agree.
+    promotion_condition_requires_survival: existingGame.promotion_condition_requires_survival === undefined
+      ? true : Boolean(existingGame.promotion_condition_requires_survival),
     lose_all_pieces_condition: Boolean(existingGame.lose_all_pieces_condition),
     stalemate_win_condition: Boolean(existingGame.stalemate_win_condition),
     stalemate_draw_condition: existingGame.stalemate_draw_condition === undefined || existingGame.stalemate_draw_condition === null ? true : Boolean(existingGame.stalemate_draw_condition),
@@ -172,6 +176,7 @@ const GameWizard = ({ editGameId }) => {
     promotion_condition: false,
     promotion_condition_requires_empty: false,
     promotion_condition_requires_no_capture: false,
+    promotion_condition_requires_survival: true,
     lose_all_pieces_condition: false,
     stalemate_win_condition: false,
     stalemate_draw_condition: true,

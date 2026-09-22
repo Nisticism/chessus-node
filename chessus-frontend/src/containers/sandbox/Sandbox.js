@@ -83,6 +83,9 @@ const buildRulesFromGameType = (gt) => {
     promotion_condition: !!gt.promotion_condition,
     promotion_condition_requires_empty: !!gt.promotion_condition_requires_empty,
     promotion_condition_requires_no_capture: !!gt.promotion_condition_requires_no_capture,
+    // Defaults ON, so an absent value means true - matching the column.
+    promotion_condition_requires_survival: gt.promotion_condition_requires_survival === false
+      || gt.promotion_condition_requires_survival === 0 ? false : true,
     lose_all_pieces_condition: !!gt.lose_all_pieces_condition,
     stalemate_win_condition: !!gt.stalemate_win_condition,
     // draw
@@ -2386,8 +2389,14 @@ const Sandbox = () => {
     //    caller can show the modal). We don't actually mutate the piece here —
     //    promotion is applied after the user chooses a target piece.
     let promotionInfo = null;
-    if (!attackerDies && !isPlacement && !isRangedAttack) {
-      const moved = afterMove.find(p => p.id === movingPieceId);
+    /*
+     * A dead attacker is still considered here, where it used to be skipped.
+     * It gets no promotionInfo - there is no piece left to promote - but
+     * whether it WON is now a separate question, because
+     * promotion_condition_requires_survival can be turned off.
+     */
+    if (!isPlacement && !isRangedAttack) {
+      const moved = (attackerDies ? beforePieces : afterMove).find(p => p.id === movingPieceId);
       if (moved && moved.can_promote && !moved.disable_promotion) {
         // Check promotion squares
         const promoSquares = (() => {
@@ -2425,13 +2434,18 @@ const Sandbox = () => {
           if (spe[specialKey]?.asPromotion) isPromoSquare = true;
         }
         if (isPromoSquare) {
-          promotionInfo = { pieceId: movingPieceId, x: anchorX, y: anchorY, player: moved.player_id || moved.team };
-          // If promotion_condition rule is active, reaching a promotion square wins
-          // immediately - unless the creator asked for an EMPTY square, in which
-          // case arriving by capture is just a capture.
+          // No chooser for a piece that is no longer there.
+          if (!attackerDies) {
+            promotionInfo = { pieceId: movingPieceId, x: anchorX, y: anchorY, player: moved.player_id || moved.team };
+          }
+          // Reaching a promotion square wins immediately, subject to whichever
+          // of the three narrowing rules the creator turned on. Survival is the
+          // one that is on unless turned OFF; see promotionReachWins in
+          // server/game-socket.js, which decides the same thing for a real game.
           if (rules.promotion_condition
               && !(rules.promotion_condition_requires_empty && destWasOccupied)
-              && !(rules.promotion_condition_requires_no_capture && justCaptured.length > 0)) {
+              && !(rules.promotion_condition_requires_no_capture && justCaptured.length > 0)
+              && !(rules.promotion_condition_requires_survival && attackerDies)) {
             intermediate.gameOver = { gameOver: true, winner: moved.player_id || moved.team, reason: 'promotion_win' };
           }
         }

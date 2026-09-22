@@ -4127,6 +4127,9 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
       // Only meaningful with promotion_condition; harmless stored on its own.
       promotion_condition_requires_empty:    gameData.promotion_condition_requires_empty || false,
       promotion_condition_requires_no_capture: gameData.promotion_condition_requires_no_capture || false,
+      // Defaults ON, so an absent value means true rather than false.
+      promotion_condition_requires_survival: gameData.promotion_condition_requires_survival === false
+        || gameData.promotion_condition_requires_survival === 0 ? false : true,
       lose_all_pieces_condition:             gameData.lose_all_pieces_condition || false,
       stalemate_win_condition:               gameData.stalemate_win_condition || false,
       stalemate_draw_condition:              gameData.stalemate_draw_condition !== undefined ? !!gameData.stalemate_draw_condition : true,
@@ -9154,6 +9157,9 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
       // Only meaningful with promotion_condition; harmless stored on its own.
       promotion_condition_requires_empty:    gameData.promotion_condition_requires_empty || false,
       promotion_condition_requires_no_capture: gameData.promotion_condition_requires_no_capture || false,
+      // Defaults ON, so an absent value means true rather than false.
+      promotion_condition_requires_survival: gameData.promotion_condition_requires_survival === false
+        || gameData.promotion_condition_requires_survival === 0 ? false : true,
       lose_all_pieces_condition:             gameData.lose_all_pieces_condition || false,
       stalemate_win_condition:               gameData.stalemate_win_condition || false,
       stalemate_draw_condition:              gameData.stalemate_draw_condition !== undefined ? !!gameData.stalemate_draw_condition : true,
@@ -15811,6 +15817,10 @@ app.get("/api/users/:userId/messages/:otherUserId/images", authenticateToken, as
         ORDER BY created_at ASC`,
       [u1, u2]
     );
+    // Real instants, not bare DATETIMEs - see withIsoDates. Images and messages
+    // have to be converted TOGETHER or the thread sorts them against each other
+    // and the newest item lands in the wrong place.
+    await dbHelpers.withIsoDates(rows, ['created_at', 'expires_at']);
     res.json({ images: rows });
   } catch (err) {
     console.error("Error fetching DM images:", err);
@@ -15892,6 +15902,10 @@ app.post(
         created_at: new Date().toISOString(),
         expires_at: expiresAt.toISOString(),
       };
+      // Same conversion the list does, so the two still describe the same row
+      // the same way. toIsoInstant leaves an already-zoned string alone, so the
+      // fallback above passes through untouched.
+      await dbHelpers.withIsoDates(imageRecord, ['created_at', 'expires_at']);
 
       // Notify the other participant in real-time
       const io = req.app.get('io');

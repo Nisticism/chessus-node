@@ -837,7 +837,24 @@ function promotionReachWins(gameType, moveResult) {
   if (!moveResult?.promotionEligible || !gameType?.promotion_condition) return false;
   if (gameType.promotion_condition_requires_empty && moveResult.destinationWasOccupied) return false;
   if (gameType.promotion_condition_requires_no_capture && moveCapturedSomething(moveResult)) return false;
+  /*
+   * ON unless a game has explicitly turned it off, which is why this reads the
+   * other way round from the two above. It is the default because a win
+   * collected by a piece that is no longer on the board is not something anyone
+   * sets out to build, and in a game where pieces survive their own moves - so,
+   * nearly all of them - the rule never has anything to say.
+   *
+   * A gameType from before the column existed has undefined here, and undefined
+   * means ON, the same as the column's own default.
+   */
+  if (!promotionAllowsDeadWinner(gameType) && moveResult.moverSurvived === false) return false;
   return true;
+}
+
+/** Has this game opted OUT of requiring the winning piece to survive? */
+function promotionAllowsDeadWinner(gameType) {
+  const v = gameType?.promotion_condition_requires_survival;
+  return v === 0 || v === false || v === '0';
 }
 
 /**
@@ -14491,7 +14508,18 @@ async function validateAndApplyMove(gameState, move, options = {}) {
   // whether THIS move creates a new one. See deriveEnPassantTarget.
   gameState.enPassantTarget = deriveEnPassantTarget(movingPiece, from, to);
 
-  return { valid: true, captured: capturedPiece, allCaptured: allCapturedPieces, damagedPieces, promotionEligible, movingPiece, isEnPassantCapture, hoppedCaptures, chainCaptureAvailable, captureActionsAvailable, destinationWasOccupied };
+  /*
+   * Is the piece that moved still on the board?
+   *
+   * Asked of the board itself rather than worked out from the move, because
+   * there is more than one way to not survive your own turn - die_on_capture is
+   * the common one, but anything that removes the mover while resolving the
+   * move is covered by simply looking. `pieces` IS gameState.pieces, so this is
+   * the finished position.
+   */
+  const moverSurvived = pieces.some(p => p.id === movingPiece.id);
+
+  return { valid: true, captured: capturedPiece, allCaptured: allCapturedPieces, damagedPieces, promotionEligible, movingPiece, isEnPassantCapture, hoppedCaptures, chainCaptureAvailable, captureActionsAvailable, destinationWasOccupied, moverSurvived };
 }
 
 /**

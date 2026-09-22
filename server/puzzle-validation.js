@@ -173,6 +173,10 @@ const GOAL_DEFS = {
       if (state.gameType?.promotion_condition) {
         if (state.gameType.promotion_condition_requires_empty && ctx.destinationWasOccupied) return false;
         if (state.gameType.promotion_condition_requires_no_capture && ctx.capturedSomething) return false;
+        // On unless explicitly turned off, matching the column's default.
+        const allowsDead = state.gameType.promotion_condition_requires_survival === 0
+          || state.gameType.promotion_condition_requires_survival === false;
+        if (!allowsDead && ctx.moverSurvived === false) return false;
       }
       return true;
     },
@@ -690,6 +694,9 @@ async function applyPly(state, ply, { autoPromote = false } = {}) {
     capturedSomething: !!(applied?.captured
       || applied?.allCaptured?.length
       || applied?.hoppedCaptures?.length),
+    // undefined from an engine path that does not report it means "survived";
+    // only an explicit false is a death.
+    moverSurvived: applied?.moverSurvived !== false,
     captured: applied?.allCaptured?.length ? applied.allCaptured : (applied?.captured || null),
     movingPiece: state.pieces.find(p => p.id === applied?.movingPiece?.id) || applied?.movingPiece || null,
   };

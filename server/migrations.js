@@ -3809,6 +3809,22 @@ const runMigrations = async () => {
       console.error('Error adding promotion_condition_requires_no_capture column:', err.message);
     }
 
+    // The winning piece has to still be on the board. DEFAULTS TRUE, and the
+    // default reaches existing rows, which is intended: a race won by a piece
+    // that removed itself getting there is not a rule anyone chose, and in a
+    // game whose pieces survive their own moves the column never does anything.
+    try {
+      if (!(await columnExists('game_types', 'promotion_condition_requires_survival'))) {
+        await runMigration(
+          `ALTER TABLE game_types ADD COLUMN promotion_condition_requires_survival BOOLEAN NOT NULL DEFAULT TRUE COMMENT 'With promotion_condition: only win if the piece that reached the square is still on the board'`,
+          "Add promotion_condition_requires_survival column to game_types table"
+        );
+        migrationsRun++;
+      }
+    } catch (err) {
+      console.error('Error adding promotion_condition_requires_survival column:', err.message);
+    }
+
     // Upgrade pieces_string to MEDIUMTEXT for large game boards
     try {
       const [columns] = await db_pool.query(

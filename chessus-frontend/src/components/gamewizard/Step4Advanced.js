@@ -127,6 +127,7 @@ const Step4Advanced = ({ gameData, updateGameData }) => {
               const limits = [
                 gameData.promotion_condition_requires_empty && "empty square",
                 gameData.promotion_condition_requires_no_capture && "no capture",
+                gameData.promotion_condition_requires_survival === false && "a dead piece may win",
               ].filter(Boolean);
               return limits.length ? ` (${limits.join(", ")})` : "";
             })()),
