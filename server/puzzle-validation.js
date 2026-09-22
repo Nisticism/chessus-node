@@ -161,7 +161,20 @@ const GOAL_DEFS = {
       : 'Find the move that promotes a piece.'),
     available: (gt) => !!gt.promotion_condition || !!gt.promotion_squares_string,
     mechanical: true,
-    achieved: (state, side, ctx) => !!(ctx.promotionEligible && ctx.promotionEligible.eligible),
+    achieved: (state, side, ctx) => {
+      if (!ctx.promotionEligible || !ctx.promotionEligible.eligible) return false;
+      /*
+       * When reaching the square is the WIN, this goal inherits the win's own
+       * condition - so a game that only wins on an empty square does not treat
+       * arriving by capture as solving the puzzle. Where promotion is an
+       * ordinary promotion rather than a win, the flag says nothing and the
+       * move promotes either way.
+       */
+      if (state.gameType?.promotion_condition
+          && state.gameType?.promotion_condition_requires_empty
+          && ctx.destinationWasOccupied) return false;
+      return true;
+    },
   },
 
   reach_points: {
@@ -669,6 +682,10 @@ async function applyPly(state, ply, { autoPromote = false } = {}) {
     reason: null,
     promotedTo,
     promotionEligible: eligible || null,
+    // For promotion_condition_requires_empty: see promotionReachWins in
+    // server/game-socket.js. A puzzle whose goal is "get there and win" has to
+    // agree with the live game about when getting there is a win.
+    destinationWasOccupied: !!applied?.destinationWasOccupied,
     captured: applied?.allCaptured?.length ? applied.allCaptured : (applied?.captured || null),
     movingPiece: state.pieces.find(p => p.id === applied?.movingPiece?.id) || applied?.movingPiece || null,
   };

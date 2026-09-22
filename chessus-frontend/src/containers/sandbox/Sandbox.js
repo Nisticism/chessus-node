@@ -81,6 +81,7 @@ const buildRulesFromGameType = (gt) => {
     piece_count_condition: !!gt.piece_count_condition,
     no_moves_condition: !!gt.no_moves_condition,
     promotion_condition: !!gt.promotion_condition,
+    promotion_condition_requires_empty: !!gt.promotion_condition_requires_empty,
     lose_all_pieces_condition: !!gt.lose_all_pieces_condition,
     stalemate_win_condition: !!gt.stalemate_win_condition,
     // draw
@@ -2312,6 +2313,16 @@ const Sandbox = () => {
 
     // 1. Apply captures with HP/AD
     const captureSet = captureIds instanceof Set ? captureIds : new Set(captureIds || []);
+    /*
+     * Was the square being landed on already occupied? Asked of the board as it
+     * stood BEFORE captures are applied, which is the only place it is still
+     * true. promotion_condition_requires_empty needs it; see promotionReachWins
+     * in server/game-socket.js for why the rule is about the square rather than
+     * about whether anything was captured.
+     */
+    const destWasOccupied = beforePieces.some(p => p.id !== movingPieceId
+      && doesPieceOccupySquare(p, anchorX, anchorY));
+
     let { pieces: afterCapture, justCaptured } = applyCapturesWithHp(beforePieces, captureSet, attacker);
 
     // die_on_capture: attacker removes itself if it captured anyone
@@ -2414,8 +2425,11 @@ const Sandbox = () => {
         }
         if (isPromoSquare) {
           promotionInfo = { pieceId: movingPieceId, x: anchorX, y: anchorY, player: moved.player_id || moved.team };
-          // If promotion_condition rule is active, reaching a promotion square wins immediately
-          if (rules.promotion_condition) {
+          // If promotion_condition rule is active, reaching a promotion square wins
+          // immediately - unless the creator asked for an EMPTY square, in which
+          // case arriving by capture is just a capture.
+          if (rules.promotion_condition
+              && !(rules.promotion_condition_requires_empty && destWasOccupied)) {
             intermediate.gameOver = { gameOver: true, winner: moved.player_id || moved.team, reason: 'promotion_win' };
           }
         }

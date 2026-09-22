@@ -812,6 +812,33 @@ function squarePromotesFor(gameType, piece, destX, destY) {
   return true;
 }
 
+/**
+ * Does reaching a promotion square WIN the game for the player who did it?
+ *
+ * promotion_condition on its own means "getting there is enough" - the piece
+ * does not actually promote, arriving is the whole point. That is the shape of
+ * a race game: run a piece to the far side and the game is over.
+ *
+ * promotion_condition_requires_empty narrows it to an UNOCCUPIED square. The
+ * creator of such a race usually means "get a piece through to an open square",
+ * not "get one there by any means" - and without this, capturing the defender
+ * standing on the last rank wins on the spot, which makes defending that rank
+ * with a piece actively worse than leaving it empty.
+ *
+ * The question asked is about the SQUARE, not about the capture: a hop capture
+ * or an en passant takes a piece standing elsewhere and still arrives on an
+ * empty square, and those should win.
+ *
+ * One function because four call sites ask this - an ordinary move, a premove,
+ * and the same two again on the simultaneous-turn path - and a rule spelled out
+ * four times is a rule that drifts.
+ */
+function promotionReachWins(gameType, moveResult) {
+  if (!moveResult?.promotionEligible || !gameType?.promotion_condition) return false;
+  if (gameType.promotion_condition_requires_empty && moveResult.destinationWasOccupied) return false;
+  return true;
+}
+
 // Does this move land a promotable piece on a promotion square that is theirs
 // to use? Used only to enforce veto_disallow_promotion.
 function moveTriggersPromotion(gameState, move) {
@@ -7536,7 +7563,7 @@ function initializeSocket(server) {
         }
 
         // Win on promotion: if enabled, reaching a promotion square instantly wins (even with no valid promotion pieces)
-        if (moveResult.promotionEligible && gameState.gameType?.promotion_condition) {
+        if (promotionReachWins(gameState.gameType, moveResult)) {
             stopGameTimer(gameId);
             gameState.status = 'completed';
             gameState.winner = userId;
@@ -8150,7 +8177,7 @@ function initializeSocket(server) {
             }
 
             // Win on promotion: if enabled, reaching a promotion square instantly wins (even with no valid promotion pieces)
-            if (premoveResult.promotionEligible && gameState.gameType?.promotion_condition) {
+            if (promotionReachWins(gameState.gameType, premoveResult)) {
                 stopGameTimer(gameId);
                 gameState.status = 'completed';
                 gameState.winner = nextPlayer.id;
@@ -13695,6 +13722,20 @@ async function validateAndApplyMove(gameState, move, options = {}) {
     }
   }
 
+  /*
+   * Was the square being moved ONTO already occupied?
+   *
+   * Recorded here because this is the last moment it is knowable - a few lines
+   * further on the board has been changed and the answer is gone. Needed by
+   * promotion_condition_requires_empty, which wins a race game only when a
+   * piece gets through to an OPEN square rather than trading onto one.
+   *
+   * Deliberately about the destination square, not about whether the move
+   * captured anything: a hop capture and an en passant both take a piece that
+   * was standing somewhere else, and both still land on an empty square.
+   */
+  const destinationWasOccupied = destinationPieceIndex !== -1;
+
   // Close-range castling: when the castling target square is currently
   // occupied by the castling partner (e.g. castling_distance=1 with the
   // partner adjacent to the king), the occupant must be treated as a
@@ -14436,7 +14477,7 @@ async function validateAndApplyMove(gameState, move, options = {}) {
   // whether THIS move creates a new one. See deriveEnPassantTarget.
   gameState.enPassantTarget = deriveEnPassantTarget(movingPiece, from, to);
 
-  return { valid: true, captured: capturedPiece, allCaptured: allCapturedPieces, damagedPieces, promotionEligible, movingPiece, isEnPassantCapture, hoppedCaptures, chainCaptureAvailable, captureActionsAvailable };
+  return { valid: true, captured: capturedPiece, allCaptured: allCapturedPieces, damagedPieces, promotionEligible, movingPiece, isEnPassantCapture, hoppedCaptures, chainCaptureAvailable, captureActionsAvailable, destinationWasOccupied };
 }
 
 /**
@@ -20617,7 +20658,7 @@ async function _processBotTurnInner(io, gameId, gameState, precomputedMove = nul
 
       // 4. Handle promotion (auto-select best option)
       // Win on promotion: if enabled, reaching a promotion square instantly wins for the bot (even with no valid promotion pieces)
-      if (moveResult.promotionEligible && gameState.gameType?.promotion_condition) {
+      if (promotionReachWins(gameState.gameType, moveResult)) {
         return await finishBotGame(io, gameId, gameState, {
           gameOver: true, winner: botPlayer.id, reason: 'promotion'
         }, moveRecord, {});
@@ -21105,7 +21146,7 @@ async function _processBotTurnInner(io, gameId, gameState, precomputedMove = nul
             }
 
             // Win on promotion: if enabled, reaching a promotion square instantly wins (even with no valid promotion pieces)
-            if (premoveResult.promotionEligible && gameState.gameType?.promotion_condition) {
+            if (promotionReachWins(gameState.gameType, premoveResult)) {
                 return await finishBotGame(io, gameId, gameState, {
                   gameOver: true, winner: humanPlayer.id, reason: 'promotion'
                 }, pmRecord, {});
@@ -22393,6 +22434,7 @@ module.exports = {
   isCheckmate,
   checkWinCondition,
   validateAndApplyMove,
+  promotionReachWins,
   wouldMoveLeaveInCheck,
   findPieceAtSquare,
   doesPieceOccupySquare,

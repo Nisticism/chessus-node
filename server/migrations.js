@@ -3762,6 +3762,22 @@ const runMigrations = async () => {
       console.error('Error adding promotion_condition column:', err.message);
     }
 
+    // Win on promotion, but only onto an EMPTY square. Without this, a piece
+    // that reaches a promotion square by CAPTURING the piece standing on it
+    // wins too - which is wrong for a race game whose goal is to get a piece
+    // through to an open square rather than to trade onto one.
+    try {
+      if (!(await columnExists('game_types', 'promotion_condition_requires_empty'))) {
+        await runMigration(
+          `ALTER TABLE game_types ADD COLUMN promotion_condition_requires_empty BOOLEAN DEFAULT FALSE COMMENT 'With promotion_condition: only win when the promotion square reached was unoccupied (no capture)'`,
+          "Add promotion_condition_requires_empty column to game_types table"
+        );
+        migrationsRun++;
+      }
+    } catch (err) {
+      console.error('Error adding promotion_condition_requires_empty column:', err.message);
+    }
+
     // Upgrade pieces_string to MEDIUMTEXT for large game boards
     try {
       const [columns] = await db_pool.query(

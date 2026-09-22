@@ -54,6 +54,7 @@ export const gameRowToWizardData = (existingGame) => ({
     line_same_piece_type: Boolean(existingGame.line_same_piece_type),
     board_gravity: existingGame.board_gravity || "off",
     promotion_condition: Boolean(existingGame.promotion_condition),
+    promotion_condition_requires_empty: Boolean(existingGame.promotion_condition_requires_empty),
     lose_all_pieces_condition: Boolean(existingGame.lose_all_pieces_condition),
     stalemate_win_condition: Boolean(existingGame.stalemate_win_condition),
     stalemate_draw_condition: existingGame.stalemate_draw_condition === undefined || existingGame.stalemate_draw_condition === null ? true : Boolean(existingGame.stalemate_draw_condition),
@@ -168,6 +169,7 @@ const GameWizard = ({ editGameId }) => {
     // Placed pieces fall towards one edge. See server/board-gravity.js.
     board_gravity: "off",
     promotion_condition: false,
+    promotion_condition_requires_empty: false,
     lose_all_pieces_condition: false,
     stalemate_win_condition: false,
     stalemate_draw_condition: true,

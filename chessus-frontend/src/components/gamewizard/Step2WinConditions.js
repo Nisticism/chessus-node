@@ -248,7 +248,21 @@ const Step2WinConditions = ({ gameData, updateGameData }) => {
         tooltip="When enabled, a player instantly wins the game when they move a promotable piece onto a promotion square. The piece does not actually promote — reaching the square is enough to win. Requires promotion squares to be set in Step 3 and at least one piece with 'can promote' enabled."
         checked={gameData.promotion_condition === true}
         onChange={(val) => handleChange("promotion_condition", val)}
-      />
+      >
+        <div className={styles["sub-field"]}>
+          <ToggleSwitch
+            checked={gameData.promotion_condition_requires_empty === true}
+            onChange={(val) => handleChange("promotion_condition_requires_empty", val)}
+            size="small"
+            label={
+              <span className={styles["condition-toggle-title"]}>
+                Only win if the square is <em>empty</em>
+                <InfoTooltip text="By default, reaching a promotion square wins however you got there — including by capturing the piece standing on it. With this option, the square must be unoccupied: arriving by capture does not win, and the move is played as an ordinary capture. Use this for a race game where the goal is to get a piece through to an open square. A capture made on the way — a hop capture, or en passant — still wins, because the square landed on was empty." />
+              </span>
+            }
+          />
+        </div>
+      </ToggleRow>
 
       <ToggleRow
         title="Lose-All-Pieces Win (Anti-Chess)"
