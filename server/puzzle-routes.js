@@ -2509,22 +2509,44 @@ function registerPuzzleRoutes(app, {
              * first, then from what the game says is placeable - rather than
              * left null, which drew the position as a row of blanks.
              */
-            const art = new Map();
+            /*
+             * Keyed by piece type AND OWNER, because a picture belongs to one
+             * side. A white pawn and a black pawn are the same piece_id, so a
+             * map keyed by type alone keeps whichever placement happened to
+             * come last and hands its already-resolved image_url to every pawn
+             * on the board. That is what turned every pawn one colour and both
+             * kings one colour the moment a puzzle finished - and why the piece
+             * that had just PROMOTED stayed right, since the engine sets
+             * image_url on that one and it wins before any of this is read.
+             *
+             * The name and the image LIST do not depend on the owner - the list
+             * is per-player and is indexed by the board - so those keep a
+             * type-only fallback. Only image_url, the single fixed picture, has
+             * to match the owner, and it is never taken from another player's
+             * placement.
+             */
+            const artByOwner = new Map();
+            const artByType = new Map();
             for (const pl of (safeParse(puzzle.position, []) || [])) {
-              if (pl?.piece_id != null && (pl.piece_name || pl.image_location)) {
-                art.set(Number(pl.piece_id), pl);
-              }
+              if (pl?.piece_id == null || !(pl.piece_name || pl.image_location)) continue;
+              const type = Number(pl.piece_id);
+              const owner = Number(pl.player_id ?? pl.team);
+              if (Number.isFinite(owner)) artByOwner.set(`${type}:${owner}`, pl);
+              if (!artByType.has(type)) artByType.set(type, pl);
             }
             for (const t of (placementRules(placeCheck)?.templates || [])) {
-              if (!art.has(Number(t.piece_id))) {
-                art.set(Number(t.piece_id), {
+              if (!artByType.has(Number(t.piece_id))) {
+                artByType.set(Number(t.piece_id), {
                   piece_name: t.name || t.piece_name || null,
                   image_location: t.image_location || null,
                 });
               }
             }
             resultingPosition = replayed.state.pieces.map((pc) => {
-              const look = art.get(Number(pc.piece_id)) || {};
+              const owner = Number(pc.team ?? pc.player_id);
+              // This piece's own side first; the type only for what is shared.
+              const mine = artByOwner.get(`${Number(pc.piece_id)}:${owner}`) || {};
+              const look = artByType.get(Number(pc.piece_id)) || {};
               return {
                 piece_id: Number(pc.piece_id),
                 /*
@@ -2535,16 +2557,22 @@ function registerPuzzleRoutes(app, {
                  * this is still the id it had on its starting square.
                  */
                 id: pc.id,
-                player_id: Number(pc.team ?? pc.player_id),
-                piece_name: pc.piece_name || look.piece_name || null,
-                image_location: pc.image_location || look.image_location || null,
+                player_id: owner,
+                piece_name: pc.piece_name || mine.piece_name || look.piece_name || null,
+                image_location: pc.image_location || mine.image_location || look.image_location || null,
                 /*
                  * The one already-resolved image, when the engine has it.
                  * Promotion sets it, and it is the one every board prefers -
                  * it carries a per-game image_index override, which picking
                  * out of image_location by player number cannot.
+                 *
+                 * Taken ONLY from the engine or from a placement of this same
+                 * side. Falling back to the type's picture here is what painted
+                 * a board's worth of pieces the wrong colour: every board
+                 * prefers image_url, so one wrong value silently beats the
+                 * per-player list that would have been right.
                  */
-                image_url: pc.image_url || look.image_url || null,
+                image_url: pc.image_url || mine.image_url || null,
                 x: Number(pc.x), y: Number(pc.y),
               };
             });
