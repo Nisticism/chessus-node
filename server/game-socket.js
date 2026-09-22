@@ -851,6 +851,27 @@ function promotionReachWins(gameType, moveResult) {
   return true;
 }
 
+/**
+ * In a WIN-ON-PROMOTION game, clear the promotion that reaching the square
+ * would otherwise start.
+ *
+ * Such a game does not promote anything: "reaching the square is enough to
+ * win", and the piece stays what it is. That used to be implicit, because the
+ * win always fired whenever a promotable piece arrived, so the promotion
+ * machinery below was simply unreachable.
+ *
+ * The three narrowing options made it reachable, and it is the wrong road. A
+ * move that reaches the square WITHOUT winning is just a move - it has to count
+ * as one of the player's actions and hand the turn on like any other. Left
+ * alone it instead opened a promotion the game does not have, which in Knight
+ * Break meant a capture on the last rank was not counted as a move at all.
+ */
+function clearPromotionInReachToWinGame(gameType, moveResult) {
+  if (gameType?.promotion_condition && moveResult?.promotionEligible) {
+    moveResult.promotionEligible = null;
+  }
+}
+
 /** Has this game opted OUT of requiring the winning piece to survive? */
 function promotionAllowsDeadWinner(gameType) {
   const v = gameType?.promotion_condition_requires_survival;
@@ -7626,6 +7647,10 @@ function initializeSocket(server) {
             return;
           }
 
+        // Reaching the square did not win - so it is an ordinary move, and this
+        // game has no promotion to offer. See clearPromotionInReachToWinGame.
+        clearPromotionInReachToWinGame(gameState.gameType, moveResult);
+
         // Notify player if promotion was skipped (piece reached promotion square but no valid options)
         if (moveResult.promotionEligible && moveResult.promotionEligible.skipped) {
           socket.emit('promotionSkipped', {
@@ -7750,8 +7775,19 @@ function initializeSocket(server) {
               if (gameState.status !== 'completed' && gameState.botPlayer && gameState.currentTurn === gameState.botPlayer.position) {
                 processBotTurn(io, gameId, gameState);
               }
+              return;
             }
-            return;
+
+            /*
+             * The promotion did not happen - most likely the piece is no longer
+             * on the board, because it removed itself getting there.
+             *
+             * This used to return anyway, which left the move half-applied: the
+             * action uncounted, the turn unhanded-on, nothing broadcast, and a
+             * board on screen still showing a piece the server had already taken
+             * away. Falling through instead finishes the move like any other.
+             */
+            console.warn(`Promotion produced no piece in game ${gameId}; completing the move as an ordinary one.`);
           }
 
           // Update database with current state (before turn switch)
@@ -8240,6 +8276,9 @@ function initializeSocket(server) {
                 });
                 return;
               }
+
+            // An ordinary move after all; this game has no promotion to offer.
+            clearPromotionInReachToWinGame(gameState.gameType, premoveResult);
 
             // Check for promotion on premove (piece reached a promotion square)
             if (premoveResult.promotionEligible && premoveResult.promotionEligible.skipped) {
@@ -20706,6 +20745,9 @@ async function _processBotTurnInner(io, gameId, gameState, precomputedMove = nul
         }, moveRecord, {});
       }
 
+      // An ordinary move after all; this game has no promotion to offer.
+      clearPromotionInReachToWinGame(gameState.gameType, moveResult);
+
       if (moveResult.promotionEligible && moveResult.promotionEligible.options && moveResult.promotionEligible.options.length > 0) {
 
         // Prefer promotion options that keep the piece on the bot's own side —
@@ -21193,6 +21235,9 @@ async function _processBotTurnInner(io, gameId, gameState, precomputedMove = nul
                   gameOver: true, winner: humanPlayer.id, reason: 'promotion'
                 }, pmRecord, {});
               }
+
+            // An ordinary move after all; this game has no promotion to offer.
+            clearPromotionInReachToWinGame(gameState.gameType, premoveResult);
 
             // Check for promotion on premove (piece reached a promotion square)
             if (premoveResult.promotionEligible && premoveResult.promotionEligible.skipped) {
@@ -22477,6 +22522,7 @@ module.exports = {
   checkWinCondition,
   validateAndApplyMove,
   promotionReachWins,
+  clearPromotionInReachToWinGame,
   wouldMoveLeaveInCheck,
   findPieceAtSquare,
   doesPieceOccupySquare,
