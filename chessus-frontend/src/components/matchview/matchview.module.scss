@@ -685,7 +685,7 @@
 .detail-value {
   font-weight: 500;
   color: var(--text-heading);
-  overflow-wrap: break-word;
+  overflow-wrap: anywhere;   /* anywhere, not break-word: only anywhere shrinks the intrinsic min-content width, which is what stops a shrink-to-fit box being widened by one long word. */
 }
 
 /* Game Settings */

@@ -41,7 +41,22 @@
   justify-content: start;
 
   @media (max-width: 1000px) {
-    grid-template-columns: 1fr;
+    /*
+     * minmax(0, 1fr), not 1fr.
+     *
+     * `1fr` is `minmax(auto, 1fr)`, and that `auto` MINIMUM is the content's
+     * min-content width. The board's content is deliberately `width:
+     * max-content` (see useBoardViewport), so the track grew to whatever size
+     * the board wanted, the board's own fit calculation then measured that
+     * inflated track as "the space available", and sized itself to it. The two
+     * argued each other off the side of the screen: on a 375px phone the track
+     * came out 648px and the board 520px, with no way to zoom out because as
+     * far as the board was concerned it already fitted.
+     *
+     * An explicit 0 minimum lets the track shrink to the page, which is what
+     * the live game does on every one of its tracks for the same reason.
+     */
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 

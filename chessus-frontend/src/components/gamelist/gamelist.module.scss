@@ -301,7 +301,7 @@
     color: var(--text-heading);
     margin: 0 0 5px 0;
     font-weight: 600;
-    overflow-wrap: break-word;
+    overflow-wrap: anywhere;   /* anywhere, not break-word: only anywhere shrinks the intrinsic min-content width, which is what stops a shrink-to-fit box being widened by one long word. */
   }
 
   .game-board-info {

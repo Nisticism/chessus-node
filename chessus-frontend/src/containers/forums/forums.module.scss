@@ -351,7 +351,7 @@
   font-weight: 600;
   color: var(--text-heading);
   text-align: left;
-  overflow-wrap: break-word;
+  overflow-wrap: anywhere;   /* anywhere, not break-word: only anywhere shrinks the intrinsic min-content width, which is what stops a shrink-to-fit box being widened by one long word. */
 }
 
 .forums-username {

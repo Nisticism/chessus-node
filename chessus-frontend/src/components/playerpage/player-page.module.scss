@@ -169,12 +169,32 @@
 
 .profile-header-info {
   flex-grow: 1;
+  /*
+   * A flex item's automatic minimum size is its CONTENT's width, so a username
+   * with no spaces in it made this box as wide as the name and carried the page
+   * with it. 0 lets it shrink to the column, and the name then wraps.
+   */
+  min-width: 0;
 
   .username {
     font-size: 2.5rem;
     color: var(--text-heading);
     margin: 0 0 10px 0;
-    overflow-wrap: break-word;
+    /*
+     * `anywhere`, not `break-word`, and the difference is the whole bug.
+     *
+     * Both break inside a word when it will not otherwise fit, so they look
+     * identical once a width is settled. Only `anywhere` also shrinks the box's
+     * intrinsic MIN-CONTENT size - and this heading sits in a shrink-to-fit
+     * column, which asks exactly that question to decide how wide to be. With
+     * `break-word` the answer was "as wide as the longest word", so a username
+     * with no spaces in it made the column 873px on a 375px phone and carried
+     * the page off the side with it.
+     *
+     * Breaking between words is still preferred; a word is only split when the
+     * word by itself does not fit.
+     */
+    overflow-wrap: anywhere;
     text-wrap: balance;
     font-weight: 700;
   }

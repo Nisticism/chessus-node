@@ -214,10 +214,21 @@
 }
 
 .fact {
-  white-space: nowrap;
+  /*
+   * Wraps. It used to be `nowrap`, which keeps a line together nicely for
+   * short names and pushes the page sideways for long ones - and no amount of
+   * overflow-wrap can help, because nowrap forbids the break that would.
+   *
+   * The name breaks between words first and only splits a word when the word
+   * alone will not fit, which is what `overflow-wrap: anywhere` (set globally)
+   * already does once wrapping is allowed at all.
+   */
   display: inline-flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 4px;
+  min-width: 0;
+  max-width: 100%;
 }
 
 
