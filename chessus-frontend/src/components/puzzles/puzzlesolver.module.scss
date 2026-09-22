@@ -513,6 +513,15 @@
 .turn-p1 { background: #f0f0f0; }
 .turn-p2 { background: #202020; }
 
+/* Where in the answer the board is, above the board - the match review's
+   .board-title, so the two read as one thing. */
+.board-title {
+  text-align: center;
+  margin: 0 0 10px 0;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 1.2rem;
+}
+
 /* Stepping through a revealed answer. Lifted from the match review's controls
    so the two read as the same thing - see matchview.module.scss .review-controls. */
 .review-controls {
@@ -521,7 +530,7 @@
   justify-content: center;
   flex-wrap: wrap;
   gap: 8px;
-  margin-top: 10px;
+  margin-bottom: 12px;
 
   button {
     background: rgba(255, 255, 255, 0.1);
@@ -544,9 +553,3 @@
   }
 }
 
-/* Where in the answer the board currently is, so the arrows are not the only
-   thing telling you. */
-.review-where {
-  font-size: 13px;
-  color: var(--text-secondary);
-}

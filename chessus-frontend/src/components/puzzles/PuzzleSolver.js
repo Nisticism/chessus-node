@@ -612,6 +612,15 @@ const PuzzleSolver = () => {
         setPlacements((prev) => line.slice(playedMoves.length * 2).reduce((cells, ply) => applyPly(cells, ply), prev));
       }
       if (data.rating) setRatingChange(data.rating);
+      /*
+       * Start at the first move, not the finished position.
+       *
+       * Landing on the end showed the answer as a fait accompli - the whole
+       * line already played, with nothing to read. The point of asking is to be
+       * shown HOW, so it opens where the answer begins and is stepped forward
+       * from there. ⏮ still goes back to the position as it was set.
+       */
+      setRevealStep(0);
       setOutcome('revealed');
     } catch (err) {
       setError(err?.response?.data?.message || 'Could not load the solution');
@@ -869,6 +878,57 @@ const PuzzleSolver = () => {
   };
 
   /*
+   * Stepping through a revealed answer.
+   *
+   *   null   the finished position
+   *   -1     the position the puzzle was set from
+   *   0..n   after that ply
+   *
+   * The same three states the match review uses, and the same way through
+   * them, so the arrows and the arrow keys do what they do everywhere else.
+   */
+  const revealPlyCount = Array.isArray(solution) ? solution.filter(Boolean).length : 0;
+
+  const stepBack = useCallback(() => setRevealStep((prev) => (
+    // From the finished position, back onto the last ply that is not it.
+    prev == null ? Math.max(-1, revealPlyCount - 2) : Math.max(-1, prev - 1)
+  )), [revealPlyCount]);
+
+  const stepForward = useCallback(() => setRevealStep((prev) => {
+    if (prev == null) return null;
+    return prev < revealPlyCount - 1 ? prev + 1 : null;
+  }), [revealPlyCount]);
+
+  const reviewLabel = useMemo(() => {
+    if (revealStep == null) return 'Final Position';
+    if (revealStep < 0) return 'Starting Position';
+    // Whose move it was is worth saying here in a way it is not in a game
+    // review: half of a puzzle's line is the answer and half is the reply to it.
+    const whose = revealStep % 2 === 0 ? 'your move' : 'their reply';
+    return `Move ${revealStep + 1} of ${revealPlyCount} — ${whose}`;
+  }, [revealStep, revealPlyCount]);
+
+  /*
+   * Left and right step through it, as they do in the match review.
+   *
+   * Only while an answer is on show, and never while something is being typed
+   * - the feedback box is on this page, and arrow keys belong to whatever has
+   * the cursor.
+   */
+  useEffect(() => {
+    if (outcome !== 'revealed' || !revealPlyCount) return undefined;
+    const onKey = (e) => {
+      const el = document.activeElement;
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return;
+      if (e.key === 'ArrowLeft') { e.preventDefault(); stepBack(); }
+      else if (e.key === 'ArrowRight') { e.preventDefault(); stepForward(); }
+      else if (e.key === 'Escape') { e.preventDefault(); setRevealStep(null); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [outcome, revealPlyCount, stepBack, stepForward]);
+
+  /*
    * The board as it stood after `revealStep` plies of the answer.
    *
    * Replayed from the starting position each time rather than stepped forward
@@ -1044,6 +1104,38 @@ const PuzzleSolver = () => {
 
       <div className={styles["layout"]}>
         <div className={styles["board-side"]} style={{ width: boardColumnMax, maxWidth: '100%' }}>
+          {/*
+            * Reading the answer, above the board - the same place, shape and
+            * words as the match review, because it is the same act and anyone
+            * who has stepped through one of their own games already knows it.
+            */}
+          {solutionPlies.length > 0 && outcome === 'revealed' && (
+            <>
+              <h3 className={styles["board-title"]}>{reviewLabel}</h3>
+              <div className={styles["review-controls"]}>
+                <button
+                  onClick={() => setRevealStep(-1)}
+                  disabled={revealStep === -1}
+                  title="Starting position"
+                >⏮</button>
+                <button
+                  onClick={stepBack}
+                  disabled={revealStep === -1}
+                  title="Previous move (left arrow)"
+                >◀</button>
+                <button
+                  onClick={stepForward}
+                  disabled={revealStep == null}
+                  title="Next move (right arrow)"
+                >▶</button>
+                <button
+                  onClick={() => setRevealStep(null)}
+                  disabled={revealStep == null}
+                  title="Final position"
+                >⏭ Final</button>
+              </div>
+            </>
+          )}
           <div style={{ ...vp.frameStyle, justifyContent: 'flex-start' }}>
             <PuzzleBoard
               vp={vp}
@@ -1240,46 +1332,6 @@ const PuzzleSolver = () => {
                 <>The answer was ({sol.from.x}, {sol.from.y}) → ({sol.to.x}, {sol.to.y}), highlighted on the board.</>
               )}
 
-              {/*
-                * Step through it. Same controls as the match review, because it
-                * is the same act - reading a game one move at a time - and
-                * somebody who has done it there already knows these.
-                */}
-              {solutionPlies.length > 1 && (
-                <div className={styles["review-controls"]}>
-                  <button
-                    onClick={() => setRevealStep(-1)}
-                    disabled={revealStep === -1}
-                    title="Starting position"
-                  >⏮</button>
-                  <button
-                    onClick={() => setRevealStep((prev) => (
-                      prev == null ? solutionPlies.length - 2 : Math.max(-1, prev - 1)))}
-                    disabled={revealStep === -1}
-                    title="Previous move"
-                  >◀</button>
-                  <button
-                    onClick={() => setRevealStep((prev) => (
-                      prev != null && prev < solutionPlies.length - 2 ? prev + 1 : null))}
-                    disabled={revealStep == null}
-                    title="Next move"
-                  >▶</button>
-                  <button
-                    onClick={() => setRevealStep(null)}
-                    disabled={revealStep == null}
-                    title="Final position"
-                  >⏭</button>
-                  <span className={styles["review-where"]}>
-                    {revealStep == null
-                      ? 'Final position'
-                      : revealStep < 0
-                        ? 'Start'
-                        : `After ${revealStep % 2 === 0
-                          ? `move ${Math.floor(revealStep / 2) + 1}`
-                          : `their reply ${Math.floor(revealStep / 2) + 1}`}`}
-                  </span>
-                </div>
-              )}
             </div>
           )}
           {error && <div className={`${styles["notice"]} ${styles["notice-error"]}`}>{error}</div>}
