@@ -115,6 +115,22 @@ if (!!BOT_TOKEN !== !!CHANNEL_ID) {
 }
 
 /*
+ * Say out loud what the webhook path costs, because the post still looks right.
+ *
+ * A plain channel webhook may only send a LINK button, and a link button has no
+ * custom_id - so it cannot say which puzzle it is about. The post is permanent,
+ * the schedule is not, and a link button clicked next week means nothing more
+ * specific than "open GridGrove". That is exactly how an old post ends up
+ * showing the current daily puzzle under last week's picture.
+ */
+if (!AS_APP && !arg('webhook', null)) {
+  console.warn('[discord] Posting via webhook: the button will be a LINK button,'
+    + ' which cannot carry the puzzle id.');
+  console.warn('[discord] Old posts will therefore open the CURRENT daily puzzle.'
+    + ' Set DISCORD_BOT_TOKEN and DISCORD_CHANNEL_ID to post a real button.');
+}
+
+/*
  * The custom_id the button carries, taken from the endpoint that answers it
  * rather than written out again here. The string is a contract between the two
  * halves, and a typo in either would produce a button that looks perfect and

@@ -553,3 +553,23 @@
   }
 }
 
+
+/* Opens the rules card. Quiet by default - a solver who knows the game should
+   not have it competing with the board. */
+.rules-button {
+  display: inline-block;
+  margin: 8px 0;
+  padding: 5px 12px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 6px;
+  color: var(--text-secondary, #9fb0c3);
+  font-size: 0.85rem;
+  cursor: pointer;
+  max-width: 100%;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.16);
+    color: var(--text-heading);
+  }
+}

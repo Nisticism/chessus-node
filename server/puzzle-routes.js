@@ -1554,6 +1554,105 @@ function registerPuzzleRoutes(app, {
    * Returns { promotes: false, castling: null } for an ordinary move, so callers
    * can ask about every move without special-casing.
    */
+  /*
+   * THE RULES A PUZZLE IS PLAYED UNDER, for the "How this game works" modal.
+   *
+   * Served from the puzzle's OWN frozen rules, not the live game: a puzzle is
+   * solved against the game as it was when it was published, and a modal that
+   * described today's version could tell a solver a piece moves in a way it
+   * does not move on the board in front of them.
+   *
+   * Only what somebody needs in order to solve it: how each piece moves, which
+   * sides have it, and how the game is won. Deliberately not the whole game
+   * definition - this is a condensed card read mid-puzzle, not documentation.
+   */
+  app.get('/api/puzzles/:id/rules', async (req, res) => {
+    try {
+      const puzzleId = Number(req.params.id);
+      if (!Number.isInteger(puzzleId) || puzzleId <= 0) {
+        return res.status(400).send({ message: 'Invalid puzzle id' });
+      }
+      const [[puzzle]] = await db_pool.query('SELECT * FROM puzzles WHERE id = ? LIMIT 1', [puzzleId]);
+      if (!puzzle) return res.status(404).send({ message: 'Puzzle not found' });
+
+      const rules = await rulesForPuzzle(db_pool, puzzle);
+      const game = rules.game || {};
+      const placements = rules.placements || [];
+
+      /*
+       * Which sides actually have each piece ON THIS BOARD.
+       *
+       * Taken from the puzzle's position rather than the game's full roster,
+       * because a puzzle is a fragment: listing a piece the solver cannot see
+       * is noise, and saying "both sides have one" when only one side does is
+       * worse than noise.
+       */
+      const position = safeParse(puzzle.position, []) || [];
+      const sidesByPiece = new Map();
+      for (const pl of position) {
+        const id = Number(pl?.piece_id);
+        if (!Number.isInteger(id)) continue;
+        if (!sidesByPiece.has(id)) sidesByPiece.set(id, new Set());
+        const owner = Number(pl.player_id ?? pl.team);
+        if (Number.isFinite(owner)) sidesByPiece.get(id).add(owner);
+      }
+
+      const byId = new Map((rules.pieces || []).map(p => [Number(p.id ?? p.piece_id), p]));
+      const pieces = [];
+      for (const [pieceId, sides] of sidesByPiece) {
+        const def = byId.get(pieceId);
+        if (!def) continue;
+        // The per-placement overrides that change how a piece behaves in THIS
+        // game, folded onto the piece so the describer sees what the board does.
+        const junction = placements.find(pl => Number(pl.piece_id) === pieceId) || {};
+        pieces.push({
+          piece_id: pieceId,
+          piece_name: def.piece_name || null,
+          image_location: def.image_location || null,
+          sides: [...sides].sort((a, b) => a - b),
+          // Everything the movement describer reads, as stored.
+          ...def,
+          ...Object.fromEntries(Object.entries(junction).filter(([k, v]) =>
+            v !== null && v !== undefined && !['id', 'game_type_id', 'piece_id', 'x', 'y', 'player_number'].includes(k))),
+        });
+      }
+      // Busiest pieces first: the ones there are most of are the ones a solver
+      // is most likely to be asking about.
+      const countOf = (id) => position.filter(pl => Number(pl.piece_id) === id).length;
+      pieces.sort((a, b) => countOf(b.piece_id) - countOf(a.piece_id));
+
+      res.json({
+        game_name: game.game_name || null,
+        board: { width: game.board_width, height: game.board_height },
+        pieces,
+        // The flags the modal turns into a sentence or two. Named, not
+        // described, so the wording lives with the component that shows it.
+        conditions: {
+          mate_condition: !!game.mate_condition,
+          mate_condition_requires_all: !!game.mate_condition_requires_all,
+          capture_condition: !!game.capture_condition,
+          capture_condition_requires_all: !!game.capture_condition_requires_all,
+          no_moves_condition: !!game.no_moves_condition,
+          squares_condition: !!game.squares_condition,
+          piece_count_condition: !!game.piece_count_condition,
+          line_condition: !!game.line_condition,
+          promotion_condition: !!game.promotion_condition,
+          lose_all_pieces_condition: !!game.lose_all_pieces_condition,
+          stalemate_win_condition: !!game.stalemate_win_condition,
+          stalemate_draw_condition: game.stalemate_draw_condition == null ? true : !!game.stalemate_draw_condition,
+          forced_capture_condition: !!game.forced_capture_condition,
+          points_to_win: game.points_to_win || null,
+          actions_per_turn: Number(game.actions_per_turn) || 1,
+          fog_of_war: !!game.fog_of_war,
+          hide_enemy_pieces: !!game.hide_enemy_pieces,
+        },
+      });
+    } catch (err) {
+      console.error('GET /api/puzzles/:id/rules:', err);
+      res.status(500).send({ message: 'Failed to load the rules' });
+    }
+  });
+
   app.post('/api/game-types/:gameTypeId/puzzle-move-info', optionalAuthenticate, async (req, res) => {
     try {
       const gameTypeId = parseInt(req.params.gameTypeId, 10);

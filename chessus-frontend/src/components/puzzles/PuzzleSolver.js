@@ -16,6 +16,7 @@ import BoardZoomControls from "../common/BoardZoomControls";
 import PuzzleBoard from "./PuzzleBoard";
 import PlacementTray from "../common/PlacementTray";
 import PromotionChooser from "../common/PromotionChooser";
+import GameRulesModal from "../common/GameRulesModal";
 import useSetupMoveReplay from "../common/useSetupMoveReplay";
 import { expandPlaceable, placesPieces } from "../../helpers/placement";
 import { applyPromotionDefinition, promotionPieceNumber, solvedPliesRemaining } from "../../helpers/pieceMovementUtils";
@@ -267,6 +268,7 @@ const PuzzleSolver = () => {
    * second set of controls.
    */
   const [revealStep, setRevealStep] = useState(null);
+  const [rulesOpen, setRulesOpen] = useState(false);
   const [ratingChange, setRatingChange] = useState(null);
   const [ratingNote, setRatingNote] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -1226,6 +1228,21 @@ const PuzzleSolver = () => {
             * who knows the game should not have to scroll past it - but present,
             * so nobody has to leave the puzzle to find out what they are doing.
             */}
+          {/* The rules, without leaving the puzzle. Movement first - see
+              GameRulesModal. */}
+          <button
+            type="button"
+            className={styles["rules-button"]}
+            onClick={() => setRulesOpen(true)}
+          >
+            How {puzzle.game_name || 'this game'} works
+          </button>
+          <GameRulesModal
+            puzzleId={puzzle.id}
+            open={rulesOpen}
+            onClose={() => setRulesOpen(false)}
+          />
+
           {!!puzzle.rules?.groups?.length && (
             <details className={styles["rules-panel"]}>
               <summary>

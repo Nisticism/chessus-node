@@ -58,6 +58,66 @@ const INTERACTIONS_PATH = '/api/discord/interactions';
  */
 const PLAY_DAILY_ID = 'gridgrove:play-daily';
 
+/*
+ * WHICH PUZZLE A CLICK WAS ABOUT, REMEMBERED FOR A MOMENT.
+ *
+ * The button carries the puzzle's id in its custom_id, and the plan was that
+ * Discord would hand that straight to the activity it launches. It is listed
+ * among an activity's launch parameters, so the id should arrive on the URL and
+ * be read by launchedPuzzleId() - and when it does, none of this is consulted.
+ *
+ * It cannot be relied on alone. A LAUNCH_ACTIVITY response carries no payload,
+ * so nothing here gets to put the id anywhere; whether it arrives is entirely
+ * Discord's business, and if it does not, the activity has no way to know it
+ * was opened from a post at all and falls back to "today" - which is the whole
+ * complaint: an old post opening the current puzzle.
+ *
+ * So the click is also recorded HERE, where the id is certainly known, and the
+ * activity can ask for it by the channel it opened in. Short-lived on purpose:
+ * a launch follows its click within seconds, and anything older is a different
+ * question that should get today's puzzle.
+ */
+const LAUNCH_MEMORY_MS = 3 * 60 * 1000;
+const launchMemory = new Map();   // channelId -> { puzzleId, userId, at }
+
+function rememberLaunch(channelId, userId, puzzleId) {
+  if (!channelId || !puzzleId) return;
+  launchMemory.set(String(channelId), { puzzleId, userId: userId ? String(userId) : null, at: Date.now() });
+  // Bounded: drop anything already stale whenever something new arrives, so a
+  // busy channel cannot grow this without limit and a quiet one costs nothing.
+  const cutoff = Date.now() - LAUNCH_MEMORY_MS;
+  for (const [k, v] of launchMemory) if (v.at < cutoff) launchMemory.delete(k);
+}
+
+/**
+ * The puzzle a recent click in this channel was about, if there was one.
+ *
+ * Not consumed on read: two people can open the same post seconds apart, and
+ * the second of them should get the same puzzle as the first rather than
+ * today's. It ages out instead.
+ *
+ * @param {string} channelId
+ * @param {string} [userId] - preferred when known, but a match on the channel
+ *   alone is still better than the wrong puzzle.
+ * @returns {number|null}
+ */
+function recentLaunchPuzzleId(channelId, userId) {
+  if (!channelId) return null;
+  const hit = launchMemory.get(String(channelId));
+  if (!hit) return null;
+  if (Date.now() - hit.at > LAUNCH_MEMORY_MS) { launchMemory.delete(String(channelId)); return null; }
+  if (userId && hit.userId && String(userId) !== hit.userId) return null;
+  return hit.puzzleId;
+}
+
+/** The puzzle id appended to a play-daily custom_id, if it carries one. */
+function puzzleIdFromCustomId(customId) {
+  const m = /play-daily[:\-_](\d+)/.exec(String(customId || ''));
+  if (!m) return null;
+  const id = Number(m[1]);
+  return Number.isInteger(id) && id > 0 ? id : null;
+}
+
 // Interaction types, as Discord numbers them (see the Interaction object docs).
 const PING = 1;
 const APPLICATION_COMMAND = 2;
@@ -265,6 +325,16 @@ function registerDiscordInteractionRoutes(app) {
       // appending state to it (a date, a puzzle id) stays possible later without
       // breaking every button already sitting in a channel's history.
       if (String(interaction.data?.custom_id || '').startsWith(PLAY_DAILY_ID)) {
+        /*
+         * Note which puzzle, before answering. The response itself can carry
+         * nothing, so this is the only moment the id and the place it was
+         * clicked are both in hand.
+         */
+        rememberLaunch(
+          interaction.channel_id,
+          interaction.member?.user?.id || interaction.user?.id,
+          puzzleIdFromCustomId(interaction.data.custom_id)
+        );
         return res.json({ type: LAUNCH_ACTIVITY });
       }
 
@@ -286,8 +356,30 @@ function registerDiscordInteractionRoutes(app) {
   });
 }
 
+/**
+ * What the activity was opened for.
+ *
+ * The activity asks this when its own launch parameters did not name a puzzle.
+ * Answering by CHANNEL because that is what an activity knows about itself
+ * without anybody having to sign in - Discord puts channel_id on the launch URL
+ * - and a click and the launch it causes happen in the same channel seconds
+ * apart.
+ *
+ * Nothing secret is returned: a puzzle id that was just posted publicly in that
+ * channel. A wrong or unknown channel gets null, which means "today's", which
+ * is what the activity did before any of this existed.
+ */
+function registerDiscordLaunchContextRoute(app) {
+  app.get('/api/discord/launch-context', (req, res) => {
+    const puzzleId = recentLaunchPuzzleId(req.query.channel_id, req.query.user_id);
+    res.json({ puzzleId: puzzleId || null });
+  });
+}
+
 module.exports = {
   registerDiscordInteractionRoutes,
+  registerDiscordLaunchContextRoute,
+  recentLaunchPuzzleId,
   interactionsRawBody,
   INTERACTIONS_PATH,
   PLAY_DAILY_ID,

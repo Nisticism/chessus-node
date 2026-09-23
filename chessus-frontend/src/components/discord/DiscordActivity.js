@@ -10,7 +10,8 @@ import { expandPlaceable, placesPieces } from "../../helpers/placement";
 import { applyPromotionDefinition, promotionPieceNumber, solvedPliesRemaining } from "../../helpers/pieceMovementUtils";
 import PuzzleBoard from "../puzzles/PuzzleBoard";
 import useDiscordSdk from "./useDiscordSdk";
-import { launchedPuzzleId } from "../../helpers/discord-launch-params";
+import { launchedPuzzleId, getLaunchParams } from "../../helpers/discord-launch-params";
+import GameRulesModal from "../common/GameRulesModal";
 import styles from "./discordactivity.module.scss";
 
 /*
@@ -69,6 +70,12 @@ const SITE_ORIGIN = (process.env.REACT_APP_API_URL || '').replace(/\/+$/, '')
   || (typeof window !== 'undefined' ? window.location.origin : '');
 
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";
+/*
+ * The same base as a prefix, for anything that builds its own image URLs -
+ * the rules modal does. Empty inside the frame, which makes every path it
+ * builds same-origin and therefore allowed through Discord's CSP.
+ */
+const ASSET_BASE = IN_DISCORD ? '' : ASSET_URL;
 const resolveUrl = (p) => {
   if (!p) return null;
   if (IN_DISCORD) return sameOrigin(p.startsWith('http') ? p : `${ASSET_URL}${p}`);
@@ -164,6 +171,35 @@ export default function DiscordActivity() {
    */
   const launchedId = useMemo(() => launchedPuzzleId(), []);
 
+  /*
+   * The same question, asked of the server, when the launch did not answer it.
+   *
+   * custom_id is listed among an activity's launch parameters, and when Discord
+   * does deliver it the line above is the whole story. When it does not - and a
+   * LAUNCH_ACTIVITY response carries no payload, so nothing on our side gets to
+   * put it there - the activity would otherwise have no idea it was opened from
+   * a post at all, and would show today's puzzle under last week's thumbnail.
+   *
+   * The server noted which puzzle the click was about when it answered the
+   * click. channel_id is on the launch URL and needs nobody to sign in, so it
+   * can be asked immediately and costs nothing when there is nothing to find.
+   */
+  const [askedId, setAskedId] = useState(null);
+  useEffect(() => {
+    if (launchedId) return undefined;          // the URL already said
+    const params = getLaunchParams();
+    const channelId = params.get('channel_id');
+    if (!channelId) return undefined;
+    let cancelled = false;
+    axios.get(`${API}discord/launch-context`, { params: { channel_id: channelId } })
+      .then(({ data }) => { if (!cancelled && data?.puzzleId) setAskedId(Number(data.puzzleId)); })
+      .catch(() => { /* today's, then - which is what it did before */ });
+    return () => { cancelled = true; };
+  }, [launchedId]);
+
+  /** Which puzzle this session is about: the launch's answer, else the server's. */
+  const puzzleForLaunch = launchedId || askedId;
+
   const [daily, setDaily] = useState(null);
   const [loading, setLoading] = useState(true);
   const [progress, setProgress] = useState(null);   // streak + today's state
@@ -173,6 +209,7 @@ export default function DiscordActivity() {
   const [hints, setHints] = useState([]);
   // The piece held from the tray, in a game whose answer is a placement.
   const [trayPick, setTrayPick] = useState(null);
+  const [rulesOpen, setRulesOpen] = useState(false);
   const [verdict, setVerdict] = useState(null);
   const [busy, setBusy] = useState(false);
   const [lastTry, setLastTry] = useState(null);
@@ -275,7 +312,7 @@ export default function DiscordActivity() {
           // The puzzle this launch names, when it names one. A post's Play
           // button carries the id of the puzzle it was posted about, so an old
           // post opens its own puzzle rather than whatever is scheduled today.
-          params: launchedId ? { puzzle: launchedId } : {},
+          params: puzzleForLaunch ? { puzzle: puzzleForLaunch } : {},
         });
         if (cancelled) return;
         setDaily(data);
@@ -294,7 +331,7 @@ export default function DiscordActivity() {
 
     })();
     return () => { cancelled = true; };
-  }, [launchedId]);
+  }, [puzzleForLaunch]);
 
   // Identity, separately, once Discord has vouched for someone. Failure here
   // costs a streak, never the puzzle.
@@ -307,7 +344,7 @@ export default function DiscordActivity() {
           headers: discordHeaders,
           // Ask about the puzzle actually on the board. Without this, opening a
           // post from last week would report today's solve against it.
-          params: launchedId ? { puzzle: launchedId } : {},
+          params: puzzleForLaunch ? { puzzle: puzzleForLaunch } : {},
         });
         if (cancelled) return;
         setProgress(data);
@@ -343,7 +380,7 @@ export default function DiscordActivity() {
       } catch (_) { /* progress is a nicety; the puzzle still plays */ }
     })();
     return () => { cancelled = true; };
-  }, [discord.token, discordHeaders, launchedId]);
+  }, [discord.token, discordHeaders, puzzleForLaunch]);
 
   const puzzle = daily?.puzzle || null;
 
@@ -354,7 +391,7 @@ export default function DiscordActivity() {
    */
   const pastDate = useMemo(() => {
     const key = daily?.date;
-    if (!key || !launchedId) return null;
+    if (!key || !puzzleForLaunch) return null;
     const [y, m, d] = String(key).split('-').map(Number);
     if (!y || !m || !d) return null;
     const today = new Date();
@@ -363,7 +400,7 @@ export default function DiscordActivity() {
     return new Date(y, m - 1, d).toLocaleDateString(undefined, {
       month: 'short', day: 'numeric', year: 'numeric',
     });
-  }, [daily?.date, launchedId]);
+  }, [daily?.date, puzzleForLaunch]);
 
   /*
    * Tell Discord what this player is doing, for their PROFILE.
@@ -897,7 +934,7 @@ export default function DiscordActivity() {
       <div className={styles["activity"]}>
         <h1 className={styles["title"]}>Puzzle of the Day</h1>
         <p className={styles["muted"]}>
-          {launchedId
+          {puzzleForLaunch
             ? 'That puzzle is no longer available.'
             : 'There is no puzzle scheduled for today. Check back tomorrow.'}
         </p>
@@ -1026,6 +1063,15 @@ export default function DiscordActivity() {
         {/* An anchor, not a button: when the SDK handshake is dead there is no
             openExternalLink to call, and an ordinary link is the only way out
             of the frame that does not depend on it. */}
+        {/* The rules, inside the activity. Leaving Discord to read how a
+            piece moves is the one thing this frame exists to avoid. */}
+        <button
+          type="button"
+          className={styles["link-btn"]}
+          onClick={() => setRulesOpen(true)}
+        >
+          How this game works
+        </button>
         <a
           className={styles["link-btn"]}
           href={siteUrl || '#'}
@@ -1036,6 +1082,18 @@ export default function DiscordActivity() {
           Open on GridGrove
         </a>
       </footer>
+
+      {/* Same-origin bases: everything inside the activity must be, or
+          Discord's CSP drops it silently. See the note at the top. */}
+      {puzzle?.id && (
+        <GameRulesModal
+          puzzleId={puzzle.id}
+          open={rulesOpen}
+          onClose={() => setRulesOpen(false)}
+          apiBase={API}
+          assetBase={ASSET_BASE}
+        />
+      )}
 
       {/*
         * The handshake, on screen.

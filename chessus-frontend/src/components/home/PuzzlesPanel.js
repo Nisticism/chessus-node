@@ -9,6 +9,7 @@ import useBoardViewport from "../common/useBoardViewport";
 import { MOVE_DOT_BACKGROUNDS, getMoveDotType } from "../../helpers/moveEngine";
 import PlacementTray from "../common/PlacementTray";
 import PromotionChooser from "../common/PromotionChooser";
+import GameRulesModal from "../common/GameRulesModal";
 import { applyPromotionDefinition, promotionPieceNumber, solvedPliesRemaining } from "../../helpers/pieceMovementUtils";
 import useSetupMoveReplay from "../common/useSetupMoveReplay";
 import { expandPlaceable, placesPieces } from "../../helpers/placement";
@@ -210,6 +211,7 @@ const PuzzlesPanel = () => {
    * only ever once per puzzle.
    */
   const [ratingChange, setRatingChange] = useState(null);
+  const [rulesOpen, setRulesOpen] = useState(false);
   const [ratingNote, setRatingNote] = useState(null);
   // When this attempt began, for the solve's duration. Reset per puzzle and on
   // a restart.
@@ -923,6 +925,19 @@ const PuzzlesPanel = () => {
                     <span className={`${styles["fact"]} ${styles["chip"]}`}>{puzzle.goal_label}</span>
                   )}
                 </div>
+                {/* The rules, right here - the card is a puzzle too. */}
+                <button
+                  type="button"
+                  className={styles["rules-button"]}
+                  onClick={() => setRulesOpen(true)}
+                >
+                  How {puzzle.game_name || 'this game'} works
+                </button>
+                <GameRulesModal
+                  puzzleId={puzzle.id}
+                  open={rulesOpen}
+                  onClose={() => setRulesOpen(false)}
+                />
                 {(puzzle.solution_depth > 1 || puzzle.rating != null) && (
                   <div className={styles["daily-meta"]}>
                     {puzzle.solution_depth > 1 && (

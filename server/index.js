@@ -7614,6 +7614,8 @@ require('./discord-routes').registerDiscordRoutes(app, { db_pool });
  * its own. See discord-interactions.js.
  */
 discordInteractions.registerDiscordInteractionRoutes(app);
+// What the activity was opened for, when its launch parameters did not say.
+discordInteractions.registerDiscordLaunchContextRoute(app);
 
 /*
  * Linking a Discord id to this account.
