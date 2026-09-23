@@ -8960,6 +8960,20 @@ function initializeSocket(server) {
               }
             });
             
+            /*
+             * The no-moves rule, which the stalemate check above defers to
+             * "its own block below" - but this path returns before the
+             * ordinary flow's block, so without this a premove that left the
+             * other side with nothing to play left the game waiting.
+             */
+            if (premoveTurnSwitched && gameState.gameType?.no_moves_condition) {
+              const premoveNoMove = noLegalMoveOutcome(gameState);
+              if (premoveNoMove?.kind === 'end') {
+                await finishNoLegalMoveGame(io, gameId, gameState, premoveNoMove);
+                return;
+              }
+            }
+
             // After successful premove execution and checks, return to skip the regular flow
             return;
           } else {
@@ -10176,6 +10190,14 @@ function initializeSocket(server) {
           }
         });
 
+        // Skipping ends the turn, so it gets the same end-of-turn question an
+        // ordinary move does: can the next player move at all?
+        const skipNoMove = noLegalMoveOutcome(gameState);
+        if (skipNoMove?.kind === 'end') {
+          await finishNoLegalMoveGame(io, gameIdStr, gameState, skipNoMove);
+          return;
+        }
+
         // Check win/check conditions
         const checkResult = checkForCheck(gameState, gameState.currentTurn);
         gameState.inCheck = checkResult.inCheck;
@@ -10387,6 +10409,14 @@ function initializeSocket(server) {
             p.current_hp = Math.min(maxHp, (p.current_hp ?? maxHp) + p.hp_regen);
           }
         });
+
+        // As skipCaptureAction: the turn ends here, so check the next player
+        // can move before handing it to them.
+        const rangedSkipNoMove = noLegalMoveOutcome(gameState);
+        if (rangedSkipNoMove?.kind === 'end') {
+          await finishNoLegalMoveGame(io, gameIdStr, gameState, rangedSkipNoMove);
+          return;
+        }
 
         const checkResultRanged = checkForCheck(gameState, gameState.currentTurn);
         gameState.inCheck = checkResultRanged.inCheck;
@@ -20300,8 +20330,22 @@ async function _processBotTurnInner(io, gameId, gameState, precomputedMove = nul
           return;
         }
         // ── END PLACEMENT GAME NO-MOVES ────────────────────────────────────────
-        console.log(`[Bot] No moves available in game ${gameId}`);
         io.to(`game-${gameId}`).emit("botThinking", { gameId, thinking: false });
+        /*
+         * The safety net. However the turn reached the bot, if it truly has no
+         * legal move the rules decide the game here - rather than returning and
+         * leaving the game on the bot's turn until a clock runs out, or for good
+         * in a game without one. `bestMove` being empty is not proof on its own
+         * (the engine can fail), so legality is recomputed before anything ends.
+         */
+        const botNoMove = noLegalMoveOutcome(gameState);
+        if (botNoMove?.kind === 'end') {
+          await finishBotGame(io, gameId, gameState,
+            { gameOver: true, winner: botNoMove.winner, reason: botNoMove.reason }, null, {});
+          clearTimeout(safetyTimer);
+          return;
+        }
+        console.log(`[Bot] No moves available in game ${gameId}`);
         clearTimeout(safetyTimer);
         return;
       }
@@ -21626,6 +21670,104 @@ async function _processBotTurnInner(io, gameId, gameState, precomputedMove = nul
  * Helper: finish a bot game (game over from any condition).
  * Handles DB update, ELO (skipped for bot games), and broadcast.
  */
+/*
+ * What the rules say when the player to move has nothing to play.
+ *
+ * The same decision already lives inline in the ordinary move path and the bot
+ * path. It is a function here for the turn-ends that had no check at all:
+ * skipping a capture action, skipping a ranged capture action, a premove, and
+ * the bot finding nothing to play. Each of those could hand the turn to a
+ * player with no legal moves and then wait - for the clock, or, in a game
+ * without one, forever. Knights & Roses (game type 523) met it on nearly every
+ * turn: its pieces move only by capturing and every capture grants a capture
+ * action, so most turns ended through "skip".
+ *
+ * Priorities match the inline copies exactly, including treating a stored 0
+ * for stalemate_draw_condition as "draw" (`!== false`), so a turn ending here
+ * ends the same way it would have after an ordinary move.
+ *
+ * Returns null when the player can move (or is in check, which is checkmate's
+ * business), { kind: 'end', winner, loser, reason } when the game is over, and
+ * { kind: 'skip' } when no rule applies.
+ */
+function noLegalMoveOutcome(gameState) {
+  const gt = gameState.gameType || {};
+  const toMove = gameState.currentTurn;
+  if (getAllLegalMovesForPlayer(gameState, toMove).length > 0) return null;
+  const mover = gameState.players.find(p => p.position === toMove);
+  const opponent = gameState.players.find(p => p.position !== toMove);
+  if (gt.no_moves_condition) {
+    return { kind: 'end', winner: opponent?.id ?? null, loser: mover?.id ?? null, reason: 'no_moves' };
+  }
+  let inCheck = false;
+  try { inCheck = !!checkForCheck(gameState, toMove)?.inCheck; } catch (_) { /* treat as not in check */ }
+  if (inCheck) return null;
+  if (gt.stalemate_win_condition) {
+    return { kind: 'end', winner: mover?.id ?? null, loser: opponent?.id ?? null, reason: 'stalemate_win' };
+  }
+  if (gt.stalemate_draw_condition !== false) {
+    return { kind: 'end', winner: null, loser: null, reason: 'stalemate' };
+  }
+  return { kind: 'skip' };
+}
+
+/*
+ * End the game on a noLegalMoveOutcome. Bot games go through finishBotGame
+ * (unrated, bot never stored as winner); everything else settles ratings and
+ * writes the result the way the ordinary move path does.
+ */
+async function finishNoLegalMoveGame(io, gameId, gameState, outcome, moveRecord = null) {
+  console.log(`NO LEGAL MOVES (${outcome.reason}) for player ${gameState.currentTurn} in game ${gameId}`);
+  if (gameState.botPlayer) {
+    return finishBotGame(io, gameId, gameState,
+      { gameOver: true, winner: outcome.winner, reason: outcome.reason }, moveRecord, {});
+  }
+  stopGameTimer(gameId);
+  gameState.status = 'completed';
+  gameState.winner = outcome.winner;
+  gameState.winReason = outcome.reason;
+
+  let eloChanges = null;
+  if (gameState.rated !== false) {
+    try {
+      if (outcome.winner && outcome.loser) {
+        eloChanges = await updateEloRatings(outcome.winner, outcome.loser);
+      } else if (!outcome.winner) {
+        const [player1, player2] = gameState.players;
+        if (player1?.id && player2?.id) {
+          const higher = (player1.elo || 1000) >= (player2.elo || 1000) ? player1 : player2;
+          const lower = higher === player1 ? player2 : player1;
+          eloChanges = await updateEloRatings(higher.id, lower.id, true);
+        }
+      }
+    } catch (eloErr) {
+      console.error('ELO update failed for no-legal-move ending:', eloErr.message);
+    }
+  }
+
+  const endTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
+  try {
+    await db_pool.query(
+      `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?,
+       pieces = ?, other_data = ? WHERE id = ?`,
+      [endTime, sanitizeWinnerId(outcome.winner), JSON.stringify(gameState.pieces),
+       buildOtherData(gameState, { winner: outcome.winner, reason: outcome.reason, eloChanges }),
+       gameId]
+    );
+  } catch (dbError) {
+    console.error('Failed to update database for no-legal-move ending:', dbError);
+  }
+
+  broadcastGameOver(io, gameId, gameState, {
+    gameId,
+    winner: outcome.winner,
+    reason: outcome.reason,
+    ...(moveRecord ? { move: moveRecord } : {}),
+    finalState: gameState,
+    eloChanges,
+  });
+}
+
 async function finishBotGame(io, gameId, gameState, winResult, moveRecord, effects = {}) {
   stopGameTimer(gameId);
   gameState.status = 'completed';
@@ -22517,6 +22659,7 @@ module.exports = {
   stepMoveNoOrthogonal,
   stepCaptureNoOrthogonal,
   getAllLegalMovesForPlayer,
+  noLegalMoveOutcome,
   checkForCheck,
   isCheckmate,
   checkWinCondition,

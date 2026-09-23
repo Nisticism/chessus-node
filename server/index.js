@@ -7907,10 +7907,29 @@ app.get("/api/article", async (params, res) => {
 
 //  ---------------------- Forums ---------------------------------
 
-app.post("/api/forums/new", async (req, res) => {
+app.post("/api/forums/new", authenticateToken, async (req, res) => {
   try {
-    const { title, content, created_at, author_id, game_type_id, category } = req.body;
-    console.log(content);
+    /*
+     * The author is whoever the token says, never what the body says.
+     *
+     * This route used to have no authentication at all and took author_id from
+     * the request, so anyone could post a forum under anyone's name. The site's
+     * own form already sends the token; only a forged request loses anything.
+     */
+    const author_id = req.user.id;
+    const { title, content, created_at, game_type_id, category } = req.body;
+
+    /*
+     * Game forums are made by the site, not by hand: publishing a game creates
+     * its forum (see the game create and draft-publish routes). A game forum
+     * started by any passing user is how a game ends up with a thread its
+     * creator never chose. Admins keep the door open for repairs - games that
+     * predate auto-creation, or whose forum was deleted.
+     */
+    const isAdmin = req.user?.role === 'admin' || req.user?.role === 'owner';
+    if (game_type_id && !isAdmin) {
+      return res.status(403).send({ message: "Game forums are created automatically when a game is published." });
+    }
 
     // Whitelist of valid general-forum categories. Game forums force 'game'.
     const VALID_CATEGORIES = ['general', 'bug-report', 'social', 'misc', 'gameplay', 'feedback', 'announcement'];

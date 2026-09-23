@@ -82,7 +82,54 @@ const winLines = (c) => {
   return out;
 };
 
-const GameRulesModal = ({ puzzleId, open, onClose, apiBase = DEFAULT_API, assetBase = DEFAULT_ASSET }) => {
+/*
+ * Where the rest of the game lives.
+ *
+ * This card is deliberately only what a solver needs to make a move, so it
+ * always ends by saying where everything else is. A custom win condition gets
+ * a sentence of its own first: it is set by the creator in their own words,
+ * there is nothing here that can read it, and a solver who does not know that
+ * would reasonably assume the card had told them everything.
+ */
+const GameLink = ({ rules, linkBase, onNavigate, external }) => {
+  const id = rules?.game_type_id;
+  if (!id) return null;
+  const href = `${linkBase}/games/${id}`;
+  const name = rules.game_name || 'this game';
+  return (
+    <p className={styles["footnote"]}>
+      {rules.conditions?.optional_condition && (
+        <>This game also has a custom win condition its creator wrote themselves. </>
+      )}
+      <a
+        className={styles["footlink"]}
+        href={href}
+        onClick={onNavigate ? (e) => {
+          // A handler that returns false has declined: the anchor goes itself.
+          if (onNavigate(href, id) !== false) e.preventDefault();
+        } : undefined}
+        {...(external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+      >
+        See the full {name} page
+      </a>
+      {rules.conditions?.optional_condition ? ' for what it says.' : ' for everything else it can do.'}
+    </p>
+  );
+};
+
+const GameRulesModal = ({
+  puzzleId,
+  open,
+  onClose,
+  apiBase = DEFAULT_API,
+  assetBase = DEFAULT_ASSET,
+  // How the game page is reached from wherever this card opened. Inside
+  // Discord that is an absolute URL opened outside the frame; on the site it
+  // is a route, navigated without losing the puzzle.
+  linkBase = "",
+  onNavigate = null,
+  externalLink = false,
+}) => {
   const [rules, setRules] = useState(null);
   const [error, setError] = useState(null);
 
@@ -172,6 +219,13 @@ const GameRulesModal = ({ puzzleId, open, onClose, apiBase = DEFAULT_API, assetB
                 </ul>
               </>
             )}
+
+            <GameLink
+              rules={rules}
+              linkBase={linkBase}
+              onNavigate={onNavigate}
+              external={externalLink}
+            />
           </>
         )}
         </div>

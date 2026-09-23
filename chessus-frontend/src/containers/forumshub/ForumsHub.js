@@ -287,6 +287,18 @@ const ForumsHub = () => {
             <h2 className={styles["section-title"]}>💬 General Forums</h2>
           </Link>
           <span className={styles["section-count"]}>{generalTotal}</span>
+          {/* The same "new post" as the button at the foot of the page, where
+              it is a long scroll away. General only: game forums are made
+              when a game is published, never by hand. */}
+          <button
+            type="button"
+            className={styles["section-new"]}
+            onClick={createNewPost}
+            aria-label="New general forum post"
+            title="New general forum post"
+          >
+            +
+          </button>
         </div>
 
         {generalOpen && (

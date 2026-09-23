@@ -268,6 +268,33 @@
   text-align: center;
 }
 
+/* A small "new post" at the far end of the General header. */
+.section-new {
+  margin-left: auto;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border-radius: 6px;
+  background: transparent;
+  border: 1px solid rgba(var(--gold-rgb), 0.45);
+  color: var(--text-heading);
+  font-size: 1.3rem;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+
+  &:hover { background: rgba(var(--gold-rgb), 0.12); }
+
+  &:focus-visible {
+    outline: 2px solid var(--gold, #d4af37);
+    outline-offset: 2px;
+  }
+}
+
 .section-content {
   animation: slideDown 0.3s ease;
   overflow-x: auto;

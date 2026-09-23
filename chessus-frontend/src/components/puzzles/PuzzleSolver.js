@@ -1253,14 +1253,6 @@ const PuzzleSolver = () => {
             </p>
           )}
 
-          {/*
-            * The game's rules, for a solver who has never played it.
-            *
-            * A daily puzzle rotates across games, so most people meeting this
-            * one will not know how it is won. Collapsed by default - a solver
-            * who knows the game should not have to scroll past it - but present,
-            * so nobody has to leave the puzzle to find out what they are doing.
-            */}
           {/* The rules, without leaving the puzzle. Movement first - see
               GameRulesModal. */}
           <button
@@ -1270,63 +1262,14 @@ const PuzzleSolver = () => {
           >
             {puzzle.game_name || 'Game'} Rules
           </button>
+          {/* onNavigate: a route, not a page load - the card's way out to the
+              game page should not throw the puzzle away. */}
           <GameRulesModal
             puzzleId={puzzle.id}
             open={rulesOpen}
             onClose={() => setRulesOpen(false)}
+            onNavigate={(href) => { setRulesOpen(false); navigate(href); }}
           />
-
-          {!!puzzle.rules?.groups?.length && (
-            <details className={styles["rules-panel"]}>
-              <summary>
-                How {puzzle.game_name || 'this game'} works
-                <span className={styles["rules-hint"]}>new to this game?</span>
-              </summary>
-              {puzzle.rules.groups.map((g) => (
-                <div key={g.title} className={styles["rules-group"]}>
-                  <h4>{g.title}</h4>
-                  <ul>
-                    {g.items.map((it) => (
-                      <li key={it.label}><strong>{it.label}.</strong> {it.detail}</li>
-                    ))}
-                  </ul>
-                </div>
-              ))}
-              <a
-                className={styles["rules-link"]}
-                href={`/games/${puzzle.game_type_id}`}
-                onClick={(e) => { e.preventDefault(); navigate(`/games/${puzzle.game_type_id}`); }}
-              >
-                See the full game page →
-              </a>
-            </details>
-          )}
-
-          {/* Creator tools. Deliberately below the goal rather than beside the
-              title: they are for the few people who can use them, and a solver
-              should meet the puzzle first. */}
-          {canManage && (
-            <div className={styles["manage-row"]}>
-              <button
-                type="button"
-                className={styles["btn-secondary"]}
-                onClick={() => navigate(`/games/${puzzle.game_type_id}/puzzles/${puzzle.id}/edit`)}
-              >
-                ✏️ Edit puzzle
-              </button>
-              <button
-                type="button"
-                className={styles["btn-secondary"]}
-                onClick={duplicatePuzzle}
-                title="Copies this position and solution into a new draft you can change"
-              >
-                ⧉ Duplicate as draft
-              </button>
-            </div>
-          )}
-          {duplicateError && (
-            <div className={`${styles["notice"]} ${styles["notice-warn"]}`}>{duplicateError}</div>
-          )}
 
           {outcome === 'solved' && (
             <div className={`${styles["notice"]} ${styles["notice-ok"]}`}>
@@ -1457,6 +1400,37 @@ const PuzzleSolver = () => {
           )}
         </div>
       </div>
+
+      {/*
+        * Creator tools, below the puzzle rather than inside the sidebar.
+        *
+        * Two buttons only the creator and admins can press were sitting above
+        * "Show me the answer" in a column everybody reads. Down here they are
+        * still one click away and out of the solver's path.
+        */}
+      {canManage && (
+        <div className={styles["manage-row"]}>
+          <button
+            type="button"
+            className={styles["btn-secondary"]}
+            onClick={() => navigate(`/games/${puzzle.game_type_id}/puzzles/${puzzle.id}/edit`)}
+          >
+            ✏️ Edit puzzle
+          </button>
+          <button
+            type="button"
+            className={styles["btn-secondary"]}
+            onClick={duplicatePuzzle}
+            title="Copies this position and solution into a new draft you can change"
+          >
+            ⧉ Duplicate as draft
+          </button>
+        </div>
+      )}
+      {/* Follows the button it belongs to, now that the button has moved. */}
+      {duplicateError && (
+        <div className={`${styles["notice"]} ${styles["notice-warn"]} ${styles["manage-notice"]}`}>{duplicateError}</div>
+      )}
 
       {/* One dialog for all three boards: see components/common/PromotionChooser. */}
       {pendingPromotion && (

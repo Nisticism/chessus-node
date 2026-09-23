@@ -1,0 +1,70 @@
+/*
+ * The puzzle buttons, in one place.
+ *
+ * The home card and the puzzle's own page show the same handful of actions -
+ * open a puzzle, read the rules, see the answer - and they had drifted into two
+ * different buttons: the card's bordered gold-on-transparent pair, and a
+ * borderless blue-and-slate pair on the solver page that read as flat panels
+ * rather than things you press.
+ *
+ * Mixins rather than classes, because these are CSS Modules: each module hashes
+ * its own class names, so a shared stylesheet of `.btn-secondary` would give the
+ * two files two unrelated classes that merely looked alike. A mixin gives them
+ * the same declarations and lets each keep the layout bits - what it aligns to,
+ * what it sits inside - to itself.
+ */
+
+@mixin puzzle-button-base {
+  /*
+   * inline-flex and an explicit line-height, because these are worn by both an
+   * <a> and a <button>. A button brings its own `line-height: normal` and its
+   * own font, so the same class produced boxes six pixels apart sitting side by
+   * side - close enough to look like a mistake and not close enough to ignore.
+   */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  line-height: 1.5;
+  font-family: inherit;
+  padding: 10px 20px;
+  border-radius: 6px;
+  font-size: 1rem;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  text-align: center;
+
+  /* A long game name on a narrow phone wraps inside the button rather than
+     pushing the page sideways. By word first; a single unbroken word is the
+     only thing that earns a letter break.
+
+     `white-space: normal` is the part that matters: index.css sets every
+     button to nowrap site-wide, which is right for "Send" and wrong for
+     "{somebody's forty-letter game name} Rules". */
+  white-space: normal;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: normal;
+
+  &:disabled { opacity: 0.55; cursor: not-allowed; }
+}
+
+@mixin puzzle-button-primary {
+  @include puzzle-button-base;
+  background: var(--btn-gradient);
+  color: var(--text-heading);
+  border: 1px solid rgba(var(--gold-rgb), 0.5);
+
+  &:hover { filter: brightness(1.1); }
+}
+
+@mixin puzzle-button-secondary {
+  @include puzzle-button-base;
+  background: transparent;
+  color: var(--text-heading);
+  border: 1px solid rgba(var(--gold-rgb), 0.45);
+
+  &:hover { background: rgba(var(--gold-rgb), 0.1); }
+}

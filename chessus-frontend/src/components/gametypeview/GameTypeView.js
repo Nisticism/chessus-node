@@ -317,6 +317,40 @@ const formatCustomSquaresLine = (rawValue) => {
   return coords.join(', ');
 };
 
+/*
+ * The game's forum, or - for admins only - a way to make one.
+ *
+ * Publishing a game makes its forum, so a game without one is an old game or a
+ * deleted forum: a repair, and an admin's to make. The server refuses anyone
+ * else.
+ *
+ * Its own component rather than a ternary in GameTypeView's JSX: that
+ * component is large enough that one more branch pushes eslint's rules-of-hooks
+ * path counting past exact arithmetic, and it starts reporting the hooks
+ * further up as "called conditionally" - a false error that still fails the
+ * build.
+ */
+const GameForumLink = ({ articleId, gameId, currentUser }) => {
+  if (articleId) {
+    return (
+      <div className={styles["forum-link"]}>
+        <Link to={`/forums/${articleId}`}>
+          💬 Discuss in Game Forum
+        </Link>
+      </div>
+    );
+  }
+  const isAdmin = !!currentUser && (currentUser.role === 'admin' || currentUser.role === 'owner');
+  if (!isAdmin) return null;
+  return (
+    <div className={styles["forum-link"]}>
+      <Link to={`/forums/new?game_type_id=${gameId}`}>
+        ➕ Create Forum for this Game
+      </Link>
+    </div>
+  );
+};
+
 const GameTypeView = () => {
   const { gameId } = useParams();
   const navigate = useNavigate();
@@ -3568,19 +3602,7 @@ Delete the game and its puzzles anyway?`)) {
           </div>
         )}
         
-        {game.article_id ? (
-          <div className={styles["forum-link"]}>
-            <Link to={`/forums/${game.article_id}`}>
-              💬 Discuss in Game Forum
-            </Link>
-          </div>
-        ) : (
-          <div className={styles["forum-link"]}>
-            <Link to={`/forums/new?game_type_id=${gameId}`}>
-              ➕ Create Forum for this Game
-            </Link>
-          </div>
-        )}
+        <GameForumLink articleId={game.article_id} gameId={gameId} currentUser={currentUser} />
 
         {/* Uniqueness Badge & Section - hidden for now, will be enabled later */}
         {false && (() => {

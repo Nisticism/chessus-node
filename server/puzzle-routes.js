@@ -1623,6 +1623,9 @@ function registerPuzzleRoutes(app, {
 
       res.json({
         game_name: game.game_name || null,
+        // So the card can point at the game's own page. A puzzle is a fragment
+        // of somebody's game and the page is where the rest of it lives.
+        game_type_id: Number(puzzle.game_type_id) || null,
         board: { width: game.board_width, height: game.board_height },
         pieces,
         // The flags the modal turns into a sentence or two. Named, not
@@ -1645,6 +1648,9 @@ function registerPuzzleRoutes(app, {
           actions_per_turn: Number(game.actions_per_turn) || 1,
           fog_of_war: !!game.fog_of_war,
           hide_enemy_pieces: !!game.hide_enemy_pieces,
+          // A win condition the creator wrote themselves. There is no reading
+          // it from here, so the card says so and sends them to the game page.
+          optional_condition: !!game.optional_condition,
         },
       });
     } catch (err) {

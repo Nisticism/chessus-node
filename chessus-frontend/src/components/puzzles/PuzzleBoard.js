@@ -33,6 +33,12 @@ const PuzzleBoard = ({
   squareTitle,
   onSquareClick,
   onSquarePointerDown,
+  /*
+   * The square whose piece is picked up, as "y,x". On touch it is the only
+   * square that starts a drag, and the only one that keeps the finger from
+   * scrolling - see .lifted in puzzleboard.module.scss.
+   */
+  liftedSquare = null,
   onSquareMouseEnter,
   onSquareMouseLeave,
   className,
@@ -46,10 +52,11 @@ const PuzzleBoard = ({
       for (let x = 0; x < boardWidth; x++) {
         const key = `${y},${x}`;
         const extra = squareClassName ? squareClassName(x, y) : '';
+        const lifted = key === liftedSquare;
         out.push(
           <div
             key={key}
-            className={`${styles["square"]}${extra ? ` ${extra}` : ''}`}
+            className={`${styles["square"]}${lifted ? ` ${styles["lifted"]}` : ''}${extra ? ` ${extra}` : ''}`}
             style={{
               background: (x + y) % 2 === 0 ? lightColor : darkColor,
               width: vp.squareSize,
@@ -64,6 +71,13 @@ const PuzzleBoard = ({
              * blue for the whole drag.
              */
             onPointerDown={(e) => {
+              /*
+               * A finger on a piece that is not picked up yet is somebody
+               * scrolling until proven otherwise. Nothing starts here; if it
+               * was a tap, the click that follows picks the piece up, and the
+               * next press on it can drag.
+               */
+              if (e.pointerType === 'touch' && !lifted) return;
               e.preventDefault();
               if (onSquarePointerDown) onSquarePointerDown(e, x, y);
             }}
@@ -79,7 +93,7 @@ const PuzzleBoard = ({
     return out;
   }, [
     boardWidth, boardHeight, lightColor, darkColor, vp.squareSize,
-    renderSquare, squareClassName, squareTitle,
+    renderSquare, squareClassName, squareTitle, liftedSquare,
     onSquareClick, onSquarePointerDown, onSquareMouseEnter, onSquareMouseLeave,
   ]);
 

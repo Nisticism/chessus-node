@@ -223,6 +223,15 @@
   cursor: pointer;
   text-decoration: none;
   line-height: 1.2;
+  /* The rules button is "{game name} Rules", and a game name is whatever its
+     creator typed. index.css holds every button to one line; this one wraps -
+     by word, and inside a word only when the word alone is wider than the
+     phone - rather than running off the edge of the frame. */
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: center;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .link-btn:hover {
@@ -261,4 +270,8 @@
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+  /* Allowed to be narrower than its contents' single-line width, so the
+     buttons inside get the chance to wrap. */
+  min-width: 0;
+  max-width: 100%;
 }

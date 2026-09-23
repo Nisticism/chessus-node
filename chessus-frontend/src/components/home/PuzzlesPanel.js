@@ -632,11 +632,16 @@ const PuzzlesPanel = () => {
       if (sq.x === fx && sq.y === fy) return;
       tryMove(from, sq.x, sq.y);
     };
+    // The browser took the gesture over (a scroll, a system swipe): the
+    // drag ends where it started, with the piece still picked up.
+    const onCancel = () => setDrag(null);
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onCancel);
     return () => {
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onCancel);
     };
   }, [drag, squareAt, tryMove]);
 
@@ -858,6 +863,7 @@ const PuzzlesPanel = () => {
                   renderSquare={renderSquare}
                   onSquareClick={clickSquare}
                   onSquarePointerDown={startPress}
+                  liftedSquare={picked}
                   onSquareMouseEnter={hoverSquare}
                   onSquareMouseLeave={unhoverSquare}
                 />

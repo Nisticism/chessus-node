@@ -163,3 +163,30 @@
 
 .loading, .error { font-size: 0.9rem; color: var(--text-secondary, #9fb0c3); }
 .error { color: #ff8a8a; }
+
+/* Where the rest of the game lives. Quiet, and always last: the card is only
+   what a solver needs to move, and this is the way out to everything else. */
+.footnote {
+  margin: 16px 0 0;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--text-secondary, #9fb0c3);
+}
+
+.footlink {
+  color: var(--accent-highlight, #7fdfff);
+  text-decoration: none;
+
+  &:hover { text-decoration: underline; }
+}
+
+/* A game or piece name long enough to need it wraps by word, and breaks a
+   single unbroken word only because the alternative is a card wider than the
+   phone it opened on. */
+.piece .text,
+.head h2 {
+  overflow-wrap: anywhere;
+  word-break: normal;
+}

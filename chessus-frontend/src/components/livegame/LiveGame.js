@@ -4559,6 +4559,24 @@ const LiveGame = () => {
       return;
     }
 
+    /*
+     * Only a piece that is already picked up can be dragged by touch.
+     *
+     * A finger landing on one of your pieces used to select it and turn the
+     * next eight pixels of movement into a drag - so on a phone, and above all
+     * on a zoomed board that fills the screen, trying to scroll picked pieces
+     * up instead. Now a touch on an unselected piece is left alone: a swipe
+     * scrolls, and a tap reaches onClick, which selects it exactly as a mouse
+     * click does. Press the selected piece again and it drags.
+     *
+     * The reposition phase above is exempt: it has no click path to select
+     * with, so it keeps the one-motion drag.
+     */
+    const isLifted = selectedPiece && (selectedPiece.id != null
+      ? selectedPiece.id === piece.id
+      : (selectedPiece.x === piece.x && selectedPiece.y === piece.y));
+    if (!isLifted) return;
+
     const canDragForMove = isMyTurn && (gameState?.status === 'active' || gameState?.status === 'ready') && isOwnPiece;
     const canDragForPremove = !isMyTurn && (gameState?.status === 'active' || gameState?.status === 'ready') && gameState?.allowPremoves !== false && isOwnPiece && !(gameState?.gameType?.veto_enabled && !gameState?.gameType?.simultaneous_turns);
 
@@ -4603,7 +4621,7 @@ const LiveGame = () => {
     touchDragRef.current = { piece, moves, startX: touch.clientX, startY: touch.clientY, isDragging: false, grabOffset };
     setSelectedPiece(piece);
     setValidMoves(moves);
-  }, [isMyTurn, isMyRepositionTurn, gameState, currentPlayer, calculateValidMoves, pendingMove, captureActionPieceId, showIllegalMoveWarning, showPromotionModal, reactiveMoveLocked]);
+  }, [isMyTurn, isMyRepositionTurn, gameState, currentPlayer, calculateValidMoves, pendingMove, captureActionPieceId, showIllegalMoveWarning, showPromotionModal, reactiveMoveLocked, selectedPiece]);
 
   const handleTouchMove = useCallback((e) => {
     const td = touchDragRef.current;
@@ -6052,10 +6070,16 @@ const LiveGame = () => {
               } : {};
               
               const isTouchDragging = touchDragPiece && touchDragPiece.x === piece.x && touchDragPiece.y === piece.y;
+              // The one piece a touch may drag - see handleTouchStart - and so
+              // the one piece that keeps a finger from scrolling.
+              const isLiftedPiece = !!selectedPiece && (selectedPiece.id != null
+                ? selectedPiece.id === piece.id
+                : (selectedPiece.x === piece.x && selectedPiece.y === piece.y));
+              const holdsTouch = isLiftedPiece || (!!gameState?.repositionPhase?.active && _canReposition);
               
               return (
                 <div 
-                  className={styles.piece}
+                  className={`${styles.piece}${holdsTouch ? ` ${styles["touch-held"]}` : ''}`}
                   style={{
                     ...multiTileStyle,
                     ...(isTouchDragging ? { opacity: 0 } : {})

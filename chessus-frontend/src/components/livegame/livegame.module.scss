@@ -1639,11 +1639,13 @@
   z-index: 1;
   cursor: grab;
 
-  /* Only a piece the player can actually pick up swallows the touch gesture.
-     Starting a drag on it must not scroll; everywhere else on the board -
-     empty squares, opponent pieces, pieces when it is not your turn - stays
-     scrollable, so the page and the board still pan on mobile. */
-  &[draggable="true"] {
+  /* Only the piece that is picked up swallows the touch gesture. This used to
+     be every piece you COULD pick up, which on a zoomed board was most of what
+     was under your thumb - so swiping to scroll grabbed pieces instead. Now
+     the whole board scrolls until you tap a piece to lift it; then that one
+     piece drags. (During repositioning, every movable piece holds the touch:
+     that phase is drag-only.) */
+  &.touch-held {
     touch-action: none;
   }
 

@@ -509,22 +509,27 @@ export default function DiscordActivity() {
    * every other case - including an ordinary browser tab, where there is no SDK
    * and never was a problem.
    */
-  const openOnSite = useCallback((e) => {
-    if (!siteUrl) return;
+  // Returns true when it took the click over, false when the anchor should do
+  // its ordinary job - the rules card's game link relies on the difference.
+  const openExternal = useCallback((url, e) => {
+    if (!url) return false;
     const cmd = discord.status === 'ready' && discord.sdk?.commands?.openExternalLink;
-    if (!cmd) return;   // let the anchor navigate
+    if (!cmd) return false;   // let the anchor navigate
 
     if (e) e.preventDefault();
     let handled = false;
     const fallback = setTimeout(() => {
       if (handled) return;
       handled = true;
-      window.open(siteUrl, '_blank', 'noopener');
+      window.open(url, '_blank', 'noopener');
     }, 1500);
-    Promise.resolve(discord.sdk.commands.openExternalLink({ url: siteUrl }))
+    Promise.resolve(discord.sdk.commands.openExternalLink({ url }))
       .then(() => { handled = true; clearTimeout(fallback); })
       .catch(() => { /* the timeout above is the fallback */ });
-  }, [siteUrl, discord.sdk, discord.status]);
+    return true;
+  }, [discord.sdk, discord.status]);
+
+  const openOnSite = useCallback((e) => { openExternal(siteUrl, e); }, [openExternal, siteUrl]);
 
   /*
    * Send a move and act on the verdict.
@@ -758,11 +763,16 @@ export default function DiscordActivity() {
       if (sq.x === fx && sq.y === fy) return;
       tryMove(from, sq.x, sq.y);
     };
+    // The browser took the gesture over (a scroll, a system swipe): the
+    // drag ends where it started, with the piece still picked up.
+    const onCancel = () => setDrag(null);
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onCancel);
     return () => {
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onCancel);
     };
   }, [drag, squareAt, tryMove]);
 
@@ -989,6 +999,7 @@ export default function DiscordActivity() {
           squareClassName={squareClass}
           onSquareClick={clickSquare}
           onSquarePointerDown={startPress}
+          liftedSquare={picked}
           onSquareMouseEnter={hoverSquare}
           onSquareMouseLeave={unhoverSquare}
           boardRef={boardRef}
@@ -1107,6 +1118,11 @@ export default function DiscordActivity() {
           onClose={() => setRulesOpen(false)}
           apiBase={API}
           assetBase={ASSET_BASE}
+          // The game page is outside the frame: an absolute URL, opened by the
+          // Discord client when it can be, by the anchor when it cannot.
+          linkBase={SITE_ORIGIN}
+          externalLink
+          onNavigate={(href) => openExternal(href)}
         />
       )}
 

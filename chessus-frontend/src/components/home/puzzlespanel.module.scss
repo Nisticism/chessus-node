@@ -1,3 +1,5 @@
+@import '../../styles/puzzle-buttons';
+
 /*
  * The home page's puzzle block.
  *
@@ -377,46 +379,15 @@
 }
 
 /* --------------------------------------------------------- the buttons -- */
+/* The look is shared with the puzzle's own page; only the placing is local. */
 .btn-primary,
 .btn-secondary {
   align-self: flex-start;
   margin-top: auto;
-  /*
-   * inline-flex and an explicit line-height, because these are worn by both an
-   * <a> and a <button>. A button brings its own `line-height: normal` and its
-   * own font, so the same class produced boxes six pixels apart sitting side by
-   * side - close enough to look like a mistake and not close enough to ignore.
-   */
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  box-sizing: border-box;
-  line-height: 1.5;
-  font-family: inherit;
-  padding: 10px 20px;
-  border-radius: 6px;
-  font-size: 1rem;
-  font-weight: 600;
-  text-decoration: none;
-  cursor: pointer;
-  text-align: center;
 }
 
-.btn-primary {
-  background: var(--btn-gradient);
-  color: var(--text-heading);
-  border: 1px solid rgba(var(--gold-rgb), 0.5);
-
-  &:hover { filter: brightness(1.1); }
-}
-
-.btn-secondary {
-  background: transparent;
-  color: var(--text-heading);
-  border: 1px solid rgba(var(--gold-rgb), 0.45);
-
-  &:hover { background: rgba(var(--gold-rgb), 0.1); }
-}
+.btn-primary { @include puzzle-button-primary; }
+.btn-secondary { @include puzzle-button-secondary; }
 
 .about-actions {
   margin-top: auto;
