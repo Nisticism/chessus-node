@@ -312,9 +312,18 @@ const PuzzleSolver = () => {
   const vp = useBoardViewport({
     boardWidth,
     boardHeight,
-    fitMaxSquare: 78,
-    maxSquare: 160,
-    maxHeight: () => Math.max(320, (typeof window !== 'undefined' ? window.innerHeight : 900) - 300),
+    /*
+     * As big as the screen allows, rather than as big as a guess allowed.
+     *
+     * The budget was `innerHeight - 300`, a fixed allowance for chrome that was
+     * never measured, and the cap was a flat 78px - so on a tall desktop the
+     * board sat in the middle of a screen of empty space. 'viewport' asks the
+     * real question instead: everything from the top of the board to the
+     * bottom of the window is the board's to use.
+     */
+    fitMaxSquare: () => ((typeof window !== 'undefined' && window.innerWidth > 1200) ? 120 : 78),
+    maxSquare: 220,
+    maxHeight: 'viewport',
     insetW: 8,
     insetH: 8,
   });
@@ -325,7 +334,9 @@ const PuzzleSolver = () => {
   const boardColumnMax = useMemo(() => {
     const heightBudget = Math.max(320, (typeof window !== 'undefined' ? window.innerHeight : 900) - 300);
     const byHeight = Math.floor((heightBudget - 8) / Math.max(1, boardHeight));
-    const fitSquare = Math.max(6, Math.min(78, byHeight));
+    // Same ceiling the hook uses, so the column can hold what the board becomes.
+    const maxFit = (typeof window !== 'undefined' && window.innerWidth > 1200) ? 120 : 78;
+    const fitSquare = Math.max(6, Math.min(maxFit, byHeight));
     const floorPx = Math.max(120, fitSquare * boardWidth + 24);
     const zoomedPx = (vp.squareSize || 0) * boardWidth + 24;
     const widgetPx = vp.placement === 'side' ? 64 : 0;

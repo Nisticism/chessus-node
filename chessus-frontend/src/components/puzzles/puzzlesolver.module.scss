@@ -4,6 +4,8 @@
 .solver-page {
   text-align: left;
   max-width: 1200px;
+  /* The site's own gutter, so the card never sits against the window edge. */
+  width: calc(100% - (2 * var(--page-gutter)));
   margin: 40px auto;
   padding: 30px;
   background: linear-gradient(135deg, var(--panel-bg-start) 0%, var(--panel-bg-end) 100%);
@@ -57,6 +59,9 @@
      * the live game does on every one of its tracks for the same reason.
      */
     grid-template-columns: minmax(0, 1fr);
+    /* Once the panel drops below the board, the board is the whole row and
+       belongs in the middle of it rather than pinned to the left. */
+    justify-items: center;
   }
 }
 
@@ -557,6 +562,9 @@
 /* Opens the rules card. Quiet by default - a solver who knows the game should
    not have it competing with the board. */
 .rules-button {
+  /* The panel is a flex column, which stretches its children: without this the
+     button ran the full width of the panel for no reason. */
+  align-self: flex-start;
   display: inline-block;
   margin: 8px 0;
   padding: 5px 12px;

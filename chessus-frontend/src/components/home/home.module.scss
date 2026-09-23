@@ -1,7 +1,11 @@
 .home-container {
   max-width: 1400px;
   margin: 0 auto;
-  padding: 0 var(--page-gutter) 20px;
+  /* Published so full-bleed children can break out by the padding that is
+     really there. The narrow breakpoints below change it, and anything using
+     --page-gutter directly went forty pixels too wide once they did. */
+  --container-pad: var(--page-gutter);
+  padding: 0 var(--container-pad) 20px;
 }
 
 .about-seo-section {
@@ -24,8 +28,16 @@
 
 // Banner
 .banner-wrapper {
-  width: 100vw;
-  margin-left: calc(-50vw + 50%);
+  /*
+   * Full bleed measured from the CONTAINER, not the viewport.
+   *
+   * 100vw counts the scrollbar, so on any page tall enough to have one this
+   * was a scrollbar's width wider than the page it sat on - five pixels of
+   * horizontal overflow, permanently. Breaking out by the page gutter gets to
+   * the same edges without ever asking how wide the window is.
+   */
+  width: calc(100% + (2 * var(--container-pad)));
+  margin-left: calc(-1 * var(--container-pad));
   margin-bottom: 0;
   line-height: 0;
   position: relative;
@@ -805,7 +817,7 @@
 // Responsive - tablet and mobile
 @media (max-width: 768px) {
   .home-container {
-    padding: 0 var(--page-gutter) 15px;
+    padding: 0 var(--container-pad) 15px;
   }
 
   .hero-section {
@@ -922,7 +934,8 @@
 
 @media (max-width: 480px) {
   .home-container {
-    padding: 0 10px 10px;
+    --container-pad: 10px;
+    padding: 0 var(--container-pad) 10px;
   }
 
   .hero-section {

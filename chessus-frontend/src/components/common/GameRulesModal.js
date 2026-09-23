@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
-import { describePieceMovement } from "../../helpers/pieceRules";
+import { describePieceBriefly } from "../../helpers/pieceRules";
 import styles from "./gamerulesmodal.module.scss";
 
 /*
@@ -131,7 +131,7 @@ const GameRulesModal = ({ puzzleId, open, onClose, apiBase = DEFAULT_API, assetB
             <h3 className={styles["section"]}>The pieces</h3>
             <ul className={styles["pieces"]}>
               {rules.pieces.map((p) => {
-                const movement = describePieceMovement(p) || "Moves as set by this game.";
+                const { moves, captures } = describePieceBriefly(p);
                 return (
                   <li key={p.piece_id} className={styles["piece"]}>
                     <span className={styles["thumbs"]}>
@@ -146,7 +146,13 @@ const GameRulesModal = ({ puzzleId, open, onClose, apiBase = DEFAULT_API, assetB
                     </span>
                     <span className={styles["text"]}>
                       <strong>{p.piece_name}</strong>
-                      <span className={styles["movement"]}>{movement}</span>
+                      <span className={styles["movement"]}>{moves || "Moves as set by this game."}</span>
+                      {/* Only when taking differs from moving - a piece that
+                          captures the way it moves is the assumption, and
+                          saying so every time buries the ones that do not. */}
+                      {captures && (
+                        <span className={styles["movement"]}>Takes: {captures}</span>
+                      )}
                     </span>
                   </li>
                 );

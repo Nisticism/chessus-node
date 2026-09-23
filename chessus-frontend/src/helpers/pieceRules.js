@@ -12,7 +12,12 @@
 const describeMovementRange = (value) => {
   if (value === 99) return "any number of squares";
   if (value === 0 || value === null || value === undefined) return null;
-  if (value > 0) return `up to ${value} square${value > 1 ? 's' : ''}`;
+  /*
+   * "1 square", not "up to 1 square". A move of no squares is not a move, so
+   * there was never a range to qualify and "up to" only ever added a word.
+   */
+  if (value === 1) return '1 square';
+  if (value > 0) return `up to ${value} squares`;
   if (value < 0) return `exactly ${Math.abs(value)} square${Math.abs(value) > 1 ? 's' : ''}`;
   return null;
 };
@@ -88,7 +93,8 @@ const describePieceMovement = (pieceData) => {
   // Check ratio movement (L-shape like knight) - check both flag and values
   if (hasRatio || hasRatioValues) {
     if (hasRatioValues) {
-      let ratioText = `in an L-shape (${ratio1} squares in one direction and ${ratio2} squares perpendicular)`;
+      const sq = (n) => `${n} square${Number(n) === 1 ? '' : 's'}`;
+      let ratioText = `in an L-shape (${sq(ratio1)} in one direction and ${sq(ratio2)} perpendicular)`;
       if (pieceData.repeating_ratio) {
         const maxIter = pieceData.max_ratio_iterations;
         if (maxIter === -1) {
@@ -179,4 +185,102 @@ const describePieceMovement = (pieceData) => {
   return movements.join('; ');
 };
 
-export { describeMovementRange, describePieceMovement };
+
+/*
+ * SAYING IT SHORTER.
+ *
+ * The describer is thorough and writes every clause out in full, which is what
+ * a game's own page wants. A card read in the middle of a puzzle wants the
+ * same facts in half the words, so this tightens the output rather than
+ * teaching the grammar a second dialect.
+ *
+ * One rule, about saying less: directions that share a range become one
+ * direction. A king described as "vertically 1 square, horizontally 1 square,
+ * diagonally 1 square" is a king that moves "1 square in any direction", and
+ * the second reads the way anyone would say it out loud.
+ *
+ * Single-square ranges are NOT tidied here. They used to be, by a pair of
+ * replaces that could never fire - the source held a literal backspace byte
+ * where a word-boundary escape was meant, so the regex asked for a literal
+ * backspace and matched nothing; the phrase survived every pass. The wording
+ * is settled where it is written now, in describeMovementRange, which is the
+ * honest place for it.
+ */
+const condenseMovement = (text) => {
+  if (!text) return text;
+  let out = String(text);
+
+  // vertical + horizontal + diagonal, all the same range -> any direction.
+  out = out.replace(
+    /vertically ([^,;]+), horizontally ([^,;]+), diagonally ([^,;]+)/g,
+    (whole, v, h, d) => (v === h && h === d ? `${v} in any direction` : whole)
+  );
+  // vertical + horizontal only -> orthogonally.
+  out = out.replace(
+    /vertically ([^,;]+), horizontally ([^,;]+)(?!, diagonally)/g,
+    (whole, v, h) => (v === h ? `${v} orthogonally` : whole)
+  );
+  // "any number of squares in any direction" is a mouthful for what it is.
+  out = out.replace(/any number of squares in any direction/g, 'any distance in any direction');
+  out = out.replace(/any number of squares/g, 'any distance');
+
+  return out;
+};
+
+/*
+ * How a piece TAKES, which is not always how it moves.
+ *
+ * The capture columns mirror the movement columns one for one, so rather than
+ * a second grammar this copies the capture values over the movement ones and
+ * asks the same describer. One set of sentences, two questions.
+ */
+const CAPTURE_FIELDS = {
+  up_capture: 'up_movement',
+  down_capture: 'down_movement',
+  left_capture: 'left_movement',
+  right_capture: 'right_movement',
+  up_left_capture: 'up_left_movement',
+  up_right_capture: 'up_right_movement',
+  down_left_capture: 'down_left_movement',
+  down_right_capture: 'down_right_movement',
+  ratio_one_capture: 'ratio_one_movement',
+  ratio_two_capture: 'ratio_two_movement',
+  step_by_step_capture: 'step_by_step_movement',
+  repeating_capture: 'repeating_movement',
+  step_by_step_capture_no_orthogonal: 'step_by_step_movement_no_orthogonal',
+};
+
+const describePieceAttack = (pieceData) => {
+  if (!pieceData) return '';
+  const asMovement = { ...pieceData };
+  // Clear the movement side first, so a field with no capture counterpart does
+  // not leak the way the piece MOVES into the way it takes.
+  for (const target of Object.values(CAPTURE_FIELDS)) asMovement[target] = 0;
+  asMovement.ratio_movement_1 = 0;
+  asMovement.ratio_movement_2 = 0;
+  for (const [from, to] of Object.entries(CAPTURE_FIELDS)) {
+    if (pieceData[from] !== undefined && pieceData[from] !== null) asMovement[to] = pieceData[from];
+  }
+  asMovement.ratio_movement_1 = pieceData.ratio_one_capture || 0;
+  asMovement.ratio_movement_2 = pieceData.ratio_two_capture || 0;
+  return describePieceMovement(asMovement);
+};
+
+/**
+ * Movement and, when it differs, how the piece takes - both already shortened.
+ *
+ * @returns {{ moves: string, captures: string|null }}
+ */
+const describePieceBriefly = (pieceData) => {
+  const moves = condenseMovement(describePieceMovement(pieceData)) || '';
+  const captures = condenseMovement(describePieceAttack(pieceData)) || '';
+  return {
+    moves,
+    // Only when it is actually news. A piece that takes the way it moves is
+    // the assumption, and repeating it for every piece buries the ones where
+    // it is not true.
+    captures: captures && captures !== moves ? captures : null,
+  };
+};
+
+export { describeMovementRange, describePieceMovement, condenseMovement, describePieceAttack, describePieceBriefly };

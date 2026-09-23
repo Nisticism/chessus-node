@@ -38,6 +38,14 @@
 
 .body {
   box-sizing: border-box;
+  /*
+   * Its own alignment, whatever it opens over.
+   *
+   * The home card centres its text, and the modal is rendered inside it, so on
+   * that one page every line came out centred while the same modal read left
+   * on the puzzle page. It is one component and should look like one.
+   */
+  text-align: left;
   overflow-y: auto;
   width: 100%;
   padding: 16px 18px 20px;

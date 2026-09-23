@@ -46,7 +46,16 @@
   display: grid;
   grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);   // 60 / 40
   gap: 40px;
-  align-items: stretch;
+  /*
+   * Each card ends where its own content ends.
+   *
+   * Stretching made the two cards the same height, which sounds tidy and is
+   * not: the board decides the left card's height, the right card is a
+   * paragraph and four bullets, and the difference came out as dead space
+   * above its button - a hundred-odd pixels of nothing at desktop width, and
+   * more the taller the board. The card ending early is the honest shape.
+   */
+  align-items: start;
   width: 100%;
 }
 
