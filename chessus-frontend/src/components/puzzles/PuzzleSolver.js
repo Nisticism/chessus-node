@@ -779,9 +779,10 @@ const PuzzleSolver = () => {
    * a drag; anything less stays a click, which keeps click-to-move working
    * exactly as before.
    *
-   * Mouse and pen only. On touch the board deliberately keeps `touch-action`
-   * alone so the page still scrolls under a finger - tapping the piece and then
-   * the destination is the touch path.
+   * Touch arrives here only for a piece already picked up, or from a long
+   * press - PuzzleBoard and useTouchPieceGestures decide which, so a finger
+   * anywhere else still scrolls. Tapping the piece and then the destination
+   * works as it always did.
    */
   /*
    * The opponent's last move, played onto the board before the solver starts.
@@ -814,7 +815,7 @@ const PuzzleSolver = () => {
   const startPress = useCallback((e, x, y) => {
     // `replaying`: the opponent's move is still arriving, and a piece picked up
     // mid-replay would be dragged off a position that is about to change.
-    if (busy || finished || replaying || e.pointerType === 'touch' || e.button !== 0) return;
+    if (busy || finished || replaying || e.button !== 0) return;
     const k = keyOf(x, y);
     const here = placements[k];
     if (!here || Number(here.player_id) !== Number(puzzle?.side_to_move)) return;
@@ -1184,6 +1185,15 @@ const PuzzleSolver = () => {
               renderSquare={renderSquare}
               onSquareClick={handleSquareClick}
               onSquarePointerDown={startPress}
+              liftedSquare={selected}
+              squarePiece={(x, y) => {
+                const here = placements[keyOf(x, y)];
+                if (!here) return null;
+                const movable = !busy && !finished && !replaying
+                  && Number(here.player_id) === Number(puzzle?.side_to_move);
+                return movable ? 'own' : 'other';
+              }}
+              onSquareLift={(x, y) => setSelected(keyOf(x, y))}
               onSquareMouseEnter={(x, y) => {
                 if (!finished && !selected && !drag && !replaying) {
                   hoverPiece(enginePieces.find((e) => e.x === x && e.y === y));

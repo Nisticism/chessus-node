@@ -17,6 +17,7 @@ import SquareHighlightOverlay from "../../components/common/SquareHighlightOverl
 import { handlePieceImageError } from "../../utils/pieceFallback";
 import { normalizePromotionOverride } from "../../helpers/promotionOverride";
 import useBoardViewport from "../../components/common/useBoardViewport";
+import useTouchPieceGestures from "../../components/common/useTouchPieceGestures";
 import BoardZoomControls from "../../components/common/BoardZoomControls";
 import boardVp from "../../components/common/boardViewport.module.scss";
 
@@ -2712,20 +2713,27 @@ const Sandbox = () => {
     }
   }, []);
 
-  // Touch drag handlers for mobile piece dragging
-  const handlePieceTouchStart = useCallback((e, piece) => {
+  /*
+   * Pick a piece up for a touch drag - the site-wide rules in
+   * useTouchPieceGestures. A press on the piece already selected drags at
+   * once; a long press on any piece picks it up and drags from that press. A
+   * touch on an unselected piece does nothing here: a swipe scrolls the board,
+   * and a tap reaches the square's click, which selects it.
+   */
+  const armTouchDrag = useCallback((piece, touch, el, fromLongPress) => {
     if (!activeSandbox) return;
+    const isLifted = selectedPiece && selectedPiece.id === piece.id;
+    if (!isLifted && !fromLongPress) return;
     // Cancel any long press from square
     if (longPressTimeoutRef.current) {
       clearTimeout(longPressTimeoutRef.current);
       longPressTimeoutRef.current = null;
     }
-    const touch = e.touches[0];
     const pw = piece.piece_width || 1;
     const ph = piece.piece_height || 1;
     let grabOffsetX = 0, grabOffsetY = 0;
-    if ((pw > 1 || ph > 1) && e.currentTarget) {
-      const rect = e.currentTarget.getBoundingClientRect();
+    if ((pw > 1 || ph > 1) && el) {
+      const rect = el.getBoundingClientRect();
       const cellWidth = rect.width / pw;
       const cellHeight = rect.height / ph;
       grabOffsetX = Math.floor((touch.clientX - rect.left) / cellWidth);
@@ -2736,7 +2744,11 @@ const Sandbox = () => {
     touchDragRef.current = { piece, startX: touch.clientX, startY: touch.clientY, isDragging: false, grabOffsetX, grabOffsetY, moves: filteredMoves };
     setSelectedPiece(piece);
     setValidMoves(filteredMoves);
-  }, [activeSandbox, calculateValidMoves, applyForcedCaptureFilter]);
+  }, [activeSandbox, calculateValidMoves, applyForcedCaptureFilter, selectedPiece]);
+
+  const handlePieceTouchStart = useCallback((e, piece) => {
+    armTouchDrag(piece, e.touches[0], e.currentTarget, false);
+  }, [armTouchDrag]);
 
   const handlePieceTouchMove = useCallback((e) => {
     const td = touchDragRef.current;
@@ -3122,6 +3134,20 @@ const Sandbox = () => {
     setHoveredPiece(piece);
     setHoveredHighlights(highlights);
   }, [activeSandbox, canPieceMoveTo, canPieceCaptureTo, showHighlights]);
+
+  // The site-wide touch rules, bound to this board - see useTouchPieceGestures.
+  useTouchPieceGestures(boardRef, {
+    // A tap shows the piece's hover styles, as resting a pointer on it would.
+    onTap: (info) => {
+      const piece = (activeSandbox?.pieces || []).find((p) => String(p.id) === info.key);
+      if (piece) handlePieceHover(piece);
+    },
+    // A long press picks the piece up; the touchmoves that follow drag it.
+    onLift: (info, point) => {
+      const piece = (activeSandbox?.pieces || []).find((p) => String(p.id) === info.key);
+      if (piece) armTouchDrag(piece, point, info.el, true);
+    },
+  });
 
   // Handle drag start for pieces on the board (game movement with validation)
   const handleBoardPieceDragStart = useCallback((e, piece) => {
@@ -3518,6 +3544,9 @@ const Sandbox = () => {
               <div
                 className={`${styles.piece} ${styles.draggable}`}
                 style={{ ...multiTileStyle, ...(isTouchDragging ? { opacity: 0 } : {}) }}
+                data-piece-key={String(piece.id)}
+                data-piece-own="1"
+                data-piece-lifted={selectedPiece?.id === piece.id ? '1' : undefined}
                 draggable={true}
                 onDragStart={(e) => handleBoardPieceDragStart(e, piece)}
                 onDragEnd={() => {
@@ -3703,6 +3732,7 @@ const Sandbox = () => {
           <div style={{ display: 'flex', flexDirection: 'column' }}>
             <div
               ref={boardRef}
+              data-touch-board=""
               className={styles.board}
               style={{
                 gridTemplateColumns: `repeat(${boardWidth}, ${squareSize}px)`,

@@ -23,6 +23,7 @@ import BoardLegend from "../common/BoardLegend";
 import PieceBadges from "../common/PieceBadges";
 import SquareHighlightOverlay from "../common/SquareHighlightOverlay";
 import useBoardViewport from "../common/useBoardViewport";
+import useTouchPieceGestures from "../common/useTouchPieceGestures";
 import BoardZoomControls from "../common/BoardZoomControls";
 import boardVp from "../common/boardViewport.module.scss";
 import { runUniquenessCheck } from "../../actions/games";
@@ -338,6 +339,9 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId, piecePasswo
 
   const handleTouchStart = useCallback((e, row, col) => {
     if (!isTouchDevice()) return;
+    // A long press on a PIECE is a drag (useTouchPieceGestures); only an empty
+    // square's long press opens the piece picker.
+    if (e.target && e.target.closest && e.target.closest('[data-piece-key]')) return;
     const touch = e.touches[0];
     if (touch) {
       longPressTouchStartRef.current = { x: touch.clientX, y: touch.clientY };
@@ -879,19 +883,36 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId, piecePasswo
     setHoveredPiecePosition(null);
   }, []);
 
-  // Touch drag handlers for mobile
-  const handlePieceTouchStart = useCallback((e, key) => {
+  /*
+   * Touch drag for a placed piece - the site-wide rules in
+   * useTouchPieceGestures. It used to begin the moment a finger landed, so a
+   * swipe across a board of placed pieces moved them instead of scrolling. A
+   * long press picks one up and drags from there; a swipe scrolls.
+   */
+  const armTouchDrag = useCallback((key, touch) => {
     // Cancel any pending long press
     if (longPressTimeoutRef.current) {
       clearTimeout(longPressTimeoutRef.current);
       longPressTimeoutRef.current = null;
     }
-    const touch = e.touches[0];
+    if (!piecePlacements[key]) return;
     const [row, col] = key.split(',').map(Number);
     touchDragRef.current = { piece: piecePlacements[key], key, startX: touch.clientX, startY: touch.clientY, isDragging: false };
     setDraggedPiece({ key, data: piecePlacements[key] });
     setDraggedPiecePosition({ row, col });
   }, [piecePlacements]);
+
+  useTouchPieceGestures(boardRef, {
+    // A tap shows the piece's hover styles, as resting a pointer on it would.
+    onTap: (info) => {
+      const placement = piecePlacements[info.key];
+      if (!placement) return;
+      const [row, col] = info.key.split(',').map(Number);
+      const playerId = Number(placement.player_id ?? placement.player_number ?? placement.player ?? 1);
+      setHoveredPiecePosition({ row, col, pieceId: placement.piece_id, playerId });
+    },
+    onLift: (info, point) => armTouchDrag(info.key, point),
+  });
 
   const handlePieceTouchMove = useCallback((e) => {
     const td = touchDragRef.current;
@@ -1383,7 +1404,8 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId, piecePasswo
                 draggable
                 onDragStart={(e) => handleDragStart(e, key)}
                 onDragEnd={handleDragEnd}
-                onTouchStart={(e) => handlePieceTouchStart(e, key)}
+                data-piece-key={key}
+                data-piece-own="1"
                 onTouchMove={handlePieceTouchMove}
                 onTouchEnd={handlePieceTouchEnd}
                 onMouseEnter={() => {
@@ -1492,7 +1514,7 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId, piecePasswo
     }
     
     return board;
-  }, [piecePlacements, gameData.board_width, gameData.board_height, gameData.other_game_data, lightSquareColor, darkSquareColor, handleSquareRightClick, handleDragOver, handleDrop, handleDragStart, handleDragEnd, handlePieceTouchStart, handlePieceTouchMove, handlePieceTouchEnd, getPlayerColor, getPlacementImageUrl, draggedPiece, draggedPiecePosition, hoveredPiecePosition, pieceDataMap, getMoveInfo, getCaptureInfo, canRangedAttackTo, boardDimensions, handleTouchStart, handleTouchEnd, handleTouchMoveCancel, touchDragPiece, getSpecialSquareInfo, impassableSquares]);
+  }, [piecePlacements, gameData.board_width, gameData.board_height, gameData.other_game_data, lightSquareColor, darkSquareColor, handleSquareRightClick, handleDragOver, handleDrop, handleDragStart, handleDragEnd, handlePieceTouchMove, handlePieceTouchEnd, getPlayerColor, getPlacementImageUrl, draggedPiece, draggedPiecePosition, hoveredPiecePosition, pieceDataMap, getMoveInfo, getCaptureInfo, canRangedAttackTo, boardDimensions, handleTouchStart, handleTouchEnd, handleTouchMoveCancel, touchDragPiece, getSpecialSquareInfo, impassableSquares]);
 
   const handleMirrorPieces = useCallback((sourcePlayerId, targetPlayerId) => {
     const boardHeight = gameData.board_height || 8;
@@ -1753,6 +1775,7 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId, piecePasswo
           <div style={boardVpHook.contentStyle}>
         <div 
           ref={boardRef}
+          data-touch-board=""
           className={styles["placement-board"]}
           style={{
             display: 'grid',

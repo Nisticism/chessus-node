@@ -440,7 +440,7 @@ const Step4SpecialSquares = ({ gameData, updateGameData }) => {
       <div className={styles["board-placement-preview"]}>
         <div
           ref={boardRef}
-          className={styles["placement-board"]}
+          className={`${styles["placement-board"]} ${styles["paint-board"]}`}
           style={{
             display: 'grid',
             gridTemplateRows: `repeat(${gameData.board_height}, ${Math.min(60, Math.min(480, windowWidth - 60 - 4) / Math.max(gameData.board_width, gameData.board_height))}px)`,

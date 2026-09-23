@@ -600,6 +600,15 @@ const PuzzlesPanel = () => {
     return { x, y };
   }, [vp.squareSize, boardWidth, boardHeight]);
 
+  // For the shared touch rules: is there a piece here, and may it be moved?
+  const squarePiece = useCallback((x, y) => {
+    const here = board?.[`${y},${x}`];
+    if (!here) return null;
+    const movable = !!puzzle && !busy && !finished && !replaying
+      && Number(here.player_id) === Number(puzzle.side_to_move);
+    return movable ? 'own' : 'other';
+  }, [board, puzzle, busy, finished, replaying]);
+
   const startPress = useCallback((e, x, y) => {
     // `replaying`: a piece picked up mid-replay would be dragged off a
     // position that is about to change under it.
@@ -864,6 +873,7 @@ const PuzzlesPanel = () => {
                   onSquareClick={clickSquare}
                   onSquarePointerDown={startPress}
                   liftedSquare={picked}
+                  squarePiece={squarePiece}
                   onSquareMouseEnter={hoverSquare}
                   onSquareMouseLeave={unhoverSquare}
                 />

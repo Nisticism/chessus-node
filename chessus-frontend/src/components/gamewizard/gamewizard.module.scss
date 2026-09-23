@@ -1869,6 +1869,12 @@ select.form-input-small {
   }
 }
 
+// A board where dragging a finger paints squares (the special-squares steps):
+// the finger belongs to the painting, never to a scroll.
+.paint-board {
+  touch-action: none;
+}
+
 // Board styling for piece placement and special squares
 .board-placement-preview {
   display: flex;
@@ -1881,7 +1887,9 @@ select.form-input-small {
 .placement-board {
   background: var(--board-bg, transparent);
   box-sizing: border-box;
-  touch-action: none;
+  /* No touch-action here: on the piece-placement board a swipe scrolls and a
+     long press picks a piece up (useTouchPieceGestures). The special-squares
+     boards add .paint-board, where dragging a finger paints squares. */
   
   .board-square {
     aspect-ratio: 1;

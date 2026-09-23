@@ -737,6 +737,15 @@ export default function DiscordActivity() {
     immediate: found.length > 0,
   });
 
+  // For the shared touch rules: is there a piece here, and may it be moved?
+  const squarePiece = useCallback((x, y) => {
+    const here = board?.[`${y},${x}`];
+    if (!here) return null;
+    const movable = !!puzzle && !busy && !finished && !replaying
+      && Number(here.player_id) === Number(puzzle.side_to_move);
+    return movable ? 'own' : 'other';
+  }, [board, puzzle, busy, finished, replaying]);
+
   const startPress = useCallback((e, x, y) => {
     // `replaying`: the position is still arriving.
     if (!puzzle || busy || finished || replaying) return;
@@ -1000,6 +1009,7 @@ export default function DiscordActivity() {
           onSquareClick={clickSquare}
           onSquarePointerDown={startPress}
           liftedSquare={picked}
+          squarePiece={squarePiece}
           onSquareMouseEnter={hoverSquare}
           onSquareMouseLeave={unhoverSquare}
           boardRef={boardRef}

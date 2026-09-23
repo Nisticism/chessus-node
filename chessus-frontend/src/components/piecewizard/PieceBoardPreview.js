@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef, useCallback, useEffect } from "react";
+import useTouchPieceGestures from "../common/useTouchPieceGestures";
 import styles from "./piecewizard.module.scss";
 import { applySvgStretchBackground } from "../../helpers/svgStretchUtils";
 import { getSquareHighlightStyle, getDirectionChangeMoves } from "../../helpers/pieceMovementUtils";
@@ -984,9 +985,16 @@ const PieceBoardPreview = ({ pieceData, showAttack = true, showLegend = true }) 
     setIsHovering(true);
   }, [animState, anchorRow, anchorCol, boardWidth]);
 
-  const handlePieceTouchStart = useCallback((e) => {
+  /*
+   * Touch - the site-wide rules in useTouchPieceGestures. The piece used to
+   * start dragging the instant a finger landed on it, and then held the whole
+   * page still until the finger lifted, so a swipe that happened to start on
+   * it could not scroll. Now a tap picks it up (and shows its moves), a press
+   * on it once picked up drags at once, and a long press drags straight away.
+   */
+  const [touchLifted, setTouchLifted] = useState(false);
+  const beginTouchDrag = useCallback((point) => {
     if (animState) return;
-    e.preventDefault();
     const gridRect = gridRef.current?.getBoundingClientRect();
     if (!gridRect) return;
     const squares = gridRef.current.querySelectorAll(`.${styles["board-square"]}`);
@@ -999,11 +1007,16 @@ const PieceBoardPreview = ({ pieceData, showAttack = true, showLegend = true }) 
       squareWidth: anchorRect.width,
       squareHeight: anchorRect.height,
     };
-    const touch = e.touches[0];
-    setDragPos({ x: touch.clientX - gridRect.left, y: touch.clientY - gridRect.top });
+    setDragPos({ x: point.clientX - gridRect.left, y: point.clientY - gridRect.top });
     setIsDragging(true);
     setIsHovering(true);
   }, [animState, anchorRow, anchorCol, boardWidth]);
+
+  useTouchPieceGestures(gridRef, {
+    onTap: () => { setTouchLifted((v) => !v); if (!animState) setIsHovering(true); },
+    onLift: () => setTouchLifted(true),
+    onDragStart: (info, point) => beginTouchDrag(point),
+  });
 
   useEffect(() => {
     if (!isDragging) return;
@@ -1028,6 +1041,7 @@ const PieceBoardPreview = ({ pieceData, showAttack = true, showLegend = true }) 
       setIsDragging(false);
       setDragPos(null);
       dragStartRef.current = null;
+      setTouchLifted(false);
     };
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
@@ -1173,7 +1187,9 @@ const PieceBoardPreview = ({ pieceData, showAttack = true, showLegend = true }) 
                     cursor: 'grab',
                   }}
                   onMouseDown={handlePieceMouseDown}
-                  onTouchStart={handlePieceTouchStart}
+                  data-piece-key="piece"
+                  data-piece-own="1"
+                  data-piece-lifted={touchLifted ? '1' : undefined}
                 />
               ) : isMultiTile ? (
                 <div
@@ -1191,10 +1207,12 @@ const PieceBoardPreview = ({ pieceData, showAttack = true, showLegend = true }) 
                     cursor: 'grab',
                   }}
                   onMouseDown={handlePieceMouseDown}
-                  onTouchStart={handlePieceTouchStart}
+                  data-piece-key="piece"
+                  data-piece-own="1"
+                  data-piece-lifted={touchLifted ? '1' : undefined}
                 />
               ) : (
-                <img src={imgSrc} alt="Piece" draggable="false" onDragStart={(e) => e.preventDefault()} onMouseDown={handlePieceMouseDown} onTouchStart={handlePieceTouchStart} style={{ cursor: 'grab' }} />
+                <img src={imgSrc} alt="Piece" draggable="false" onDragStart={(e) => e.preventDefault()} onMouseDown={handlePieceMouseDown} data-piece-key="piece" data-piece-own="1" data-piece-lifted={touchLifted ? '1' : undefined} style={{ cursor: 'grab' }} />
               )
             )}
             {showPiece && !imgSrc && "?"}

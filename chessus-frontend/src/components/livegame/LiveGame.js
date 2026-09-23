@@ -29,6 +29,7 @@ import PieceBadges from "../common/PieceBadges";
 import GameChat from "./GameChat";
 import ToggleSwitch from "../common/ToggleSwitch";
 import useBoardViewport from "../common/useBoardViewport";
+import useTouchPieceGestures from "../common/useTouchPieceGestures";
 import BoardZoomControls from "../common/BoardZoomControls";
 import boardVp from "../common/boardViewport.module.scss";
 import {
@@ -4533,8 +4534,15 @@ const LiveGame = () => {
     return { x: displayX, y: displayY };
   }, [shouldFlipBoard]);
 
-  // Touch event handlers for mobile drag support
-  const handleTouchStart = useCallback((e, piece) => {
+  /*
+   * Pick a piece up for a touch drag. Two ways in, one set of rules - see
+   * useTouchPieceGestures:
+   *   - a press on the piece that is already selected (handleTouchStart)
+   *   - a long press on any piece you may move (the gesture hook's onLift)
+   * A touch on an unselected piece does nothing here: a swipe scrolls, and a
+   * tap reaches onClick, which selects it exactly as a mouse click does.
+   */
+  const armTouchDrag = useCallback((piece, touch, el, fromLongPress) => {
     // Block dragging while a move is pending confirmation
     if (pendingMove) return;
     // Block dragging while my reactive move is awaiting the opponent's veto.
@@ -4545,6 +4553,10 @@ const LiveGame = () => {
 
     const pieceTeam = piece.player_id || piece.team;
     const isOwnPiece = currentPlayer && (pieceTeam === currentPlayer.position || piece.is_neutral);
+    const isLifted = selectedPiece && (selectedPiece.id != null
+      ? selectedPiece.id === piece.id
+      : (selectedPiece.x === piece.x && selectedPiece.y === piece.y));
+    if (!isLifted && !fromLongPress) return;
 
     // Reposition phase: allow touch-dragging eligible pieces
     if (gameState?.repositionPhase?.active) {
@@ -4552,30 +4564,11 @@ const LiveGame = () => {
       const canReposition = isMyRepositionTurn && isOwnPiece &&
         (!repoKeyOnly || piece.ends_game_on_capture || piece.ends_game_on_checkmate);
       if (!canReposition) return;
-      const touch = e.touches[0];
       touchDragRef.current = { piece, moves: [], startX: touch.clientX, startY: touch.clientY, isDragging: false, grabOffset: { x: 0, y: 0 }, isReposition: true };
       setSelectedPiece(piece);
       setValidMoves([]);
       return;
     }
-
-    /*
-     * Only a piece that is already picked up can be dragged by touch.
-     *
-     * A finger landing on one of your pieces used to select it and turn the
-     * next eight pixels of movement into a drag - so on a phone, and above all
-     * on a zoomed board that fills the screen, trying to scroll picked pieces
-     * up instead. Now a touch on an unselected piece is left alone: a swipe
-     * scrolls, and a tap reaches onClick, which selects it exactly as a mouse
-     * click does. Press the selected piece again and it drags.
-     *
-     * The reposition phase above is exempt: it has no click path to select
-     * with, so it keeps the one-motion drag.
-     */
-    const isLifted = selectedPiece && (selectedPiece.id != null
-      ? selectedPiece.id === piece.id
-      : (selectedPiece.x === piece.x && selectedPiece.y === piece.y));
-    if (!isLifted) return;
 
     const canDragForMove = isMyTurn && (gameState?.status === 'active' || gameState?.status === 'ready') && isOwnPiece;
     const canDragForPremove = !isMyTurn && (gameState?.status === 'active' || gameState?.status === 'ready') && gameState?.allowPremoves !== false && isOwnPiece && !(gameState?.gameType?.veto_enabled && !gameState?.gameType?.simultaneous_turns);
@@ -4588,14 +4581,12 @@ const LiveGame = () => {
       return;
     }
 
-    const touch = e.touches[0];
-
     // Calculate grab offset within the piece footprint for multi-tile pieces
     const pw = piece.piece_width || 1;
     const ph = piece.piece_height || 1;
     let grabOffset = { x: 0, y: 0 };
-    if ((pw > 1 || ph > 1) && e.currentTarget) {
-      const rect = e.currentTarget.getBoundingClientRect();
+    if ((pw > 1 || ph > 1) && el) {
+      const rect = el.getBoundingClientRect();
       const relX = touch.clientX - rect.left;
       const relY = touch.clientY - rect.top;
       const cellWidth = rect.width / pw;
@@ -4622,6 +4613,25 @@ const LiveGame = () => {
     setSelectedPiece(piece);
     setValidMoves(moves);
   }, [isMyTurn, isMyRepositionTurn, gameState, currentPlayer, calculateValidMoves, pendingMove, captureActionPieceId, showIllegalMoveWarning, showPromotionModal, reactiveMoveLocked, selectedPiece]);
+
+  const handleTouchStart = useCallback((e, piece) => {
+    armTouchDrag(piece, e.touches[0], e.currentTarget, false);
+  }, [armTouchDrag]);
+
+  // The shared touch rules, bound to this board.
+  useTouchPieceGestures(boardRef, {
+    // A tap shows the piece's hover styles, as resting a pointer on it would.
+    onTap: (info) => {
+      if (!(gameState?.showPieceHelpers || showMovableIndicators)) return;
+      const piece = parsePieces(gameState?.pieces || []).find((p) => String(p.id) === info.key);
+      if (piece) handlePieceHover(piece);
+    },
+    // A long press picks the piece up; the touchmoves that follow drag it.
+    onLift: (info, point) => {
+      const piece = parsePieces(gameState?.pieces || []).find((p) => String(p.id) === info.key);
+      if (piece) armTouchDrag(piece, point, info.el, true);
+    },
+  });
 
   const handleTouchMove = useCallback((e) => {
     const td = touchDragRef.current;
@@ -6070,16 +6080,19 @@ const LiveGame = () => {
               } : {};
               
               const isTouchDragging = touchDragPiece && touchDragPiece.x === piece.x && touchDragPiece.y === piece.y;
-              // The one piece a touch may drag - see handleTouchStart - and so
-              // the one piece that keeps a finger from scrolling.
+              // The one piece a touch may drag at once - see armTouchDrag -
+              // and so the one piece that keeps a finger from scrolling.
               const isLiftedPiece = !!selectedPiece && (selectedPiece.id != null
                 ? selectedPiece.id === piece.id
                 : (selectedPiece.x === piece.x && selectedPiece.y === piece.y));
-              const holdsTouch = isLiftedPiece || (!!gameState?.repositionPhase?.active && _canReposition);
+              const canTouchMove = canDragForMove || canDragForPremove || _canReposition || _canDragForVeto;
               
               return (
                 <div 
-                  className={`${styles.piece}${holdsTouch ? ` ${styles["touch-held"]}` : ''}`}
+                  className={styles.piece}
+                  data-piece-key={String(piece.id)}
+                  data-piece-own={canTouchMove ? '1' : undefined}
+                  data-piece-lifted={canTouchMove && isLiftedPiece ? '1' : undefined}
                   style={{
                     ...multiTileStyle,
                     ...(isTouchDragging ? { opacity: 0 } : {})

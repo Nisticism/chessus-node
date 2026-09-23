@@ -24,7 +24,7 @@
    * This used to be `none` on every square, so on a phone the board swallowed
    * every swipe that landed on it - zoomed in, with the board filling the
    * screen, there was nowhere left to scroll from. Only a piece that has been
-   * picked up claims the gesture now; see .lifted.
+   * picked up claims the gesture now; see [data-piece-lifted] in index.css.
    */
 
   /* Pieces sit inside the square and never intercept the click on it, and are
@@ -39,8 +39,3 @@
   }
 }
 
-/* The picked-up piece's square: the one place a touch drag must move the
-   piece rather than the page. */
-.lifted {
-  touch-action: none;
-}

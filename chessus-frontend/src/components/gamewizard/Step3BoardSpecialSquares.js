@@ -853,7 +853,7 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
           <div style={boardVpHook.contentStyle}>
         <div
           ref={boardRef}
-          className={styles["placement-board"]}
+          className={`${styles["placement-board"]} ${styles["paint-board"]}`}
           style={{
             display: 'grid',
             gridTemplateRows: `repeat(${gameData.board_height}, ${squareSize}px)`,

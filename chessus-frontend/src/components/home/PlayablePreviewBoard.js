@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useMemo } from "react";
+import React, { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import styles from "./home.module.scss";
 import {
   canPieceMoveTo as canPieceMoveToUtil,
@@ -7,6 +7,7 @@ import {
 
 import { applySvgStretchBackground } from "../../helpers/svgStretchUtils";
 import useBoardViewport from "../common/useBoardViewport";
+import useTouchPieceGestures from "../common/useTouchPieceGestures";
 import BoardZoomControls from "../common/BoardZoomControls";
 import boardVp from "../common/boardViewport.module.scss";
 
@@ -33,6 +34,9 @@ const PlayablePreviewBoard = ({ gameData, lightSquareColor, darkSquareColor }) =
   const [hoveredPiece, setHoveredPiece] = useState(null);
   const [hoveredHighlights, setHoveredHighlights] = useState({});
   const [moveCounts, setMoveCounts] = useState({});
+  // The piece following a finger, while a touch drag is under way.
+  const [touchGhost, setTouchGhost] = useState(null);
+  const gridRef = useRef(null);
 
   // Initialize pieces from gameData
   useEffect(() => {
@@ -370,6 +374,58 @@ const PlayablePreviewBoard = ({ gameData, lightSquareColor, darkSquareColor }) =
     setValidMoves([]);
   }, [draggingPiece, dragValidMoves, executeMove]);
 
+  /*
+   * Touch - the site-wide rules in useTouchPieceGestures. HTML5 drag-and-drop
+   * does not reach most phones, so this board had no touch drag at all, and its
+   * grid swallowed every swipe. The hook now drives a drag of its own here.
+   */
+  const pieceByKey = (key) => pieces.find((p) => String(p.id) === key);
+  const squareUnder = (point) => {
+    const el = document.elementFromPoint(point.clientX, point.clientY);
+    const sq = el && el.closest ? el.closest('[data-preview-square]') : null;
+    if (!sq) return null;
+    const [row, col] = sq.getAttribute('data-preview-square').split(',').map(Number);
+    return { row, col };
+  };
+  const endTouchDrag = () => {
+    setTouchGhost(null);
+    setDraggingPiece(null);
+    setDragValidMoves([]);
+  };
+  useTouchPieceGestures(gridRef, {
+    onTap: (info) => {
+      const piece = pieceByKey(info.key);
+      if (piece) handlePieceHover(piece);
+    },
+    onLift: (info) => {
+      const piece = pieceByKey(info.key);
+      if (!piece) return;
+      setSelectedPiece(piece);
+      setValidMoves(calculateValidMoves(piece));
+    },
+    onDragStart: (info, point) => {
+      const piece = pieceByKey(info.key);
+      if (!piece || piece.player_number !== currentTurn) return;
+      setDraggingPiece(piece);
+      setDragValidMoves(calculateValidMoves(piece));
+      setTouchGhost({ piece, x: point.clientX, y: point.clientY });
+    },
+    onDragMove: (point) => {
+      setTouchGhost((g) => (g ? { ...g, x: point.clientX, y: point.clientY } : g));
+    },
+    onDrop: (info, point) => {
+      const piece = draggingPiece || pieceByKey(info.key);
+      const target = squareUnder(point);
+      if (piece && target && dragValidMoves.some((m) => m.row === target.row && m.col === target.col)) {
+        executeMove(piece, target.row, target.col);
+        setSelectedPiece(null);
+        setValidMoves([]);
+      }
+      endTouchDrag();
+    },
+    onCancel: endTouchDrag,
+  });
+
   // Get image URL for piece
   const getPieceImageUrl = useCallback((piece) => {
     const playerIndex = (piece.player_number || 1) - 1;
@@ -502,6 +558,7 @@ const PlayablePreviewBoard = ({ gameData, lightSquareColor, darkSquareColor }) =
           <div
             key={`${row}-${col}`}
             className={squareClasses}
+            data-preview-square={`${row},${col}`}
             style={{ ...squareStyle, ...(isAnchor && piece && ((piece.piece_width || 1) > 1 || (piece.piece_height || 1) > 1) ? { zIndex: 10 } : {}) }}
             onClick={() => handleSquareClick(row, col)}
             onDragOver={handleDragOver}
@@ -534,6 +591,9 @@ const PlayablePreviewBoard = ({ gameData, lightSquareColor, darkSquareColor }) =
                   onDragStart={(e) => handleDragStart(e, piece)}
                   onDragEnd={handleDragEnd}
                   onContextMenu={(e) => e.preventDefault()}
+                  data-piece-key={String(piece.id)}
+                  data-piece-own={piece.player_number === currentTurn ? '1' : undefined}
+                  data-piece-lifted={piece.player_number === currentTurn && selectedPiece?.id === piece.id ? '1' : undefined}
                 />
               ) : (
                 <img
@@ -548,6 +608,9 @@ const PlayablePreviewBoard = ({ gameData, lightSquareColor, darkSquareColor }) =
                   onDragStart={(e) => handleDragStart(e, piece)}
                   onDragEnd={handleDragEnd}
                   onContextMenu={(e) => e.preventDefault()}
+                  data-piece-key={String(piece.id)}
+                  data-piece-own={piece.player_number === currentTurn ? '1' : undefined}
+                  data-piece-lifted={piece.player_number === currentTurn && selectedPiece?.id === piece.id ? '1' : undefined}
                 />
               );
             })()}
@@ -572,6 +635,8 @@ const PlayablePreviewBoard = ({ gameData, lightSquareColor, darkSquareColor }) =
         <div style={boardVpHook.contentStyle}>
           <div
             className={styles["preview-board-grid"]}
+            ref={gridRef}
+            data-touch-board=""
             style={{
               gridTemplateColumns: `repeat(${boardWidth}, ${squareSize}px)`,
               gridTemplateRows: `repeat(${boardHeight}, ${squareSize}px)`,
@@ -585,6 +650,15 @@ const PlayablePreviewBoard = ({ gameData, lightSquareColor, darkSquareColor }) =
       </div>
       <BoardZoomControls {...boardVpHook.controlProps} />
       </div>
+      {touchGhost && (
+        <img
+          src={getPieceImageUrl(touchGhost.piece)}
+          alt=""
+          aria-hidden="true"
+          className={styles["preview-touch-ghost"]}
+          style={{ left: touchGhost.x, top: touchGhost.y, width: squareSize, height: squareSize }}
+        />
+      )}
       <div className={styles["turn-indicator"]}>
         <span className={`${styles["turn-dot"]} ${currentTurn === 1 ? styles["turn-p1"] : styles["turn-p2"]}`} />
         {currentTurn === 1 ? "Your Turn" : "Opponent's Turn"}

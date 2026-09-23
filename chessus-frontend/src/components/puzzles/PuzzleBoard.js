@@ -1,5 +1,6 @@
-import React, { useMemo } from "react";
+import React, { useCallback, useMemo, useRef } from "react";
 import boardVp from "../common/boardViewport.module.scss";
+import useTouchPieceGestures from "../common/useTouchPieceGestures";
 import styles from "./puzzleboard.module.scss";
 
 /*
@@ -34,11 +35,21 @@ const PuzzleBoard = ({
   onSquareClick,
   onSquarePointerDown,
   /*
-   * The square whose piece is picked up, as "y,x". On touch it is the only
-   * square that starts a drag, and the only one that keeps the finger from
-   * scrolling - see .lifted in puzzleboard.module.scss.
+   * Touch - see useTouchPieceGestures for the rules every board shares.
+   *
+   * liftedSquare   "y,x" of the piece that is picked up. The only square a
+   *                touch press drags from straight away, and the only one that
+   *                keeps a finger from scrolling.
+   * squarePiece    (x, y) => 'own' | 'other' | null: whether a piece sits there
+   *                and whether this user may move it right now. A long press
+   *                only picks up an 'own' piece; a tap on either kind shows its
+   *                hover styles.
+   * onSquareLift   (x, y) => void: a long press picked this piece up. Optional -
+   *                a caller whose press handler already selects can omit it.
    */
   liftedSquare = null,
+  squarePiece = null,
+  onSquareLift = null,
   onSquareMouseEnter,
   onSquareMouseLeave,
   className,
@@ -53,10 +64,14 @@ const PuzzleBoard = ({
         const key = `${y},${x}`;
         const extra = squareClassName ? squareClassName(x, y) : '';
         const lifted = key === liftedSquare;
+        const piece = squarePiece ? squarePiece(x, y) : null;
         out.push(
           <div
             key={key}
-            className={`${styles["square"]}${lifted ? ` ${styles["lifted"]}` : ''}${extra ? ` ${extra}` : ''}`}
+            className={`${styles["square"]}${extra ? ` ${extra}` : ''}`}
+            data-piece-key={piece ? key : undefined}
+            data-piece-own={piece === 'own' ? '1' : undefined}
+            data-piece-lifted={piece === 'own' && lifted ? '1' : undefined}
             style={{
               background: (x + y) % 2 === 0 ? lightColor : darkColor,
               width: vp.squareSize,
@@ -73,9 +88,9 @@ const PuzzleBoard = ({
             onPointerDown={(e) => {
               /*
                * A finger on a piece that is not picked up yet is somebody
-               * scrolling until proven otherwise. Nothing starts here; if it
-               * was a tap, the click that follows picks the piece up, and the
-               * next press on it can drag.
+               * scrolling until proven otherwise. Nothing starts here: a tap
+               * picks the piece up through the click that follows, and a long
+               * press through the gesture hook below.
                */
               if (e.pointerType === 'touch' && !lifted) return;
               e.preventDefault();
@@ -93,9 +108,45 @@ const PuzzleBoard = ({
     return out;
   }, [
     boardWidth, boardHeight, lightColor, darkColor, vp.squareSize,
-    renderSquare, squareClassName, squareTitle, liftedSquare,
+    renderSquare, squareClassName, squareTitle, liftedSquare, squarePiece,
     onSquareClick, onSquarePointerDown, onSquareMouseEnter, onSquareMouseLeave,
   ]);
+
+  const boardEl = useRef(null);
+  const setBoardEl = useCallback((el) => {
+    boardEl.current = el;
+    if (typeof boardRef === 'function') boardRef(el);
+    else if (boardRef) boardRef.current = el;
+  }, [boardRef]);
+
+  const squareOf = (key) => {
+    const [y, x] = String(key).split(',').map(Number);
+    return { x, y };
+  };
+
+  useTouchPieceGestures(boardEl, {
+    // A tap shows the piece's hover styles, as a pointer resting on it would.
+    // The click that follows then does whatever a click does - selects your
+    // own piece, or answers with the one already selected.
+    onTap: (info) => {
+      const { x, y } = squareOf(info.key);
+      if (onSquareMouseLeave) onSquareMouseLeave(x, y);
+      if (onSquareMouseEnter) onSquareMouseEnter(x, y);
+    },
+    // A long press: pick the piece up, then hand the caller the same press a
+    // pointer would have, so its own drag carries on from there.
+    onLift: (info, point) => {
+      const { x, y } = squareOf(info.key);
+      if (onSquareLift) onSquareLift(x, y);
+      if (onSquarePointerDown) {
+        onSquarePointerDown({
+          clientX: point.clientX, clientY: point.clientY,
+          pointerType: 'touch', button: 0, fromLongPress: true,
+          preventDefault() {}, stopPropagation() {},
+        }, x, y);
+      }
+    },
+  });
 
   return (
     <div
@@ -106,7 +157,8 @@ const PuzzleBoard = ({
       <div style={vp.contentStyle}>
         <div
           className={`${styles["board"]}${className ? ` ${className}` : ''}`}
-          ref={boardRef}
+          ref={setBoardEl}
+          data-touch-board=""
           style={{ gridTemplateColumns: `repeat(${boardWidth}, ${vp.squareSize}px)` }}
         >
           {squares}

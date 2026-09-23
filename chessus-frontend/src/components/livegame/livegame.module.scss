@@ -1639,15 +1639,8 @@
   z-index: 1;
   cursor: grab;
 
-  /* Only the piece that is picked up swallows the touch gesture. This used to
-     be every piece you COULD pick up, which on a zoomed board was most of what
-     was under your thumb - so swiping to scroll grabbed pieces instead. Now
-     the whole board scrolls until you tap a piece to lift it; then that one
-     piece drags. (During repositioning, every movable piece holds the touch:
-     that phase is drag-only.) */
-  &.touch-held {
-    touch-action: none;
-  }
+  /* Only the piece that is picked up swallows the touch gesture: see
+     [data-piece-lifted] in index.css and useTouchPieceGestures. */
 
   &:active {
     cursor: grabbing;

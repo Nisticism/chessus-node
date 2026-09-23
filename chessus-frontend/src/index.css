@@ -423,6 +423,25 @@ html {
   font-size: 16px;
 }
 
+/*
+ * Touch on boards - see components/common/useTouchPieceGestures.js.
+ *
+ * Boards themselves leave touch-action alone, so a swipe scrolls them and the
+ * page. Only the piece that is picked up claims the finger, which is what lets
+ * it drag at once rather than after a long press.
+ */
+[data-piece-lifted="1"] {
+  touch-action: none;
+}
+
+/* A long press on a piece is a drag, not a request for the iOS callout or a
+   text selection across the squares. */
+[data-touch-board] {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 /* Ensure buttons never word-wrap */
 button, .btn, a.btn {
   white-space: nowrap;

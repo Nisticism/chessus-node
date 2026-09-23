@@ -458,7 +458,21 @@
   border-radius: 8px;
   overflow: visible;
   box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.3);
-  touch-action: none;
+  /* No touch-action here. It was `none`, so a swipe anywhere on the board -
+     and on a phone the board is most of the screen - could not scroll it or
+     the page. The picked-up piece claims the finger instead; see
+     useTouchPieceGestures. */
+}
+
+/* The piece under a finger mid-drag. Pointer-transparent: the square beneath
+   it is what the drop lands on. */
+.preview-touch-ghost {
+  position: fixed;
+  z-index: 60;
+  pointer-events: none;
+  object-fit: contain;
+  translate: -50% -50%;
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.45));
 }
 
 .preview-square {
