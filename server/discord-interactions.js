@@ -330,11 +330,22 @@ function registerDiscordInteractionRoutes(app) {
          * nothing, so this is the only moment the id and the place it was
          * clicked are both in hand.
          */
+        const clickedPuzzle = puzzleIdFromCustomId(interaction.data.custom_id);
+        // channel_id at the top level, or the channel object - Discord sends
+        // both and which one is present has varied by interaction type.
+        const clickedChannel = interaction.channel_id || interaction.channel?.id;
         rememberLaunch(
-          interaction.channel_id,
+          clickedChannel,
           interaction.member?.user?.id || interaction.user?.id,
-          puzzleIdFromCustomId(interaction.data.custom_id)
+          clickedPuzzle
         );
+        /*
+         * Logged because this is the hinge. If old posts still open today's
+         * puzzle, the question is whether the click was seen with an id on it -
+         * and that is answered here rather than guessed at.
+         */
+        console.log(`[discord] play-daily click: puzzle ${clickedPuzzle || '(none in custom_id)'}`
+          + ` channel ${clickedChannel || '(unknown)'}`);
         return res.json({ type: LAUNCH_ACTIVITY });
       }
 
@@ -372,6 +383,10 @@ function registerDiscordInteractionRoutes(app) {
 function registerDiscordLaunchContextRoute(app) {
   app.get('/api/discord/launch-context', (req, res) => {
     const puzzleId = recentLaunchPuzzleId(req.query.channel_id, req.query.user_id);
+    // The other half of the same question: the activity asked, and this is
+    // what it was told.
+    console.log(`[discord] launch-context: channel ${req.query.channel_id || '(none)'}`
+      + ` -> puzzle ${puzzleId || 0} (0 means today)`);
     res.json({ puzzleId: puzzleId || null });
   });
 }
@@ -380,6 +395,10 @@ module.exports = {
   registerDiscordInteractionRoutes,
   registerDiscordLaunchContextRoute,
   recentLaunchPuzzleId,
+  // Exported alongside its reader so the pair can be exercised without Discord
+  // in the loop - the click cannot otherwise be simulated, since the handler
+  // verifies a real signature first.
+  rememberLaunch,
   interactionsRawBody,
   INTERACTIONS_PATH,
   PLAY_DAILY_ID,
