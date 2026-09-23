@@ -202,21 +202,63 @@
 
 /* A button, styled as a link: it leaves the activity rather than acting in it,
    so it should not read as the primary thing on the screen. */
+/*
+ * The way out of the frame, and the rules - buttons, not blue underlined links.
+ *
+ * They were styled as web links, in Discord's own link blue. That reads as
+ * somebody else's chrome sitting inside the puzzle, and the blue is only
+ * legible against one of Discord's themes. These match the site's own quiet
+ * buttons instead, drawn in translucent white over whatever is behind them, so
+ * they look deliberate on dark, light and AMOLED alike without having to know
+ * which one is on.
+ */
 .link-btn {
-  background: none;
-  border: 0;
-  padding: 0;
-  color: #00a8fc;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 6px;
+  padding: 5px 12px;
+  color: var(--gg-ink, #e6edf3);
   font: inherit;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
   cursor: pointer;
-  text-decoration: underline;
+  text-decoration: none;
+  line-height: 1.2;
 }
 
-.link-btn:hover { color: #4fc3ff; }
+.link-btn:hover {
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+}
+
+/*
+ * Discord tells an activity which theme it is in by putting `light` on the
+ * document. Translucent white over a light background is invisible, so the
+ * same two rules are drawn in ink instead - one decision, not a second set of
+ * colours to keep in step.
+ */
+:global(.light) .link-btn,
+:global([data-theme="light"]) .link-btn {
+  background: rgba(0, 0, 0, 0.06);
+  border-color: rgba(0, 0, 0, 0.18);
+  color: #1f2328;
+}
+
+:global(.light) .link-btn:hover,
+:global([data-theme="light"]) .link-btn:hover {
+  background: rgba(0, 0, 0, 0.12);
+  color: #000;
+}
 
 .link-btn:focus-visible {
   outline: 2px solid #5865f2;
   outline-offset: 2px;
-  border-radius: 2px;
+  border-radius: 6px;
+}
+
+/* The two ways out, side by side at one end of the footer. */
+.foot-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }

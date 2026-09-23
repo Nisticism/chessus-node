@@ -115,6 +115,9 @@ const GameRulesModal = ({ puzzleId, open, onClose, apiBase = DEFAULT_API, assetB
         aria-modal="true"
         aria-label="How this game works"
       >
+        {/* The shell keeps the rounded corners and clips; this scrolls inside
+            it, so the scrollbar's square ends cannot poke out past the radius. */}
+        <div className={styles["body"]}>
         <div className={styles["head"]}>
           <h2>{rules?.game_name ? `How ${rules.game_name} works` : "How this game works"}</h2>
           <button className={styles["close"]} onClick={onClose} aria-label="Close">✕</button>
@@ -165,6 +168,7 @@ const GameRulesModal = ({ puzzleId, open, onClose, apiBase = DEFAULT_API, assetB
             )}
           </>
         )}
+        </div>
       </div>
     </div>
   );

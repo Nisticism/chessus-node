@@ -152,6 +152,30 @@
   text-wrap: balance;
 }
 
+/* The title and whose move it is, one line - and still one line each when the
+   pair is too wide for the card, rather than a title split around a divider. */
+.daily-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: center;
+  gap: 8px;
+}
+
+.title-sep {
+  color: var(--text-dim);
+  font-weight: 400;
+}
+
+.turn-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 1rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 .solved-tick {
   margin-left: 8px;
   color: #5fd0a4;
@@ -334,6 +358,9 @@
   margin-top: auto;
   display: flex;
   align-items: center;
+  /* The two ends of the row: what to do next on one side, where else to look
+     on the other. They stack and re-centre when the card is too narrow. */
+  justify-content: space-between;
   gap: 14px;
   flex-wrap: wrap;
 
@@ -345,13 +372,25 @@
 .btn-secondary {
   align-self: flex-start;
   margin-top: auto;
-  display: inline-block;
+  /*
+   * inline-flex and an explicit line-height, because these are worn by both an
+   * <a> and a <button>. A button brings its own `line-height: normal` and its
+   * own font, so the same class produced boxes six pixels apart sitting side by
+   * side - close enough to look like a mistake and not close enough to ignore.
+   */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  line-height: 1.5;
+  font-family: inherit;
   padding: 10px 20px;
   border-radius: 6px;
   font-size: 1rem;
   font-weight: 600;
   text-decoration: none;
   cursor: pointer;
+  text-align: center;
 }
 
 .btn-primary {
@@ -469,22 +508,3 @@
   }
 }
 
-/* Opens the rules card. Quiet by default - a solver who knows the game should
-   not have it competing with the board. */
-.rules-button {
-  display: inline-block;
-  margin: 8px 0;
-  padding: 5px 12px;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: 6px;
-  color: var(--text-secondary, #9fb0c3);
-  font-size: 0.85rem;
-  cursor: pointer;
-  max-width: 100%;
-
-  &:hover {
-    background: rgba(255, 255, 255, 0.16);
-    color: var(--text-heading);
-  }
-}

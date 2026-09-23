@@ -409,7 +409,10 @@ const PuzzlesPanel = () => {
     const { x, y } = move.to;
     setBusy(true);
     setLastTry({ x, y });
-    setBoard((prev) => applyMove(prev, move, null, art));
+    // From `before`, not `prev`: the caller already placed the piece the moment
+    // it was dropped, and applying from the board it started on means doing it
+    // twice lands in the same place instead of moving it again.
+    setBoard(applyMove(before, move, null, art));
 
     try {
       const attemptLine = [...found, move];
@@ -491,6 +494,15 @@ const PuzzlesPanel = () => {
 
     // The position the guess is made against, so every outcome rebuilds from it.
     const before = board;
+    /*
+     * The piece moves NOW, before the lookup below.
+     *
+     * That lookup is a round trip, and until this was here the piece sat back
+     * on the square it was dragged from for the whole of it - so the drop read
+     * as "nothing happened" and then the piece jumped. The lookup refines the
+     * move; it does not decide whether it happens.
+     */
+    setBoard(applyMove(before, move));
     setBusy(true);
     try {
       const info = await axios.post(
@@ -887,15 +899,16 @@ const PuzzlesPanel = () => {
                     {puzzle.title || 'Today’s puzzle'}
                   </Link>
                   {daily.solvedByYou && <span className={styles["solved-tick"]} title="You have solved this">✓</span>}
+                  {/* Whose move it is decides everything about how the board
+                      reads, so it belongs with the title rather than adrift
+                      below it. Separated, not stacked - one line, two facts. */}
+                  <span className={styles["title-sep"]} aria-hidden="true">|</span>
+                  <span className={styles["turn-inline"]}>
+                    <span className={styles[`turn-p${puzzle.side_to_move}`]} aria-hidden="true" />
+                    Player {puzzle.side_to_move} to move
+                  </span>
                 </h3>
 
-                {/* Whose move it is decides everything about how the board
-                    reads, so it sits directly under the title rather than
-                    among the chips. */}
-                <p className={styles["turn"]}>
-                  <span className={styles[`turn-p${puzzle.side_to_move}`]} aria-hidden="true" />
-                  Player {puzzle.side_to_move} to move
-                </p>
 
                 {/*
                   * One row of facts about this puzzle - where it is from, who
@@ -921,31 +934,31 @@ const PuzzlesPanel = () => {
                       next in {nextPuzzleIn}
                     </span>
                   )}
-                  {puzzle.goal_label && (
-                    <span className={`${styles["fact"]} ${styles["chip"]}`}>{puzzle.goal_label}</span>
+                  {/*
+                    * The goal and how long it takes, as ONE fact.
+                    *
+                    * They were two pills in two different rows, which read as
+                    * two unrelated labels when they are really one sentence:
+                    * checkmate, in three. Plain text in the same row as
+                    * everything else, because a pill implies something you can
+                    * press.
+                    */}
+                  {(puzzle.goal_label || puzzle.solution_depth > 1) && (
+                    <span className={styles["fact"]}>
+                      {[puzzle.goal_label,
+                        puzzle.solution_depth > 1 ? `in ${puzzle.solution_depth} moves` : null]
+                        .filter(Boolean).join(' ')}
+                    </span>
+                  )}
+                  {puzzle.rating != null && (
+                    <span className={styles["fact"]}>rated {puzzle.rating}</span>
                   )}
                 </div>
-                {/* The rules, right here - the card is a puzzle too. */}
-                <button
-                  type="button"
-                  className={styles["rules-button"]}
-                  onClick={() => setRulesOpen(true)}
-                >
-                  How {puzzle.game_name || 'this game'} works
-                </button>
                 <GameRulesModal
                   puzzleId={puzzle.id}
                   open={rulesOpen}
                   onClose={() => setRulesOpen(false)}
                 />
-                {(puzzle.solution_depth > 1 || puzzle.rating != null) && (
-                  <div className={styles["daily-meta"]}>
-                    {puzzle.solution_depth > 1 && (
-                      <span className={styles["chip"]}>{puzzle.solution_depth} moves</span>
-                    )}
-                    {puzzle.rating != null && <span className={styles["chip"]}>Rated {puzzle.rating}</span>}
-                  </div>
-                )}
                 {IS_LOCAL && (
                   <div className={styles["dev-nav"]}>
                     <span>dev only</span>
@@ -1001,9 +1014,19 @@ const PuzzlesPanel = () => {
                       to={`/games/${puzzle.game_type_id}/puzzles/${puzzle.id}`}
                       className={styles["btn-secondary"]}
                     >
-                      Open on its own page
+                      Open Puzzle #{puzzle.id}
                     </Link>
                   )}
+                  {/* The rules sit at the end, beside the way out to the full
+                      page: both are "somewhere else to look", and neither is
+                      the thing to do next. */}
+                  <button
+                    type="button"
+                    className={styles["btn-secondary"]}
+                    onClick={() => setRulesOpen(true)}
+                  >
+                    {puzzle.game_name || 'Game'} Rules
+                  </button>
                 </div>
               </div>
             </>

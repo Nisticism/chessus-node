@@ -538,7 +538,10 @@ export default function DiscordActivity() {
     const { x, y } = move.to;
     setBusy(true);
     setLastTry({ x, y });
-    setBoard((prev) => applyMove(prev, move, null, art));
+    // From `before`, not `prev`: the mover already placed the piece the moment
+    // it was dropped, and applying from the board it started on means doing it
+    // twice lands in the same place instead of moving it again.
+    setBoard(applyMove(before, move, null, art));
 
     try {
       const moves = [...found, move];
@@ -640,6 +643,15 @@ export default function DiscordActivity() {
 
     // The position the guess is made against, so every outcome rebuilds from it.
     const before = board;
+    /*
+     * The piece moves NOW, before the lookup below.
+     *
+     * That lookup is a round trip, and until this was here the piece sat back
+     * on the square it was dragged from for the whole of it - so the drop read
+     * as "nothing happened" and then the piece jumped. The lookup refines the
+     * move; it does not decide whether it happens.
+     */
+    setBoard(applyMove(before, move));
     setBusy(true);
     try {
       const info = await axios.post(
@@ -1060,27 +1072,30 @@ export default function DiscordActivity() {
         <span className={styles["muted"]}>
           {attempts === 0 ? 'No attempts yet' : `${attempts} ${attempts === 1 ? 'try' : 'tries'} today`}
         </span>
-        {/* An anchor, not a button: when the SDK handshake is dead there is no
-            openExternalLink to call, and an ordinary link is the only way out
-            of the frame that does not depend on it. */}
-        {/* The rules, inside the activity. Leaving Discord to read how a
-            piece moves is the one thing this frame exists to avoid. */}
-        <button
-          type="button"
-          className={styles["link-btn"]}
-          onClick={() => setRulesOpen(true)}
-        >
-          How this game works
-        </button>
-        <a
-          className={styles["link-btn"]}
-          href={siteUrl || '#'}
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={openOnSite}
-        >
-          Open on GridGrove
-        </a>
+        {/* Kept together at one end, so the try count keeps the other. */}
+        <span className={styles["foot-actions"]}>
+          {/* The rules, inside the activity. Leaving Discord to read how a
+              piece moves is the one thing this frame exists to avoid. */}
+          <button
+            type="button"
+            className={styles["link-btn"]}
+            onClick={() => setRulesOpen(true)}
+          >
+            {daily?.puzzle?.game_name ? `${daily.puzzle.game_name} Rules` : 'Game Rules'}
+          </button>
+          {/* An anchor, not a button: when the SDK handshake is dead there is no
+              openExternalLink to call, and an ordinary link is the only way out
+              of the frame that does not depend on it. */}
+          <a
+            className={styles["link-btn"]}
+            href={siteUrl || '#'}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={openOnSite}
+          >
+            {puzzle?.id ? `Open Puzzle #${puzzle.id}` : 'Open on GridGrove'}
+          </a>
+        </span>
       </footer>
 
       {/* Same-origin bases: everything inside the activity must be, or

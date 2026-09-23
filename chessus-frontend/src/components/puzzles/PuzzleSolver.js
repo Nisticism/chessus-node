@@ -517,7 +517,7 @@ const PuzzleSolver = () => {
    * that has no business being written there once per attempt. The server
    * already knows what piece the id names.
    */
-  const submit = useCallback(async (move, art = null) => {
+  const submit = useCallback(async (move, art = null, preApplied = null) => {
     setBusy(true);
     setLastTry(move);
     const attemptLine = [...playedMoves, move];
@@ -531,9 +531,16 @@ const PuzzleSolver = () => {
      * `before` is what it is a guess against, so every branch below rebuilds
      * from that rather than layering onto the guess, and anything the server
      * rejects puts the piece back.
+     *
+     * `preApplied` is the board as it was when the CALLER already moved the
+     * piece - which it does, because the move has to appear the instant it is
+     * dropped and there is a lookup between there and here. Applying from
+     * `before` rather than from `prev` makes that harmless: doing it twice
+     * lands on the same board, and a promotion arriving late redraws it with
+     * the right artwork instead of layering a second move on top.
      */
-    const before = placements;
-    setPlacements((prev) => applyPly(prev, move, art));
+    const before = preApplied || placements;
+    setPlacements(applyPly(before, move, art));
 
     try {
       const { data } = await axios.post(
@@ -651,6 +658,18 @@ const PuzzleSolver = () => {
       to: { x, y },
       pieceId: mover?.id || `${mover?.piece_id}_${fy}_${fx}`,
     };
+    /*
+     * The piece moves NOW.
+     *
+     * The lookup below is a round trip, and until this was here the piece sat
+     * back on the square it was dragged from for the whole of it - so a drop
+     * read as "nothing happened", and then the piece jumped. The lookup only
+     * refines the move (castling partner, promotion choice); it does not decide
+     * whether it happens.
+     */
+    const before = placements;
+    setPlacements(applyPly(before, move));
+
     try {
       const { data } = await axios.post(
         `${API_URL}game-types/${gameId}/puzzle-move-info`,
@@ -674,13 +693,16 @@ const PuzzleSolver = () => {
         };
       }
       if (data?.promotes && Array.isArray(data.options) && data.options.length) {
-        setPendingPromotion({ move, options: data.options });
+        // The piece is already on its new square; the chooser decides what it
+        // becomes there. `before` travels with it so the choice redraws from
+        // the same board this did.
+        setPendingPromotion({ move, options: data.options, before });
         return;
       }
     } catch (_) {
       // The lookup is an improvement, not a gate - submit the move as it stands.
     }
-    submit(move);
+    submit(move, null, before);
   }, [placements, submit, gameId, puzzle?.side_to_move, puzzle?.setup_move]);
 
   const choosePromotion = useCallback((option) => {
@@ -702,7 +724,7 @@ const PuzzleSolver = () => {
        */
       piece_name: option.piece_name || null,
       image_location: option.image_location || null,
-    });
+    }, pending.before || null);
   }, [pendingPromotion, submit]);
 
   /** Which square a client-space point is over, or null if it is off the board. */
@@ -1235,7 +1257,7 @@ const PuzzleSolver = () => {
             className={styles["rules-button"]}
             onClick={() => setRulesOpen(true)}
           >
-            How {puzzle.game_name || 'this game'} works
+            {puzzle.game_name || 'Game'} Rules
           </button>
           <GameRulesModal
             puzzleId={puzzle.id}

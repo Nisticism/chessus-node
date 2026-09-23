@@ -16,6 +16,14 @@
   padding: 16px;
 }
 
+/*
+ * The shell holds the shape and does the clipping; nothing scrolls in here.
+ *
+ * Scrolling this element directly put a square-ended scrollbar hard against a
+ * 10px radius, and its ends stuck out past the corner. Clipping here and
+ * scrolling inside means the bar is trimmed by the same curve as everything
+ * else.
+ */
 .modal {
   box-sizing: border-box;
   background: var(--bg-panel, #16222f);
@@ -23,9 +31,29 @@
   border-radius: 10px;
   width: min(560px, 100%);
   max-height: min(80vh, 720px);
+  overflow: hidden;
+  min-width: 0;
+  display: flex;
+}
+
+.body {
+  box-sizing: border-box;
   overflow-y: auto;
+  width: 100%;
   padding: 16px 18px 20px;
   min-width: 0;
+
+  /* No stepper arrows: they are what was showing at the corners, and nothing
+     on a card this short needs them. A thin thumb, and no track behind it. */
+  scrollbar-width: thin;
+
+  &::-webkit-scrollbar { width: 8px; }
+  &::-webkit-scrollbar-button { display: none; height: 0; }
+  &::-webkit-scrollbar-track { background: transparent; }
+  &::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.18);
+    border-radius: 999px;
+  }
 }
 
 .head {
