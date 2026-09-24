@@ -47,6 +47,11 @@ const useSetupMoveReplay = ({
   // what just happened; the opponent's later replies do not - they answer a
   // move the solver just made and should feel immediate.
   immediate = false,
+  // A board drawn from player 2's side: the flight is worked out in board
+  // coordinates and turned round only when it is placed on the screen.
+  flipped = false,
+  boardWidth = 0,
+  boardHeight = 0,
 }) => {
   const [progress, setProgress] = useState(null);   // null = not running
   const [done, setDone] = useState(false);
@@ -182,8 +187,8 @@ const useSetupMoveReplay = ({
         alt: rewound.mover?.piece_name || '',
         style: {
           position: 'fixed',
-          left: rect.left + at.x * squareSize,
-          top: rect.top + at.y * squareSize,
+          left: rect.left + (flipped ? boardWidth - 1 - at.x : at.x) * squareSize,
+          top: rect.top + (flipped ? boardHeight - 1 - at.y : at.y) * squareSize,
           width: squareSize,
           height: squareSize,
           pointerEvents: 'none',

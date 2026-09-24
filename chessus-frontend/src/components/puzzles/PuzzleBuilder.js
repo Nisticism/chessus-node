@@ -14,7 +14,7 @@ import ListPager, { usePagedList } from "../common/ListPager";
 import useBoardViewport from "../common/useBoardViewport";
 import BoardZoomControls from "../common/BoardZoomControls";
 import boardVp from "../common/boardViewport.module.scss";
-import { BoardCoordinates, NOTATION_INSET } from "./PuzzleBoard";
+import { BoardCoordinates, NOTATION_INSET, puzzleFlipped } from "./PuzzleBoard";
 import styles from "./puzzlebuilder.module.scss";
 
 /*
@@ -1316,9 +1316,18 @@ const PuzzleBuilder = () => {
   const boardCells = mode === 'solution' ? solutionBoard : placements;
   const lastPly = mode === 'solution' ? solutionLine[solutionLine.length - 1] : null;
 
+  /*
+   * The board as the solver will see it: from the side that moves. It follows
+   * "Who moves?" rather than being a setting of its own, so a puzzle can never
+   * be saved looking one way and be solved looking the other - the creator
+   * builds the exact view every solver gets. See puzzleFlipped.
+   */
+  const flipped = puzzleFlipped(sideToMove);
   const squares = [];
-  for (let y = 0; y < boardHeight; y++) {
-    for (let x = 0; x < boardWidth; x++) {
+  for (let row = 0; row < boardHeight; row++) {
+    for (let col = 0; col < boardWidth; col++) {
+      const x = flipped ? boardWidth - 1 - col : col;
+      const y = flipped ? boardHeight - 1 - row : row;
       const k = keyOf(x, y);
       const p = boardCells[k];
       const isLight = (x + y) % 2 === 0;
@@ -1460,7 +1469,7 @@ const PuzzleBuilder = () => {
               style={vp.viewportStyle}
             >
               <div style={vp.contentStyle}>
-                <BoardCoordinates boardWidth={boardWidth} boardHeight={boardHeight} squareSize={vp.squareSize}>
+                <BoardCoordinates boardWidth={boardWidth} boardHeight={boardHeight} squareSize={vp.squareSize} flipped={flipped}>
                   <div
                     className={styles["board"]}
                     style={{ gridTemplateColumns: `repeat(${boardWidth}, ${vp.squareSize}px)` }}
@@ -1561,6 +1570,7 @@ const PuzzleBuilder = () => {
               <option value={1}>Player 1</option>
               <option value={2}>Player 2</option>
             </select>
+            <small className={styles["field-hint"]}>The board turns to face this player - it is what solvers will see.</small>
           </label>
 
           <label className={styles["field"]}>

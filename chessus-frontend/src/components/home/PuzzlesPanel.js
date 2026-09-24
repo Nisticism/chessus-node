@@ -13,7 +13,7 @@ import GameRulesModal from "../common/GameRulesModal";
 import { applyPromotionDefinition, promotionPieceNumber, solvedPliesRemaining } from "../../helpers/pieceMovementUtils";
 import useSetupMoveReplay from "../common/useSetupMoveReplay";
 import { expandPlaceable, placesPieces } from "../../helpers/placement";
-import PuzzleBoard, { NOTATION_INSET } from "../puzzles/PuzzleBoard";
+import PuzzleBoard, { NOTATION_INSET, puzzleFlipped, squareFromPoint } from "../puzzles/PuzzleBoard";
 import styles from "./puzzlespanel.module.scss";
 
 /*
@@ -302,6 +302,8 @@ const PuzzlesPanel = () => {
   const darkColor = currentUser?.dark_square_color || localStorage.getItem('boardDarkColor') || '#08234d';
 
   const boardWidth = puzzle?.board_width || 8;
+  // Drawn from the solving side's end of the board - see puzzleFlipped.
+  const flipped = puzzleFlipped(puzzle);
   const boardHeight = puzzle?.board_height || 8;
 
   /*
@@ -362,6 +364,9 @@ const PuzzlesPanel = () => {
   } = useSetupMoveReplay({
     boardRef,
     squareSize: vp.squareSize,
+    flipped,
+    boardWidth,
+    boardHeight,
     board,
     // The opponent's move to play in: the setup move to begin with, then every
     // reply the creator wrote, as a multi-move line is answered - so each of
@@ -619,13 +624,10 @@ const PuzzlesPanel = () => {
 
   /** Which square a point on the screen is over, or null if it is off the board. */
   const squareAt = useCallback((clientX, clientY) => {
-    const rect = boardRef.current?.getBoundingClientRect();
-    if (!rect || !vp.squareSize) return null;
-    const x = Math.floor((clientX - rect.left) / vp.squareSize);
-    const y = Math.floor((clientY - rect.top) / vp.squareSize);
-    if (x < 0 || y < 0 || x >= boardWidth || y >= boardHeight) return null;
-    return { x, y };
-  }, [vp.squareSize, boardWidth, boardHeight]);
+    return squareFromPoint(boardRef.current, clientX, clientY, {
+      squareSize: vp.squareSize, boardWidth, boardHeight, flipped,
+    });
+  }, [vp.squareSize, boardWidth, boardHeight, flipped]);
 
   // For the shared touch rules: is there a piece here, and may it be moved?
   const squarePiece = useCallback((x, y) => {
@@ -899,6 +901,7 @@ const PuzzlesPanel = () => {
               <div className={styles["board-frame"]} style={vp.frameStyle}>
                 <PuzzleBoard
                   vp={vp}
+                  flipped={flipped}
                   boardRef={boardRef}
                   boardWidth={boardWidth}
                   boardHeight={boardHeight}

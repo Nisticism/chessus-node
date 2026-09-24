@@ -13,13 +13,13 @@ import {
 } from "../../helpers/moveEngine";
 import useBoardViewport from "../common/useBoardViewport";
 import BoardZoomControls from "../common/BoardZoomControls";
-import PuzzleBoard, { NOTATION_INSET } from "./PuzzleBoard";
+import PuzzleBoard, { NOTATION_INSET, puzzleFlipped, squareFromPoint } from "./PuzzleBoard";
 import PlacementTray from "../common/PlacementTray";
 import PromotionChooser from "../common/PromotionChooser";
 import GameRulesModal from "../common/GameRulesModal";
 import useSetupMoveReplay from "../common/useSetupMoveReplay";
 import { expandPlaceable, placesPieces } from "../../helpers/placement";
-import { applyPromotionDefinition, promotionPieceNumber, solvedPliesRemaining } from "../../helpers/pieceMovementUtils";
+import { applyPromotionDefinition, promotionPieceNumber, solvedPliesRemaining, colToFile } from "../../helpers/pieceMovementUtils";
 import styles from "./puzzlesolver.module.scss";
 
 /*
@@ -222,6 +222,12 @@ const FEEDBACK_CATEGORIES = [
 ];
 
 /*
+ * A square's name as the board's own coordinates label it - "e4", not "(4, 3)".
+ * Row 0 is the top of the stored position, so rank = height - y.
+ */
+const squareName = (sq, boardHeight) => `${colToFile(sq.x)}${boardHeight - sq.y}`;
+
+/*
  * What a move that did not land says: a wrong answer, or a move the game does
  * not allow - refused, not judged, so no try is counted and nothing recorded.
  *
@@ -338,6 +344,8 @@ const PuzzleSolver = () => {
   const boardRef = useRef(null);
 
   const boardWidth = puzzle?.board_width || 8;
+  // Drawn from the solving side's end of the board - see puzzleFlipped.
+  const flipped = puzzleFlipped(puzzle);
   const boardHeight = puzzle?.board_height || 8;
   const lightColor = currentUser?.light_square_color || localStorage.getItem('boardLightColor') || '#e3d4bf';
   const darkColor = currentUser?.dark_square_color || localStorage.getItem('boardDarkColor') || '#64472b';
@@ -808,13 +816,10 @@ const PuzzleSolver = () => {
 
   /** Which square a client-space point is over, or null if it is off the board. */
   const squareAtPoint = useCallback((clientX, clientY) => {
-    const rect = boardRef.current?.getBoundingClientRect();
-    if (!rect || !vp.squareSize) return null;
-    const x = Math.floor((clientX - rect.left) / vp.squareSize);
-    const y = Math.floor((clientY - rect.top) / vp.squareSize);
-    if (x < 0 || y < 0 || x >= boardWidth || y >= boardHeight) return null;
-    return { x, y };
-  }, [vp.squareSize, boardWidth, boardHeight]);
+    return squareFromPoint(boardRef.current, clientX, clientY, {
+      squareSize: vp.squareSize, boardWidth, boardHeight, flipped,
+    });
+  }, [vp.squareSize, boardWidth, boardHeight, flipped]);
 
   /*
    * Editing is the creator's, plus admins and owners - the same rule the server
@@ -867,6 +872,9 @@ const PuzzleSolver = () => {
   } = useSetupMoveReplay({
     boardRef,
     squareSize: vp.squareSize,
+    flipped,
+    boardWidth,
+    boardHeight,
     board: placements,
     // The opponent's move to play in: the setup move to begin with, then every
     // reply as a multi-move line is answered, so each opponent move slides.
@@ -1243,6 +1251,7 @@ const PuzzleSolver = () => {
           <div style={{ ...vp.frameStyle, justifyContent: 'flex-start' }}>
             <PuzzleBoard
               vp={vp}
+              flipped={flipped}
               boardRef={boardRef}
               boardWidth={boardWidth}
               boardHeight={boardHeight}
@@ -1390,13 +1399,13 @@ const PuzzleSolver = () => {
                         <span className={styles["ply-label"]}>
                           {i % 2 === 0 ? `Move ${Math.floor(i / 2) + 1}` : 'Their reply'}
                         </span>
-                        ({ply.from.x}, {ply.from.y}) → ({ply.to.x}, {ply.to.y})
+                        {squareName(ply.from, boardHeight)} → {squareName(ply.to, boardHeight)}
                       </li>
                     ))}
                   </ol>
                 </>
               ) : (
-                <>The answer was ({sol.from.x}, {sol.from.y}) → ({sol.to.x}, {sol.to.y}), highlighted on the board.</>
+                <>The answer was {squareName(sol.from, boardHeight)} → {squareName(sol.to, boardHeight)}, highlighted on the board.</>
               )}
 
             </div>

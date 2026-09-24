@@ -8,7 +8,7 @@ import PromotionChooser from "../common/PromotionChooser";
 import useSetupMoveReplay from "../common/useSetupMoveReplay";
 import { expandPlaceable, placesPieces } from "../../helpers/placement";
 import { applyPromotionDefinition, promotionPieceNumber, solvedPliesRemaining } from "../../helpers/pieceMovementUtils";
-import PuzzleBoard, { NOTATION_INSET } from "../puzzles/PuzzleBoard";
+import PuzzleBoard, { NOTATION_INSET, puzzleFlipped, squareFromPoint } from "../puzzles/PuzzleBoard";
 import useDiscordSdk from "./useDiscordSdk";
 import { launchedPuzzleId, getLaunchParams } from "../../helpers/discord-launch-params";
 import GameRulesModal from "../common/GameRulesModal";
@@ -452,6 +452,8 @@ export default function DiscordActivity() {
   }, [discord.sdk, puzzle]);
 
   const boardWidth = puzzle?.board_width || 8;
+  // Drawn from the solving side's end of the board - see puzzleFlipped.
+  const flipped = puzzleFlipped(puzzle);
   const boardHeight = puzzle?.board_height || 8;
 
   /*
@@ -730,13 +732,10 @@ export default function DiscordActivity() {
 
   // ----------------------------------------------------------- interaction --
   const squareAt = useCallback((clientX, clientY) => {
-    const rect = boardRef.current?.getBoundingClientRect();
-    if (!rect || !vp.squareSize) return null;
-    const x = Math.floor((clientX - rect.left) / vp.squareSize);
-    const y = Math.floor((clientY - rect.top) / vp.squareSize);
-    if (x < 0 || y < 0 || x >= boardWidth || y >= boardHeight) return null;
-    return { x, y };
-  }, [vp.squareSize, boardWidth, boardHeight]);
+    return squareFromPoint(boardRef.current, clientX, clientY, {
+      squareSize: vp.squareSize, boardWidth, boardHeight, flipped,
+    });
+  }, [vp.squareSize, boardWidth, boardHeight, flipped]);
 
   /*
    * The opponent's last move, played onto the board before the solver starts -
@@ -750,6 +749,9 @@ export default function DiscordActivity() {
   } = useSetupMoveReplay({
     boardRef,
     squareSize: vp.squareSize,
+    flipped,
+    boardWidth,
+    boardHeight,
     board,
     // The opponent's move to play in: the setup move to begin with, then every
     // reply as a multi-move line is answered, so each of the opponent's moves
@@ -1036,6 +1038,7 @@ export default function DiscordActivity() {
       <div className={styles["board-frame"]}>
         <PuzzleBoard
           vp={vp}
+          flipped={flipped}
           boardWidth={boardWidth}
           boardHeight={boardHeight}
           lightColor={lightColor}

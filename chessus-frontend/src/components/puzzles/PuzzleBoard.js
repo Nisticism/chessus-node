@@ -14,10 +14,44 @@ import styles from "./puzzleboard.module.scss";
 export const NOTATION_INSET = 18;
 
 /*
+ * A puzzle is shown from the side that solves it.
+ *
+ * The stored position is always player 1's view - row 0 at the top - so a
+ * player-2 puzzle drawn as stored had the solver looking at the board from the
+ * wrong end: their pawns walking down the screen, a-h running the wrong way
+ * under them. Player 2 sees it turned round, both axes mirrored, exactly as a
+ * live game flips for player 2 and as the image posted to Discord already did.
+ *
+ * The one rule, so every board that draws a puzzle agrees with it.
+ */
+export const puzzleFlipped = (puzzleOrSide) => {
+  const side = puzzleOrSide && typeof puzzleOrSide === 'object'
+    ? puzzleOrSide.side_to_move
+    : puzzleOrSide;
+  return Number(side) === 2;
+};
+
+/*
+ * Which square - in BOARD coordinates - a point on the screen is over, or null
+ * off the board. The one copy: each page used to divide by the square size
+ * itself, which is right only while the board is drawn the right way up.
+ */
+export const squareFromPoint = (boardEl, clientX, clientY, { squareSize, boardWidth, boardHeight, flipped = false }) => {
+  const rect = boardEl?.getBoundingClientRect();
+  if (!rect || !squareSize) return null;
+  const col = Math.floor((clientX - rect.left) / squareSize);
+  const row = Math.floor((clientY - rect.top) / squareSize);
+  if (col < 0 || row < 0 || col >= boardWidth || row >= boardHeight) return null;
+  return flipped
+    ? { x: boardWidth - 1 - col, y: boardHeight - 1 - row }
+    : { x: col, y: row };
+};
+
+/*
  * A board grid with its coordinates around it - the one copy, shared by the
  * puzzle board and the builder, so a square is called the same thing in both.
  */
-export const BoardCoordinates = ({ boardWidth, boardHeight, squareSize, show = true, children }) => {
+export const BoardCoordinates = ({ boardWidth, boardHeight, squareSize, show = true, flipped = false, children }) => {
   if (!show) return children;
   return (
     <div className={styles["with-coords"]}>
@@ -27,7 +61,7 @@ export const BoardCoordinates = ({ boardWidth, boardHeight, squareSize, show = t
         aria-hidden="true"
       >
         {Array.from({ length: boardHeight }, (_, i) => (
-          <span key={i}>{rowToRank(boardHeight - 1 - i)}</span>
+          <span key={i}>{rowToRank(flipped ? i : boardHeight - 1 - i)}</span>
         ))}
       </div>
       <div>
@@ -38,7 +72,7 @@ export const BoardCoordinates = ({ boardWidth, boardHeight, squareSize, show = t
           aria-hidden="true"
         >
           {Array.from({ length: boardWidth }, (_, i) => (
-            <span key={i}>{colToFile(i)}</span>
+            <span key={i}>{colToFile(flipped ? boardWidth - 1 - i : i)}</span>
           ))}
         </div>
       </div>
@@ -100,6 +134,9 @@ const PuzzleBoard = ({
    * a pawn, and without them there was no telling which way the board faced.
    */
   showNotation = true,
+  // Drawn from player 2's side - see puzzleFlipped. Every callback still
+  // receives BOARD coordinates; only the drawing turns round.
+  flipped = false,
   onSquareMouseEnter,
   onSquareMouseLeave,
   className,
@@ -109,8 +146,10 @@ const PuzzleBoard = ({
 }) => {
   const squares = useMemo(() => {
     const out = [];
-    for (let y = 0; y < boardHeight; y++) {
-      for (let x = 0; x < boardWidth; x++) {
+    for (let row = 0; row < boardHeight; row++) {
+      for (let col = 0; col < boardWidth; col++) {
+        const x = flipped ? boardWidth - 1 - col : col;
+        const y = flipped ? boardHeight - 1 - row : row;
         const key = `${y},${x}`;
         const extra = squareClassName ? squareClassName(x, y) : '';
         const lifted = key === liftedSquare;
@@ -158,7 +197,7 @@ const PuzzleBoard = ({
     return out;
   }, [
     boardWidth, boardHeight, lightColor, darkColor, vp.squareSize,
-    renderSquare, squareClassName, squareTitle, liftedSquare, squarePiece,
+    renderSquare, squareClassName, squareTitle, liftedSquare, squarePiece, flipped,
     onSquareClick, onSquarePointerDown, onSquareMouseEnter, onSquareMouseLeave,
   ]);
 
@@ -210,6 +249,7 @@ const PuzzleBoard = ({
           boardHeight={boardHeight}
           squareSize={vp.squareSize}
           show={showNotation}
+          flipped={flipped}
         >
           <div
             className={`${styles["board"]}${className ? ` ${className}` : ''}`}
