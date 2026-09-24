@@ -16,6 +16,7 @@
 const fs = require('fs/promises');
 const path = require('path');
 const sharp = require('sharp');
+const { colToFile } = require('./square-label');
 
 // Big enough to read on a phone, small enough that a day's cache is nothing.
 const DEFAULT_SQUARE = 72;
@@ -27,6 +28,9 @@ const DARK = '#08234d';
 // The last move and the wrong guess, matching what the web board draws.
 const HIGHLIGHT = '#f0c419';
 const WRONG = '#d9534f';
+// The coordinate gutter: a fixed frame and ink, independent of board colours.
+const FRAME = '#1e2126';
+const LABEL_INK = '#aab4c0';
 
 const clampHex = (v, fallback) =>
   (typeof v === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(v.trim()) ? v.trim() : fallback);
@@ -120,8 +124,15 @@ async function renderPuzzle({
   const light = clampHex(lightColor, LIGHT);
   const dark = clampHex(darkColor, DARK);
 
-  const canvasW = w * square;
-  const canvasH = h * square;
+  /*
+   * A gutter down the left and along the bottom for the coordinates - the
+   * same a1-at-bottom-left layout every board on the site draws. A position
+   * from an invented game often has nothing on it as directional as a pawn,
+   * and without them a post in a channel gave no way to tell which way it faced.
+   */
+  const gutter = Math.max(18, Math.round(square * 0.38));
+  const canvasW = gutter + w * square;
+  const canvasH = h * square + gutter;
 
   /*
    * Screen coordinates for a board coordinate. Row 0 is the TOP of the stored
@@ -129,8 +140,8 @@ async function renderPuzzle({
    * unflipped view is the identity and flipping mirrors both axes.
    */
   const place = (x, y) => (flip
-    ? { left: (w - 1 - x) * square, top: (h - 1 - y) * square }
-    : { left: x * square, top: y * square });
+    ? { left: gutter + (w - 1 - x) * square, top: (h - 1 - y) * square }
+    : { left: gutter + x * square, top: y * square });
 
   const layers = [];
 
@@ -197,7 +208,35 @@ async function renderPuzzle({
     }
   }
 
-  return sharp({ create: { width: canvasW, height: canvasH, channels: 4, background: dark } })
+  /*
+   * The coordinates. Each label names the square it sits beside, so a flipped
+   * board reads correctly too: rank = h - y for the row drawn there, and the
+   * file of the column drawn there.
+   */
+  // Discord shows the image scaled down, so the labels are drawn generously.
+  const fontSize = Math.round(gutter * 0.62);
+  const labels = [];
+  for (let i = 0; i < h; i++) {
+    const y = flip ? h - 1 - i : i;
+    labels.push(`<text x="${gutter / 2}" y="${i * square + square / 2}">${h - y}</text>`);
+  }
+  for (let j = 0; j < w; j++) {
+    const x = flip ? w - 1 - j : j;
+    labels.push(`<text x="${gutter + j * square + square / 2}" y="${h * square + gutter / 2}">${colToFile(x)}</text>`);
+  }
+  layers.push({
+    input: Buffer.from(
+      `<svg xmlns="http://www.w3.org/2000/svg" width="${canvasW}" height="${canvasH}">
+         <g fill="${LABEL_INK}" font-family="Helvetica, Arial, sans-serif" font-size="${fontSize}"
+            font-weight="700" text-anchor="middle" dominant-baseline="central">${labels.join('')}</g>
+       </svg>`
+    ),
+    left: 0, top: 0,
+  });
+
+  // The frame behind the gutter: a fixed dark, not the board's own dark square,
+  // so the labels read the same whatever colours the board was drawn in.
+  return sharp({ create: { width: canvasW, height: canvasH, channels: 4, background: FRAME } })
     .composite(layers)
     .png({ compressionLevel: 9 })
     .toBuffer();

@@ -167,6 +167,8 @@
 
 .v-solved   { color: #3ba55d; }
 .v-continue { color: #5865f2; }
+/* Refused, not judged: no try counted, so it reads as information. */
+.v-illegal { color: #b5bac1; }
 .v-wrong,
 .v-error    { color: #e8a44c; }
 

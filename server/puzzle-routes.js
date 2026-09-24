@@ -1223,6 +1223,40 @@ function registerPuzzleRoutes(app, {
         });
       }
     }
+
+    /*
+     * The squares this piece ATTACKS without being able to walk there.
+     *
+     * The probe above only ever asked about squares the piece could already
+     * move to, so a piece whose capture pattern differs from its movement - a
+     * pawn above all - showed no attack at all until an enemy happened to
+     * stand on the square. Its diagonals are its whole threat, and they are
+     * usually empty, so on the home card and in Discord a pawn looked like a
+     * piece that could only walk forward, and gave no hint which way it faced.
+     *
+     * Same probe, asked of every empty square the piece cannot move to. These
+     * are drawn as attacks and flagged isPotentialCapture: they describe the
+     * threat, not a move - nothing is there to take - so a caller showing a
+     * picked-up piece's destinations leaves them out, as the live game does.
+     */
+    const boardW = Number(state.gameType?.board_width) || 8;
+    const boardH = Number(state.gameType?.board_height) || 8;
+    const pw = Number(piece.piece_width) || 1;
+    const ph = Number(piece.piece_height) || 1;
+    const listed = new Set(moves.map(m => `${m.y},${m.x}`));
+    for (let ty = 0; ty < boardH; ty++) {
+      for (let tx = 0; tx < boardW; tx++) {
+        if (listed.has(`${ty},${tx}`) || occupied.has(`${ty},${tx}`)) continue;
+        if (tx >= piece.x && tx < piece.x + pw && ty >= piece.y && ty < piece.y + ph) continue;
+        if (canAttackSquare(tx, ty)) {
+          moves.push({
+            x: tx, y: ty,
+            isCapture: true, isPotentialCapture: true,
+            reachedByMove: false, reachedByAttack: true,
+          });
+        }
+      }
+    }
     return moves;
   };
 
@@ -1783,6 +1817,19 @@ function registerPuzzleRoutes(app, {
         console.error('POST /api/game-types/:id/puzzle-move-info probe:', err);
       }
 
+      /*
+       * An illegal move promotes nothing. The promotion question is about the
+       * destination square alone, so without this a piece dropped somewhere it
+       * could never reach - but on the far rank - was asked what it wanted to
+       * become, and the picker opened for a move that was never going to count.
+       */
+      if (!isLegal) {
+        return res.json({
+          promotes: false, skipped: false, options: [], castling,
+          legal: false, reason: illegalReason,
+        });
+      }
+
       // Ask the same question a live game asks, about the destination square.
       const eligibility = await checkPromotionEligibility(mover, { x: toX, y: toY }, state);
       if (!eligibility || !eligibility.eligible) {
@@ -2271,13 +2318,28 @@ function registerPuzzleRoutes(app, {
        * common case is a creator who has not checked, and for them accepting a
        * correct answer is the safer failure.
        */
-      let altFinish = false;
-      if (!revealed
-          && !puzzle.require_exact_line
-          && mine.length > 0
-          && matched === mine.length - 1
-          && submitted.length === mine.length
-          && MECHANICAL_GOALS.has(puzzle.goal)) {
+      /*
+       * The first move off the line, played for real on the position it was
+       * made in - the puzzle's own frozen rules, the agreed prefix replayed.
+       *
+       * Two questions are asked of it, and one replay answers both.
+       *
+       * IS IT LEGAL? A move the game does not allow is not a wrong answer, it
+       * is not an answer at all. It used to be judged like one: off the line,
+       * so "not that one", a failed try, and on a first attempt a permanent
+       * rating loss - for dropping a piece on a square it could never reach.
+       * An illegal move is now refused before anything is recorded, and the
+       * solver simply tries again. Nothing is given away by it: whether a move
+       * is legal is the one thing the board already shows.
+       *
+       * DOES IT FINISH THE PUZZLE ANOTHER WAY? The question the comment
+       * above is about, answered from the same replay.
+       *
+       * An engine that throws is a bug, not a verdict, so it leaves the move to
+       * be judged against the line exactly as before.
+       */
+      let offLine = null;
+      if (!revealed && matched < submitted.length && matched < mine.length) {
         try {
           const rules = await loadRulesFor(puzzle);
           const state = buildGameState({
@@ -2302,17 +2364,37 @@ function registerPuzzleRoutes(app, {
           if (ok) {
             state.currentTurn = Number(puzzle.side_to_move);
             const attempt = await applyPly(state, submitted[matched], { autoPromote: false });
-            if (attempt.ok) {
-              state.currentTurn = otherSide(puzzle.side_to_move);
-              const term = terminalOutcome(state, otherSide(puzzle.side_to_move), attempt);
-              altFinish = goalMet(puzzle.goal, state, puzzle.side_to_move, attempt)
-                || !!(term && Number(term.winner) === Number(puzzle.side_to_move));
-            }
+            offLine = { state, attempt };
           }
         } catch (err) {
-          // The recorded line still stands; this only ever ADDS an answer.
-          console.warn(`[puzzle] could not test an alternative finish for ${puzzle.id}: ${err.message}`);
+          console.warn(`[puzzle] could not replay the move off the line for ${puzzle.id}: ${err.message}`);
         }
+      }
+
+      // A promotion still waiting for its piece is a legal move being asked a
+      // question, not an illegal one.
+      if (offLine && !offLine.attempt.ok && !offLine.attempt.needsPromotionChoice) {
+        return res.json({
+          illegal: true,
+          status: 'illegal',
+          reason: offLine.attempt.reason || null,
+          movesPlayed: matched,
+          movesTotal: mine.length,
+        });
+      }
+
+      let altFinish = false;
+      if (offLine?.attempt.ok
+          && !puzzle.require_exact_line
+          && mine.length > 0
+          && matched === mine.length - 1
+          && submitted.length === mine.length
+          && MECHANICAL_GOALS.has(puzzle.goal)) {
+        const { state, attempt } = offLine;
+        state.currentTurn = otherSide(puzzle.side_to_move);
+        const term = terminalOutcome(state, otherSide(puzzle.side_to_move), attempt);
+        altFinish = goalMet(puzzle.goal, state, puzzle.side_to_move, attempt)
+          || !!(term && Number(term.winner) === Number(puzzle.side_to_move));
         if (altFinish) matched = mine.length;
       }
 

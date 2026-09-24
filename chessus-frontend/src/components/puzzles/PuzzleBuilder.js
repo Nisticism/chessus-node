@@ -14,6 +14,7 @@ import ListPager, { usePagedList } from "../common/ListPager";
 import useBoardViewport from "../common/useBoardViewport";
 import BoardZoomControls from "../common/BoardZoomControls";
 import boardVp from "../common/boardViewport.module.scss";
+import { BoardCoordinates, NOTATION_INSET } from "./PuzzleBoard";
 import styles from "./puzzlebuilder.module.scss";
 
 /*
@@ -242,8 +243,9 @@ const PuzzleBuilder = () => {
     fitMaxSquare: 96,
     maxSquare: 160,
     maxHeight: () => Math.max(320, (typeof window !== 'undefined' ? window.innerHeight : 900) - 320),
-    insetW: 8,
-    insetH: 8,
+    // The frame's padding, plus room for the coordinates beside and below.
+    insetW: 8 + NOTATION_INSET,
+    insetH: 8 + NOTATION_INSET,
   });
 
   const boardColumnMax = useMemo(() => {
@@ -1458,12 +1460,14 @@ const PuzzleBuilder = () => {
               style={vp.viewportStyle}
             >
               <div style={vp.contentStyle}>
-                <div
-                  className={styles["board"]}
-                  style={{ gridTemplateColumns: `repeat(${boardWidth}, ${vp.squareSize}px)` }}
-                >
-                  {squares}
-                </div>
+                <BoardCoordinates boardWidth={boardWidth} boardHeight={boardHeight} squareSize={vp.squareSize}>
+                  <div
+                    className={styles["board"]}
+                    style={{ gridTemplateColumns: `repeat(${boardWidth}, ${vp.squareSize}px)` }}
+                  >
+                    {squares}
+                  </div>
+                </BoardCoordinates>
               </div>
             </div>
             <BoardZoomControls {...vp.controlProps} />

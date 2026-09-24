@@ -4013,7 +4013,9 @@ const LiveGame = () => {
       gameState.gameType?.board_height || 8,
       false, // skipCheckFilter
       false, // forPremove
-      true   // forHoverDisplay — include all reachable ranged squares (empty + occupied)
+      true,  // forHoverDisplay — include all reachable ranged squares (empty + occupied)
+      true   // forFog — and the squares the capture pattern covers while empty,
+             // so a pawn's diagonals read as attacks before anything stands there
     );
     setHoveredPiece(piece);
     setHoveredMoves(moves);

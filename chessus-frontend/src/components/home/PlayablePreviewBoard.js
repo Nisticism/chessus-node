@@ -217,7 +217,11 @@ const PlayablePreviewBoard = ({ gameData, lightSquareColor, darkSquareColor }) =
         const isCaptureFirstOnly = canCapture && !!captureResult?.isFirstMoveOnly;
 
         const showMove = canMove && !targetPiece;
-        const showCapture = canCapture && targetPiece;
+        // An attack is drawn on an enemy, AND on an empty square the piece
+        // attacks but cannot walk to - a pawn's diagonals, its whole threat,
+        // are usually empty. A square it can both walk to and take on (a
+        // rook's file) stays a move: this board has no half-and-half dot.
+        const showCapture = canCapture && (!!targetPiece || !canMove);
 
         if (showMove || showCapture) {
           const isCustomOnly = showMove ? isMoveCustomOnly : isCaptureCustomOnly;

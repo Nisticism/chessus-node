@@ -351,6 +351,8 @@
 .verdict-continue { color: #5fd0a4; }
 .verdict-wrong  { color: #e8a44c; }
 .verdict-error  { color: #dc7c6a; }
+/* Refused, not judged: no try counted, so it reads as information. */
+.verdict-illegal { color: var(--text-secondary, #9fb0c3); }
 
 /* The signed-in solver's rating move, shown the same way the puzzle's own page
    shows it once a puzzle is decided. */

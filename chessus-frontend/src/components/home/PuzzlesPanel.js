@@ -13,8 +13,16 @@ import GameRulesModal from "../common/GameRulesModal";
 import { applyPromotionDefinition, promotionPieceNumber, solvedPliesRemaining } from "../../helpers/pieceMovementUtils";
 import useSetupMoveReplay from "../common/useSetupMoveReplay";
 import { expandPlaceable, placesPieces } from "../../helpers/placement";
-import PuzzleBoard from "../puzzles/PuzzleBoard";
-import styles from "./puzzlespanel.module.scss";
+import PuzzleBoard, { NOTATION_INSET } from "../puzzles/PuzzleBoard";
+import styles from "./puzzlespanel.module.scss";
+
+/*
+ * A picked-up piece shows where it can GO. The moves endpoint also lists the
+ * squares a piece only threatens (a pawn's empty diagonals) so that hovering
+ * reads as a threat map; those are not destinations, so a pick leaves them
+ * out - the same split the live game draws.
+ */
+const destinationsOnly = (moves) => (moves || []).filter((m) => !m.isPotentialCapture);
 
 /*
  * The home page's puzzle block: today's puzzle drawn on a real board on the
@@ -322,8 +330,9 @@ const PuzzlesPanel = () => {
       640,
       (typeof window !== 'undefined' ? window.innerHeight : 900) * 0.7
     )),
-    insetW: 0,
-    insetH: 0,
+    // Room for the coordinates drawn beside and below the board.
+    insetW: NOTATION_INSET,
+    insetH: NOTATION_INSET,
   });
 
   const solved = verdict?.status === 'solved';
@@ -404,7 +413,7 @@ const PuzzlesPanel = () => {
    * ask which piece it becomes, and this is what the answer resumes into. `art`
    * is the chosen piece's name and image, for the optimistic board only.
    */
-  const submitMove = useCallback(async (move, before, art = null) => {
+  const submitMove = useCallback(async (move, before, art = null, optimistic = true) => {
     if (!puzzle) return;
     const { x, y } = move.to;
     setBusy(true);
@@ -412,7 +421,7 @@ const PuzzlesPanel = () => {
     // From `before`, not `prev`: the caller already placed the piece the moment
     // it was dropped, and applying from the board it started on means doing it
     // twice lands in the same place instead of moving it again.
-    setBoard(applyMove(before, move, null, art));
+    if (optimistic) setBoard(applyMove(before, move, null, art));
 
     try {
       const attemptLine = [...found, move];
@@ -423,6 +432,16 @@ const PuzzlesPanel = () => {
       );
       if (data.rating) setRatingChange(data.rating);
       else if (data.ratingNote) setRatingNote(data.ratingNote);
+
+      /*
+       * Not a move the game allows, and not an answer: the server recorded
+       * nothing, so no try is counted and no rating moves. The piece goes back.
+       */
+      if (data.illegal) {
+        setBoard(before);
+        setVerdict({ status: 'illegal', text: "That move isn't legal here. It doesn't count as a try." });
+        return;
+      }
 
       if (data.solved) {
         setFound(attemptLine);
@@ -502,7 +521,15 @@ const PuzzlesPanel = () => {
      * as "nothing happened" and then the piece jumped. The lookup refines the
      * move; it does not decide whether it happens.
      */
-    setBoard(applyMove(before, move));
+    /*
+     * A move this piece can make is drawn now; one it cannot is never drawn.
+     * `hints` are the picked-up piece's destinations, already fetched when it
+     * was lifted. They decide whether to DRAW, not whether to ASK - the server
+     * still gets the move and still has the last word, so when the hints are
+     * missing or wrong the only cost is a missing animation.
+     */
+    const looksLegal = !hints.length || hints.some((m) => m.x === x && m.y === y && !m.isPotentialCapture);
+    if (looksLegal) setBoard(applyMove(before, move));
     setBusy(true);
     try {
       const info = await axios.post(
@@ -530,8 +557,8 @@ const PuzzlesPanel = () => {
     } catch (_) {
       // The lookup is an improvement, not a gate - send the move as it stands.
     }
-    await submitMove(move, before);
-  }, [puzzle, busy, finished, board, found, submitMove]);
+    await submitMove(move, before, null, looksLegal);
+  }, [puzzle, busy, finished, board, found, submitMove, hints]);
 
   const choosePromotion = useCallback((option) => {
     const pending = pendingPromotion;
@@ -619,7 +646,7 @@ const PuzzlesPanel = () => {
     setPicked(key);
     setVerdict(null);
     setDrag({ fromKey: key, x: e.clientX, y: e.clientY });
-    loadHints(x, y).then(setHints);
+    loadHints(x, y).then((ms) => setHints(destinationsOnly(ms)));
   }, [puzzle, busy, finished, replaying, board, loadHints]);
 
   /*
@@ -692,6 +719,15 @@ const PuzzlesPanel = () => {
       );
       if (data.rating) setRatingChange(data.rating);
       else if (data.ratingNote) setRatingNote(data.ratingNote);
+      /*
+       * Not a move the game allows, and not an answer: the server recorded
+       * nothing, so no try is counted and no rating moves. The piece goes back.
+       */
+      if (data.illegal) {
+        setBoard(before);
+        setVerdict({ status: 'illegal', text: "That move isn't legal here. It doesn't count as a try." });
+        return;
+      }
       if (data.position) setBoard(fromServerPosition(data.position));
       if (data.solved) {
         setFound(attemptLine);
@@ -731,7 +767,7 @@ const PuzzlesPanel = () => {
       if (Number(here.player_id) !== Number(puzzle.side_to_move)) return;
       setPicked(key);
       setVerdict(null);
-      loadHints(x, y).then(setHints);
+      loadHints(x, y).then((ms) => setHints(destinationsOnly(ms)));
       return;
     }
     if (picked === key) { setPicked(null); setHints([]); return; }

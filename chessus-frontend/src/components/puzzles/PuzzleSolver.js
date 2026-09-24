@@ -13,7 +13,7 @@ import {
 } from "../../helpers/moveEngine";
 import useBoardViewport from "../common/useBoardViewport";
 import BoardZoomControls from "../common/BoardZoomControls";
-import PuzzleBoard from "./PuzzleBoard";
+import PuzzleBoard, { NOTATION_INSET } from "./PuzzleBoard";
 import PlacementTray from "../common/PlacementTray";
 import PromotionChooser from "../common/PromotionChooser";
 import GameRulesModal from "../common/GameRulesModal";
@@ -221,6 +221,37 @@ const FEEDBACK_CATEGORIES = [
   { value: 'other', label: 'Something else' },
 ];
 
+/*
+ * What a move that did not land says: a wrong answer, or a move the game does
+ * not allow - refused, not judged, so no try is counted and nothing recorded.
+ *
+ * Its own component, with every branch inside it, because PuzzleSolver sits at
+ * the edge of what eslint's rules-of-hooks can count: one more conditional in
+ * its JSX and the rule reports hooks far above it as "called conditionally",
+ * falsely, and the build fails.
+ */
+const MoveNotice = ({ outcome, reason }) => {
+  if (outcome === 'wrong') {
+    return (
+      <div className={`${styles["notice"]} ${styles["notice-warn"]}`}>
+        Not that one. Try again — the position is unchanged.
+      </div>
+    );
+  }
+  if (outcome === 'illegal') {
+    // The engine's reason only when it says more than the notice does - a
+    // forced capture, say - rather than "cannot move to that square" again.
+    const detail = reason && !/cannot (move|capture) to that square/i.test(reason)
+      ? ` (${String(reason).replace(/[.]$/, '')})` : '';
+    return (
+      <div className={`${styles["notice"]} ${styles["notice-info"]}`}>
+        That move isn't legal here{detail}. It doesn't count as a try.
+      </div>
+    );
+  }
+  return null;
+};
+
 const PuzzleSolver = () => {
   const { gameId, puzzleId } = useParams();
   const navigate = useNavigate();
@@ -241,7 +272,9 @@ const PuzzleSolver = () => {
    */
   const [trayPick, setTrayPick] = useState(null);
   const [lastTry, setLastTry] = useState(null);   // {from,to}
-  const [outcome, setOutcome] = useState(null);   // 'solved' | 'wrong' | 'revealed' | 'continue'
+  const [outcome, setOutcome] = useState(null);   // 'solved' | 'wrong' | 'illegal' | 'revealed' | 'continue'
+  // Why the server refused a move, when it did - shown with the 'illegal' notice.
+  const [illegalReason, setIllegalReason] = useState(null);
   /*
    * A puzzle can run to several moves. The moves found so far are re-sent with
    * every submission rather than kept on the server, so a reload picks up where
@@ -324,8 +357,9 @@ const PuzzleSolver = () => {
     fitMaxSquare: () => ((typeof window !== 'undefined' && window.innerWidth > 1200) ? 120 : 78),
     maxSquare: 220,
     maxHeight: 'viewport',
-    insetW: 8,
-    insetH: 8,
+    // The frame's padding, plus room for the coordinates beside and below.
+    insetW: 8 + NOTATION_INSET,
+    insetH: 8 + NOTATION_INSET,
   });
 
   // Same shape as the builder: a floor keeps the hook's measurement stable, and
@@ -510,13 +544,17 @@ const PuzzleSolver = () => {
 
   const hoverPiece = useCallback((piece) => {
     if (!piece || !board) { setHoveredMoves([]); return; }
-    // Same arguments a live game's hover helpers use, so a piece's dots read
-    // identically in a puzzle and in a game.
+    // Same arguments a live game's hover uses, so a piece's dots read the same
+    // in a puzzle and in a game. forFog is what makes it a THREAT map: the
+    // squares a piece's capture pattern covers while empty (a pawn's
+    // diagonals) are drawn as attacks, where before only a square with an
+    // enemy already on it ever showed one.
     setHoveredMoves(moveEngine.calculateValidMoves(
       piece, enginePieces, boardWidth, boardHeight,
       false,  // skipCheckFilter
       false,  // forPremove
-      true    // forHoverDisplay
+      true,   // forHoverDisplay
+      true    // forFog
     ) || []);
   }, [moveEngine, enginePieces, board, boardWidth, boardHeight]);
 
@@ -528,7 +566,7 @@ const PuzzleSolver = () => {
    * that has no business being written there once per attempt. The server
    * already knows what piece the id names.
    */
-  const submit = useCallback(async (move, art = null, preApplied = null) => {
+  const submit = useCallback(async (move, art = null, preApplied = null, optimistic = true) => {
     setBusy(true);
     setLastTry(move);
     const attemptLine = [...playedMoves, move];
@@ -551,7 +589,9 @@ const PuzzleSolver = () => {
      * the right artwork instead of layering a second move on top.
      */
     const before = preApplied || placements;
-    setPlacements(applyPly(before, move, art));
+    // Only a move the board believes is legal is drawn before the server
+    // answers - see playFrom.
+    if (optimistic) setPlacements(applyPly(before, move, art));
 
     try {
       const { data } = await axios.post(
@@ -563,6 +603,18 @@ const PuzzleSolver = () => {
       else if (data.ratingNote) setRatingNote(data.ratingNote);
       if (Number.isFinite(data.movesTotal)) {
         setProgress({ played: data.movesPlayed || 0, total: data.movesTotal });
+      }
+
+      /*
+       * Not a move the game allows. Not a wrong answer either - the server
+       * recorded nothing, so no try is counted and no rating moves. The piece
+       * goes back and the solver carries on from the same position.
+       */
+      if (data.illegal) {
+        setPlacements(before);
+        setIllegalReason(data.reason || null);
+        setOutcome('illegal');
+        return;
       }
 
       if (data.status === 'continue') {
@@ -670,16 +722,32 @@ const PuzzleSolver = () => {
       pieceId: mover?.id || `${mover?.piece_id}_${fy}_${fx}`,
     };
     /*
-     * The piece moves NOW.
+     * A legal move is drawn NOW; an illegal one is never drawn at all.
      *
-     * The lookup below is a round trip, and until this was here the piece sat
-     * back on the square it was dragged from for the whole of it - so a drop
-     * read as "nothing happened", and then the piece jumped. The lookup only
-     * refines the move (castling partner, promotion choice); it does not decide
-     * whether it happens.
+     * The lookup below is a round trip, and until the move was drawn first the
+     * piece sat back on the square it was dragged from for the whole of it -
+     * so a drop read as "nothing happened", and then the piece jumped.
+     *
+     * But drawing every drop meant an illegal one visibly landed and then
+     * bounced back as "wrong". The board's own engine answers "can this piece
+     * go there" instantly, so it decides whether to draw. It does NOT decide
+     * whether to ask: the server is still sent the move, and still has the
+     * last word. The two engines have disagreed before, and when they do, the
+     * cost is only a missing animation - never a legal move refused.
      */
     const before = placements;
-    setPlacements(applyPly(before, move));
+    let looksLegal = true;
+    try {
+      const enginePiece = enginePieces.find((p) => p.x === fx && p.y === fy);
+      if (enginePiece) {
+        looksLegal = (moveEngine.calculateValidMoves(
+          enginePiece, enginePieces, boardWidth, boardHeight
+        ) || []).some((m) => m.x === x && m.y === y && !m.isRangedAttack);
+      }
+    } catch (_) {
+      looksLegal = true;   // an engine that threw is not a verdict
+    }
+    if (looksLegal) setPlacements(applyPly(before, move));
 
     try {
       const { data } = await axios.post(
@@ -713,8 +781,8 @@ const PuzzleSolver = () => {
     } catch (_) {
       // The lookup is an improvement, not a gate - submit the move as it stands.
     }
-    submit(move, null, before);
-  }, [placements, submit, gameId, puzzle?.side_to_move, puzzle?.setup_move]);
+    submit(move, null, before, looksLegal);
+  }, [placements, submit, gameId, puzzle?.side_to_move, puzzle?.setup_move, enginePieces, moveEngine, boardWidth, boardHeight]);
 
   const choosePromotion = useCallback((option) => {
     const pending = pendingPromotion;
@@ -1293,11 +1361,7 @@ const PuzzleSolver = () => {
               That's it. Your opponent has answered — keep going.
             </div>
           )}
-          {outcome === 'wrong' && (
-            <div className={`${styles["notice"]} ${styles["notice-warn"]}`}>
-              Not that one. Try again — the position is unchanged.
-            </div>
-          )}
+          <MoveNotice outcome={outcome} reason={illegalReason} />
           {/* Only worth showing once there is more than one move to find. */}
           {movesToFind > 1 && !finished && (
             <div className={styles["progress"]}>

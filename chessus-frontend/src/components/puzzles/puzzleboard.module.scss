@@ -39,3 +39,35 @@
   }
 }
 
+
+/* ------------------------------------------------------ coordinates -- */
+/* The live game's layout: ranks down the left, files along the bottom. The
+   sizes here and NOTATION_INSET in PuzzleBoard.js have to agree. */
+.with-coords {
+  display: flex;
+  align-items: flex-start;
+}
+
+.rank-labels {
+  display: grid;
+  width: 14px;
+  margin-right: 4px;
+}
+
+.file-labels {
+  display: grid;
+  height: 14px;
+  margin-top: 4px;
+}
+
+.rank-labels span,
+.file-labels span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--text-muted, #8b97ad);
+  user-select: none;
+}

@@ -1,7 +1,50 @@
 import React, { useCallback, useMemo, useRef } from "react";
 import boardVp from "../common/boardViewport.module.scss";
 import useTouchPieceGestures from "../common/useTouchPieceGestures";
-import styles from "./puzzleboard.module.scss";
+import { colToFile, rowToRank } from "../../helpers/pieceMovementUtils";
+
+import styles from "./puzzleboard.module.scss";
+
+/*
+ * Room the coordinates take beside and below the board, in px. Callers add it
+ * to their useBoardViewport insets so the board still fits the space it was
+ * given with the labels drawn - otherwise "fit" would be eighteen pixels too
+ * big and open a scrollbar.
+ */
+export const NOTATION_INSET = 18;
+
+/*
+ * A board grid with its coordinates around it - the one copy, shared by the
+ * puzzle board and the builder, so a square is called the same thing in both.
+ */
+export const BoardCoordinates = ({ boardWidth, boardHeight, squareSize, show = true, children }) => {
+  if (!show) return children;
+  return (
+    <div className={styles["with-coords"]}>
+      <div
+        className={styles["rank-labels"]}
+        style={{ gridTemplateRows: `repeat(${boardHeight}, ${squareSize}px)` }}
+        aria-hidden="true"
+      >
+        {Array.from({ length: boardHeight }, (_, i) => (
+          <span key={i}>{rowToRank(boardHeight - 1 - i)}</span>
+        ))}
+      </div>
+      <div>
+        {children}
+        <div
+          className={styles["file-labels"]}
+          style={{ gridTemplateColumns: `repeat(${boardWidth}, ${squareSize}px)` }}
+          aria-hidden="true"
+        >
+          {Array.from({ length: boardWidth }, (_, i) => (
+            <span key={i}>{colToFile(i)}</span>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
 
 /*
  * The board a puzzle is drawn on, in one place.
@@ -50,6 +93,13 @@ const PuzzleBoard = ({
   liftedSquare = null,
   squarePiece = null,
   onSquareLift = null,
+  /*
+   * Algebraic coordinates, the live game's way round: files a, b, c... left to
+   * right along the bottom, ranks with 1 at the bottom. A puzzle is a position
+   * from somebody's invented game, often with nothing on it as directional as
+   * a pawn, and without them there was no telling which way the board faced.
+   */
+  showNotation = true,
   onSquareMouseEnter,
   onSquareMouseLeave,
   className,
@@ -155,14 +205,21 @@ const PuzzleBoard = ({
       style={vp.viewportStyle}
     >
       <div style={vp.contentStyle}>
-        <div
-          className={`${styles["board"]}${className ? ` ${className}` : ''}`}
-          ref={setBoardEl}
-          data-touch-board=""
-          style={{ gridTemplateColumns: `repeat(${boardWidth}, ${vp.squareSize}px)` }}
+        <BoardCoordinates
+          boardWidth={boardWidth}
+          boardHeight={boardHeight}
+          squareSize={vp.squareSize}
+          show={showNotation}
         >
-          {squares}
-        </div>
+          <div
+            className={`${styles["board"]}${className ? ` ${className}` : ''}`}
+            ref={setBoardEl}
+            data-touch-board=""
+            style={{ gridTemplateColumns: `repeat(${boardWidth}, ${vp.squareSize}px)` }}
+          >
+            {squares}
+          </div>
+        </BoardCoordinates>
       </div>
     </div>
   );
