@@ -18,7 +18,7 @@ import PlacementTray from "../common/PlacementTray";
 import PromotionChooser from "../common/PromotionChooser";
 import GameRulesModal from "../common/GameRulesModal";
 import useSetupMoveReplay from "../common/useSetupMoveReplay";
-import { expandPlaceable, placesPieces } from "../../helpers/placement";
+import { solverTrayItems, withPlacers } from "../../helpers/placement";
 import { applyPromotionDefinition, promotionPieceNumber, solvedPliesRemaining, colToFile } from "../../helpers/pieceMovementUtils";
 import styles from "./puzzlesolver.module.scss";
 
@@ -226,6 +226,19 @@ const FEEDBACK_CATEGORIES = [
  * Row 0 is the top of the stored position, so rank = height - y.
  */
 const squareName = (sq, boardHeight) => `${colToFile(sq.x)}${boardHeight - sq.y}`;
+
+/*
+ * One ply of an answer, in words. A placement has no square it came FROM, so
+ * it reads as where the piece was put down; reading `from` off one threw, and
+ * revealing the answer to any placement puzzle took the whole page down.
+ */
+const plyName = (ply, boardHeight) => {
+  if (!ply?.to) return '';
+  if (ply.type === 'place' || !ply.from) {
+    return `${ply.placedName || 'a piece'} placed on ${squareName(ply.to, boardHeight)}`;
+  }
+  return `${squareName(ply.from, boardHeight)} → ${squareName(ply.to, boardHeight)}`;
+};
 
 /*
  * What a move that did not land says: a wrong answer, or a move the game does
@@ -634,7 +647,7 @@ const PuzzleSolver = () => {
         // compute; when it does it is the authority and the guess is discarded.
         setPlacements(data.position
           ? fromServerPosition(data.position)
-          : applyPly(applyPly(before, move), data.reply));
+          : applyPly(applyPly(before, move), withPlacers([data.reply], puzzle, attemptLine.length)[0]));
         // Slide the opponent's reply in, the same as the opening move.
         if (data.reply?.from && data.reply?.to) {
           setAnimMove(data.reply);
@@ -655,7 +668,7 @@ const PuzzleSolver = () => {
         // replaces the guess rather than stacking on top of it.
         setPlacements(data.position
           ? fromServerPosition(data.position)
-          : solvedPliesRemaining(line, playedMoves.length, move)
+          : solvedPliesRemaining(withPlacers(line, puzzle), playedMoves.length, move)
               .reduce((cells, ply) => applyPly(cells, ply), before));
         setSolution(line);
         setOutcome('solved');
@@ -689,7 +702,7 @@ const PuzzleSolver = () => {
       if (data.position) {
         setPlacements(fromServerPosition(data.position));
       } else if (Array.isArray(line)) {
-        setPlacements((prev) => line.slice(playedMoves.length * 2).reduce((cells, ply) => applyPly(cells, ply), prev));
+        setPlacements((prev) => withPlacers(line, puzzle).slice(playedMoves.length * 2).reduce((cells, ply) => applyPly(cells, ply), prev));
       }
       if (data.rating) setRatingChange(data.rating);
       /*
@@ -929,7 +942,13 @@ const PuzzleSolver = () => {
       playFrom(pending.fromKey, target.x, target.y);
     };
 
-    const onCancel = () => { pendingRef.current = null; setDrag(null); setHoveredMoves([]); };
+    // Only a press or drag that was actually running is cancelled: on Android
+    // a pointercancel can arrive for a plain tap, and clearing here wiped the
+    // dots that tap had just shown.
+    const onCancel = () => {
+      if (!pendingRef.current && !drag) return;
+      pendingRef.current = null; setDrag(null); setHoveredMoves([]);
+    };
 
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
@@ -950,7 +969,13 @@ const PuzzleSolver = () => {
      * the turn rather than two. Whether the square is legal is the server's
      * call, exactly as it is for a move.
      */
+    if (trayPick && here && Number(here.player_id) === Number(puzzle?.side_to_move)) {
+      setTrayPick(null);
+      setSelected(k);
+      return;
+    }
     if (trayPick) {
+      setTrayPick(null);
       submit({
         type: 'place',
         placePieceId: Number(trayPick.template.piece_id),
@@ -1049,13 +1074,13 @@ const PuzzleSolver = () => {
    * empty squares. Replaying a handful of plies is cheap and always right.
    */
   const reviewPlacements = useMemo(() => {
-    const plies = Array.isArray(solution) ? solution.filter(Boolean) : [];
+    const plies = Array.isArray(solution) ? withPlacers(solution, puzzle).filter(Boolean) : [];
     if (revealStep == null || !plies.length) return null;
     if (revealStep < 0) return startPlacements;
     return plies
       .slice(0, revealStep + 1)
       .reduce((cells, ply) => applyPly(cells, ply), startPlacements);
-  }, [revealStep, solution, startPlacements]);
+  }, [revealStep, solution, startPlacements, puzzle]);
 
   /*
    * Start the puzzle over.
@@ -1089,11 +1114,9 @@ const PuzzleSolver = () => {
    * What this game lets the solver put down. Empty for every game that does
    * not place pieces, so the tray does not appear and nothing changes.
    */
-  const trayItems = placesPieces(puzzle)
-    ? expandPlaceable(puzzle.placeable_pieces, puzzle.player_count)
-    : [];
+  const trayItems = solverTrayItems(puzzle);
 
-  const solutionPlies = Array.isArray(solution) ? solution.filter(Boolean) : [];
+  const solutionPlies = Array.isArray(solution) ? withPlacers(solution, puzzle).filter(Boolean) : [];
   const sol = solutionPlies[0] || null;
 
   const setup = puzzle.setup_move;
@@ -1399,13 +1422,13 @@ const PuzzleSolver = () => {
                         <span className={styles["ply-label"]}>
                           {i % 2 === 0 ? `Move ${Math.floor(i / 2) + 1}` : 'Their reply'}
                         </span>
-                        {squareName(ply.from, boardHeight)} → {squareName(ply.to, boardHeight)}
+                        {plyName(ply, boardHeight)}
                       </li>
                     ))}
                   </ol>
                 </>
               ) : (
-                <>The answer was {squareName(sol.from, boardHeight)} → {squareName(sol.to, boardHeight)}, highlighted on the board.</>
+                <>The answer was {plyName(sol, boardHeight)}, highlighted on the board.</>
               )}
 
             </div>

@@ -5699,7 +5699,10 @@ const LiveGame = () => {
         const hpw = hoveredPiece?.piece_width || 1;
         const hph = hoveredPiece?.piece_height || 1;
         const inHoveredFootprint = hoveredPiece && doesPieceOccupySquare(hoveredPiece, gameX, gameY);
-        const hoveredRegularMove = showHelpers && hoveredPiece && !selectedPiece && !inHoveredFootprint
+        // The SELECTED piece keeps its hover map as well: its legal moves are
+        // drawn from validMoves below, and this fills in the squares it only
+        // attacks - a pawn's empty diagonals - which selecting it used to hide.
+        const hoveredRegularMove = showHelpers && hoveredPiece && (!selectedPiece || selectedPiece.id === hoveredPiece.id) && !inHoveredFootprint
           ? hoveredMoves.find(m => !m.isRangedAttack &&
               gameX >= m.x && gameX < m.x + hpw && gameY >= m.y && gameY < m.y + hph)
           : null;

@@ -6,21 +6,13 @@ import { MOVE_DOT_BACKGROUNDS, getMoveDotType } from "../../helpers/moveEngine";
 import PlacementTray from "../common/PlacementTray";
 import PromotionChooser from "../common/PromotionChooser";
 import useSetupMoveReplay from "../common/useSetupMoveReplay";
-import { expandPlaceable, placesPieces } from "../../helpers/placement";
+import { solverTrayItems } from "../../helpers/placement";
 import { applyPromotionDefinition, promotionPieceNumber, solvedPliesRemaining } from "../../helpers/pieceMovementUtils";
 import PuzzleBoard, { NOTATION_INSET, puzzleFlipped, squareFromPoint } from "../puzzles/PuzzleBoard";
 import useDiscordSdk from "./useDiscordSdk";
 import { launchedPuzzleId, getLaunchParams } from "../../helpers/discord-launch-params";
 import GameRulesModal from "../common/GameRulesModal";
-import styles from "./discordactivity.module.scss";
-
-/*
- * A picked-up piece shows where it can GO. The moves endpoint also lists the
- * squares a piece only threatens (a pawn's empty diagonals) so that hovering
- * reads as a threat map; those are not destinations, so a pick leaves them
- * out - the same split the live game draws.
- */
-const destinationsOnly = (moves) => (moves || []).filter((m) => !m.isPotentialCapture);
+import styles from "./discordactivity.module.scss";
 
 /*
  * The daily puzzle, playable inside Discord.
@@ -784,7 +776,7 @@ export default function DiscordActivity() {
     setPicked(key);
     setVerdict(null);
     setDrag({ fromKey: key, x: e.clientX, y: e.clientY });
-    loadHints(x, y).then((ms) => setHints(destinationsOnly(ms)));
+    loadHints(x, y).then(setHints);
   }, [puzzle, busy, finished, replaying, board, loadHints]);
 
   useEffect(() => {
@@ -891,17 +883,32 @@ export default function DiscordActivity() {
 
   const clickSquare = useCallback((x, y) => {
     if (!puzzle || busy || finished || replaying) return;
-    if (trayPick) { tryPlace(x, y); return; }
+    /*
+     * A piece held from the tray is put down wherever you click - except on one
+     * of your own pieces, which means you want to MOVE that piece. The tray is
+     * let go and the piece picked up, so a placement game's answer can be an
+     * ordinary move.
+     */
+    if (trayPick) {
+      const mineHere = board?.[`${y},${x}`];
+      if (!mineHere || Number(mineHere.player_id) !== Number(puzzle.side_to_move)) { tryPlace(x, y); return; }
+      setTrayPick(null);
+    }
     const key = `${y},${x}`;
     const here = board?.[key];
     if (!picked) {
       if (!here || Number(here.player_id) !== Number(puzzle.side_to_move)) return;
       setPicked(key);
       setVerdict(null);
-      loadHints(x, y).then((ms) => setHints(destinationsOnly(ms)));
+      loadHints(x, y).then(setHints);
       return;
     }
-    if (picked === key) { setPicked(null); setHints([]); return; }
+    /*
+     * Putting the piece down leaves its hover showing, as it would under a
+     * mouse. On a phone there is no hover to come back to, so clearing here
+     * meant the second tap on a piece showed nothing at all.
+     */
+    if (picked === key) { setPicked(null); loadHints(x, y).then(setHints); return; }
     tryMove(picked, x, y);
   }, [puzzle, busy, finished, replaying, board, picked, tryMove, loadHints, trayPick, tryPlace]);
 
@@ -1075,7 +1082,7 @@ export default function DiscordActivity() {
           `tone` swaps the chrome for Discord's own greys - the geometry and
           the held-piece ring stay identical to the site's. */}
       <PlacementTray
-        items={placesPieces(puzzle) ? expandPlaceable(puzzle.placeable_pieces, puzzle.player_count) : []}
+        items={solverTrayItems(puzzle)}
         heldKey={trayPick?.key}
         onPick={(item) => { setTrayPick(item); setPicked(null); setHints([]); }}
         label="Answer by placing"

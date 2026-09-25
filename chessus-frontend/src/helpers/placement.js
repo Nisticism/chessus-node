@@ -43,6 +43,53 @@ export const expandPlaceable = (placeablePieces, playerCount = 2) => {
   return out;
 };
 
+/*
+ * What a SOLVER may put down: only their own side's pieces, and neutral ones.
+ *
+ * A piece placeable by "all" expands to one item per player, which is right
+ * for the builder - its creator plays both sides of the line - and wrong for
+ * someone solving, who was offered the opponent's colour as well as their own
+ * and could drop a piece that is not theirs. The server makes every placement
+ * the mover's regardless, so the board showed one colour and the game recorded
+ * the other.
+ */
+export const solverTrayItems = (puzzle) => (
+  placesPieces(puzzle)
+    ? expandPlaceable(puzzle.placeable_pieces, puzzle.player_count)
+      .filter((item) => item.player === 0 || item.player === Number(puzzle.side_to_move))
+    : []
+);
+
+/*
+ * A solution line with every placement told whose it is, and what it looks like.
+ *
+ * The server stores a placement as three fields - type, piece, square - so a
+ * placement read back from a line does not say who made it. It is the side
+ * whose turn it was, which is the ply's position in the line: even plies are
+ * the solver's, odd ones the opponent's. Boards drawing a line used to default
+ * the owner to player 1, so the opponent's placements came out in the solver's
+ * colour, and with no artwork either.
+ *
+ * `startIndex` is where `line` begins in the full line, for a slice.
+ */
+export const withPlacers = (line, puzzle, startIndex = 0) => {
+  if (!Array.isArray(line)) return line;
+  const side = Number(puzzle?.side_to_move) || 1;
+  const other = side === 1 ? 2 : 1;
+  const templates = Array.isArray(puzzle?.placeable_pieces) ? puzzle.placeable_pieces : [];
+  return line.map((ply, i) => {
+    if (!ply || ply.type !== 'place') return ply;
+    const template = templates.find((t) => Number(t.piece_id) === Number(ply.placePieceId)) || {};
+    const neutral = !!template.is_neutral;
+    return {
+      ...ply,
+      placedBy: ply.placedBy ?? (neutral ? 0 : ((startIndex + i) % 2 === 0 ? side : other)),
+      placedName: ply.placedName ?? (template.name || template.piece_name || null),
+      placedImage: ply.placedImage ?? (template.image_location || null),
+    };
+  });
+};
+
 /** Does this game place pieces at all? */
 export const placesPieces = (game) => !!game?.place_pieces_action
   && Array.isArray(game.placeable_pieces) && game.placeable_pieces.length > 0;

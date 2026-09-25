@@ -979,6 +979,19 @@ const PuzzleBuilder = () => {
      * all: a stone has no movement, so "click the piece, then its square" can
      * never describe a Go move.
      */
+    /*
+     * Clicking one of the moving side's own pieces with a tray piece held means
+     * "move this", not "place on it". Without this the tray piece stayed held
+     * after the first placement and every click placed again, so a line in a
+     * placement game could never contain an ordinary move - puzzle 93 was
+     * recorded as sixteen placements for exactly that reason.
+     */
+    if (mode === 'solution' && trayPick && here && Number(here.player_id) === nextSide) {
+      setTrayPick(null);
+      setSelected(k);
+      setCheckResult(null);
+      return;
+    }
     if (mode === 'solution' && trayPick) {
       if (lineFull) {
         setCheckResult({ tone: 'warn', text: `A solution can be at most ${MAX_MOVES_PER_SIDE} moves per side.` });
@@ -997,6 +1010,9 @@ const PuzzleBuilder = () => {
         to: { x, y },
       });
       setSelected(null);
+      // Let go after one placement: the next ply is the other side's, and may
+      // well be a move rather than another placement.
+      setTrayPick(null);
       return;
     }
 
