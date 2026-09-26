@@ -144,6 +144,42 @@ const PuzzleBoard = ({
   // square while dragging, so it needs a handle on it.
   boardRef,
 }) => {
+  const boardEl = useRef(null);
+  const setBoardEl = useCallback((el) => {
+    boardEl.current = el;
+    if (typeof boardRef === 'function') boardRef(el);
+    else if (boardRef) boardRef.current = el;
+  }, [boardRef]);
+
+  const squareOf = (key) => {
+    const [y, x] = String(key).split(',').map(Number);
+    return { x, y };
+  };
+
+  const { isTouchTap } = useTouchPieceGestures(boardEl, {
+    // A tap shows the piece's hover styles, as a pointer resting on it would.
+    // The click that follows then does whatever a click does - selects your
+    // own piece, or answers with the one already selected.
+    onTap: (info) => {
+      const { x, y } = squareOf(info.key);
+      if (onSquareMouseLeave) onSquareMouseLeave(x, y);
+      if (onSquareMouseEnter) onSquareMouseEnter(x, y);
+    },
+    // A long press: pick the piece up, then hand the caller the same press a
+    // pointer would have, so its own drag carries on from there.
+    onLift: (info, point) => {
+      const { x, y } = squareOf(info.key);
+      if (onSquareLift) onSquareLift(x, y);
+      if (onSquarePointerDown) {
+        onSquarePointerDown({
+          clientX: point.clientX, clientY: point.clientY,
+          pointerType: 'touch', button: 0, fromLongPress: true,
+          preventDefault() {}, stopPropagation() {},
+        }, x, y);
+      }
+    },
+  });
+
   const squares = useMemo(() => {
     const out = [];
     for (let row = 0; row < boardHeight; row++) {
@@ -167,7 +203,9 @@ const PuzzleBoard = ({
               height: vp.squareSize,
             }}
             title={squareTitle ? squareTitle(x, y) : undefined}
-            onClick={onSquareClick ? () => onSquareClick(x, y) : undefined}
+            // `touch`: this click is a finger tap, which on a touch screen
+            // selects and never moves - see useTouchPieceGestures.
+            onClick={onSquareClick ? () => onSquareClick(x, y, { touch: isTouchTap() }) : undefined}
             /*
              * preventDefault on the press, and on any drag the browser tries to
              * start for itself. Without both, pressing a piece and moving begins
@@ -197,45 +235,9 @@ const PuzzleBoard = ({
     return out;
   }, [
     boardWidth, boardHeight, lightColor, darkColor, vp.squareSize,
-    renderSquare, squareClassName, squareTitle, liftedSquare, squarePiece, flipped,
+    renderSquare, squareClassName, squareTitle, liftedSquare, squarePiece, flipped, isTouchTap,
     onSquareClick, onSquarePointerDown, onSquareMouseEnter, onSquareMouseLeave,
   ]);
-
-  const boardEl = useRef(null);
-  const setBoardEl = useCallback((el) => {
-    boardEl.current = el;
-    if (typeof boardRef === 'function') boardRef(el);
-    else if (boardRef) boardRef.current = el;
-  }, [boardRef]);
-
-  const squareOf = (key) => {
-    const [y, x] = String(key).split(',').map(Number);
-    return { x, y };
-  };
-
-  useTouchPieceGestures(boardEl, {
-    // A tap shows the piece's hover styles, as a pointer resting on it would.
-    // The click that follows then does whatever a click does - selects your
-    // own piece, or answers with the one already selected.
-    onTap: (info) => {
-      const { x, y } = squareOf(info.key);
-      if (onSquareMouseLeave) onSquareMouseLeave(x, y);
-      if (onSquareMouseEnter) onSquareMouseEnter(x, y);
-    },
-    // A long press: pick the piece up, then hand the caller the same press a
-    // pointer would have, so its own drag carries on from there.
-    onLift: (info, point) => {
-      const { x, y } = squareOf(info.key);
-      if (onSquareLift) onSquareLift(x, y);
-      if (onSquarePointerDown) {
-        onSquarePointerDown({
-          clientX: point.clientX, clientY: point.clientY,
-          pointerType: 'touch', button: 0, fromLongPress: true,
-          preventDefault() {}, stopPropagation() {},
-        }, x, y);
-      }
-    },
-  });
 
   return (
     <div

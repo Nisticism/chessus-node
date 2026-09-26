@@ -2660,6 +2660,11 @@ const Sandbox = () => {
       }
     }
   }, [activeSandbox, activeSandboxId, selectedPiece, validMoves, findPieceAt, calculateValidMoves, commitMove, fullPiecesList, sandboxes, applyForcedCaptureFilter]);
+
+  // The latest click handler, for the touch drop and for a tap that selects
+  // once a deselect has landed - both run outside the render that made it.
+  const handleSquareClickRef = useRef(null);
+  handleSquareClickRef.current = handleSquareClick;
   /* eslint-enable react-hooks/exhaustive-deps */
 
   // Handle Delete key to remove selected piece
@@ -2786,60 +2791,28 @@ const Sandbox = () => {
 
       if (dropX >= 0 && dropX < boardWidth && dropY >= 0 && dropY < boardHeight) {
         const piece = td.piece;
-        const pw = piece.piece_width || 1;
-        const ph = piece.piece_height || 1;
-        let anchorX = dropX - (td.grabOffsetX || 0);
-        let anchorY = dropY - (td.grabOffsetY || 0);
+        const anchorX = dropX - (td.grabOffsetX || 0);
+        const anchorY = dropY - (td.grabOffsetY || 0);
 
+        /*
+         * The drop does exactly what a tap on that square does with this
+         * piece selected - handleSquareClick itself, not a copy of it. On a
+         * touch screen a drag is the only way to move (a tap only selects),
+         * and this copy had fallen behind: it committed every drop with
+         * isRangedAttack: false, so a ranged attack could not be made by
+         * touch at all. armTouchDrag selected the dragged piece, so the click
+         * handler sees what a tap would.
+         *
+         * Dropped back on its own square, it stays picked up.
+         */
         if (!(piece.x === anchorX && piece.y === anchorY)) {
-          const moves = td.moves || [];
-          let move = moves.find(m => m.x === anchorX && m.y === anchorY);
-          if (!move && (pw > 1 || ph > 1)) {
-            const candidates = moves.filter(m => !m.isRangedAttack && dropX >= m.x && dropX < m.x + pw && dropY >= m.y && dropY < m.y + ph);
-            if (candidates.length === 1) move = candidates[0];
-            else if (candidates.length > 1) {
-              move = candidates.reduce((best, m) => {
-                const d = Math.abs(m.x - anchorX) + Math.abs(m.y - anchorY);
-                const bd = Math.abs(best.x - anchorX) + Math.abs(best.y - anchorY);
-                return d < bd ? m : best;
-              });
-            }
-            if (move) { anchorX = move.x; anchorY = move.y; }
-          }
-          if (move) {
-            const pieces = activeSandbox.pieces;
-            let targetPiece = null;
-            if (move.isCapture && !move.isRangedAttack) {
-              const pieceTeam = piece.player_id || piece.team;
-              for (let dy = 0; dy < ph && !targetPiece; dy++) {
-                for (let dx = 0; dx < pw && !targetPiece; dx++) {
-                  const found = findPieceAt(pieces, anchorX + dx, anchorY + dy);
-                  if (found && found.id !== piece.id) {
-                    const foundTeam = found.player_id || found.team;
-                    if (foundTeam !== pieceTeam || piece.can_capture_allies) targetPiece = found;
-                  }
-                }
-              }
-            }
-            let piecesToRemove = new Set();
-            if (move.isHopCapture && move.hopCapturedPieceIds) move.hopCapturedPieceIds.forEach(id => piecesToRemove.add(id));
-            if (targetPiece) piecesToRemove.add(targetPiece.id);
-            const sbSnap3 = sandboxes.find(s => s.id === activeSandboxId);
-            if (sbSnap3) {
-              const result = commitMove(sbSnap3, {
-                movingPieceId: piece.id,
-                anchorX, anchorY,
-                captureIds: piecesToRemove,
-                isRangedAttack: false,
-                moveHistoryEntry: { from: { x: piece.x, y: piece.y }, to: { x: anchorX, y: anchorY }, piece: piece.piece_name, piece_width: pw, piece_height: ph }
-              });
-              const pendingPromo = result._promotionInfo ? { ...result._promotionInfo, sandboxId: activeSandboxId } : null;
-              delete result._promotionInfo;
-              setSandboxes(prev => prev.map(s => s.id === activeSandboxId ? result : s));
-              if (pendingPromo) setPromotionPending(pendingPromo);
-            }
-          }
+          handleSquareClickRef.current(anchorX, anchorY);
         }
+        touchDragRef.current = { piece: null, startX: 0, startY: 0, isDragging: false, grabOffsetX: 0, grabOffsetY: 0, moves: [] };
+        setTouchDragPiece(null);
+        setTouchDragPos(null);
+        setIsDragging(false);
+        return;
       }
     }
     touchDragRef.current = { piece: null, startX: 0, startY: 0, isDragging: false, grabOffsetX: 0, grabOffsetY: 0, moves: [] };
@@ -2848,7 +2821,7 @@ const Sandbox = () => {
     setIsDragging(false);
     setSelectedPiece(null);
     setValidMoves([]);
-  }, [activeSandbox, activeSandboxId, findPieceAt, commitMove, sandboxes]);
+  }, [activeSandbox]);
 
   // Handle right-click mousedown on square (for ranged click-vs-drag detection)
   const handleSquareMouseDown = useCallback((e, x, y) => {
@@ -3136,7 +3109,7 @@ const Sandbox = () => {
   }, [activeSandbox, canPieceMoveTo, canPieceCaptureTo, showHighlights]);
 
   // The site-wide touch rules, bound to this board - see useTouchPieceGestures.
-  useTouchPieceGestures(boardRef, {
+  const { isTouchTap } = useTouchPieceGestures(boardRef, {
     // A tap shows the piece's hover styles, as resting a pointer on it would.
     onTap: (info) => {
       const piece = (activeSandbox?.pieces || []).find((p) => String(p.id) === info.key);
@@ -3148,6 +3121,41 @@ const Sandbox = () => {
       if (piece) armTouchDrag(piece, point, info.el, true);
     },
   });
+
+  /*
+   * A click on a square. From a mouse, handleSquareClick unchanged. From a
+   * finger it never moves the selected piece - press and drag does.
+   *
+   * Decided from what was tapped, not from validMoves: switching the selection
+   * here clears validMoves rather than recomputing it, and the click handler
+   * then works a move out for itself, so a rule reading validMoves let the
+   * second tap through as a move. With a piece selected, a tap on another of
+   * that side's pieces selects it (the ordinary click path does that); a tap
+   * on anything else only puts the selected piece down. Taps with nothing
+   * selected - selecting, placing - are handleSquareClick as before.
+   */
+  const handleBoardTap = useCallback((x, y) => {
+    if (isTouchTap() && selectedPiece && activeSandbox) {
+      const spw = selectedPiece.piece_width || 1;
+      const sph = selectedPiece.piece_height || 1;
+      const onSelf = x >= selectedPiece.x && x < selectedPiece.x + spw && y >= selectedPiece.y && y < selectedPiece.y + sph;
+      if (!onSelf) {
+        const tapped = findPieceAt(activeSandbox.pieces, x, y);
+        const selectedTeam = selectedPiece.team || selectedPiece.player_id;
+        const tappedTeam = tapped && (tapped.team || tapped.player_id);
+        if (tapped && tappedTeam === selectedTeam) {
+          // The click path switches the selection to a piece of the same side.
+          handleSquareClick(x, y);
+          return;
+        }
+        setSelectedPiece(null);
+        setValidMoves([]);
+        if (tapped) handlePieceHover(tapped);
+        return;
+      }
+    }
+    handleSquareClick(x, y);
+  }, [isTouchTap, selectedPiece, activeSandbox, findPieceAt, handleSquareClick, handlePieceHover]);
 
   // Handle drag start for pieces on the board (game movement with validation)
   const handleBoardPieceDragStart = useCallback((e, piece) => {
@@ -3502,7 +3510,7 @@ const Sandbox = () => {
               ${specialSquareType === 'control' ? styles["control-square"] : ''}
               ${specialSquareType === 'custom' ? styles["special-square"] : ''}
             `}
-            onClick={() => handleSquareClick(x, y)}
+            onClick={() => handleBoardTap(x, y)}
             onDragOver={handleDragOver}
             onDrop={(e) => handleBoardDrop(e, x, y)}
             onMouseDown={(e) => handleSquareMouseDown(e, x, y)}

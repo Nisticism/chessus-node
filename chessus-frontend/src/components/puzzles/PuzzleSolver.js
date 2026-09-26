@@ -960,7 +960,7 @@ const PuzzleSolver = () => {
     };
   }, [drag, squareAtPoint, playFrom, hoverPiece, enginePieces]);
 
-  const handleSquareClick = useCallback((x, y) => {
+  const handleSquareClick = useCallback((x, y, how = null) => {
     if (busy || finished || replaying) return;
     const k = keyOf(x, y);
     const here = placements[k];
@@ -995,8 +995,21 @@ const PuzzleSolver = () => {
       return;
     }
     if (selected === k) { setSelected(null); return; }
+    /*
+     * A finger tap never moves - press and drag does (useTouchPieceGestures).
+     * A second tap meant to pick a different piece was being read as a move
+     * onto it, so a tap now only selects: another of your pieces takes the
+     * selection, anything else puts the piece down and shows what was tapped.
+     */
+    if (how && how.touch) {
+      const tapped = enginePieces.find((p) => p.x === x && p.y === y);
+      if (here && Number(here.player_id) === Number(puzzle?.side_to_move)) setSelected(k);
+      else setSelected(null);
+      hoverPiece(tapped);
+      return;
+    }
     playFrom(selected, x, y);
-  }, [busy, finished, replaying, selected, placements, puzzle, playFrom, trayPick, submit]);
+  }, [busy, finished, replaying, selected, placements, puzzle, playFrom, trayPick, submit, enginePieces, hoverPiece]);
 
   const sendFeedback = async () => {
     setFeedbackNotice(null);

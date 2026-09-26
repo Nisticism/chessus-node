@@ -37,6 +37,9 @@ const PlayablePreviewBoard = ({ gameData, lightSquareColor, darkSquareColor }) =
   // The piece following a finger, while a touch drag is under way.
   const [touchGhost, setTouchGhost] = useState(null);
   const gridRef = useRef(null);
+  // Whether the click being handled is a finger tap - filled in from the
+  // touch hook below, read by the click handlers declared before it.
+  const touchTapRef = useRef(() => false);
 
   // Initialize pieces from gameData
   useEffect(() => {
@@ -278,6 +281,23 @@ const PlayablePreviewBoard = ({ gameData, lightSquareColor, darkSquareColor }) =
   const handlePieceClick = useCallback((e, piece) => {
     e.stopPropagation();
 
+    /*
+     * A finger tap never moves or captures - press and drag does (see
+     * useTouchPieceGestures). With a piece selected, tapping another of the
+     * side-to-move's pieces selects it; tapping any other piece puts the
+     * selected one down and shows the tapped piece's moves.
+     */
+    if (touchTapRef.current() && selectedPiece && selectedPiece.id !== piece.id) {
+      if (piece.player_number === currentTurn) {
+        setSelectedPiece(piece);
+        setValidMoves(calculateValidMoves(piece));
+      } else {
+        setSelectedPiece(null);
+        setValidMoves([]);
+      }
+      return;
+    }
+
     // Only allow selecting pieces of the current turn's player
     const isCurrentTurnPiece = piece.player_number === currentTurn;
 
@@ -311,6 +331,12 @@ const PlayablePreviewBoard = ({ gameData, lightSquareColor, darkSquareColor }) =
   // Handle square click (for moving)
   const handleSquareClick = useCallback((row, col) => {
     if (!selectedPiece) return;
+    // A finger tap on a square puts the piece down; moving is drag-only on touch.
+    if (touchTapRef.current()) {
+      setSelectedPiece(null);
+      setValidMoves([]);
+      return;
+    }
 
     const isValidMove = validMoves.some(m => m.row === row && m.col === col);
 
@@ -396,7 +422,7 @@ const PlayablePreviewBoard = ({ gameData, lightSquareColor, darkSquareColor }) =
     setDraggingPiece(null);
     setDragValidMoves([]);
   };
-  useTouchPieceGestures(gridRef, {
+  const { isTouchTap } = useTouchPieceGestures(gridRef, {
     onTap: (info) => {
       const piece = pieceByKey(info.key);
       if (piece) handlePieceHover(piece);
@@ -429,6 +455,7 @@ const PlayablePreviewBoard = ({ gameData, lightSquareColor, darkSquareColor }) =
     },
     onCancel: endTouchDrag,
   });
+  touchTapRef.current = isTouchTap;
 
   // Get image URL for piece
   const getPieceImageUrl = useCallback((piece) => {

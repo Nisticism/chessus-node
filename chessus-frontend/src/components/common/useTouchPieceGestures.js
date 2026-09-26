@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 /*
  * How a finger works on every board on the site. One hook, so the boards
@@ -13,7 +13,16 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
  *                              own pieces lifts it (the board's click path)
  *   press a lifted piece       drags it straight away - no long press
  *   long-press your piece      lifts it and drags from that same press
- *   tap, then tap a square     moves there (the board's click path)
+ *   tap, then tap a square     does NOT move. On a touch screen a tap only
+ *                              selects: another of your pieces switches the
+ *                              selection, anything else puts it down. Moving
+ *                              is press-and-drag only, because a second tap
+ *                              meant to pick a different piece was being read
+ *                              as a move onto it.
+ *
+ * isTouchTap(), returned by the hook, says whether the click being handled
+ * came from a finger tap, so a board can apply that last rule in its click
+ * handler. A drag never produces a click at all (see swallowClickUntil).
  *
  * HOW THE BOARD TAKES PART
  *
@@ -64,6 +73,10 @@ export default function useTouchPieceGestures(boardRef, options = {}) {
   // Latest callbacks without re-binding the native listeners on every render.
   const opts = useRef(options);
   opts.current = options;
+  // When the last finger tap on this board ended. A click arriving just after
+  // it is that tap's click.
+  const lastTapAt = useRef(0);
+  const isTouchTap = useCallback(() => Date.now() - lastTapAt.current < 700, []);
   const enabled = options.enabled !== false;
 
   // The board element can mount after its data loads, so follow the node
@@ -114,7 +127,9 @@ export default function useTouchPieceGestures(boardRef, options = {}) {
       const t = e.touches[0];
       info = readInfo(e.target);
       start = pointOf(t);
-      if (!info) return;
+      // An empty square is still a tap worth knowing about: it may be the
+      // square a selected piece would have moved to.
+      if (!info) { mode = 'tap'; return; }
       if (info.own && info.lifted) {
         mode = 'armed';
       } else if (info.own) {
@@ -156,8 +171,9 @@ export default function useTouchPieceGestures(boardRef, options = {}) {
         call('onDrop', info, t ? pointOf(t) : start);
         // A drop is not also a tap on wherever the finger came up.
         swallowClickUntil = Date.now() + 450;
-      } else if ((mode === 'pending' || mode === 'armed' || mode === 'tap') && info) {
-        call('onTap', info);
+      } else if (mode === 'pending' || mode === 'armed' || mode === 'tap') {
+        lastTapAt.current = Date.now();
+        if (info) call('onTap', info);
       }
       reset();
     };
@@ -202,4 +218,6 @@ export default function useTouchPieceGestures(boardRef, options = {}) {
       node.removeEventListener('dragstart', onDragStartCapture, true);
     };
   }, [node, enabled]);
+
+  return { isTouchTap };
 }

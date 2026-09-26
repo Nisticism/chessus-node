@@ -3988,6 +3988,12 @@ const LiveGame = () => {
   }, [isMyTurn, gameState, currentPlayer, selectedPiece, validMoves, calculateValidMoves, submitMove, sendPremove, setPremove, gameId, rangedSelectedPiece, setShowPlacementModal, setPlacementTarget, pendingMove, ghostMoveIndex, captureActionPieceId, showIllegalMoveWarning, specialSquares, showPromotionModal, vetoWindow, vetoSelectedPiece, vetoPieceMoves, vetoMyBudget, vetoDoneThisTurn, vetoSelection, premove, sendClearPremove, reactiveMoveLocked, heldMoveHighlight, cancelVetoStagedMove, cancelReactiveHeldMove]);
   /* eslint-enable react-hooks/exhaustive-deps */
 
+  // The latest click handler, for the touch drop and for a tap that has to
+  // select once a deselect has landed - both run outside the render that made
+  // the handler they would otherwise close over.
+  const handleSquareClickRef = useRef(null);
+  handleSquareClickRef.current = handleSquareClick;
+
   // Handle piece hover for movement helpers
   const handlePieceHover = useCallback((piece) => {
     if (!gameState?.showPieceHelpers) return;
@@ -4621,7 +4627,7 @@ const LiveGame = () => {
   }, [armTouchDrag]);
 
   // The shared touch rules, bound to this board.
-  useTouchPieceGestures(boardRef, {
+  const { isTouchTap } = useTouchPieceGestures(boardRef, {
     // A tap shows the piece's hover styles, as resting a pointer on it would.
     onTap: (info) => {
       if (!(gameState?.showPieceHelpers || showMovableIndicators)) return;
@@ -4634,6 +4640,39 @@ const LiveGame = () => {
       if (piece) armTouchDrag(piece, point, info.el, true);
     },
   });
+
+  /*
+   * A click on a square. From a mouse it is handleSquareClick, unchanged.
+   *
+   * From a finger it never MOVES the selected piece - press and drag does. A
+   * second tap meant to pick a different piece, or to look at an enemy one,
+   * was being read as a move or a capture onto it. So a tap on a square the
+   * selected piece could go to puts the piece down instead, and then selects
+   * what was tapped if it is yours (through the ordinary click path, once the
+   * deselect has landed), or shows its moves if it is not. Every other tap -
+   * selecting, deselecting on an empty square, placing, vetoing, cancelling a
+   * premove - goes to handleSquareClick exactly as before.
+   */
+  const handleBoardTap = useCallback((x, y) => {
+    if (isTouchTap() && selectedPiece && !doesPieceOccupySquare(selectedPiece, x, y)) {
+      const spw = selectedPiece.piece_width || 1;
+      const sph = selectedPiece.piece_height || 1;
+      const wouldMove = validMoves.some((m) => (m.isRangedAttack
+        ? m.x === x && m.y === y
+        : x >= m.x && x < m.x + spw && y >= m.y && y < m.y + sph));
+      if (wouldMove) {
+        const tapped = findPieceAtSquare(parsePieces(gameState?.pieces || []), x, y);
+        setSelectedPiece(null);
+        setValidMoves([]);
+        if (tapped) {
+          setTimeout(() => { if (handleSquareClickRef.current) handleSquareClickRef.current(x, y); }, 0);
+          if (gameState?.showPieceHelpers || showMovableIndicators) handlePieceHover(tapped);
+        }
+        return;
+      }
+    }
+    handleSquareClick(x, y);
+  }, [isTouchTap, selectedPiece, validMoves, gameState, handleSquareClick, handlePieceHover, showMovableIndicators]);
 
   const handleTouchMove = useCallback((e) => {
     const td = touchDragRef.current;
@@ -4683,7 +4722,6 @@ const LiveGame = () => {
       // Bounds check
       if (anchorX >= 0 && anchorX < boardWidth && anchorY >= 0 && anchorY < boardHeight) {
         const piece = td.piece;
-        const moves = td.moves;
 
         // Reposition phase: submit reposition instead of normal move
         if (td.isReposition) {
@@ -4703,103 +4741,28 @@ const LiveGame = () => {
         const pw = piece.piece_width || 1;
         const ph = piece.piece_height || 1;
 
-        // Don't move if dropping within the piece's own footprint
-        if (!(anchorX >= piece.x && anchorX < piece.x + pw && anchorY >= piece.y && anchorY < piece.y + ph)) {
-          let validMove = moves.find(m => m.x === anchorX && m.y === anchorY);
-
-          // Multi-tile footprint overlap
-          if (!validMove && (pw > 1 || ph > 1)) {
-            validMove = moves.find(m => !m.isRangedAttack &&
-              anchorX >= m.x && anchorX < m.x + pw && anchorY >= m.y && anchorY < m.y + ph
-            );
-          }
-
-          // Multi-tile enemy fallback
-          if (!validMove) {
-            const pieces = parsePieces(gameState?.pieces);
-            const targetPiece = findPieceAtSquare(pieces, anchorX, anchorY);
-            if (targetPiece && targetPiece.id !== piece.id) {
-              validMove = moves.find(m => {
-                if (!m.isCapture) return false;
-                for (let dy = 0; dy < ph; dy++) {
-                  for (let dx = 0; dx < pw; dx++) {
-                    if (doesPieceOccupySquare(targetPiece, m.x + dx, m.y + dy)) return true;
-                  }
-                }
-                return false;
-              });
-            }
-          }
-
-          if (validMove) {
-            const canMakeMove = isMyTurn && (gameState?.status === 'active' || gameState?.status === 'ready');
-            const canMakePremove = (!isMyTurn || !!gameState?.botPlayer) && (gameState?.status === 'active' || gameState?.status === 'ready') && gameState?.allowPremoves !== false && myRepositionsDone && !(gameState?.gameType?.veto_enabled && !gameState?.gameType?.simultaneous_turns);
-
-            if (canMakeMove) {
-              const moveData = {
-                from: { x: piece.x, y: piece.y },
-                to: { x: validMove.x, y: validMove.y },
-                pieceId: piece.id
-              };
-              if (validMove.isCastling) {
-                moveData.isCastling = true;
-                moveData.castlingWith = validMove.castlingWith;
-                moveData.castlingDirection = validMove.castlingDirection;
-              }
-              if (validMove.isHopCapture) {
-                moveData.isHopCapture = true;
-                moveData.hopCapturedPieceIds = validMove.hopCapturedPieceIds;
-              }
-              if (validMove.via) {
-                moveData.via = validMove.via;
-              }
-              submitMove(parseInt(gameId), moveData);
-            } else if (canMakePremove) {
-              const premoveData = {
-                from: { x: piece.x, y: piece.y },
-                to: { x: validMove.x, y: validMove.y },
-                pieceId: piece.id,
-                pieceWidth: pw,
-                pieceHeight: ph
-              };
-              if (validMove.isCastling) {
-                premoveData.isCastling = true;
-                premoveData.castlingWith = validMove.castlingWith;
-                premoveData.castlingDirection = validMove.castlingDirection;
-              }
-              if (validMove.isHopCapture) {
-                premoveData.isHopCapture = true;
-                premoveData.hopCapturedPieceIds = validMove.hopCapturedPieceIds;
-              }
-              if (validMove.via) premoveData.via = validMove.via;
-              setPremove(premoveData);
-              sendPremove(parseInt(gameId), premoveData);
-            }
-          } else {
-            // Check if the move was blocked by check restrictions
-            if (piece && gameState?.gameType?.mate_condition && gameState?.pieces) {
-              const movesWithoutCheckFilter = calculateValidMoves(
-                piece,
-                gameState.pieces,
-                gameState?.gameType?.board_width || 8,
-                gameState?.gameType?.board_height || 8,
-                true // Skip check filter
-              );
-              const moveWithoutCheckFilter = movesWithoutCheckFilter.find(m => m.x === anchorX && m.y === anchorY);
-              if (moveWithoutCheckFilter) {
-                if (inCheck && currentPlayer?.position === gameState?.currentTurn) {
-                  setMoveError("You must get out of check");
-                } else {
-                  setMoveError("This move would put you in check");
-                }
-                setTimeout(() => setMoveError(null), 3000);
-                if (soundEnabledRef.current) {
-                  soundManager.playIllegalMove();
-                }
-              }
-            }
-          }
+        /*
+         * The drop does EXACTLY what a tap on that square does with this piece
+         * selected - the same handler, not a copy of it.
+         *
+         * On a touch screen a drag is now the only way to move (a tap only
+         * selects; see handleBoardTap), so whatever a game's rules allow by
+         * tapping has to work by dragging. This used to be its own copy of the
+         * move logic, and it had fallen behind: it never marked a ranged
+         * attack as one, and knew nothing of the rules the tap path has grown
+         * since. The dragged piece is the selected piece (armTouchDrag selects
+         * it), so handleSquareClick sees the same state a tap would.
+         *
+         * Dropped back on its own square it simply stays picked up.
+         */
+        const onOwnFootprint = anchorX >= piece.x && anchorX < piece.x + pw && anchorY >= piece.y && anchorY < piece.y + ph;
+        if (!onOwnFootprint) {
+          handleSquareClickRef.current(anchorX, anchorY);
         }
+        touchDragRef.current = { piece: null, moves: [], startX: 0, startY: 0, isDragging: false, grabOffset: { x: 0, y: 0 } };
+        setTouchDragPiece(null);
+        setTouchDragPos(null);
+        return;
       }
     }
     // If not dragging, let onClick handle the tap
@@ -5851,7 +5814,7 @@ const LiveGame = () => {
               ${activeIsRanged ? styles["has-ranged-dot"] : ''}
               ${isRepositionable ? styles["reposition-eligible"] : ''}
             `}
-            onClick={() => handleSquareClick(gameX, gameY)}
+            onClick={() => handleBoardTap(gameX, gameY)}
             onDragOver={(e) => handleDragOver(e, gameX, gameY)}
             onDrop={(e) => handleDrop(e, gameX, gameY)}
             onMouseDown={(e) => handleSquareMouseDown(e, gameX, gameY)}
@@ -6243,6 +6206,7 @@ const LiveGame = () => {
         <div className={styles["board-and-files"]}>
           <div 
             ref={boardRef}
+            data-touch-board=""
             className={styles["game-board"]}
             style={{
               gridTemplateColumns: `repeat(${boardWidth}, ${squareSize}px)`,

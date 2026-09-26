@@ -881,7 +881,7 @@ export default function DiscordActivity() {
     }
   }, [puzzle, busy, finished, trayPick, board, found, attempts, awaitHandshake]);
 
-  const clickSquare = useCallback((x, y) => {
+  const clickSquare = useCallback((x, y, how = null) => {
     if (!puzzle || busy || finished || replaying) return;
     /*
      * A piece held from the tray is put down wherever you click - except on one
@@ -909,6 +909,18 @@ export default function DiscordActivity() {
      * meant the second tap on a piece showed nothing at all.
      */
     if (picked === key) { setPicked(null); loadHints(x, y).then(setHints); return; }
+    /*
+     * A finger tap never moves - press and drag does (useTouchPieceGestures).
+     * A second tap meant to pick a different piece was being read as a move
+     * onto it, so a tap now only selects: another of your pieces takes the
+     * selection, anything else puts the piece down and shows what was tapped.
+     */
+    if (how && how.touch) {
+      setPicked(here && Number(here.player_id) === Number(puzzle.side_to_move) ? key : null);
+      if (here) loadHints(x, y).then(setHints);
+      else setHints([]);
+      return;
+    }
     tryMove(picked, x, y);
   }, [puzzle, busy, finished, replaying, board, picked, tryMove, loadHints, trayPick, tryPlace]);
 
