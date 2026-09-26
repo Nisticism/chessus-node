@@ -573,7 +573,9 @@ function restoredClockRunnerId(players, otherData, runnerPos) {
  */
 function syncCorrespondenceDeadline(gameState) {
   if (!gameState?.isCorrespondence || !gameState.correspondenceDays) return false;
-  if (gameState.status !== 'active' || gameState.currentTurn == null) return false;
+  // 'ready' is both players seated and nobody has moved: the first move has a
+  // deadline too, the same time per move as every other.
+  if (!(gameState.status === 'active' || gameState.status === 'ready') || gameState.currentTurn == null) return false;
   const pos = Number(gameState.currentTurn);
   if (gameState.moveDeadline && gameState.deadlineFor == null) {
     gameState.deadlineFor = pos;
@@ -582,6 +584,40 @@ function syncCorrespondenceDeadline(gameState) {
   if (gameState.moveDeadline && Number(gameState.deadlineFor) === pos) return false;
   renewCorrespondenceDeadline(gameState);
   return true;
+}
+
+/*
+ * Has each side made at least one move? A correspondence game that times out
+ * before then is not rated: one player never really took part.
+ */
+function bothSidesHaveMoved(moveHistory) {
+  const sides = new Set();
+  for (const m of moveHistory || []) {
+    if (m && m.position != null) sides.add(Number(m.position));
+  }
+  return sides.size >= 2;
+}
+
+/*
+ * When a correspondence deadline that was never set should have started: for
+ * a game waiting on its first move, the moment the second player sat down
+ * (their players row); for a game under way, when it started. Used for games
+ * saved before first moves had deadlines - never Date.now(), which would hand
+ * out a fresh window on every restart.
+ */
+async function correspondenceDeadlineAnchorMs(gameId, status, startTime) {
+  if (status === 'ready') {
+    try {
+      const [[row]] = await db_pool.query(
+        'SELECT UNIX_TIMESTAMP(MAX(created_at)) * 1000 AS seatedAt FROM players WHERE game_id = ?', [gameId]);
+      if (row?.seatedAt) return Number(row.seatedAt);
+    } catch (_) { /* fall through */ }
+  }
+  if (startTime) {
+    const t = new Date(startTime).getTime();
+    if (Number.isFinite(t)) return t;
+  }
+  return Date.now();
 }
 
 function renewCorrespondenceDeadline(gameState) {
@@ -3990,8 +4026,15 @@ function initializeSocket(server) {
 
   // Periodically expire correspondence games whose per-turn deadline has passed.
   // Runs at startup (to catch games that expired while the server was down) then hourly.
-  cancelExpiredCorrespondenceGames();
-  setInterval(cancelExpiredCorrespondenceGames, 60 * 60 * 1000);
+  // Games still in their opening (a side has not moved yet) are expired first,
+  // unrated, by expireOpeningCorrespondenceGames; the general check then only
+  // sees games both players have taken part in.
+  const expireCorrespondence = async () => {
+    await expireOpeningCorrespondenceGames();
+    await cancelExpiredCorrespondenceGames();
+  };
+  expireCorrespondence();
+  setInterval(expireCorrespondence, 60 * 60 * 1000);
 
   // Restore in-memory clocks for all active timed games so they keep ticking
   // even when no player is currently connected (e.g. after a server restart).
@@ -6501,6 +6544,9 @@ function initializeSocket(server) {
             }
           }
         }
+        // A correspondence game that just became ready may not have been saved
+        // yet, and the save is where its first deadline is set.
+        syncCorrespondenceDeadline(gameState);
         socket.emit("gameState", fogFilterPayload(gameState, gameState, getViewerPosition(gameState, userId)));
         // Re-sync veto bank + clock charge on (re)join (see getGameState).
         if (getVetoConfig(gameState)) emitVetoState(io, gameState, gameId);
@@ -11429,8 +11475,8 @@ function initializeSocket(server) {
             processBotTurn(io, gameId, gameState);
           }
 
-          // Check for correspondence timeout
-          if (gameState.status === 'active' && gameState.isCorrespondence && gameState.correspondenceDays) {
+          // Check for correspondence timeout (a game waiting on its first move too)
+          if ((gameState.status === 'active' || gameState.status === 'ready') && gameState.isCorrespondence && gameState.correspondenceDays) {
             // Migrate legacy records that have lastMoveTime but no moveDeadline.
             if (!gameState.moveDeadline && gameState.lastMoveTime) {
               const allowedMs = gameState.correspondenceDays * 24 * 60 * 60 * 1000;
@@ -11448,11 +11494,10 @@ function initializeSocket(server) {
             // by waiting for a deploy.
             if (!gameState.moveDeadline) {
               const allowedMs = gameState.correspondenceDays * 24 * 60 * 60 * 1000;
-              const anchor = gameState.startTime
-                ? new Date(gameState.startTime).getTime()
-                : Date.now();
+              const anchor = await correspondenceDeadlineAnchorMs(gameId, gameState.status, gameState.startTime);
               gameState.moveDeadline = anchor + allowedMs;
               gameState.lastMoveTime = anchor;
+              gameState.deadlineFor = Number(gameState.currentTurn);
               try {
                 await db_pool.query(
                   'UPDATE games SET other_data = ? WHERE id = ?',
@@ -11468,8 +11513,10 @@ function initializeSocket(server) {
               gameState.winner = winner?.id;
               gameState.winReason = 'timeout';
 
+              // Not rated unless both sides had made a move.
+              const openingTimeout = !bothSidesHaveMoved(gameState.moveHistory);
               let eloChanges = null;
-              if (gameState.rated !== false && winner?.id && currentPlayer?.id) {
+              if (!openingTimeout && gameState.rated !== false && winner?.id && currentPlayer?.id) {
                 eloChanges = await updateEloRatings(winner.id, currentPlayer.id);
               }
 
@@ -11478,10 +11525,10 @@ function initializeSocket(server) {
                 `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?,
                  pieces = ?, other_data = ? WHERE id = ?`,
                 [endTime, sanitizeWinnerId(winner?.id), JSON.stringify(gameState.pieces),
-                 buildOtherData(gameState, { winner: winner?.id, reason: 'timeout', eloChanges }),
+                 buildOtherData(gameState, { winner: winner?.id, reason: 'timeout', eloChanges, ...(openingTimeout ? { unratedReason: 'opening_timeout' } : {}) }),
                  gameId]
               );
-              console.log(`Correspondence game ${gameId} ended - ${currentPlayer?.username} ran out of time`);
+              console.log(`Correspondence game ${gameId} ended - ${currentPlayer?.username} ran out of time${openingTimeout ? ' (before both sides moved; unrated)' : ''}`);
             }
           }
           
@@ -22059,6 +22106,114 @@ async function finishBotGame(io, gameId, gameState, winResult, moveRecord, effec
  * there is no live interval driving expirations — we must poll the DB.
  * Runs at startup and every hour.
  */
+/*
+ * Correspondence games in their opening - waiting on the first move, or on
+ * the second player's first move - whose deadline has passed.
+ *
+ * The first move gets the same time per move as every other (the host's
+ * setting), counted from when both players were seated. A game that runs out
+ * before both sides have moved ends as a timeout, won by the side that was
+ * not to move, and is never rated.
+ *
+ * Also gives a deadline to any such game saved before first moves had one,
+ * anchored to when it should have started (see
+ * correspondenceDeadlineAnchorMs), so games that have sat untouched for months
+ * finally end.
+ */
+async function expireOpeningCorrespondenceGames() {
+  try {
+    const [rows] = await db_pool.query(
+      `SELECT g.id, g.status, g.player_turn, g.start_time, g.correspondence_days, g.other_data,
+              gt.game_name
+       FROM games g JOIN game_types gt ON gt.id = g.game_type_id
+       WHERE g.is_correspondence = 1 AND g.correspondence_days IS NOT NULL
+         AND g.status IN ('ready', 'active')`
+    );
+    for (const game of rows) {
+      try {
+        const gameIdStr = String(game.id);
+        const live = activeGames.get(gameIdStr);
+        let otherData = {};
+        try { otherData = JSON.parse(game.other_data || '{}') || {}; } catch (_) {}
+        const moveHistory = live
+          ? live.moveHistory
+          : (await loadGameMoves(game.id, otherData)).moveHistory;
+        if (bothSidesHaveMoved(moveHistory)) continue; // the general check's
+
+        const allowedMs = game.correspondence_days * 24 * 60 * 60 * 1000;
+        let deadline = live ? live.moveDeadline : otherData.moveDeadline;
+        if (!deadline) {
+          const anchor = await correspondenceDeadlineAnchorMs(game.id, game.status, game.start_time);
+          deadline = anchor + allowedMs;
+          if (live) {
+            live.moveDeadline = deadline;
+            live.lastMoveTime = anchor;
+            live.deadlineFor = Number(live.currentTurn);
+          }
+          await db_pool.query(
+            `UPDATE games SET other_data = JSON_SET(COALESCE(other_data, '{}'),
+               '$.moveDeadline', ?, '$.lastMoveTime', ?, '$.deadlineFor', ?) WHERE id = ?`,
+            [deadline, anchor, Number(game.player_turn || 1), game.id]);
+        }
+        if (Date.now() <= deadline) continue;
+
+        // Ran out of time before both sides moved: a timeout, unrated.
+        const toMove = Number(live ? live.currentTurn : (game.player_turn || 1));
+        let players;
+        if (live) {
+          players = live.players || [];
+        } else {
+          const [prow] = await db_pool.query(
+            'SELECT user_id AS id, player_position AS position FROM players WHERE game_id = ?', [game.id]);
+          players = prow.map(p => ({ id: p.id, position: p.position }));
+          if (otherData.isBotGame && !players.some(p => Number(p.position) === Number(otherData.botPosition || 2))) {
+            players.push({ id: 'bot', position: Number(otherData.botPosition || 2), isBot: true });
+          }
+        }
+        const loser = players.find(p => Number(p.position) === toMove);
+        const winner = players.find(p => Number(p.position) !== toMove);
+        const endTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
+
+        let finalOtherData;
+        if (live) {
+          live.status = 'completed';
+          live.winner = winner?.id;
+          live.winReason = 'timeout';
+          finalOtherData = buildOtherData(live, { winner: winner?.id, reason: 'timeout', eloChanges: null, unratedReason: 'opening_timeout' });
+        } else {
+          finalOtherData = JSON.stringify({ ...otherData, winner: winner?.id ?? null, reason: 'timeout', eloChanges: null, unratedReason: 'opening_timeout' });
+        }
+        await db_pool.query(
+          `UPDATE games SET status = 'completed', end_time = ?, winner_id = ?, other_data = ?
+           WHERE id = ? AND status IN ('ready', 'active')`,
+          [endTime, sanitizeWinnerId(winner?.id), finalOtherData, game.id]);
+
+        const stateForBroadcast = live || { players, gameType: { game_name: game.game_name } };
+        const payload = {
+          gameId: game.id, winner: winner?.id, reason: 'timeout',
+          finalState: live || undefined, eloChanges: null,
+        };
+        if (ioInstance) {
+          // A game whose time ran out long ago (one that sat with no deadline
+          // before first moves had one) ends quietly: a "you lost" notification
+          // for a game nobody has looked at in months is noise.
+          if (Date.now() - deadline > 24 * 60 * 60 * 1000) {
+            ioInstance.to(`game-${game.id}`).emit('gameOver', payload);
+          } else {
+            broadcastGameOver(ioInstance, game.id, stateForBroadcast, payload);
+          }
+        }
+        invalidateLobbyCache();
+        console.log(`[correspondence] Game ${game.id}: player ${toMove}${loser?.id != null ? ` (${loser.id})` : ''} ran out of time before both sides had moved - timeout, unrated.`);
+      } catch (innerErr) {
+        console.error(`[correspondence] Opening expiry failed for game ${game.id}:`, innerErr.message);
+      }
+    }
+  } catch (err) {
+    console.error('[correspondence] expireOpeningCorrespondenceGames error:', err);
+  }
+}
+
 async function cancelExpiredCorrespondenceGames() {
   try {
     // Primary query: games with moveDeadline (new architecture)

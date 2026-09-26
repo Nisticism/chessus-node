@@ -3190,7 +3190,9 @@ const LiveGame = () => {
         )}
         {!gameState.timeControl && gameState.isCorrespondence && (
           <span className={styles["board-clock-time"]}>
-            {formatCorrespondenceTime(isTheirTurn)}
+            {/* The first move has a deadline too, while the game is still 'ready'. */}
+            {formatCorrespondenceTime(isTheirTurn || (!!player && gameState.status === 'ready'
+              && gameState.currentTurn === player.position && !!gameState.moveDeadline))}
           </span>
         )}
       </div>
