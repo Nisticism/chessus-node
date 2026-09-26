@@ -16166,16 +16166,19 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces, gameType) {
   // Check directional capture/movement
   const checkDirectional = (captureValue, moveValue, exactFlag, repeating) => {
     /*
-     * With no dedicated capture direction at all, a piece that captures on its
-     * move captures along its movement - whatever the capture columns hold.
-     * They are 0 rather than NULL on many rows, and reading that 0 as "cannot
-     * capture this way" refused every capture such a piece made (Clobber Four's
-     * token: "Piece cannot capture to that square"), even though the move list
-     * - which counts 0 as unset - had offered it. The two now agree.
+     * A capture value of 0 is a real answer - "does not capture this way" -
+     * and must stay one. can_capture_enemy_on_move is the TOGGLE over the
+     * capture values (on by default for every new piece, see the piece
+     * wizard), not "captures like it moves": that is attacks_like_movement.
+     * A piece with the toggle on and every value 0 captures nothing. Only a
+     * value that was never set (NULL) falls back to the movement.
+     *
+     * Reading 0 as unset (2026-09-26, reverted the same day) let 78 such
+     * pieces capture along their movement - Clobber Four's movement-only
+     * token among them.
      */
-    const value = hasAnyCaptureDir
-      ? (captureValue ?? null)
-      : (useMovementForCapture ? moveValue : null);
+    const value = captureValue !== undefined && captureValue !== null ? captureValue :
+                  (useMovementForCapture && !hasAnyCaptureDir ? moveValue : null);
     if (!value) return false;
     if (value === 99) return true; // Infinite
     if (value > 0) {
