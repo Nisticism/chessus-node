@@ -113,6 +113,9 @@ const ELIGIBLE_SQL = `
     AND p.allow_daily = 1
     AND pool.status IN ('auto_included', 'included')
     AND gt.is_draft = 0
+    -- Veto puzzles are played in steps the daily card and the Discord
+    -- activity do not offer yet (puzzle-veto.js); the puzzle page does.
+    AND NOT (COALESCE(gt.veto_enabled, 0) = 1 AND COALESCE(gt.simultaneous_turns, 0) = 0)
     AND NOT EXISTS (SELECT 1 FROM daily_puzzles d WHERE d.puzzle_id = p.id)
 `;
 

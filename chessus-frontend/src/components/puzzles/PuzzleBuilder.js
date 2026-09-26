@@ -15,6 +15,7 @@ import useBoardViewport from "../common/useBoardViewport";
 import BoardZoomControls from "../common/BoardZoomControls";
 import boardVp from "../common/boardViewport.module.scss";
 import { BoardCoordinates, NOTATION_INSET, puzzleFlipped } from "./PuzzleBoard";
+import { useBuilderVetoes, BuilderVetoPanel, PlyVetoNote, SetupVetoNote } from "./BuilderVetoes";
 import styles from "./puzzlebuilder.module.scss";
 
 /*
@@ -351,7 +352,8 @@ const PuzzleBuilder = () => {
     let cancelled = false;
     (async () => {
       try {
-        const { data } = await axios.get(`${API_URL}puzzles/${puzzleId}`, { headers: authHeader() });
+        // As stored: a reactive veto puzzle is otherwise sent rewound to before its opening move.
+        const { data } = await axios.get(`${API_URL}puzzles/${puzzleId}?edit=1`, { headers: authHeader() });
         if (cancelled) return;
         const p = data.puzzle;
         const map = {};
@@ -627,6 +629,14 @@ const PuzzleBuilder = () => {
   const nextMoveNumber = Math.floor(nextPlyIndex / 2) + 1;
   const lineFull = solutionLine.length >= MAX_PLIES;
 
+  // Vetoes, in a veto game (BuilderVetoes.js): recorded before the ply they
+  // belong to, and attached when it is recorded.
+  const veto = useBuilderVetoes({
+    game, gameId, mode, sideToMove, solutionLine, solutionBoard, placements,
+    setupMove, setSetupMove, nextSide, lineFull,
+    placesPieces: trayItems.length > 0,
+  });
+
   const refreshPuzzleList = useCallback(async () => {
     if (!gameId || !allowed) return;
     try {
@@ -705,7 +715,7 @@ const PuzzleBuilder = () => {
    */
   const recordPly = useCallback(async (ply) => {
     setCheckResult(null);
-    let move = ply;
+    let move = veto.attach(ply);
     try {
       /*
        * Probed against the board the move is ACTUALLY played from, which for
@@ -778,7 +788,7 @@ const PuzzleBuilder = () => {
        */
     }
     setSolutionLine((prev) => [...prev, move]);
-  }, [gameId, positionArray, setupMove, mode, solutionLine, solutionBoard, nextSide]);
+  }, [gameId, positionArray, setupMove, mode, solutionLine, solutionBoard, nextSide, veto]);
 
   /*
    * The requirements come from the server rather than being written out here,
@@ -879,6 +889,7 @@ const PuzzleBuilder = () => {
   useEffect(() => { if (!selected) setHints([]); }, [selected]);
 
   const handleSquareClick = useCallback((x, y) => {
+    if (veto.handleClick(x, y)) return;
     const k = keyOf(x, y);
     // Arranging edits the starting position; recording plays forward from it.
     const here = (mode === 'solution' ? solutionBoard : placements)[k];
@@ -1044,7 +1055,7 @@ const PuzzleBuilder = () => {
     });
     setSelected(null);
     setCheckResult(null);
-  }, [mode, selected, trayPick, placements, solutionBoard, nextSide, lineFull, sideToMove, recordPly]);
+  }, [mode, selected, trayPick, placements, solutionBoard, nextSide, lineFull, sideToMove, recordPly, veto]);
 
   /*
    * Whether each step has been done, and what follows it.
@@ -1329,7 +1340,7 @@ const PuzzleBuilder = () => {
   if (loading) return <div className={styles["builder-page"]}><p>Loading…</p></div>;
   if (error) return <div className={styles["builder-page"]}><p>{error}</p></div>;
 
-  const boardCells = mode === 'solution' ? solutionBoard : placements;
+  const boardCells = veto.setupBoard || (mode === 'solution' ? solutionBoard : placements);
   const lastPly = mode === 'solution' ? solutionLine[solutionLine.length - 1] : null;
 
   /*
@@ -1350,7 +1361,7 @@ const PuzzleBuilder = () => {
       const isSelected = selected === k;
       // Highlight the move just recorded, so the line reads as you build it.
       // In setup mode that is the opponent's last move instead.
-      const hint = hints.find((m) => Number(m.x) === x && Number(m.y) === y);
+      const hint = (veto.hints.length ? veto.hints : hints).find((m) => Number(m.x) === x && Number(m.y) === y);
       const shown = mode === 'setup' ? setupMove : lastPly;
       // A placement has no origin square to light up, only a destination.
       const isFrom = !!shown?.from && shown.from.x === x && shown.from.y === y;
@@ -1363,6 +1374,7 @@ const PuzzleBuilder = () => {
             isSelected ? styles["selected"] : '',
             isFrom ? styles["sol-from"] : '',
             isTo ? styles["sol-to"] : '',
+            ...veto.marks(x, y).map((m) => styles[m]),
           ].filter(Boolean).join(' ')}
           style={{
             background: isLight ? lightColor : darkColor,
@@ -1698,10 +1710,12 @@ const PuzzleBuilder = () => {
               are both required now, and Save says exactly what is missing, so
               an empty label here is a second voice describing the same gap in
               vaguer terms. */}
+          <BuilderVetoPanel veto={veto} boardHeight={boardHeight} styles={styles} />
           {!!setupMove && (
             <div className={styles["setup-readout"]}>
               <strong>Their last move:</strong>{' '}
               ({setupMove.from.x}, {setupMove.from.y}) → ({setupMove.to.x}, {setupMove.to.y})
+              <SetupVetoNote setupMove={setupMove} cfg={veto.cfg} boardHeight={boardHeight} />
               <button className={styles["link-btn"]} onClick={() => setSetupMove(null)}>clear</button>
             </div>
           )}
@@ -1725,6 +1739,7 @@ const PuzzleBuilder = () => {
                             || pieceDataMap[ply.placePieceId]?.piece_name
                             || `piece #${ply.placePieceId}`} on ({ply.to.x}, {ply.to.y})</>
                         : <>({ply.from.x}, {ply.from.y}) → ({ply.to.x}, {ply.to.y})</>}
+                      <PlyVetoNote ply={ply} index={i} cfg={veto.cfg} boardHeight={boardHeight} styles={styles} />
                       {!!ply.isCastling && (
                         <span className={styles["ply-castle"]}>
                           {' '}castles {ply.castlingDirection}

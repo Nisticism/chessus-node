@@ -312,6 +312,11 @@
   &.selected { box-shadow: inset 0 0 0 3px rgba(var(--gold-rgb, 212, 175, 55), 0.95); }
   &.sol-from { box-shadow: inset 0 0 0 3px rgba(80, 170, 255, 0.9); }
   &.sol-to   { box-shadow: inset 0 0 0 3px rgba(80, 220, 130, 0.9); }
+  /* Vetoes being recorded (BuilderVetoes.js): the vetoed move in red, the piece
+     being picked from outlined. */
+  &.veto-from { box-shadow: inset 0 0 0 3px rgba(248, 113, 113, 0.5); }
+  &.veto-to   { box-shadow: inset 0 0 0 4px rgba(248, 113, 113, 0.95); background-image: linear-gradient(rgba(248, 113, 113, 0.25), rgba(248, 113, 113, 0.25)); }
+  &.veto-sel  { box-shadow: inset 0 0 0 3px rgba(248, 113, 113, 0.75); }
 }
 
 .piece-fallback {

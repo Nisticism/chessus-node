@@ -18,7 +18,8 @@ import PlacementTray from "../common/PlacementTray";
 import PromotionChooser from "../common/PromotionChooser";
 import GameRulesModal from "../common/GameRulesModal";
 import useSetupMoveReplay from "../common/useSetupMoveReplay";
-import { solverTrayItems, withPlacers } from "../../helpers/placement";
+import { solverTrayItems, withPlacers, placesPieces } from "../../helpers/placement";
+import { usePuzzleVetoes, VetoPanel, VetoAnswer, ContinueNotice, MoveProgress, MoveHint } from "./PuzzleVetoes";
 import { applyPromotionDefinition, promotionPieceNumber, solvedPliesRemaining, colToFile } from "../../helpers/pieceMovementUtils";
 import styles from "./puzzlesolver.module.scss";
 
@@ -563,6 +564,29 @@ const PuzzleSolver = () => {
     return visible;
   }, [puzzle?.fog_of_war, puzzle?.side_to_move, board, enginePieces, moveEngine, boardWidth, boardHeight]);
 
+  /*
+   * Vetoes, in a veto game (PuzzleVetoes.js). `ui` is how it plays a reply
+   * and finishes a step on this page, the same way submit does for a move.
+   */
+  const vet = usePuzzleVetoes({
+    puzzle, puzzleId, startedAt, moveEngine, enginePieces, boardWidth, boardHeight,
+    placesPieces: placesPieces(puzzle),
+    ui: {
+      setBusy, setRatingChange, setRatingNote, setProgress, setAttempts, setOutcome,
+      setSolution, setError, setPlacements, fromServerPosition,
+      playReply: (reply, position) => {
+        setPlacements((prev) => (position
+          ? fromServerPosition(position)
+          : applyPly(prev, withPlacers([reply], puzzle, 1)[0])));
+        setAnimMove(reply?.from && reply?.to ? reply : null);
+        setReplayKey((k) => k + 1);
+        setLastTry(reply);
+      },
+      // A reactive puzzle's opening move, once it has been let through.
+      setSetupMove: (setupMove) => setPuzzle((prev) => (prev ? { ...prev, setup_move: setupMove } : prev)),
+    },
+  });
+
   const hoverPiece = useCallback((piece) => {
     if (!piece || !board) { setHoveredMoves([]); return; }
     // Same arguments a live game's hover uses, so a piece's dots read the same
@@ -617,7 +641,7 @@ const PuzzleSolver = () => {
     try {
       const { data } = await axios.post(
         `${API_URL}puzzles/${puzzleId}/solve`,
-        { moves: attemptLine, duration_ms: Date.now() - startedAt },
+        vet.active ? vet.moveBody(move) : { moves: attemptLine, duration_ms: Date.now() - startedAt },
         { headers: authHeader() }
       );
       if (data.rating) setRatingChange(data.rating);
@@ -635,6 +659,12 @@ const PuzzleSolver = () => {
         setPlacements(before);
         setIllegalReason(data.reason || null);
         setOutcome('illegal');
+        return;
+      }
+      // Vetoed by the bot (a reactive game): back it goes, and they choose again.
+      if (vet.afterMove(data, move)) {
+        setPlacements(before);
+        setOutcome(null);
         return;
       }
 
@@ -686,7 +716,7 @@ const PuzzleSolver = () => {
     } finally {
       setBusy(false);
     }
-  }, [puzzleId, startedAt, playedMoves, placements]);
+  }, [puzzleId, startedAt, playedMoves, placements, puzzle, vet]);
 
   const reveal = useCallback(async () => {
     setBusy(true);
@@ -694,11 +724,12 @@ const PuzzleSolver = () => {
       const { data } = await axios.post(
         `${API_URL}puzzles/${puzzleId}/solve`,
         // What they found before giving up, so a part-solved line still scores.
-        { moves: playedMoves, revealed: true, duration_ms: Date.now() - startedAt },
+        vet.active ? vet.revealBody() : { moves: playedMoves, revealed: true, duration_ms: Date.now() - startedAt },
         { headers: authHeader() }
       );
       const line = data.solution || null;
       setSolution(line);
+      vet.afterMove(data, null);
       if (data.position) {
         setPlacements(fromServerPosition(data.position));
       } else if (Array.isArray(line)) {
@@ -720,7 +751,7 @@ const PuzzleSolver = () => {
     } finally {
       setBusy(false);
     }
-  }, [puzzleId, playedMoves, startedAt]);
+  }, [puzzleId, playedMoves, startedAt, puzzle, vet]);
 
   /*
    * Play a move - but ask the server first what it actually is.
@@ -904,12 +935,12 @@ const PuzzleSolver = () => {
   const startPress = useCallback((e, x, y) => {
     // `replaying`: the opponent's move is still arriving, and a piece picked up
     // mid-replay would be dragged off a position that is about to change.
-    if (busy || finished || replaying || e.button !== 0) return;
+    if (busy || finished || replaying || vet.awaiting || e.button !== 0) return;
     const k = keyOf(x, y);
     const here = placements[k];
     if (!here || Number(here.player_id) !== Number(puzzle?.side_to_move)) return;
     pendingRef.current = { fromKey: k, startX: e.clientX, startY: e.clientY };
-  }, [busy, finished, replaying, placements, puzzle]);
+  }, [busy, finished, replaying, placements, puzzle, vet.awaiting]);
 
   useEffect(() => {
     const DRAG_THRESHOLD_PX = 4;
@@ -962,6 +993,7 @@ const PuzzleSolver = () => {
 
   const handleSquareClick = useCallback((x, y, how = null) => {
     if (busy || finished || replaying) return;
+    if (vet.handleClick(x, y)) return;
     const k = keyOf(x, y);
     const here = placements[k];
     /*
@@ -1009,7 +1041,7 @@ const PuzzleSolver = () => {
       return;
     }
     playFrom(selected, x, y);
-  }, [busy, finished, replaying, selected, placements, puzzle, playFrom, trayPick, submit, enginePieces, hoverPiece]);
+  }, [busy, finished, replaying, selected, placements, puzzle, playFrom, trayPick, submit, enginePieces, hoverPiece, vet]);
 
   const sendFeedback = async () => {
     setFeedbackNotice(null);
@@ -1115,9 +1147,12 @@ const PuzzleSolver = () => {
     setError(null);
     setRatingChange(null);
     setProgress(null);
-    setAnimMove(puzzle?.setup_move || null);
+    vet.reset();
+    // A reactive puzzle opens on the board before their move: decide again.
+    if (puzzle?.veto?.opening) setPuzzle((prev) => (prev ? { ...prev, setup_move: null } : prev));
+    setAnimMove(puzzle?.veto?.opening ? null : (puzzle?.setup_move || null));
     setReplayKey((k) => k + 1);
-  }, [startPlacements, puzzle]);
+  }, [startPlacements, puzzle, vet]);
 
   if (loading) return <div className={styles["solver-page"]}><p>Loading…</p></div>;
   if (error && !puzzle) return <div className={styles["solver-page"]}><p>{error}</p></div>;
@@ -1180,6 +1215,7 @@ const PuzzleSolver = () => {
       sol && sol.from?.x === x && sol.from?.y === y ? styles["sol-from"] : '',
       sol && sol.to?.x === x && sol.to?.y === y ? styles["sol-to"] : '',
       mine && !finished ? styles["grabbable"] : '',
+      ...(finished ? [] : vet.squareMarks(x, y).map((m) => styles[m])),
     ].filter(Boolean).join(' ');
   };
 
@@ -1192,7 +1228,7 @@ const PuzzleSolver = () => {
   const renderSquare = (x, y) => {
     const { k, p, concealed, pieceName } = squareState(x, y);
     const src = concealed ? null : imageFor(p, pieceDataMap);
-    const dot = hoveredMoves.find((m) => m.x === x && m.y === y);
+    const dot = (vet.pickDots.length ? vet.pickDots : hoveredMoves).find((m) => m.x === x && m.y === y);
     const isDragOrigin = !!drag && drag.fromKey === k;
     return (
       <>
@@ -1401,18 +1437,11 @@ const PuzzleSolver = () => {
                 : ` after ${attempts} wrong ${attempts === 1 ? 'try' : 'tries'}`}. Nicely done.
             </div>
           )}
-          {outcome === 'continue' && (
-            <div className={`${styles["notice"]} ${styles["notice-ok"]}`}>
-              That's it. Your opponent has answered — keep going.
-            </div>
-          )}
+          <ContinueNotice outcome={outcome} vet={vet} styles={styles} />
           <MoveNotice outcome={outcome} reason={illegalReason} />
-          {/* Only worth showing once there is more than one move to find. */}
-          {movesToFind > 1 && !finished && (
-            <div className={styles["progress"]}>
-              Move <strong>{(progress?.played || 0) + 1}</strong> of {movesToFind}
-            </div>
-          )}
+          <VetoPanel vet={vet} busy={busy} finished={finished} boardHeight={boardHeight} styles={styles} />
+          <VetoAnswer vet={vet} solution={solution} outcome={outcome} boardHeight={boardHeight} styles={styles} />
+          <MoveProgress movesToFind={movesToFind} progress={progress} finished={finished} vet={vet} styles={styles} />
           {ratingChange && (
             <div className={styles["rating-change"]}>
               Puzzle rating {ratingChange.before} → <strong>{ratingChange.after}</strong>
@@ -1448,11 +1477,7 @@ const PuzzleSolver = () => {
           )}
           {error && <div className={`${styles["notice"]} ${styles["notice-error"]}`}>{error}</div>}
 
-          {outcome !== 'solved' && outcome !== 'revealed' && (
-            <p className={styles["hint"]}>
-              {selected ? 'Now click where it should go.' : 'Click the piece you want to move.'}
-            </p>
-          )}
+          <MoveHint outcome={outcome} selected={selected} vet={vet} styles={styles} />
 
           <div className={styles["actions"]}>
             {outcome !== 'solved' && outcome !== 'revealed' && (

@@ -1296,6 +1296,8 @@ module.exports = {
   isPlacementPly,
   placementRules,
   placementCandidates,
+  // For the veto checks (puzzle-veto.js): does a veto leave the mover a move?
+  trulyLegalMoves,
   goalsForGameType,
   describeGoal,
   GOALS,

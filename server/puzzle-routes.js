@@ -27,6 +27,10 @@ const {
 } = require('./game-socket');
 const { summariseRules } = require('./game-rules-summary');
 const { isDesignationGame } = require('./designated-piece');
+const {
+  vetoConfigOf, cleanVetoList, isVetoed, answerSteps, stepMatches, nextPrompt,
+  replyAfter, pliesPlayed, positionBeforeSetup, vetoProblems, proposalOf,
+} = require('./puzzle-veto');
 const { renderPuzzle } = require('./puzzle-image');
 const { PLATFORM_ACCOUNT_USERNAME, platformAccountId } = require('./platform-account');
 const { rulesForPuzzle, ensureSnapshot, readLive } = require('./puzzle-snapshot');
@@ -121,10 +125,28 @@ function sanitizeLine(raw) {
    * a client attached (a stray `from`, say) is dropped rather than stored and
    * later half-believed.
    */
-  const line = list.map((m) => (isPlacePly(m)
-    ? { type: 'place', placePieceId: Number(m.placePieceId), to: { x: Number(m.to.x), y: Number(m.to.y) } }
-    : m));
+  const line = list.map((m) => {
+    const out = isPlacePly(m)
+      ? { type: 'place', placePieceId: Number(m.placePieceId), to: { x: Number(m.to.x), y: Number(m.to.y) } }
+      : { ...m };
+    // In a veto game, the moves vetoed against this ply's mover (puzzle-veto.js).
+    const vetoes = cleanVetoList(m.vetoes);
+    if (vetoes) out.vetoes = vetoes; else delete out.vetoes;
+    return out;
+  });
   return { line };
+}
+
+/*
+ * The setup move as stored: its two squares, and - in a reactive veto game -
+ * the moves the opponent showed before it (puzzle-veto.js).
+ */
+function sanitizeSetup(raw) {
+  if (!raw || !isSquare(raw.from) || !isSquare(raw.to)) return null;
+  const out = { from: { x: Number(raw.from.x), y: Number(raw.from.y) }, to: { x: Number(raw.to.x), y: Number(raw.to.y) } };
+  const vetoes = cleanVetoList(raw.vetoes);
+  if (vetoes) out.vetoes = vetoes;
+  return out;
 }
 
 /*
@@ -204,6 +226,15 @@ function registerPuzzleRoutes(app, {
   const publicPuzzle = (row, { includeSolution = false, includeRating = false } = {}) => {
     const { solution_line, ...rest } = row;
     const out = includeSolution ? { ...rest, solution_line: safeParse(solution_line) } : rest;
+    // The moves shown before a reactive puzzle's opening move are part of its
+    // answer (the solver should veto them), so they travel only with the answer.
+    if (!includeSolution && out.setup_move) {
+      const setup = safeParse(out.setup_move);
+      if (setup && setup.vetoes) {
+        delete setup.vetoes;
+        out.setup_move = JSON.stringify(setup);
+      }
+    }
     out.rating_public = isRatingPublic(row);
     if (!includeRating && !out.rating_public) {
       delete out.rating;
@@ -1443,6 +1474,7 @@ function registerPuzzleRoutes(app, {
       const out = publicPuzzle(puzzle, { includeSolution, includeRating: includeSolution });
       out.position = safeParse(puzzle.position, []);
       out.setup_move = safeParse(puzzle.setup_move);
+      if (out.setup_move && !includeSolution) delete out.setup_move.vetoes;
 
       /*
        * A solver may never have played this game. Everything they need to make
@@ -1469,6 +1501,40 @@ function registerPuzzleRoutes(app, {
 
       out.goal_text = describeGoal(puzzle, gameType);
       out.goal_label = GOAL_DEFS[puzzle.goal]?.label || null;
+
+      /*
+       * A veto game's puzzle (puzzle-veto.js): the rules, and the first thing
+       * the solver is asked. Never the answer - a ban the bot made is shown
+       * because the solver would see it in a game; a reactive opening shows
+       * one move at a time.
+       *
+       * A reactive puzzle opens with the solver deciding on the opponent's
+       * move, so the board is the one BEFORE it, and the move itself arrives
+       * once they have let it through. The moved piece keeps its id, so the
+       * line's moves still name it the same way afterwards.
+       */
+      const vetoCfg = vetoConfigOf(gameType);
+      if (vetoCfg) {
+        const vetoSetup = safeParse(puzzle.setup_move);
+        const vetoLine = safeParse(puzzle.solution_line, []);
+        const steps = answerSteps({ ...puzzle, setup_move: vetoSetup }, vetoLine, vetoCfg);
+        const opening = vetoCfg.style === 'reactive' && !!(vetoSetup?.from && vetoSetup?.to);
+        out.veto = {
+          style: vetoCfg.style,
+          perTurn: vetoCfg.perTurn,
+          disallowPlacement: vetoCfg.disallowPlacement,
+          disallowPromotion: vetoCfg.disallowPromotion,
+          opening,
+          next: nextPrompt(steps, 0, vetoLine, vetoCfg),
+          steps: steps.length,
+        };
+        // The builder edits the puzzle as stored (?edit=1), not rewound.
+        if (opening && !(req.query.edit === '1' && includeSolution)) {
+          const withIds = out.position.map((p) => ({ ...p, id: p.id || `${p.piece_id}_${p.y}_${p.x}` }));
+          out.position = positionBeforeSetup(withIds, vetoSetup);
+          out.setup_move = null;
+        }
+      }
       if (gameType) {
         out.game_name = gameType.game_name;
         // Fog is a rule of the game, so a puzzle in a fog game is played in fog.
@@ -1936,7 +2002,7 @@ function registerPuzzleRoutes(app, {
           (description || '').slice(0, MAX_DESCRIPTION) || null,
           JSON.stringify(position),
           side_to_move === 2 ? 2 : 1,
-          setup_move ? JSON.stringify(setup_move) : null,
+          sanitizeSetup(setup_move) ? JSON.stringify(sanitizeSetup(setup_move)) : null,
           goalValue,
           (goal_description || '').slice(0, 255) || null,
           JSON.stringify(line),
@@ -1977,7 +2043,7 @@ function registerPuzzleRoutes(app, {
       if (b.description !== undefined) set('description', (b.description || '').slice(0, MAX_DESCRIPTION) || null);
       if (b.position !== undefined) set('position', JSON.stringify(b.position));
       if (b.side_to_move !== undefined) set('side_to_move', b.side_to_move === 2 ? 2 : 1);
-      if (b.setup_move !== undefined) set('setup_move', b.setup_move ? JSON.stringify(b.setup_move) : null);
+      if (b.setup_move !== undefined) set('setup_move', sanitizeSetup(b.setup_move) ? JSON.stringify(sanitizeSetup(b.setup_move)) : null);
       if (b.goal !== undefined && GOAL_DEFS[b.goal]) set("goal", b.goal);
       if (b.allow_daily !== undefined) set('allow_daily', b.allow_daily ? 1 : 0);
       if (b.goal_description !== undefined) set('goal_description', (b.goal_description || '').slice(0, 255) || null);
@@ -2110,6 +2176,18 @@ function registerPuzzleRoutes(app, {
         solution_line: safeParse(puzzle.solution_line, []),
       };
       const result = await validatePuzzle(hydrated, gameType);
+
+      /*
+       * A veto game's vetoes are checked too: every vetoed move is one the
+       * mover could make, none is the move the line then plays, none is over
+       * the per-turn limit, and a pre-emptive veto leaves a move. A problem
+       * there makes the puzzle unsolvable as written, whatever the moves say.
+       */
+      const vetoIssues = await vetoProblems(hydrated, gameType, hydrated.solution_line, vetoConfigOf(gameType));
+      if (vetoIssues.length) {
+        result.status = 'unsolvable';
+        result.detail = [result.detail, ...vetoIssues].filter(Boolean).join(' ');
+      }
 
       await db_pool.query(
         'UPDATE puzzles SET validation_status = ?, validation_detail = ?, validated_at = NOW() WHERE id = ?',
@@ -2277,11 +2355,535 @@ function registerPuzzleRoutes(app, {
    * an account is both at once: the attempt rates their account AND continues
    * their Discord streak.
    */
+  /*
+   * Everything after an attempt has been judged, shared by the two ways of
+   * judging one (a line of moves, or a line of steps in a veto game): record
+   * it, rate it, count it, and answer. `t` is the verdict:
+   *
+   *   submitted, revealed, wrong, solved, score   what was sent and how it did
+   *   movesPlayed, movesTotal                     progress, as the client shows it
+   *   upToPlies                                   how much of the line is played
+   *   reply                                       the opponent move to play now
+   *   extra                                       added to the response as is
+   */
+  async function finishSolve(req, res, puzzle, line, t) {
+    const { submitted, revealed, wrong, solved } = t;
+    const inProgress = !revealed && !wrong && !solved;
+    const terminal = !inProgress;
+    // Same prefix rule as everywhere else: miss the first move and it is zero.
+    const { score } = t;
+    const scorePct = Math.round(score * 100);
+
+    const userId = req.user?.id || null;
+    // Where this attempt was played. Only a token Discord itself vouched for
+    // can set it to 'discord'; the client cannot claim the surface.
+    const discordId = req.discord?.id || null;
+    const source = discordId ? 'discord' : 'web';
+
+    /*
+     * Where this request actually came from, which is the one fact the last
+     * several rounds of chasing this could not establish.
+     *
+     * An activity runs in an iframe served from <app_id>.discordsays.com, so
+     * its requests carry that Origin. A browser tab on the site carries
+     * gridgrove.gg. Those are the two hypotheses - "the activity ran and the
+     * token was lost" versus "this was never the activity at all" - and the
+     * header tells them apart without anyone having to describe what they saw.
+     *
+     * Logged only when there is no Discord identity, so a working activity
+     * stays quiet and this says something exactly when something is wrong.
+     * Solves are a handful a day; this is not a hot path.
+     */
+    if (!discordId) {
+      const origin = req.get('Origin') || req.get('Referer') || '(none)';
+      console.warn(`[discord] anonymous solve on puzzle ${req.params.id}`
+        + ` from origin ${String(origin).slice(0, 120)}`);
+    }
+    let ratingChange = null;
+    let ratingNote = null;
+
+    if (!userId) {
+      // Nothing to rate, and a half-played line is not worth a row.
+      if (terminal) {
+        await db_pool.query(
+          `INSERT INTO puzzle_attempts
+             (puzzle_id, user_id, moves, solved, duration_ms, score, source, discord_user_id)
+           VALUES (?,?,?,?,?,?,?,?)`,
+          [puzzle.id, null, JSON.stringify(submitted), solved ? 1 : 0,
+           Number.isFinite(req.body?.duration_ms) ? req.body.duration_ms : null, scorePct,
+           source, discordId]
+        );
+      }
+    } else {
+      const [[open]] = await db_pool.query(
+        `SELECT id, rating_before, rating_after, score, state
+         FROM puzzle_attempts WHERE puzzle_id = ? AND user_id = ? AND rated_attempt = 1 LIMIT 1`,
+        [puzzle.id, userId]
+      );
+
+      if (!open) {
+        /*
+         * Their first attempt at this puzzle, and the only one that will ever
+         * count. It is written NOW rather than when the line finishes, so
+         * walking away from a half-solved multi-move puzzle keeps the partial
+         * score instead of costing nothing - otherwise a solver could probe a
+         * move, abandon, and come back knowing the answer for free.
+         */
+        const [[u]] = await db_pool.query('SELECT puzzle_elo FROM users WHERE id = ? LIMIT 1', [userId]);
+        const [[counts]] = await db_pool.query(
+          'SELECT COUNT(*) AS n FROM puzzle_attempts WHERE user_id = ? AND rated_attempt = 1', [userId]
+        );
+        const before = u?.puzzle_elo ?? PUZZLE_ELO_DEFAULT;
+        const result = rateAttempt({
+          currentElo: before,
+          ratedAttemptsSoFar: counts?.n || 0,
+          score,
+        });
+        try {
+          await db_pool.query(
+            `INSERT INTO puzzle_attempts
+               (puzzle_id, user_id, moves, solved, duration_ms, rated_attempt,
+                rating_before, rating_after, score, state, source, discord_user_id)
+             VALUES (?,?,?,?,?,1,?,?,?,?,?,?)`,
+            [puzzle.id, userId, JSON.stringify(submitted), solved ? 1 : 0,
+             Number.isFinite(req.body?.duration_ms) ? req.body.duration_ms : null,
+             result.before, result.after, scorePct, terminal ? null : 'in_progress',
+             source, discordId]
+          );
+          await db_pool.query(
+            'UPDATE users SET puzzle_elo = puzzle_elo + ? WHERE id = ?', [result.delta, userId]
+          );
+          ratingChange = {
+            before: result.before, after: result.after, delta: result.delta,
+            score: result.score, partial: result.score > 0 && result.score < 1,
+          };
+        } catch (e) {
+          // Two requests raced for the one rated slot; the loser is unrated.
+          if (e?.code !== 'ER_DUP_ENTRY') throw e;
+        }
+      } else if (open.state === 'in_progress') {
+        /*
+         * The same first attempt, further along. Re-score it from the rating
+         * it started at and apply only the difference, so the rating cannot
+         * drift as the line is played out, and an attempt at some other puzzle
+         * in between is not clobbered.
+         *
+         * The score only ever goes up: restarting and stopping earlier should
+         * not be able to take back ground already covered.
+         */
+        const bestPct = Math.max(scorePct, open.score || 0);
+        const [[counts]] = await db_pool.query(
+          'SELECT COUNT(*) AS n FROM puzzle_attempts WHERE user_id = ? AND rated_attempt = 1', [userId]
+        );
+        const result = rateAttempt({
+          currentElo: open.rating_before,
+          ratedAttemptsSoFar: Math.max(0, (counts?.n || 1) - 1),
+          score: bestPct / 100,
+        });
+        const alreadyApplied = (open.rating_after ?? open.rating_before) - open.rating_before;
+        await db_pool.query(
+          'UPDATE users SET puzzle_elo = puzzle_elo + ? WHERE id = ?',
+          [result.delta - alreadyApplied, userId]
+        );
+        await db_pool.query(
+          `UPDATE puzzle_attempts
+           SET moves = ?, solved = ?, score = ?, rating_after = ?, state = ?
+           WHERE id = ?`,
+          [JSON.stringify(submitted), solved ? 1 : 0, bestPct, result.after,
+           terminal ? null : 'in_progress', open.id]
+        );
+        ratingChange = {
+          before: result.before, after: result.after, delta: result.delta,
+          score: result.score, partial: result.score > 0 && result.score < 1,
+        };
+      } else if (terminal) {
+        // A retry after their rated attempt closed. Recorded, never rated.
+        await db_pool.query(
+          `INSERT INTO puzzle_attempts
+             (puzzle_id, user_id, moves, solved, duration_ms, score, source, discord_user_id)
+           VALUES (?,?,?,?,?,?,?,?)`,
+          [puzzle.id, userId, JSON.stringify(submitted), solved ? 1 : 0,
+           Number.isFinite(req.body?.duration_ms) ? req.body.duration_ms : null, scorePct,
+           source, discordId]
+        );
+        ratingNote = 'Only your first attempt at a puzzle affects your rating.';
+      }
+    }
+
+    // Counters describe finished attempts; a multi-move puzzle would
+    // otherwise count one attempt per move played.
+    if (terminal) {
+      await db_pool.query(
+        'UPDATE puzzles SET attempt_count = attempt_count + 1, solve_count = solve_count + ? WHERE id = ?',
+        [solved ? 1 : 0, puzzle.id]
+      );
+      if (solved && userId) {
+        const [[prev]] = await db_pool.query(
+          'SELECT COUNT(*) AS n FROM puzzle_attempts WHERE puzzle_id = ? AND user_id = ? AND solved = 1',
+          [puzzle.id, userId]
+        );
+        // The row for this solve is already in, so 1 means this was the first.
+        if ((prev?.n || 0) <= 1) {
+          await db_pool.query('UPDATE users SET puzzles_solved = puzzles_solved + 1 WHERE id = ?', [userId]);
+        }
+      }
+    }
+
+    /*
+     * The Discord player's own record: streak, totals, and today's state.
+     *
+     * Deliberately outside the rating code above. A Discord streak and a
+     * GridGrove rating measure different things - turning up, and playing
+     * well - so a player with both gets both, and a player with neither
+     * account still gets the streak.
+     */
+    let discordProgress = null;
+    if (terminal) {
+      try {
+        const date = dailyPuzzle.todayKey();
+        const todayRow = await dailyPuzzle.forDate(date);
+        const opts = {
+          solved,
+          isDaily: Number(todayRow?.puzzle_id) === Number(puzzle.id),
+          date,
+          yesterday: dailyPuzzle.addDays(date, -1),
+        };
+
+        if (discordId) {
+          discordProgress = await recordDiscordAttempt(db_pool, req.discord, opts);
+          /*
+           * Said out loud because the failure this replaced was silent: an
+           * attempt that reached here anonymously looked exactly like one that
+           * never arrived, and nothing in the logs told them apart. One line
+           * per solve is cheap; a week of guessing was not.
+           */
+          console.log(`[discord] recorded attempt on puzzle ${puzzle.id} for ${discordId}`
+            + ` (solved=${solved}, daily=${opts.isDaily}, streak=${discordProgress?.current_streak ?? '?'})`);
+        } else if (userId) {
+          /*
+           * A solve on the WEBSITE by somebody whose account is linked.
+           *
+           * Once linked, the streak stops being a fact about Discord and
+           * becomes a fact about the person - so turning up counts wherever
+           * they turned up. Somebody who solves on their phone in the morning
+           * should not lose a run because they were not in Discord that day.
+           */
+          const linked = await linkedPlayerFor(db_pool, userId);
+          if (linked) {
+            discordProgress = await bumpStreak(db_pool, {
+              discordId: linked.discord_user_id,
+              username: linked.username,
+              avatar: linked.avatar,
+            }, opts);
+          }
+        }
+      } catch (e) {
+        // A streak is a nicety. Losing it must not lose the solve, which is
+        // already written by this point.
+        console.warn('[discord] could not record progress:', e.message);
+      }
+    }
+
+    // The puzzle's own rating is the mean of the people who SOLVED it, so
+    // only a success is folded in, and only on the attempt that counted.
+    if (solved && ratingChange) {
+      const folded = foldSolverIntoPuzzleRating({
+        rating: puzzle.rating,
+        sampleCount: puzzle.rating_sample_count,
+        solverElo: ratingChange.before,
+      });
+      await db_pool.query(
+        'UPDATE puzzles SET rating = ?, rating_sample_count = ? WHERE id = ?',
+        [folded.rating, folded.sampleCount, puzzle.id]
+      );
+    }
+
+    /*
+     * The board after everything just played, for the moves the client cannot
+     * work out for itself.
+     *
+     * A solver applies its own moves optimistically - piece leaves here,
+     * lands there - and that is a complete description of a move in almost
+     * every game. Two kinds of move it does not describe:
+     *
+     * A PLACEMENT. A stone put down in Go can remove a group of six on the
+     * far side of the board, and nothing on the client knows the surround
+     * rule.
+     *
+     * A PROMOTION. The piece that arrives is not the piece that left, and a
+     * client that only relocates pieces has nothing to redraw it from - so a
+     * promoting pawn stayed a pawn on the board, on every one of the three
+     * places a puzzle is played. The name and the image only exist on the
+     * `pieces` row the engine swapped in, which is here and not there.
+     *
+     * Everything else still costs what it did before: the replay is skipped
+     * for a line that neither places nor promotes, which is almost all of
+     * them. Best-effort - if the replay fails the client keeps its own guess,
+     * which is what it had anyway.
+     */
+    let resultingPosition;
+    try {
+      const upTo = solved || revealed ? line : line.slice(0, t.upToPlies);
+      // A promoting ply is recognisable without touching the database, so ask
+      // the cheap question before the narrow column read below.
+      const promotes = upTo.some(ply => ply && ply.promotionPieceId != null);
+
+      /*
+       * One narrow column read, always - it is a single-row primary-key
+       * select next to the several writes this route already makes, and its
+       * answer is needed twice: to decide whether a placement line needs
+       * replaying at all, and further down to name the pieces a placement
+       * game can put on the board. Skipping it for a promoting line would
+       * lose the second of those in a game that does both.
+       *
+       * What must stay gated is the REPLAY below, which is the expensive part.
+       */
+      const [[placeCheck]] = await db_pool.query(
+        'SELECT other_game_data FROM game_types WHERE id = ? LIMIT 1', [puzzle.game_type_id]
+      );
+      const placesPieces = !!placementRules(placeCheck);
+
+      if ((placesPieces || promotes) && (inProgress || solved || revealed)) {
+        const rules = await loadRulesFor(puzzle);
+        const replayed = await playLine(
+          {
+            position: await hydratePosition(rules, safeParse(puzzle.position, [])),
+            placeable_definitions: placeableDefinitions(rules),
+            initial_pieces: await loadStartingRoster(rules),
+            side_to_move: puzzle.side_to_move,
+            setup_move: safeParse(puzzle.setup_move),
+            game_type_id: puzzle.game_type_id,
+          },
+          rules.game, upTo
+        );
+        if (replayed.ok) {
+          /*
+           * Engine pieces carry the rules, not the artwork: hydratePosition
+           * builds them for the move generator and does not thread the name
+           * and the image through. The board needs both, so they are looked
+           * up per piece type - from the puzzle's own stored placements
+           * first, then from what the game says is placeable - rather than
+           * left null, which drew the position as a row of blanks.
+           */
+          /*
+           * Keyed by piece type AND OWNER, because a picture belongs to one
+           * side. A white pawn and a black pawn are the same piece_id, so a
+           * map keyed by type alone keeps whichever placement happened to
+           * come last and hands its already-resolved image_url to every pawn
+           * on the board. That is what turned every pawn one colour and both
+           * kings one colour the moment a puzzle finished - and why the piece
+           * that had just PROMOTED stayed right, since the engine sets
+           * image_url on that one and it wins before any of this is read.
+           *
+           * The name and the image LIST do not depend on the owner - the list
+           * is per-player and is indexed by the board - so those keep a
+           * type-only fallback. Only image_url, the single fixed picture, has
+           * to match the owner, and it is never taken from another player's
+           * placement.
+           */
+          const artByOwner = new Map();
+          const artByType = new Map();
+          for (const pl of (safeParse(puzzle.position, []) || [])) {
+            if (pl?.piece_id == null || !(pl.piece_name || pl.image_location)) continue;
+            const type = Number(pl.piece_id);
+            const owner = Number(pl.player_id ?? pl.team);
+            if (Number.isFinite(owner)) artByOwner.set(`${type}:${owner}`, pl);
+            if (!artByType.has(type)) artByType.set(type, pl);
+          }
+          for (const t of (placementRules(placeCheck)?.templates || [])) {
+            if (!artByType.has(Number(t.piece_id))) {
+              artByType.set(Number(t.piece_id), {
+                piece_name: t.name || t.piece_name || null,
+                image_location: t.image_location || null,
+              });
+            }
+          }
+          resultingPosition = replayed.state.pieces.map((pc) => {
+            const owner = Number(pc.team ?? pc.player_id);
+            // This piece's own side first; the type only for what is shared.
+            const mine = artByOwner.get(`${Number(pc.piece_id)}:${owner}`) || {};
+            const look = artByType.get(Number(pc.piece_id)) || {};
+            return {
+              piece_id: Number(pc.piece_id),
+              /*
+               * Carried for the same reason the daily card's position carries
+               * it: a board rebuilt from this payload has to keep naming
+               * pieces the way the line does, or the NEXT move of a multi-move
+               * puzzle stops matching. The engine never renames a piece, so
+               * this is still the id it had on its starting square.
+               */
+              id: pc.id,
+              player_id: owner,
+              piece_name: pc.piece_name || mine.piece_name || look.piece_name || null,
+              image_location: pc.image_location || mine.image_location || look.image_location || null,
+              /*
+               * The one already-resolved image, when the engine has it.
+               * Promotion sets it, and it is the one every board prefers -
+               * it carries a per-game image_index override, which picking
+               * out of image_location by player number cannot.
+               *
+               * Taken ONLY from the engine or from a placement of this same
+               * side. Falling back to the type's picture here is what painted
+               * a board's worth of pieces the wrong colour: every board
+               * prefers image_url, so one wrong value silently beats the
+               * per-player list that would have been right.
+               */
+              image_url: pc.image_url || mine.image_url || null,
+              x: Number(pc.x), y: Number(pc.y),
+            };
+          });
+        }
+      }
+    } catch (e) {
+      console.warn('[puzzle] could not replay a placement line:', e.message);
+    }
+
+    res.json({
+      solved,
+      status: solved ? 'solved' : (revealed ? 'revealed' : (wrong ? 'wrong' : 'continue')),
+      movesPlayed: t.movesPlayed,
+      movesTotal: t.movesTotal,
+      // Present only for games that place pieces; see above.
+      position: resultingPosition,
+      /*
+       * The opponent's answer to the move just found. Handing this back is not
+       * a leak - it is the consequence of a move the solver already played,
+       * and without it they cannot see the position their next move starts
+       * from.
+       */
+      reply: inProgress ? (t.reply ?? null) : null,
+      // The whole line only once they have it, or have given up on it.
+      solution: solved || revealed ? line : undefined,
+      rating: ratingChange,
+      ratingNote: ratingChange ? null : (userId ? ratingNote : null),
+      // Only present for the Discord activity; the website ignores it.
+      discord: discordProgress,
+      ...(t.extra || {}),
+    });
+  }
+
+  /*
+   * Judging an attempt at a puzzle in a veto game. See puzzle-veto.js for what
+   * the steps are. The client sends the whole prefix of steps each time, as
+   * with moves, so this stays stateless.
+   *
+   * Two things are not answers at all, and are refused without recording
+   * anything: a move this game would not allow, and - in a pre-emptive game -
+   * a move the bot has banned. In a reactive game a move the bot vetoes is not
+   * wrong either: it is shown, vetoed, and the solver chooses again.
+   */
+  async function solveWithVetoes(req, res, puzzle, line, cfg, rules) {
+    const setup = safeParse(puzzle.setup_move);
+    const steps = answerSteps({ ...puzzle, setup_move: setup }, line, cfg);
+    const given = Array.isArray(req.body?.steps) ? req.body.steps : [];
+    const revealed = req.body?.revealed === true;
+    if (!given.length && !revealed) return res.status(400).send({ message: 'No moves submitted' });
+
+    let matched = 0;
+    while (matched < given.length && matched < steps.length
+           && stepMatches(steps[matched], given[matched])) matched++;
+
+    const progress = { movesPlayed: matched, movesTotal: steps.length };
+    const expected = !revealed && matched < given.length ? steps[matched] : null;
+    const attempt = expected ? given[matched] : null;
+    if (expected?.kind === 'move' && attempt?.kind === 'move' && attempt.move) {
+      const bans = line[expected.plyIndex]?.vetoes || [];
+      if (isVetoed(attempt.move, bans)) {
+        if (cfg.style === 'reactive') {
+          return res.json({
+            status: 'vetoed', vetoed: true, ...progress,
+            veto: { next: nextPrompt(steps, matched, line, cfg) },
+          });
+        }
+        return res.json({ illegal: true, status: 'illegal', reason: 'That move is vetoed.', ...progress });
+      }
+
+      // Played for real on the position it was made in: is it legal, and
+      // does it finish the puzzle another way? (The classic path's rules.)
+      try {
+        const state = buildGameState({
+          position: await hydratePosition(rules, safeParse(puzzle.position, [])),
+          placeable_definitions: placeableDefinitions(rules),
+          initial_pieces: await loadStartingRoster(rules),
+          side_to_move: puzzle.side_to_move,
+          setup_move: setup,
+          game_type_id: puzzle.game_type_id,
+        }, rules.game);
+        let ok = true;
+        for (let i = 0; i < expected.plyIndex; i++) {
+          state.currentTurn = i % 2 === 0 ? Number(puzzle.side_to_move) : otherSide(puzzle.side_to_move);
+          // eslint-disable-next-line no-await-in-loop
+          const step = await applyPly(state, line[i], { autoPromote: true });
+          if (!step.ok) { ok = false; break; }
+        }
+        if (ok) {
+          state.currentTurn = Number(puzzle.side_to_move);
+          const tried = await applyPly(state, attempt.move, { autoPromote: false });
+          if (!tried.ok && !tried.needsPromotionChoice) {
+            return res.json({ illegal: true, status: 'illegal', reason: tried.reason || null, ...progress });
+          }
+          if (tried.ok && !puzzle.require_exact_line
+              && matched === steps.length - 1 && given.length === steps.length
+              && MECHANICAL_GOALS.has(puzzle.goal)) {
+            state.currentTurn = otherSide(puzzle.side_to_move);
+            const term = terminalOutcome(state, otherSide(puzzle.side_to_move), tried);
+            if (goalMet(puzzle.goal, state, puzzle.side_to_move, tried)
+                || !!(term && Number(term.winner) === Number(puzzle.side_to_move))) {
+              matched = steps.length;
+            }
+          }
+        }
+      } catch (err) {
+        console.warn(`[puzzle] could not replay a veto puzzle move for ${puzzle.id}: ${err.message}`);
+      }
+    }
+
+    const wrong = !revealed && matched < given.length;
+    const solved = !revealed && !wrong && steps.length > 0 && matched === steps.length;
+    const inProgress = !revealed && !wrong && !solved;
+    const score = scoreAttempt(given.slice(0, matched), steps, (a, b) => stepMatches(b, a));
+    return finishSolve(req, res, puzzle, line, {
+      submitted: given, revealed, wrong, solved, score,
+      movesPlayed: matched,
+      movesTotal: steps.length,
+      upToPlies: solved || revealed ? line.length : pliesPlayed(steps, matched),
+      // Only the reply the newest step set off; an older one is already on the board.
+      reply: matched === given.length ? replyAfter(steps, matched, line, { ...puzzle, setup_move: setup }) : null,
+      extra: {
+        veto: {
+          next: inProgress ? nextPrompt(steps, matched, line, cfg) : null,
+          // With the answer: a reactive puzzle's opening, which is not in the line.
+          ...(solved || revealed ? {
+            opening: cfg.style === 'reactive' && setup?.from
+              ? { vetoes: setup.vetoes || [], move: proposalOf(setup) } : null,
+          } : {}),
+          // Once the opening decision is made, the move it let through is the
+          // last move for everything that follows (en passant, the highlight).
+          ...(cfg.style === 'reactive' && setup?.from && matched === given.length
+            && steps[matched - 1]?.plyIndex === -1 && steps[matched - 1]?.answer === false
+            ? { setupMove: proposalOf(setup) } : {}),
+        },
+      },
+    });
+  }
+
   app.post('/api/puzzles/:id/solve', optionalAuthenticate, optionalDiscord, async (req, res) => {
     try {
       const puzzle = await loadPuzzle(parseInt(req.params.id, 10));
       if (!puzzle) return res.status(404).send({ message: 'Puzzle not found' });
       if (puzzle.is_draft) return res.status(404).send({ message: 'Puzzle not found' });
+
+      /*
+       * A puzzle in a veto game is answered in steps rather than moves - the
+       * move, then the veto or each veto-or-allow decision (puzzle-veto.js) -
+       * and judged by solveWithVetoes. Decided on the puzzle's own frozen rules,
+       * like everything else about it.
+       */
+      const solveRules = await loadRulesFor(puzzle);
+      const vetoCfg = vetoConfigOf(solveRules?.game);
+      if (vetoCfg) {
+        return solveWithVetoes(req, res, puzzle, safeParse(puzzle.solution_line, []), vetoCfg, solveRules);
+      }
 
       const submitted = Array.isArray(req.body?.moves) ? req.body.moves : [req.body?.move].filter(Boolean);
       const revealed = req.body?.revealed === true;
@@ -2418,396 +3020,13 @@ function registerPuzzleRoutes(app, {
 
       const wrong = !revealed && matched < submitted.length;
       const solved = !revealed && !wrong && mine.length > 0 && matched === mine.length;
-      const inProgress = !revealed && !wrong && !solved;
-      const terminal = !inProgress;
-      // Same prefix rule as everywhere else: miss the first move and it is zero.
       const score = scoreAttempt(submitted.slice(0, matched), mine, (a, b) => moveKey(a) === moveKey(b));
-      const scorePct = Math.round(score * 100);
-
-      const userId = req.user?.id || null;
-      // Where this attempt was played. Only a token Discord itself vouched for
-      // can set it to 'discord'; the client cannot claim the surface.
-      const discordId = req.discord?.id || null;
-      const source = discordId ? 'discord' : 'web';
-
-      /*
-       * Where this request actually came from, which is the one fact the last
-       * several rounds of chasing this could not establish.
-       *
-       * An activity runs in an iframe served from <app_id>.discordsays.com, so
-       * its requests carry that Origin. A browser tab on the site carries
-       * gridgrove.gg. Those are the two hypotheses - "the activity ran and the
-       * token was lost" versus "this was never the activity at all" - and the
-       * header tells them apart without anyone having to describe what they saw.
-       *
-       * Logged only when there is no Discord identity, so a working activity
-       * stays quiet and this says something exactly when something is wrong.
-       * Solves are a handful a day; this is not a hot path.
-       */
-      if (!discordId) {
-        const origin = req.get('Origin') || req.get('Referer') || '(none)';
-        console.warn(`[discord] anonymous solve on puzzle ${req.params.id}`
-          + ` from origin ${String(origin).slice(0, 120)}`);
-      }
-      let ratingChange = null;
-      let ratingNote = null;
-
-      if (!userId) {
-        // Nothing to rate, and a half-played line is not worth a row.
-        if (terminal) {
-          await db_pool.query(
-            `INSERT INTO puzzle_attempts
-               (puzzle_id, user_id, moves, solved, duration_ms, score, source, discord_user_id)
-             VALUES (?,?,?,?,?,?,?,?)`,
-            [puzzle.id, null, JSON.stringify(submitted), solved ? 1 : 0,
-             Number.isFinite(req.body?.duration_ms) ? req.body.duration_ms : null, scorePct,
-             source, discordId]
-          );
-        }
-      } else {
-        const [[open]] = await db_pool.query(
-          `SELECT id, rating_before, rating_after, score, state
-           FROM puzzle_attempts WHERE puzzle_id = ? AND user_id = ? AND rated_attempt = 1 LIMIT 1`,
-          [puzzle.id, userId]
-        );
-
-        if (!open) {
-          /*
-           * Their first attempt at this puzzle, and the only one that will ever
-           * count. It is written NOW rather than when the line finishes, so
-           * walking away from a half-solved multi-move puzzle keeps the partial
-           * score instead of costing nothing - otherwise a solver could probe a
-           * move, abandon, and come back knowing the answer for free.
-           */
-          const [[u]] = await db_pool.query('SELECT puzzle_elo FROM users WHERE id = ? LIMIT 1', [userId]);
-          const [[counts]] = await db_pool.query(
-            'SELECT COUNT(*) AS n FROM puzzle_attempts WHERE user_id = ? AND rated_attempt = 1', [userId]
-          );
-          const before = u?.puzzle_elo ?? PUZZLE_ELO_DEFAULT;
-          const result = rateAttempt({
-            currentElo: before,
-            ratedAttemptsSoFar: counts?.n || 0,
-            score,
-          });
-          try {
-            await db_pool.query(
-              `INSERT INTO puzzle_attempts
-                 (puzzle_id, user_id, moves, solved, duration_ms, rated_attempt,
-                  rating_before, rating_after, score, state, source, discord_user_id)
-               VALUES (?,?,?,?,?,1,?,?,?,?,?,?)`,
-              [puzzle.id, userId, JSON.stringify(submitted), solved ? 1 : 0,
-               Number.isFinite(req.body?.duration_ms) ? req.body.duration_ms : null,
-               result.before, result.after, scorePct, terminal ? null : 'in_progress',
-               source, discordId]
-            );
-            await db_pool.query(
-              'UPDATE users SET puzzle_elo = puzzle_elo + ? WHERE id = ?', [result.delta, userId]
-            );
-            ratingChange = {
-              before: result.before, after: result.after, delta: result.delta,
-              score: result.score, partial: result.score > 0 && result.score < 1,
-            };
-          } catch (e) {
-            // Two requests raced for the one rated slot; the loser is unrated.
-            if (e?.code !== 'ER_DUP_ENTRY') throw e;
-          }
-        } else if (open.state === 'in_progress') {
-          /*
-           * The same first attempt, further along. Re-score it from the rating
-           * it started at and apply only the difference, so the rating cannot
-           * drift as the line is played out, and an attempt at some other puzzle
-           * in between is not clobbered.
-           *
-           * The score only ever goes up: restarting and stopping earlier should
-           * not be able to take back ground already covered.
-           */
-          const bestPct = Math.max(scorePct, open.score || 0);
-          const [[counts]] = await db_pool.query(
-            'SELECT COUNT(*) AS n FROM puzzle_attempts WHERE user_id = ? AND rated_attempt = 1', [userId]
-          );
-          const result = rateAttempt({
-            currentElo: open.rating_before,
-            ratedAttemptsSoFar: Math.max(0, (counts?.n || 1) - 1),
-            score: bestPct / 100,
-          });
-          const alreadyApplied = (open.rating_after ?? open.rating_before) - open.rating_before;
-          await db_pool.query(
-            'UPDATE users SET puzzle_elo = puzzle_elo + ? WHERE id = ?',
-            [result.delta - alreadyApplied, userId]
-          );
-          await db_pool.query(
-            `UPDATE puzzle_attempts
-             SET moves = ?, solved = ?, score = ?, rating_after = ?, state = ?
-             WHERE id = ?`,
-            [JSON.stringify(submitted), solved ? 1 : 0, bestPct, result.after,
-             terminal ? null : 'in_progress', open.id]
-          );
-          ratingChange = {
-            before: result.before, after: result.after, delta: result.delta,
-            score: result.score, partial: result.score > 0 && result.score < 1,
-          };
-        } else if (terminal) {
-          // A retry after their rated attempt closed. Recorded, never rated.
-          await db_pool.query(
-            `INSERT INTO puzzle_attempts
-               (puzzle_id, user_id, moves, solved, duration_ms, score, source, discord_user_id)
-             VALUES (?,?,?,?,?,?,?,?)`,
-            [puzzle.id, userId, JSON.stringify(submitted), solved ? 1 : 0,
-             Number.isFinite(req.body?.duration_ms) ? req.body.duration_ms : null, scorePct,
-             source, discordId]
-          );
-          ratingNote = 'Only your first attempt at a puzzle affects your rating.';
-        }
-      }
-
-      // Counters describe finished attempts; a multi-move puzzle would
-      // otherwise count one attempt per move played.
-      if (terminal) {
-        await db_pool.query(
-          'UPDATE puzzles SET attempt_count = attempt_count + 1, solve_count = solve_count + ? WHERE id = ?',
-          [solved ? 1 : 0, puzzle.id]
-        );
-        if (solved && userId) {
-          const [[prev]] = await db_pool.query(
-            'SELECT COUNT(*) AS n FROM puzzle_attempts WHERE puzzle_id = ? AND user_id = ? AND solved = 1',
-            [puzzle.id, userId]
-          );
-          // The row for this solve is already in, so 1 means this was the first.
-          if ((prev?.n || 0) <= 1) {
-            await db_pool.query('UPDATE users SET puzzles_solved = puzzles_solved + 1 WHERE id = ?', [userId]);
-          }
-        }
-      }
-
-      /*
-       * The Discord player's own record: streak, totals, and today's state.
-       *
-       * Deliberately outside the rating code above. A Discord streak and a
-       * GridGrove rating measure different things - turning up, and playing
-       * well - so a player with both gets both, and a player with neither
-       * account still gets the streak.
-       */
-      let discordProgress = null;
-      if (terminal) {
-        try {
-          const date = dailyPuzzle.todayKey();
-          const todayRow = await dailyPuzzle.forDate(date);
-          const opts = {
-            solved,
-            isDaily: Number(todayRow?.puzzle_id) === Number(puzzle.id),
-            date,
-            yesterday: dailyPuzzle.addDays(date, -1),
-          };
-
-          if (discordId) {
-            discordProgress = await recordDiscordAttempt(db_pool, req.discord, opts);
-            /*
-             * Said out loud because the failure this replaced was silent: an
-             * attempt that reached here anonymously looked exactly like one that
-             * never arrived, and nothing in the logs told them apart. One line
-             * per solve is cheap; a week of guessing was not.
-             */
-            console.log(`[discord] recorded attempt on puzzle ${puzzle.id} for ${discordId}`
-              + ` (solved=${solved}, daily=${opts.isDaily}, streak=${discordProgress?.current_streak ?? '?'})`);
-          } else if (userId) {
-            /*
-             * A solve on the WEBSITE by somebody whose account is linked.
-             *
-             * Once linked, the streak stops being a fact about Discord and
-             * becomes a fact about the person - so turning up counts wherever
-             * they turned up. Somebody who solves on their phone in the morning
-             * should not lose a run because they were not in Discord that day.
-             */
-            const linked = await linkedPlayerFor(db_pool, userId);
-            if (linked) {
-              discordProgress = await bumpStreak(db_pool, {
-                discordId: linked.discord_user_id,
-                username: linked.username,
-                avatar: linked.avatar,
-              }, opts);
-            }
-          }
-        } catch (e) {
-          // A streak is a nicety. Losing it must not lose the solve, which is
-          // already written by this point.
-          console.warn('[discord] could not record progress:', e.message);
-        }
-      }
-
-      // The puzzle's own rating is the mean of the people who SOLVED it, so
-      // only a success is folded in, and only on the attempt that counted.
-      if (solved && ratingChange) {
-        const folded = foldSolverIntoPuzzleRating({
-          rating: puzzle.rating,
-          sampleCount: puzzle.rating_sample_count,
-          solverElo: ratingChange.before,
-        });
-        await db_pool.query(
-          'UPDATE puzzles SET rating = ?, rating_sample_count = ? WHERE id = ?',
-          [folded.rating, folded.sampleCount, puzzle.id]
-        );
-      }
-
-      /*
-       * The board after everything just played, for the moves the client cannot
-       * work out for itself.
-       *
-       * A solver applies its own moves optimistically - piece leaves here,
-       * lands there - and that is a complete description of a move in almost
-       * every game. Two kinds of move it does not describe:
-       *
-       * A PLACEMENT. A stone put down in Go can remove a group of six on the
-       * far side of the board, and nothing on the client knows the surround
-       * rule.
-       *
-       * A PROMOTION. The piece that arrives is not the piece that left, and a
-       * client that only relocates pieces has nothing to redraw it from - so a
-       * promoting pawn stayed a pawn on the board, on every one of the three
-       * places a puzzle is played. The name and the image only exist on the
-       * `pieces` row the engine swapped in, which is here and not there.
-       *
-       * Everything else still costs what it did before: the replay is skipped
-       * for a line that neither places nor promotes, which is almost all of
-       * them. Best-effort - if the replay fails the client keeps its own guess,
-       * which is what it had anyway.
-       */
-      let resultingPosition;
-      try {
-        const upTo = solved || revealed ? line : line.slice(0, matched * 2);
-        // A promoting ply is recognisable without touching the database, so ask
-        // the cheap question before the narrow column read below.
-        const promotes = upTo.some(ply => ply && ply.promotionPieceId != null);
-
-        /*
-         * One narrow column read, always - it is a single-row primary-key
-         * select next to the several writes this route already makes, and its
-         * answer is needed twice: to decide whether a placement line needs
-         * replaying at all, and further down to name the pieces a placement
-         * game can put on the board. Skipping it for a promoting line would
-         * lose the second of those in a game that does both.
-         *
-         * What must stay gated is the REPLAY below, which is the expensive part.
-         */
-        const [[placeCheck]] = await db_pool.query(
-          'SELECT other_game_data FROM game_types WHERE id = ? LIMIT 1', [puzzle.game_type_id]
-        );
-        const placesPieces = !!placementRules(placeCheck);
-
-        if ((placesPieces || promotes) && (inProgress || solved || revealed)) {
-          const rules = await loadRulesFor(puzzle);
-          const replayed = await playLine(
-            {
-              position: await hydratePosition(rules, safeParse(puzzle.position, [])),
-              placeable_definitions: placeableDefinitions(rules),
-              initial_pieces: await loadStartingRoster(rules),
-              side_to_move: puzzle.side_to_move,
-              setup_move: safeParse(puzzle.setup_move),
-              game_type_id: puzzle.game_type_id,
-            },
-            rules.game, upTo
-          );
-          if (replayed.ok) {
-            /*
-             * Engine pieces carry the rules, not the artwork: hydratePosition
-             * builds them for the move generator and does not thread the name
-             * and the image through. The board needs both, so they are looked
-             * up per piece type - from the puzzle's own stored placements
-             * first, then from what the game says is placeable - rather than
-             * left null, which drew the position as a row of blanks.
-             */
-            /*
-             * Keyed by piece type AND OWNER, because a picture belongs to one
-             * side. A white pawn and a black pawn are the same piece_id, so a
-             * map keyed by type alone keeps whichever placement happened to
-             * come last and hands its already-resolved image_url to every pawn
-             * on the board. That is what turned every pawn one colour and both
-             * kings one colour the moment a puzzle finished - and why the piece
-             * that had just PROMOTED stayed right, since the engine sets
-             * image_url on that one and it wins before any of this is read.
-             *
-             * The name and the image LIST do not depend on the owner - the list
-             * is per-player and is indexed by the board - so those keep a
-             * type-only fallback. Only image_url, the single fixed picture, has
-             * to match the owner, and it is never taken from another player's
-             * placement.
-             */
-            const artByOwner = new Map();
-            const artByType = new Map();
-            for (const pl of (safeParse(puzzle.position, []) || [])) {
-              if (pl?.piece_id == null || !(pl.piece_name || pl.image_location)) continue;
-              const type = Number(pl.piece_id);
-              const owner = Number(pl.player_id ?? pl.team);
-              if (Number.isFinite(owner)) artByOwner.set(`${type}:${owner}`, pl);
-              if (!artByType.has(type)) artByType.set(type, pl);
-            }
-            for (const t of (placementRules(placeCheck)?.templates || [])) {
-              if (!artByType.has(Number(t.piece_id))) {
-                artByType.set(Number(t.piece_id), {
-                  piece_name: t.name || t.piece_name || null,
-                  image_location: t.image_location || null,
-                });
-              }
-            }
-            resultingPosition = replayed.state.pieces.map((pc) => {
-              const owner = Number(pc.team ?? pc.player_id);
-              // This piece's own side first; the type only for what is shared.
-              const mine = artByOwner.get(`${Number(pc.piece_id)}:${owner}`) || {};
-              const look = artByType.get(Number(pc.piece_id)) || {};
-              return {
-                piece_id: Number(pc.piece_id),
-                /*
-                 * Carried for the same reason the daily card's position carries
-                 * it: a board rebuilt from this payload has to keep naming
-                 * pieces the way the line does, or the NEXT move of a multi-move
-                 * puzzle stops matching. The engine never renames a piece, so
-                 * this is still the id it had on its starting square.
-                 */
-                id: pc.id,
-                player_id: owner,
-                piece_name: pc.piece_name || mine.piece_name || look.piece_name || null,
-                image_location: pc.image_location || mine.image_location || look.image_location || null,
-                /*
-                 * The one already-resolved image, when the engine has it.
-                 * Promotion sets it, and it is the one every board prefers -
-                 * it carries a per-game image_index override, which picking
-                 * out of image_location by player number cannot.
-                 *
-                 * Taken ONLY from the engine or from a placement of this same
-                 * side. Falling back to the type's picture here is what painted
-                 * a board's worth of pieces the wrong colour: every board
-                 * prefers image_url, so one wrong value silently beats the
-                 * per-player list that would have been right.
-                 */
-                image_url: pc.image_url || mine.image_url || null,
-                x: Number(pc.x), y: Number(pc.y),
-              };
-            });
-          }
-        }
-      } catch (e) {
-        console.warn('[puzzle] could not replay a placement line:', e.message);
-      }
-
-      res.json({
-        solved,
-        status: solved ? 'solved' : (revealed ? 'revealed' : (wrong ? 'wrong' : 'continue')),
+      return finishSolve(req, res, puzzle, line, {
+        submitted, revealed, wrong, solved, score,
         movesPlayed: matched,
         movesTotal: mine.length,
-        // Present only for games that place pieces; see above.
-        position: resultingPosition,
-        /*
-         * The opponent's answer to the move just found. Handing this back is not
-         * a leak - it is the consequence of a move the solver already played,
-         * and without it they cannot see the position their next move starts
-         * from.
-         */
-        reply: inProgress ? (theirs[matched - 1] ?? null) : null,
-        // The whole line only once they have it, or have given up on it.
-        solution: solved || revealed ? line : undefined,
-        rating: ratingChange,
-        ratingNote: ratingChange ? null : (userId ? ratingNote : null),
-        // Only present for the Discord activity; the website ignores it.
-        discord: discordProgress,
+        upToPlies: matched * 2,
+        reply: theirs[matched - 1] ?? null,
       });
     } catch (err) {
       console.error('POST /api/puzzles/:id/solve:', err);

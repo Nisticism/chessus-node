@@ -95,6 +95,17 @@ async function analyseUniqueness(rules, puzzle, opts = {}) {
     maxDepthSearched: 0,
   };
 
+  // Every turn of a veto game can ban moves, so "every reply the opponent
+  // has" is not the question this search asks.
+  if (Number(rules?.game?.veto_enabled) && !Number(rules?.game?.simultaneous_turns)) {
+    return {
+      ...base,
+      verdict: 'not_mechanical',
+      note: 'This game uses vetoes, which change which moves are allowed at every turn, '
+        + 'so the engine cannot search it for other answers.',
+    };
+  }
+
   if (!MECHANICAL_GOALS.has(goal)) {
     return {
       ...base,
