@@ -266,6 +266,7 @@ function fogFilterPayload(payload, gameState, viewerPos) {
  */
 function emitToGameRoom(io, gameState, event, payload) {
   if (!io || !gameState) return;
+  announceCorrespondenceDeadline(io, gameState);
   const gameId = gameState.id;
   const room = `game-${gameId}`;
   if (!gameState.hideEnemyPieces || gameState.status === 'completed') {
@@ -292,6 +293,7 @@ function emitToGameRoom(io, gameState, event, payload) {
  */
 function emitToGameRoomExcept(io, gameState, event, payload, excludeSocketId) {
   if (!io || !gameState) return;
+  announceCorrespondenceDeadline(io, gameState);
   const gameId = gameState.id;
   const room = `game-${gameId}`;
   const roomSet = io.sockets.adapter.rooms.get(room);
@@ -538,7 +540,76 @@ function sanitizeWinnerId(id) {
 /**
  * Build the other_data JSON object for DB writes, always including initialPieces for replay.
  */
+/*
+ * The id whose clock was running when the game was last saved, for charging
+ * the time since. `players` are the rows from the players table, and a bot has
+ * no row there - so the bot's turn used to find nobody, and a restart during
+ * it charged the downtime to no one. `runnerPos` is the side to move, or the
+ * piece-type chooser when one was choosing (other_data.clockRunner).
+ */
+function restoredClockRunnerId(players, otherData, runnerPos) {
+  const row = players.find(p => p.position === runnerPos);
+  if (row?.id != null) return row.id;
+  if (otherData?.isBotGame && Number(otherData.botPosition || 2) === Number(runnerPos)) {
+    return (BOT_PLAYERS[otherData.botDifficulty] || BOT_PLAYERS.medium).id;
+  }
+  return null;
+}
+
+/*
+ * Correspondence: the deadline belongs to one side's turn (deadlineFor). When
+ * the turn has passed to the other side, the new mover gets a fresh window.
+ *
+ * Applied lazily, where every move ends up - saving the game and telling the
+ * room - rather than at each of the many places a turn can pass. Only the
+ * ordinary move path used to set it, so a placement, a pass, a skipped
+ * capture action or a bot's reply left the old deadline standing (or none at
+ * all): the clock showed the previous turn's time, or the full allowance, and
+ * the next restart re-anchored it.
+ *
+ * A deadline saved before deadlineFor existed is adopted as it is, never
+ * renewed - renewing it would hand the player a fresh window on deploy.
+ * Returns true when it set a new deadline.
+ */
+function syncCorrespondenceDeadline(gameState) {
+  if (!gameState?.isCorrespondence || !gameState.correspondenceDays) return false;
+  if (gameState.status !== 'active' || gameState.currentTurn == null) return false;
+  const pos = Number(gameState.currentTurn);
+  if (gameState.moveDeadline && gameState.deadlineFor == null) {
+    gameState.deadlineFor = pos;
+    return false;
+  }
+  if (gameState.moveDeadline && Number(gameState.deadlineFor) === pos) return false;
+  renewCorrespondenceDeadline(gameState);
+  return true;
+}
+
+function renewCorrespondenceDeadline(gameState) {
+  const now = Date.now();
+  gameState.moveDeadline = now + gameState.correspondenceDays * 24 * 60 * 60 * 1000;
+  gameState.lastMoveTime = now; // kept for older readers
+  gameState.deadlineFor = Number(gameState.currentTurn);
+}
+
+/*
+ * Tell the room about a deadline it has not seen. Most move broadcasts do not
+ * carry it, so without this the page kept counting down the previous turn's
+ * deadline until it was reloaded.
+ */
+function announceCorrespondenceDeadline(io, gameState) {
+  syncCorrespondenceDeadline(gameState);
+  if (!gameState?.isCorrespondence || !gameState.moveDeadline) return;
+  if (gameState._announcedDeadline === gameState.moveDeadline) return;
+  gameState._announcedDeadline = gameState.moveDeadline;
+  io.to(`game-${gameState.id}`).emit('correspondenceDeadline', {
+    gameId: Number(gameState.id),
+    moveDeadline: gameState.moveDeadline,
+    deadlineFor: gameState.deadlineFor,
+  });
+}
+
 function buildOtherData(gameState, extraFields = {}) {
+  syncCorrespondenceDeadline(gameState);
   const simulSubmittedKeys = Object.keys(gameState.pendingSimulMoves || {});
   // Snapshot the stable anon player IDs so DB-reload can restore them after
   // a server restart (avoids null player IDs breaking clock / move routing).
@@ -603,6 +674,7 @@ function buildOtherData(gameState, extraFields = {}) {
     // this, every restart resets the clock to "now + full window", allowing a
     // player to avoid timing out simply by waiting for a deploy.
     ...(gameState.moveDeadline != null ? { moveDeadline: gameState.moveDeadline } : {}),
+    ...(gameState.deadlineFor != null ? { deadlineFor: gameState.deadlineFor } : {}),
     ...(gameState.lastMoveTime != null ? { lastMoveTime: gameState.lastMoveTime } : {}),
     // Persist per-player limited-reserve inventory (finite piece bank) so deploy
     // counts survive a server restart / reconnect. Without this, a restart would
@@ -3728,7 +3800,8 @@ async function recoverActiveGames() {
               g.pieces, g.other_data, g.host_id, g.game_type_id,
               g.start_time, g.allow_spectators, g.show_piece_helpers,
               g.is_correspondence, g.correspondence_days,
-              gt.mate_condition, gt.starting_points_p1, gt.starting_points_p2
+              gt.mate_condition, gt.starting_points_p1, gt.starting_points_p2,
+              gt.other_game_data AS gt_other_game_data, gt.simultaneous_turns
        FROM games g
        JOIN game_types gt ON g.game_type_id = gt.id
        WHERE g.status = 'active'
@@ -3782,9 +3855,9 @@ async function recoverActiveGames() {
           }
           if (otherData.clockPersistedAt) {
             const elapsedSec = (Date.now() - otherData.clockPersistedAt) / 1000;
-            const cp = players.find(p => p.position === (otherData.clockRunner || game.player_turn || 1));
-            if (cp?.id != null && playerTimes[cp.id] != null) {
-              playerTimes[cp.id] = Math.max(0, playerTimes[cp.id] - elapsedSec);
+            const runnerId = restoredClockRunnerId(players, otherData, otherData.clockRunner || game.player_turn || 1);
+            if (runnerId != null && playerTimes[runnerId] != null) {
+              playerTimes[runnerId] = Math.max(0, playerTimes[runnerId] - elapsedSec);
             }
           }
         }
@@ -3798,8 +3871,18 @@ async function recoverActiveGames() {
             mate_condition: game.mate_condition,
             starting_points_p1: game.starting_points_p1,
             starting_points_p2: game.starting_points_p2,
+            simultaneous_turns: game.simultaneous_turns,
           },
-          otherGameData: {},
+          // Only the opponent-chooses-the-piece-type flag, and the choice in
+          // force: enough for the timer to charge the chooser while a choice
+          // is due. Nothing else here reads otherGameData.
+          otherGameData: (() => {
+            try {
+              const god = JSON.parse(game.gt_other_game_data || '{}') || {};
+              return god.designate_piece_type === true ? { designate_piece_type: true } : {};
+            } catch (_) { return {}; }
+          })(),
+          designation: otherData.designation || undefined,
           timeControl: game.turn_length,
           increment: game.increment || 0,
           status: game.status,
@@ -8110,9 +8193,7 @@ function initializeSocket(server) {
 
         // Track move deadline for correspondence games (absolute timestamp = now + allowedMs)
         if (gameState.isCorrespondence && gameState.correspondenceDays) {
-          const allowedMs = gameState.correspondenceDays * 24 * 60 * 60 * 1000;
-          gameState.moveDeadline = Date.now() + allowedMs;
-          gameState.lastMoveTime = Date.now(); // keep for backward compat
+          renewCorrespondenceDeadline(gameState);
         }
 
         // HP/AD system: Apply burn/DOT damage at the start of the new player's turn (BEFORE regen)
@@ -11199,11 +11280,11 @@ function initializeSocket(server) {
             // Deduct time elapsed since the last move was persisted (current player's turn)
             if (game.status === 'active' && otherData.clockPersistedAt) {
               const elapsedSec = (Date.now() - otherData.clockPersistedAt) / 1000;
-              // The chooser's clock, if a piece type was being chosen then.
-              const currentTurn = otherData.clockRunner || game.player_turn || 1;
-              const currentPlayer = players.find(p => p.position === currentTurn);
-              if (currentPlayer?.id != null && playerTimes[currentPlayer.id] != null) {
-                playerTimes[currentPlayer.id] = Math.max(0, playerTimes[currentPlayer.id] - elapsedSec);
+              // The chooser's clock, if a piece type was being chosen then;
+              // the bot's, when it was the bot's turn.
+              const runnerId = restoredClockRunnerId(players, otherData, otherData.clockRunner || game.player_turn || 1);
+              if (runnerId != null && playerTimes[runnerId] != null) {
+                playerTimes[runnerId] = Math.max(0, playerTimes[runnerId] - elapsedSec);
               }
             }
           }
@@ -11261,6 +11342,7 @@ function initializeSocket(server) {
             isCorrespondence: !!game.is_correspondence,
             correspondenceDays: game.correspondence_days || null,
             moveDeadline: otherData?.moveDeadline || null,
+            deadlineFor: otherData?.deadlineFor ?? null,
             lastMoveTime: otherData?.lastMoveTime || null,
             materialClockPenalty: !!otherData?.materialClockPenalty,
             materialClockHandicap: !!otherData?.materialClockHandicap,

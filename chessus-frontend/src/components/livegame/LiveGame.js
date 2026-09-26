@@ -2006,6 +2006,13 @@ const LiveGame = () => {
       }
     });
 
+    // Correspondence: the deadline for the side now to move (most move
+    // broadcasts do not carry it, so the server sends it on its own).
+    const unsubscribeCorrespondenceDeadline = onGameEvent("correspondenceDeadline", ({ gameId: dGameId, moveDeadline, deadlineFor }) => {
+      if (parseInt(dGameId) !== parseInt(gameId)) return;
+      setGameState(prev => (prev ? { ...prev, moveDeadline, deadlineFor } : prev));
+    });
+
     const unsubscribeTimeUpdate = onGameEvent("timeUpdate", ({ gameId: timerGameId, playerTimes, currentTurn, clockMultipliers, vetoClockPos }) => {
       if (parseInt(timerGameId) === parseInt(gameId)) {
         serverTimesRef.current = playerTimes || {};
@@ -2803,6 +2810,7 @@ const LiveGame = () => {
       unsubscribeIllegalMove();
       unsubscribeFairyRejected();
       unsubscribeTimeUpdate();
+      unsubscribeCorrespondenceDeadline();
       unsubscribeOpponentDisconnected();
       unsubscribeOpponentReconnected();
       unsubscribeDisconnectPaused();
