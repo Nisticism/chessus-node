@@ -57,6 +57,7 @@ const {
   parseCustomSquares,
   getValidFlankingPlacements,
   applyFlankingCaptures,
+  getImageUrlForPlayer,
 } = require('./game-socket');
 const { gravityOf, restingSquare } = require('./board-gravity');
 
@@ -583,12 +584,22 @@ async function applyPlacementPly(state, ply) {
    */
   const placedIsNeutral = !!template.is_neutral;
   const team = placedIsNeutral ? 0 : player;
+  /*
+   * The placing side's own artwork, chosen exactly as the live game chooses
+   * it. The template's image_url is ONE picture - usually player 1's - and
+   * every board prefers image_url over the per-player list, so copying it
+   * painted the opponent's placements in the solver's colour (Clobber Four,
+   * puzzles 93 and 95).
+   */
+  const placedImageUrl = template.image_location
+    ? getImageUrlForPlayer(template.image_location, player, placedIsNeutral ? (template.neutral_image_index ?? null) : null)
+    : template.image_url;
   state.pieces.push({
     ...template,
     id: `placed_${x}_${y}_${state.pieces.length}`,
     piece_id: Number(template.piece_id),
     piece_name: template.name || template.piece_name || 'Placed Piece',
-    image_url: template.image_url,
+    image_url: placedImageUrl,
     image_location: template.image_location,
     x, y,
     team,

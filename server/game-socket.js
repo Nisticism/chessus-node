@@ -23068,6 +23068,7 @@ module.exports = {
   isPlacementSquareAllowed,
   getPlacementConfinementZone,
   isPlaceableEligibleFor,
+  getImageUrlForPlayer,
   parseCustomSquares,
   computeEnclosedRegionScores,
   computeFinalScores,
