@@ -16,6 +16,7 @@
 
 const { describeLineRule } = require('./win-line');
 const { describeGravity } = require('./board-gravity');
+const { isDesignationGame } = require('./designated-piece');
 
 const T = (v) => v === true || v === 1 || v === '1';
 const I = (v) => { const n = parseInt(v, 10); return Number.isFinite(n) ? n : 0; };
@@ -100,6 +101,8 @@ function summariseRules(gameType) {
       gt.veto_style === 'reactive'
         ? `Your opponent can veto ${I(gt.veto_per_turn_limit) || 1} of your moves after you play it, forcing you to choose again.`
         : `Your opponent bans ${I(gt.veto_per_turn_limit) || 1} of your possible moves before you play.`),
+    item(isDesignationGame(gt), 'Opponent chooses the piece type',
+      'Before each move your opponent picks a piece type, and you must move a piece of that type if one can move.'),
     item(T(gt.simultaneous_turns), 'Simultaneous turns',
       'Both players choose their move at the same time.'),
     item(countSquares(gt.promotion_squares_string) > 0, 'Promotion squares',

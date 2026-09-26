@@ -2688,6 +2688,17 @@ function getBestMoveSync(gameState, botPosition, difficulty, settingsOverride) {
     }
   }
 
+  // Opponent chooses the piece type: only moves of the chosen type, while one
+  // of them can move (placements are always allowed). See designated-piece.js.
+  {
+    const restricted = require('../designated-piece').filterMoves(gameState, legalMoves);
+    if (restricted !== legalMoves && restricted.length > 0) {
+      legalMoves.length = 0;
+      legalMoves.push(...restricted);
+      if (legalMoves.length === 1) return legalMoves[0];
+    }
+  }
+
   // NOTE: the random-move chance (for easy/medium variety) is checked AFTER
   // the instant tactical bailouts below. Otherwise easy/medium would skip
   // obvious escape/capture moves in favor of a 20%/2% random blunder.

@@ -429,6 +429,31 @@ const GameWizard = ({ editGameId }) => {
         }
       }
     } catch { /* ignore parse errors */ }
+
+    /*
+     * Opponent Chooses the Piece Type: the game opens with a type being chosen
+     * from the pieces on the board, so it needs some - a Go-style game that
+     * starts empty cannot use it - and it cannot sit alongside Veto or
+     * Simultaneous Turns. The server refuses the same.
+     */
+    try {
+      const otherData = JSON.parse(gameData.other_game_data || '{}');
+      if (otherData.designate_piece_type === true) {
+        let onBoard = 0;
+        try {
+          onBoard = Object.values(JSON.parse(gameData.pieces_string || '{}')).filter(p => p && !p._occupied).length;
+        } catch { onBoard = 0; }
+        if (onBoard === 0) {
+          missing.push({ field: 'Pieces on the starting board — "Opponent Chooses the Piece Type" opens with a piece type being chosen from them', step: 4 });
+        }
+        if (gameData.veto_enabled) {
+          missing.push({ field: '"Opponent Chooses the Piece Type" and "Veto Ability" cannot both be on — turn one off', step: 2 });
+        }
+        if (gameData.simultaneous_turns) {
+          missing.push({ field: '"Opponent Chooses the Piece Type" and "Simultaneous Turns" cannot both be on — turn one off', step: 2 });
+        }
+      }
+    } catch { /* ignore parse errors */ }
     
     if (missing.length > 0) {
       setMissingFields(missing);

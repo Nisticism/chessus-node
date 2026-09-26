@@ -281,6 +281,11 @@ function checkCompatibility(gameType, pieceDefs = [], placements = []) {
   if (toBool(gameType.hide_enemy_pieces)) pushGame('hide_enemy_pieces',
     'Hidden Enemy Pieces: like fog of war, the engine sees the full board and plays with complete information instead of respecting which enemy pieces are hidden from you.',
     'Disable "Hidden Enemy Pieces" in the game wizard (Step 1).', true);
+  // Not safe to ignore: the engine would move any piece, where the rule says
+  // it must move the type its opponent chose. See server/designated-piece.js.
+  if (parseJsonSafe(gameType.other_game_data, {})?.designate_piece_type === true) pushGame('designate_piece_type',
+    'Opponent chooses the piece type: the engine cannot be told which piece it must move.',
+    'Turn off "Opponent chooses the piece type" in the game wizard (Step 2), or play the built-in bot.');
   if (toInt(gameType.actions_per_turn) > 1) pushGame('actions_per_turn',
     `Multiple actions per turn (${gameType.actions_per_turn}).`,
     'Set Actions Per Turn to 1 in the game wizard (Step 1).');

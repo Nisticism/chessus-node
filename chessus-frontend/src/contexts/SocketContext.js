@@ -835,6 +835,18 @@ export const SocketProvider = ({ children }) => {
 
   // Veto power: submit the vetoing player's set of banned moves/placements for
   // the current opponent turn. An empty array means "skip / decline to veto".
+  // Opponent chooses the piece type: pick one (null when there is nothing to
+  // pick from), and ask the server what there is to choose / wake a bot chooser.
+  const designatePieceType = useCallback((gameId, pieceId) => {
+    if (!socket || !connected) return;
+    socket.emit('designatePieceType', { gameId, userId: getAnonPlayerId(gameId), pieceId });
+  }, [socket, connected, getAnonPlayerId]);
+
+  const designationSync = useCallback((gameId) => {
+    if (!socket || !connected) return;
+    socket.emit('designationSync', { gameId, userId: getAnonPlayerId(gameId) });
+  }, [socket, connected, getAnonPlayerId]);
+
   const submitVetoes = useCallback((gameId, vetoes) => {
     if (!socket || !connected) return;
     socket.emit('submitVetoes', {
@@ -911,6 +923,8 @@ export const SocketProvider = ({ children }) => {
     skipRangedCaptureAction,
     submitReposition,
     submitVetoes,
+    designatePieceType,
+    designationSync,
     sendVetoPreview,
     retractVetoMove,
     requestBotVeto,

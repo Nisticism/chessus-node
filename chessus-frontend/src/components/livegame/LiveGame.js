@@ -23,6 +23,7 @@ import { useSocket } from "../../contexts/SocketContext";
 import styles from "./livegame.module.scss";
 import soundManager from "../../utils/soundEffects";
 import PromotionModal from "./PromotionModal";
+import { useDesignation, designationBlockReason, isDesignationState, DesignationPanel, DesignationTag } from "./Designation";
 import { applySvgStretchBackground } from "../../helpers/svgStretchUtils";
 import BoardLegend from "../common/BoardLegend";
 import PieceBadges from "../common/PieceBadges";
@@ -252,6 +253,26 @@ const getPlayerImageUrl = (imageLocation, playerNumber, imageIndexOverride = nul
 };
 
 // Helper to ensure pieces is always an array
+/*
+ * Hand the running clock to another player without losing time: the player
+ * whose clock was running is charged what they used since the anchor, and
+ * the anchor moves to now. Used where the runner changes with no fresh
+ * server times - between chooser and mover in an opponent-chooses-the-piece-
+ * type game, where bot games get no periodic timeUpdate to correct a stale
+ * anchor.
+ */
+const handClockTo = (serverTimesRef, lastServerTickRef, activeClockPlayerRef, newActiveId, multipliers) => {
+  const base = { ...(serverTimesRef.current || {}) };
+  const was = activeClockPlayerRef.current;
+  if (was != null && base[was] != null && lastServerTickRef.current) {
+    const spent = (Date.now() - lastServerTickRef.current) / 1000 * (multipliers?.[was] || 1);
+    base[was] = Math.max(0, base[was] - spent);
+  }
+  serverTimesRef.current = base;
+  lastServerTickRef.current = Date.now();
+  activeClockPlayerRef.current = newActiveId;
+};
+
 const parsePieces = (pieces) => {
   if (!pieces) return [];
   if (Array.isArray(pieces)) return pieces;
@@ -340,6 +361,8 @@ const LiveGame = () => {
     sendVetoPreview,
     retractVetoMove,
     requestBotVeto,
+    designatePieceType,
+    designationSync,
     onGameEvent,
     spectateGame,
     pauseDisconnectTimer,
@@ -947,7 +970,7 @@ const LiveGame = () => {
       // their clock starts ticking on the client without waiting for the
       // server's moveMade round-trip.  moveMade will re-anchor with the
       // authoritative server times when it arrives.
-      if (gameState?.timeControl && Array.isArray(gameState?.players) && gameState?.currentTurn != null) {
+      if (gameState?.timeControl && Array.isArray(gameState?.players) && gameState?.currentTurn != null && gameState?.otherGameData?.designate_piece_type !== true) {
         const opponent = gameState.players.find(p => p.position !== gameState.currentTurn);
         if (opponent?.id != null) {
           activeClockPlayerRef.current = opponent.id;
@@ -955,7 +978,7 @@ const LiveGame = () => {
         }
       }
     }
-  }, [turnConfirmEnabled, gameState?.isCorrespondence, gameState?.timeControl, gameState?.pieces, gameState?.currentTurn, gameState?.players, gameState?.gameType?.simultaneous_turns, gameState?.gameType?.simul_turns_submit_mode, gameState?.gameType?.veto_enabled, gameState?.gameType?.veto_style, gameState?.status, simulSubmittedThisRound, vetoOpponentSubmitted, makeMove, createOptimisticSnapshot, applyOptimisticMovePreview, applyOptimisticPlacementPreview]);
+  }, [turnConfirmEnabled, gameState?.isCorrespondence, gameState?.timeControl, gameState?.pieces, gameState?.currentTurn, gameState?.players, gameState?.otherGameData, gameState?.gameType?.simultaneous_turns, gameState?.gameType?.simul_turns_submit_mode, gameState?.gameType?.veto_enabled, gameState?.gameType?.veto_style, gameState?.status, simulSubmittedThisRound, vetoOpponentSubmitted, makeMove, createOptimisticSnapshot, applyOptimisticMovePreview, applyOptimisticPlacementPreview]);
 
   /* eslint-disable react-hooks/rules-of-hooks -- False positive: all hooks below are unconditionally at the top level. eslint-plugin-react-hooks v4.4.0 CFG analysis limit reached in this large component. */
   // Cancel the pre-emptive staged pre-move: revert the optimistic board and drop it.
@@ -1158,6 +1181,7 @@ const LiveGame = () => {
         if (state.allowPremoves === undefined) {
           state.allowPremoves = true;
         }
+        if (isDesignationState(state)) state.allowPremoves = false;
         // Ensure premove property exists
         if (state.premove === undefined) {
           state.premove = null;
@@ -1356,10 +1380,18 @@ const LiveGame = () => {
     if (!botThinking || !gameState?.botPlayer || !gameState?.playerTimes) return;
     const botId = gameState.botPlayer.id || 'bot';
     if (gameState.playerTimes[botId] == null) return;
+    // In these games a choice may have been made since the last move, so
+    // gameState.playerTimes is older than the anchor - keep the anchor.
+    if (isDesignationState(gameState) && lastServerTickRef.current) {
+      if (activeClockPlayerRef.current !== botId) {
+        handClockTo(serverTimesRef, lastServerTickRef, activeClockPlayerRef, botId, gameState.clockMultipliers);
+      }
+      return;
+    }
     serverTimesRef.current = { ...gameState.playerTimes };
     lastServerTickRef.current = Date.now();
     activeClockPlayerRef.current = botId;
-  }, [botThinking, gameState?.botPlayer, gameState?.playerTimes]);
+  }, [botThinking, gameState?.botPlayer, gameState?.playerTimes]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // -------- Fairy-Stockfish (client-side) bot integration --------
   // When the bot's difficulty is 'stockfish' the browser runs the WASM
@@ -1705,6 +1737,17 @@ const LiveGame = () => {
     vetoDoneThisTurn,
   ]);
 
+  // Opponent-chooses-the-piece-type (see Designation.js). While a type is
+  // being chosen, the chooser's clock runs instead of the mover's.
+  const anchorDesignationClock = useCallback((playerTimes, runningPos) => {
+    serverTimesRef.current = { ...playerTimes };
+    lastServerTickRef.current = Date.now();
+    const runner = playersRef.current?.find(p => p.position === runningPos);
+    activeClockPlayerRef.current = runner?.id ?? null;
+  }, []);
+  const dz = useDesignation({ gameState, gameId, captureActionPieceId, onGameEvent, designationSync, designatePieceType, onClock: anchorDesignationClock });
+  const clockChargePos = dz.enabled ? dz.chooser : vetoChargePos;
+
   // Defensive re-anchor: any time the authoritative server-side currentTurn
   // changes, make sure the interpolation refs reflect the new active player.
   // This guards against initial load races and any state path that updates
@@ -1714,7 +1757,7 @@ const LiveGame = () => {
     if (!gameState?.playerTimes || !Array.isArray(gameState?.players)) return;
     if (gameState.currentTurn == null) return;
     // During an active veto phase the vetoer's clock ticks instead of the mover's.
-    const effectivePos = vetoChargePos != null ? vetoChargePos : gameState.currentTurn;
+    const effectivePos = clockChargePos != null ? clockChargePos : gameState.currentTurn;
     const cp = gameState.players.find(p => p.position === effectivePos);
     const newActiveId = cp?.id ?? null;
     if (newActiveId == null) return;
@@ -1724,6 +1767,14 @@ const LiveGame = () => {
       // is stale — re-anchoring to it would snap the displayed clock back up. Base
       // the new anchor on the already-drained displayTimes instead so the clock
       // continues smoothly; a real move re-anchors to authoritative times via moveMade.
+      // Opponent-chooses-the-piece-type: the runner changes between chooser
+      // and mover with no server times in between. Work the times out from
+      // the server anchor itself - the displayed values go stale whenever the
+      // page is hidden, and a stale value here would stick until the next move.
+      if (dz.enabled && lastServerTickRef.current && Object.keys(serverTimesRef.current || {}).length) {
+        handClockTo(serverTimesRef, lastServerTickRef, activeClockPlayerRef, newActiveId, gameState.clockMultipliers);
+        return;
+      }
       const drained = displayTimesRef.current;
       const base = (drained && Object.keys(drained).length) ? { ...drained } : { ...gameState.playerTimes };
       serverTimesRef.current = base;
@@ -1734,7 +1785,7 @@ const LiveGame = () => {
       serverTimesRef.current = { ...gameState.playerTimes };
       lastServerTickRef.current = Date.now();
     }
-  }, [gameState?.status, gameState?.currentTurn, gameState?.playerTimes, gameState?.players, vetoChargePos]);
+  }, [gameState?.status, gameState?.currentTurn, gameState?.playerTimes, gameState?.players, gameState?.clockMultipliers, clockChargePos, dz.enabled]);
 
   // Subscribe to game events
   useEffect(() => {
@@ -1779,7 +1830,7 @@ const LiveGame = () => {
         
         setGameState(prev => {
           // Ensure allowPremoves is set
-          const allowPremoves = newState.allowPremoves !== undefined ? newState.allowPremoves : (prev?.allowPremoves !== undefined ? prev.allowPremoves : true);
+          const allowPremoves = isDesignationState(prev) ? false : (newState.allowPremoves !== undefined ? newState.allowPremoves : (prev?.allowPremoves !== undefined ? prev.allowPremoves : true));
           const rated = newState.rated !== undefined ? newState.rated : (prev?.rated !== undefined ? prev.rated : true);
           
           // Clone pieces array to ensure React detects the change
@@ -2028,7 +2079,7 @@ const LiveGame = () => {
             ...prev,
             ...newState,
             // Ensure we keep allowPremoves and rated
-            allowPremoves: newState.allowPremoves !== undefined ? newState.allowPremoves : (prev.allowPremoves !== undefined ? prev.allowPremoves : true),
+            allowPremoves: isDesignationState(prev) ? false : (newState.allowPremoves !== undefined ? newState.allowPremoves : (prev.allowPremoves !== undefined ? prev.allowPremoves : true)),
             rated: newState.rated !== undefined ? newState.rated : (prev.rated !== undefined ? prev.rated : true)
           };
         });
@@ -3540,6 +3591,17 @@ const LiveGame = () => {
   const wouldMoveResolveCheck = useCallback(
     (...args) => moveEngine.wouldMoveResolveCheck(...args), [moveEngine]);
 
+  // Why this piece of mine may not be picked up now, if the piece type the
+  // opponent chose rules it out. Null when it may.
+  const dzBlockFor = useCallback((piece) => {
+    if (!dz.enabled || !isMyTurn || !gameState) return null;
+    const gt = gameState.gameType;
+    const pieces = parsePieces(gameState.pieces);
+    const mine = pieces.filter(p => p.is_neutral || Number(p.team || p.player_id || 0) === 0 || Number(p.team || p.player_id) === currentPlayer?.position);
+    return designationBlockReason(dz, piece, mine,
+      (p) => calculateValidMoves(p, pieces, gt?.board_width || 8, gt?.board_height || 8));
+  }, [dz, isMyTurn, gameState, currentPlayer?.position, calculateValidMoves]);
+
   // Handle square click
   /* eslint-disable react-hooks/exhaustive-deps */
   const handleSquareClick = useCallback((x, y) => {
@@ -3724,6 +3786,11 @@ const LiveGame = () => {
       // If a capture action is pending, only allow selecting the designated piece
       if (captureActionPieceId != null && isMyTurn && clickedPiece.id !== captureActionPieceId) {
         showIllegalMoveWarning("You must use the highlighted piece for your capture action, or skip.", 2500);
+        return;
+      }
+      const dzBlock = isMyTurn && isOwnPiece ? dzBlockFor(clickedPiece) : null;
+      if (dzBlock) {
+        showIllegalMoveWarning(dzBlock, 2500);
         return;
       }
       setSelectedPiece(clickedPiece);
@@ -3985,7 +4052,7 @@ const LiveGame = () => {
       setSelectedPiece(null);
       setValidMoves([]);
     }
-  }, [isMyTurn, gameState, currentPlayer, selectedPiece, validMoves, calculateValidMoves, submitMove, sendPremove, setPremove, gameId, rangedSelectedPiece, setShowPlacementModal, setPlacementTarget, pendingMove, ghostMoveIndex, captureActionPieceId, showIllegalMoveWarning, specialSquares, showPromotionModal, vetoWindow, vetoSelectedPiece, vetoPieceMoves, vetoMyBudget, vetoDoneThisTurn, vetoSelection, premove, sendClearPremove, reactiveMoveLocked, heldMoveHighlight, cancelVetoStagedMove, cancelReactiveHeldMove]);
+  }, [isMyTurn, gameState, currentPlayer, selectedPiece, validMoves, calculateValidMoves, submitMove, sendPremove, setPremove, gameId, rangedSelectedPiece, setShowPlacementModal, setPlacementTarget, pendingMove, ghostMoveIndex, captureActionPieceId, showIllegalMoveWarning, specialSquares, showPromotionModal, vetoWindow, vetoSelectedPiece, vetoPieceMoves, vetoMyBudget, vetoDoneThisTurn, vetoSelection, premove, sendClearPremove, reactiveMoveLocked, heldMoveHighlight, cancelVetoStagedMove, cancelReactiveHeldMove, dzBlockFor]);
   /* eslint-enable react-hooks/exhaustive-deps */
 
   // The latest click handler, for the touch drop and for a tap that has to
@@ -4105,6 +4172,12 @@ const LiveGame = () => {
       e.preventDefault();
       return;
     }
+    const dzBlock = canDragForMove ? dzBlockFor(piece) : null;
+    if (dzBlock) {
+      e.preventDefault();
+      showIllegalMoveWarning(dzBlock, 2500);
+      return;
+    }
 
     setDraggedPiece(piece);
     setSelectedPiece(piece);
@@ -4153,7 +4226,7 @@ const LiveGame = () => {
     e.dataTransfer.setDragImage(pieceEl, rect.width / 2, rect.height / 2);
     
     e.currentTarget.style.opacity = '0.5';
-  }, [isMyTurn, gameState, currentPlayer, calculateValidMoves, pendingMove, showPromotionModal, vetoDoneThisTurn, vetoWindow, reactiveMoveLocked]);
+  }, [isMyTurn, gameState, currentPlayer, calculateValidMoves, pendingMove, showPromotionModal, vetoDoneThisTurn, vetoWindow, reactiveMoveLocked, dzBlockFor, showIllegalMoveWarning]);
 
   const handleDragEnd = useCallback((e) => {
     e.currentTarget.style.opacity = '1';
@@ -4588,6 +4661,11 @@ const LiveGame = () => {
       showIllegalMoveWarning("You must use the highlighted piece for your capture action, or skip.", 2500);
       return;
     }
+    const dzBlock = isMyTurn ? dzBlockFor(piece) : null;
+    if (dzBlock) {
+      showIllegalMoveWarning(dzBlock, 2500);
+      return;
+    }
 
     // Calculate grab offset within the piece footprint for multi-tile pieces
     const pw = piece.piece_width || 1;
@@ -4620,7 +4698,7 @@ const LiveGame = () => {
     touchDragRef.current = { piece, moves, startX: touch.clientX, startY: touch.clientY, isDragging: false, grabOffset };
     setSelectedPiece(piece);
     setValidMoves(moves);
-  }, [isMyTurn, isMyRepositionTurn, gameState, currentPlayer, calculateValidMoves, pendingMove, captureActionPieceId, showIllegalMoveWarning, showPromotionModal, reactiveMoveLocked, selectedPiece]);
+  }, [isMyTurn, isMyRepositionTurn, gameState, currentPlayer, calculateValidMoves, pendingMove, captureActionPieceId, showIllegalMoveWarning, showPromotionModal, reactiveMoveLocked, selectedPiece, dzBlockFor]);
 
   const handleTouchStart = useCallback((e, piece) => {
     armTouchDrag(piece, e.touches[0], e.currentTarget, false);
@@ -6643,8 +6721,10 @@ const LiveGame = () => {
               </>
             ) : (
               <>
-                <span className={styles["waiting-turn"]}>
-                  {(botThinking || (gameState.botPlayer && gameState.currentTurn === gameState.botPlayer.position))
+                <span className={styles[dz.needsChoice && dz.chooser === currentPlayer?.position ? "your-turn" : "waiting-turn"]}>
+                  {dz.needsChoice
+                    ? (dz.chooser === currentPlayer?.position ? "Your turn to choose!" : "Waiting for a piece type to be chosen...")
+                    : (botThinking || (gameState.botPlayer && gameState.currentTurn === gameState.botPlayer.position))
                     ? (isFairyClientBot && fairyStockfish.searchInfo?.depth
                         ? `Computer is thinking... (depth ${fairyStockfish.searchInfo.depth})`
                         : "Computer is thinking...")
@@ -6676,6 +6756,7 @@ const LiveGame = () => {
                 >Skip</button>
               </span>
             )}
+            <DesignationPanel dz={dz} myPosition={currentPlayer?.position ?? null} />
             {stalemateNotice && (
               <span className={styles["move-error"]} style={{ background: 'rgba(255, 193, 7, 0.18)', color: '#ffc107' }}>
                 ⚠️ {stalemateNotice}
@@ -6944,12 +7025,12 @@ const LiveGame = () => {
                           className={`${styles["move-white"]}${ghostMoveIndex === i ? ` ${styles["active-move"]}` : ''}`}
                           onClick={() => initialPiecesRef.current && setGhostMoveIndex(ghostMoveIndex === i ? null : i)}
                           style={{ cursor: initialPiecesRef.current ? 'pointer' : 'default' }}
-                        >{formatMoveNotation(p1Move, true, bh)}</span>
+                        ><DesignationTag log={dz.log} index={moves.indexOf(p1Move)} move={p1Move} />{formatMoveNotation(p1Move, true, bh)}</span>
                         <span 
                           className={`${styles["move-black"]}${ghostMoveIndex === i + 1 ? ` ${styles["active-move"]}` : ''}`}
                           onClick={() => p2Move && initialPiecesRef.current && setGhostMoveIndex(ghostMoveIndex === i + 1 ? null : i + 1)}
                           style={{ cursor: p2Move && initialPiecesRef.current ? 'pointer' : 'default' }}
-                        >{p2Move ? formatMoveNotation(p2Move, true, bh) : ''}</span>
+                        >{p2Move ? <><DesignationTag log={dz.log} index={moves.indexOf(p2Move)} move={p2Move} />{formatMoveNotation(p2Move, true, bh)}</> : ''}</span>
                       </div>
                     );
                   }
@@ -7678,7 +7759,7 @@ const LiveGame = () => {
                             className={ghostMoveIndex === m.origIndex ? styles["active-move"] : undefined}
                             onClick={() => canReview && setGhostMoveIndex(ghostMoveIndex === m.origIndex ? null : m.origIndex)}
                             style={{ cursor: canReview ? 'pointer' : 'default' }}
-                          >{formatMoveNotation(m.move, true, bh)}</span>
+                          ><DesignationTag log={dz.log} index={m.origIndex} move={m.move} />{formatMoveNotation(m.move, true, bh)}</span>
                         </React.Fragment>
                       ))}
                     </span>

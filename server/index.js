@@ -350,6 +350,8 @@ const dbHelpers = require("./db-helpers");
 const { checkUsername, validateContent, checkProfessionalName } = require("./content-moderation");
 const imageModeration = require("./image-moderation");
 const initialStateValidator = require("./initial-state-validator");
+// "Opponent chooses the piece type" - see designated-piece.js.
+const designatedPiece = require("./designated-piece");
 const tournamentEngine = require("./tournament-engine");
 
 /**
@@ -4021,6 +4023,14 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
       if (!gate.ok) {
         return res.status(403).send({ message: gate.message, lockedPieces: gate.lockedPieces });
       }
+    }
+
+    // "Opponent chooses the piece type" needs pieces on the starting board
+    // and cannot sit alongside Veto or Simultaneous Turns. Published games
+    // only; the wizard asks the same before it lets you publish.
+    if (!isDraft) {
+      const designationProblem = designatedPiece.setupError(gameData);
+      if (designationProblem) return res.status(400).send({ message: designationProblem });
     }
 
     // Initial-position validation: only enforce for published games (drafts
@@ -9066,6 +9076,14 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
     // Drafts only need a game_name of at least 1 char; full games need 3
     if (!isDraft && (!gameData.game_name || gameData.game_name.length < 3)) {
       return res.status(400).send({ message: "Game name must be at least 3 characters" });
+    }
+
+    // "Opponent chooses the piece type" needs pieces on the starting board
+    // and cannot sit alongside Veto or Simultaneous Turns. Published games
+    // only; the wizard asks the same before it lets you publish.
+    if (!isDraft) {
+      const designationProblem = designatedPiece.setupError(gameData);
+      if (designationProblem) return res.status(400).send({ message: designationProblem });
     }
 
     // Initial-position validation: a published game type must not start in

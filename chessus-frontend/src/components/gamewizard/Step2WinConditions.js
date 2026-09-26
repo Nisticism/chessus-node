@@ -685,6 +685,25 @@ const Step2WinConditions = ({ gameData, updateGameData }) => {
         </div>
       </ToggleRow>
 
+      {/* "Opponent chooses the piece type" - server/designated-piece.js */}
+      <ToggleRow
+        title="Opponent Chooses the Piece Type"
+        tooltip="Before every action, the player who is not about to act chooses a piece type from a list, and their opponent must move a piece of that type if one can move - otherwise they may move freely. The chooser's clock runs while they choose; the mover's once they have. The game opens with Player 2 choosing for Player 1. With several actions per turn, a new type is chosen before each action. Placing a piece is always allowed. Every choice is shown in the move history. The starting board must have pieces on it. Not compatible with Veto or Simultaneous Turns. In fog-of-war games the list shows every type the opponent could have, so it reveals nothing. Computer opponents use the built-in bot, which follows the rule and chooses for you."
+        checked={getOtherData().designate_piece_type === true}
+        onChange={(val) => setOtherDataField("designate_piece_type", val)}
+      >
+        {!!gameData.veto_enabled && (
+          <p className={styles["validation-error"]} style={{ marginBottom: '0.75rem' }}>
+            Not compatible with the Veto Ability. Turn one of them off.
+          </p>
+        )}
+        {!!gameData.simultaneous_turns && (
+          <p className={styles["validation-error"]} style={{ marginBottom: '0.75rem' }}>
+            Not compatible with Simultaneous Turns. Turn one of them off.
+          </p>
+        )}
+      </ToggleRow>
+
       <ToggleRow
         title="Veto Ability"
         tooltip="When enabled, each player gets a bank of vetoes they can spend to ban specific opponent moves. A veto bans one candidate move (or one placement square) chosen from the opponent's options. Vetoes never affect check — a king in check must still escape even if the capturing move is vetoed. Not compatible with Simultaneous Turns."
@@ -694,6 +713,11 @@ const Step2WinConditions = ({ gameData, updateGameData }) => {
         {gameData.simultaneous_turns && (
           <p className={styles["validation-error"]} style={{ marginBottom: '0.75rem' }}>
             Veto Ability is not compatible with Simultaneous Turns. Disable one of them.
+          </p>
+        )}
+        {getOtherData().designate_piece_type === true && (
+          <p className={styles["validation-error"]} style={{ marginBottom: '0.75rem' }}>
+            Veto Ability is not compatible with Opponent Chooses the Piece Type. Disable one of them.
           </p>
         )}
         <div className={styles["sub-field"]}>

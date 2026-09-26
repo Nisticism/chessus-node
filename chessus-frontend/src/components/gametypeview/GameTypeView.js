@@ -2529,6 +2529,11 @@ A placed piece falls towards ${fallsTo} instead of staying on the square it was 
       specialRulesContent.push(`**Forced Capture**\nIf any of your pieces can make a capturing move on your turn, you MUST make a capture (any capture). Non-capturing moves are rejected whenever a capture is available. Combine with Lose All Pieces for classic anti-chess.`);
     }
 
+    // Opponent-chooses-the-piece-type mechanic
+    if (otherData.designate_piece_type === true && !game.simultaneous_turns) {
+      specialRulesContent.push(`**Opponent Chooses the Piece Type**\nBefore each of your moves, your opponent picks a piece type from a list, and you must move a piece of that type if one of them can move. If none can, you may move any piece, so the choice never takes away your last legal move. Placing a piece is always allowed.\n\n• The game opens with Player 2 choosing for Player 1.\n• The chooser's clock runs while they choose; once they have, the mover's clock runs.\n• With several actions per turn, a new type is chosen before every action.\n• Every choice is recorded in the move history, and premoves are turned off.`);
+    }
+
     // Veto Power mechanic
     if (game.veto_enabled) {
       const perTurn = Math.max(1, Math.min(5, Number(game.veto_per_turn_limit) || 1));

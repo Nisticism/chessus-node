@@ -19,6 +19,8 @@ const { findAnyWinningLine, findWinningLine, describeLineRule } = require('./win
  */
 const { gravityOf, restingSquare, describeGravity } = require('./board-gravity');
 const { colToFile } = require('./square-label');
+// "Opponent chooses the piece type" - see designated-piece.js.
+const designated = require('./designated-piece');
 
 // Verbose per-move debug logging is gated behind an env var so PM2 isn't
 // hammered with disk I/O during normal play. Set VERBOSE_GAME_LOG=1 to enable.
@@ -578,6 +580,10 @@ function buildOtherData(gameState, extraFields = {}) {
     ...(gameState.playerTimes && Object.keys(gameState.playerTimes).length
       ? { playerTimes: gameState.playerTimes, clockPersistedAt: Date.now() }
       : {}),
+    // Opponent-chooses-the-piece-type: whose clock was running at that moment
+    // - the chooser's while a choice is due - so a restore charges the right
+    // player for the time since.
+    ...(designated.needsChoice(gameState) ? { clockRunner: designated.chooserPos(gameState) } : {}),
     // Track which players have submitted their simul-turns move this round so
     // lobby cards can show "Move Submitted" instead of "Make Move".
     // Cleared automatically when the round resolves (pendingSimulMoves is empty).
@@ -611,6 +617,12 @@ function buildOtherData(gameState, extraFields = {}) {
     // (and an in-flight veto window) survive a server restart.
     ...(gameState.vetoState && ((gameState.vetoState.banned && gameState.vetoState.banned.length) || Object.keys(gameState.vetoState.usedThisTurn || {}).length || Object.keys(gameState.vetoState.remaining || {}).length || gameState.vetoState.pendingMove || gameState.vetoState.pendingBotMove || gameState.vetoState.phaseOpen || gameState.vetoState.clockStarted)
       ? { vetoState: gameState.vetoState }
+      : {}),
+    // Opponent-chooses-the-piece-type: the choice in force and every choice
+    // made, so a restart keeps the rule and the history shows them.
+    ...(gameState.designation ? { designation: gameState.designation } : {}),
+    ...(Array.isArray(gameState.designationLog) && gameState.designationLog.length
+      ? { designationLog: gameState.designationLog }
       : {}),
     ...extraFields
   });
@@ -3770,7 +3782,7 @@ async function recoverActiveGames() {
           }
           if (otherData.clockPersistedAt) {
             const elapsedSec = (Date.now() - otherData.clockPersistedAt) / 1000;
-            const cp = players.find(p => p.position === (game.player_turn || 1));
+            const cp = players.find(p => p.position === (otherData.clockRunner || game.player_turn || 1));
             if (cp?.id != null && playerTimes[cp.id] != null) {
               playerTimes[cp.id] = Math.max(0, playerTimes[cp.id] - elapsedSec);
             }
@@ -6826,6 +6838,13 @@ function initializeSocket(server) {
         // Ranged capture actions must be ranged attacks: prevents using a free movement action after a ranged capture
         if (gameState.rangedCaptureActionsPieceId != null && move.pieceId === gameState.rangedCaptureActionsPieceId && !move.isRangedAttack) {
           return socket.emit("error", { message: "You must make a ranged attack with this piece, or skip your remaining ranged capture action" });
+        }
+
+        // Opponent-chooses-the-piece-type: no move until the type is chosen,
+        // and then a piece of that type if one can move.
+        if (designated.isDesignationGame(gameState)) {
+          const allowed = designated.checkMove(gameState, move, getAllLegalMovesForPlayer);
+          if (!allowed.ok) return socket.emit("error", { message: allowed.reason });
         }
 
         // Activate the game before any veto hold so a held first move still
@@ -10459,6 +10478,60 @@ function initializeSocket(server) {
     });
 
     // Set a premove
+    /*
+     * Opponent-chooses-the-piece-type: record a choice.
+     *
+     * Only the chooser, only while a choice is due. The first choice of the
+     * game starts it (and its clock), exactly as a first move would. A bot to
+     * move is set going once the choice lands.
+     */
+    socket.on("designatePieceType", async ({ gameId, userId, pieceId } = {}) => {
+      try {
+        const gameIdStr = String(gameId);
+        const gameState = activeGames.get(gameIdStr);
+        if (!gameState) return socket.emit("error", { message: "Game not found" });
+        if (!designated.isDesignationGame(gameState) || !designated.needsChoice(gameState)) return;
+        const chooser = gameState.players.find(p => p.position === designated.chooserPos(gameState));
+        if (!chooser || String(chooser.id) !== String(userId)) {
+          return socket.emit("error", { message: "It is not your turn to choose a piece type" });
+        }
+        const result = designated.applyChoice(gameState, pieceId == null ? null : Number(pieceId), chooser.id);
+        if (!result.ok) return socket.emit("error", { message: result.reason });
+        await finishDesignation(io, gameIdStr, gameState);
+      } catch (err) {
+        console.error("Error in designatePieceType:", err);
+        socket.emit("error", { message: "Failed to choose a piece type" });
+      }
+    });
+
+    /*
+     * A client whose game has moved on to a new action asks here, and is
+     * told whether a choice is due for it (the server's word is final: the
+     * browser cannot see every capture continuation). The chooser is also
+     * sent the list to choose from - worked out on the server, because in a
+     * fog game the chooser cannot see what the other side has. When the
+     * chooser is the bot, this is also what makes it choose.
+     */
+    socket.on("designationSync", async ({ gameId, userId } = {}) => {
+      try {
+        const gameIdStr = String(gameId);
+        const gameState = activeGames.get(gameIdStr);
+        if (!gameState || !designated.isDesignationGame(gameState)) return;
+        const chooser = designated.needsChoice(gameState)
+          ? gameState.players.find(p => p.position === designated.chooserPos(gameState))
+          : null;
+        if (chooser && isBotPlayer(chooser)) {
+          const pick = designated.botChoice(gameState, getAllLegalMovesForPlayer);
+          const result = designated.applyChoice(gameState, pick, chooser.id);
+          if (result.ok) return await finishDesignation(io, gameIdStr, gameState);
+        }
+        const isChooser = !!chooser && String(chooser.id) === String(userId);
+        socket.emit("designationStatus", designationStatus(gameState, isChooser, gameIdStr));
+      } catch (err) {
+        console.error("Error in designationSync:", err);
+      }
+    });
+
     socket.on("setPremove", async (data) => {
       try {
         const { gameId, userId, move } = data;
@@ -10476,7 +10549,7 @@ function initializeSocket(server) {
 
         // Check if premoves are allowed
         console.log('setPremove called:', { gameId, userId, allowPremoves: gameState.allowPremoves });
-        if (gameState.allowPremoves === false) {
+        if (gameState.allowPremoves === false || designated.isDesignationGame(gameState)) {
           return socket.emit("error", { message: "Premoves are not allowed in this game" });
         }
 
@@ -11126,7 +11199,8 @@ function initializeSocket(server) {
             // Deduct time elapsed since the last move was persisted (current player's turn)
             if (game.status === 'active' && otherData.clockPersistedAt) {
               const elapsedSec = (Date.now() - otherData.clockPersistedAt) / 1000;
-              const currentTurn = game.player_turn || 1;
+              // The chooser's clock, if a piece type was being chosen then.
+              const currentTurn = otherData.clockRunner || game.player_turn || 1;
               const currentPlayer = players.find(p => p.position === currentTurn);
               if (currentPlayer?.id != null && playerTimes[currentPlayer.id] != null) {
                 playerTimes[currentPlayer.id] = Math.max(0, playerTimes[currentPlayer.id] - elapsedSec);
@@ -11171,6 +11245,8 @@ function initializeSocket(server) {
             seenPositions: new Set(otherData?.seenPositions || []),
             consecutivePasses: otherData?.consecutivePasses || 0,
             vetoState: otherData?.vetoState || undefined,
+            designation: otherData?.designation || undefined,
+            designationLog: Array.isArray(otherData?.designationLog) ? otherData.designationLog : [],
             captureScores: normalizeCaptureScores(otherData?.captureScores, gameType?.starting_points_p1, gameType?.starting_points_p2), // Permanent points
             consecutiveEqualScoreTurns: otherData?.consecutiveEqualScoreTurns || 0,
             totalHalfMoves: otherData?.totalHalfMoves || 0,
@@ -13160,6 +13236,12 @@ function startGameTimer(io, gameId) {
         if (vp) clockPlayer = vp;
       }
     }
+    // Opponent-chooses-the-piece-type: while a choice is due, the chooser's
+    // clock runs, not the mover's.
+    if (designated.needsChoice(currentGameState)) {
+      const cp = currentGameState.players.find(p => p.position === designated.chooserPos(currentGameState));
+      if (cp) clockPlayer = cp;
+    }
 
     // If the active player changed since the last tick, OR the tick was
     // delayed dramatically (event loop blocked), skip this iteration's
@@ -13241,7 +13323,11 @@ function startGameTimer(io, gameId) {
       // countdown handles the bot-side ticking.
       if (!currentGameState.botPlayer && (now - lastBroadcastAt) >= 950) {
         lastBroadcastAt = now;
-        const vetoClk = getVetoConfig(currentGameState) ? vetoClockPos(currentGameState) : null;
+        // Whose clock is really running, when it is not the mover's: the vetoer
+        // during a veto phase, the chooser while a piece type is being chosen.
+        const vetoClk = designated.needsChoice(currentGameState)
+          ? designated.chooserPos(currentGameState)
+          : (getVetoConfig(currentGameState) ? vetoClockPos(currentGameState) : null);
         io.to(`game-${gameId}`).emit("timeUpdate", {
           gameId,
           playerTimes: currentGameState.playerTimes,
@@ -19994,6 +20080,19 @@ async function processBotTurn(io, gameId, gameState, precomputedMove = null, opt
   if (!botPlayer) { console.log(`[Bot] No botPlayer in game ${gameId}`); return; }
   if (gameState.currentTurn !== botPlayer.position) { console.log(`[Bot] Not bot's turn in game ${gameId}`); return; }
   if (gameState.status === 'completed') { console.log(`[Bot] Game ${gameId} already completed`); return; }
+  /*
+   * Opponent-chooses-the-piece-type: wait for the human to choose (the choice
+   * sets the bot going again), and play the built-in AI only - an engine move
+   * submitted by the browser cannot know which type the bot must move.
+   */
+  if (designated.isDesignationGame(gameState)) {
+    if (designated.needsChoice(gameState)) {
+      console.log(`[Bot] Game ${gameId}: waiting for a piece type to be chosen`);
+      return;
+    }
+    precomputedMove = null;
+    options = { ...options, forceServerMove: true };
+  }
 
   // Re-entry guard. If another processBotTurn for this game is already
   // running (likely because the client repeatedly submits FS moves that the
@@ -20250,7 +20349,7 @@ async function _processBotTurnInner(io, gameId, gameState, precomputedMove = nul
         // Fallback: try a random legal move
         try {
           const { getAllLegalMovesForPlayer } = require('./game-socket');
-          const legalMoves = getAllLegalMovesForPlayer(gameState, botPlayer.position);
+          const legalMoves = designated.filterMoves(gameState, getAllLegalMovesForPlayer(gameState, botPlayer.position));
           if (legalMoves.length > 0) {
             bestMove = legalMoves[Math.floor(Math.random() * legalMoves.length)];
             console.log(`[Bot] Using random fallback move in game ${gameId}`);
@@ -21766,6 +21865,48 @@ async function finishNoLegalMoveGame(io, gameId, gameState, outcome, moveRecord 
     finalState: gameState,
     eloChanges,
   });
+}
+
+/*
+ * After a piece type is chosen: the first choice starts the game (and the
+ * clock) the way a first move would; the choice is saved and broadcast; and
+ * a bot that is to move is set going.
+ */
+/*
+ * What a client needs to know about the choice for the action about to be
+ * played: which action (forAction/mover), whether a choice is still due and
+ * who makes it, the choice in force, every choice so far, and - for the
+ * chooser only - the types to choose from.
+ */
+function designationStatus(gameState, withChoices, gameId) {
+  const due = designated.needsChoice(gameState);
+  return {
+    gameId: Number(gameId),
+    forAction: Array.isArray(gameState.moveHistory) ? gameState.moveHistory.length : 0,
+    mover: Number(gameState.currentTurn),
+    needsChoice: due,
+    chooser: due ? designated.chooserPos(gameState) : null,
+    designation: gameState.designation || null,
+    designationLog: gameState.designationLog || [],
+    // Bot games get no periodic timeUpdate, so this is where the browser
+    // re-anchors its clocks when the runner changes to or from the chooser.
+    playerTimes: gameState.playerTimes || null,
+    ...(due && withChoices ? { choices: designated.choicesFor(gameState) } : {}),
+  };
+}
+
+async function finishDesignation(io, gameId, gameState) {
+  await activateGameOnFirstMove(io, gameState, gameId);
+  try {
+    await db_pool.query('UPDATE games SET other_data = ? WHERE id = ?', [buildOtherData(gameState), gameId]);
+  } catch (dbErr) {
+    console.error('Failed to save piece-type choice:', dbErr.message);
+  }
+  emitToGameRoom(io, gameState, "designationStatus", designationStatus(gameState, false, gameId));
+  const mover = gameState.players.find(p => p.position === gameState.currentTurn);
+  if (gameState.botPlayer && mover && isBotPlayer(mover)) {
+    processBotTurn(io, gameId, gameState).catch(e => console.error('[Bot] after piece-type choice:', e));
+  }
 }
 
 async function finishBotGame(io, gameId, gameState, winResult, moveRecord, effects = {}) {

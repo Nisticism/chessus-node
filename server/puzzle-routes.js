@@ -26,6 +26,7 @@ const {
   getPossibleMovesForPiece,
 } = require('./game-socket');
 const { summariseRules } = require('./game-rules-summary');
+const { isDesignationGame } = require('./designated-piece');
 const { renderPuzzle } = require('./puzzle-image');
 const { PLATFORM_ACCOUNT_USERNAME, platformAccountId } = require('./platform-account');
 const { rulesForPuzzle, ensureSnapshot, readLive } = require('./puzzle-snapshot');
@@ -171,6 +172,14 @@ function registerPuzzleRoutes(app, {
    */
   const puzzleBuildRefusal = async (user, gameType) => {
     if (!user || !gameType) return 'Sign in to build puzzles.';
+    /*
+     * Not a question of whose game it is, so it binds staff too: before every
+     * move the opponent picks which piece type must move, and a puzzle has no
+     * way to make those choices for either side.
+     */
+    if (isDesignationGame(gameType)) {
+      return 'Puzzles are not available for games where the opponent chooses the piece type.';
+    }
     if (isStaff(user)) return null;
     if (Number(gameType.creator_id) === Number(user.id)) return null;
 
@@ -1530,7 +1539,7 @@ function registerPuzzleRoutes(app, {
     try {
       const gameTypeId = parseInt(req.params.gameTypeId, 10);
       const [[gameType]] = await db_pool.query(
-        'SELECT id, creator_id FROM game_types WHERE id = ? LIMIT 1', [gameTypeId]
+        'SELECT id, creator_id, other_game_data, simultaneous_turns FROM game_types WHERE id = ? LIMIT 1', [gameTypeId]
       );
       const allowance = await puzzleCreateAllowance(req.user.id, gameTypeId);
       /*
@@ -2014,7 +2023,7 @@ function registerPuzzleRoutes(app, {
        * a way around the rule rather than an exception to it.
        */
       const [[dupGameType]] = await db_pool.query(
-        'SELECT id, creator_id FROM game_types WHERE id = ? LIMIT 1', [puzzle.game_type_id]
+        'SELECT id, creator_id, other_game_data, simultaneous_turns FROM game_types WHERE id = ? LIMIT 1', [puzzle.game_type_id]
       );
       if (dupGameType) {
         const dupRefusal = await puzzleBuildRefusal(req.user, dupGameType);
