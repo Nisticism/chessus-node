@@ -441,6 +441,17 @@ function buildGameState(puzzle, gameType) {
   };
 
   /*
+   * A puzzle is a mid-game position, so any piece that is "inactive for the
+   * first N plies" (min_turns_per_move) has long since woken up. There is no
+   * real ply count to reconstruct, so seed it past every such restriction in
+   * the position - otherwise the move generator reads gamePly 0 and these
+   * pieces generate no moves at all, which is why a turn-limited rook or king
+   * showed nothing on hover and could not appear in a solution.
+   */
+  state.totalHalfMoves = state.pieces.reduce(
+    (m, p) => Math.max(m, Number(p.min_turns_per_move) || 0), 0);
+
+  /*
    * Resolve castling partners before anything asks for a move.
    *
    * The game type stores partners as KEYS ("row,col" of the starting square) or

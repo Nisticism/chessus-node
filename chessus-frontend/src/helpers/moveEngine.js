@@ -431,8 +431,18 @@ export const createMoveEngine = ({
                                      pieceData.step_capture_value ||
                                      pieceData.special_scenario_captures;
 
+    // A directional capture column of 0 means "does not capture this way" and is a
+    // real answer, not an unset value (matches server canPieceAttackSquare). Only
+    // columns left NULL let a capture-on-move piece fall back to capturing along
+    // its movement, so a movement-only token with every value 0 captures nothing.
+    const directionalCaptureColsSet =
+      pieceData.up_capture != null || pieceData.down_capture != null ||
+      pieceData.left_capture != null || pieceData.right_capture != null ||
+      pieceData.up_left_capture != null || pieceData.up_right_capture != null ||
+      pieceData.down_left_capture != null || pieceData.down_right_capture != null;
+
     // If piece can capture on move AND no separate capture fields, use movement logic
-    if ((pieceData.can_capture_enemy_on_move === 1 || pieceData.can_capture_enemy_on_move === true) && !hasSeparateCaptureFields) {
+    if ((pieceData.can_capture_enemy_on_move === 1 || pieceData.can_capture_enemy_on_move === true) && !hasSeparateCaptureFields && !directionalCaptureColsSet) {
       return canPieceMoveTo(fromX, fromY, toX, toY, pieceData, playerPosition, skipExactRatio);
     }
 
@@ -538,7 +548,7 @@ export const createMoveEngine = ({
     }
 
     // If piece can capture where it moves AND has no separate capture fields, also check movement as fallback
-    if ((pieceData.can_capture_enemy_on_move === 1 || pieceData.can_capture_enemy_on_move === true) && !hasSeparateCaptureFields) {
+    if ((pieceData.can_capture_enemy_on_move === 1 || pieceData.can_capture_enemy_on_move === true) && !hasSeparateCaptureFields && !directionalCaptureColsSet) {
       return canPieceMoveTo(fromX, fromY, toX, toY, pieceData, playerPosition, skipExactRatio, skipCustom);
     }
 

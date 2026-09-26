@@ -420,8 +420,18 @@ export const canCaptureOnMoveTo = (fromRow, fromCol, toRow, toCol, pieceData, pl
                                    (specialCaptures.additionalCaptures && Object.keys(specialCaptures.additionalCaptures).length > 0) ||
                                    !!(pieceData.custom_attack_squares);
 
+  // A directional capture column of 0 means "does not capture this way" and is a
+  // real answer, not an unset value (matches server canPieceAttackSquare). Only
+  // columns left NULL let a capture-on-move piece fall back to capturing along
+  // its movement, so a movement-only token with every value 0 captures nothing.
+  const directionalCaptureColsSet =
+    pieceData.up_capture != null || pieceData.down_capture != null ||
+    pieceData.left_capture != null || pieceData.right_capture != null ||
+    pieceData.up_left_capture != null || pieceData.up_right_capture != null ||
+    pieceData.down_left_capture != null || pieceData.down_right_capture != null;
+
   // If no separate capture fields, use movement logic
-  if (!hasSeparateCaptureFields) {
+  if (!hasSeparateCaptureFields && !directionalCaptureColsSet) {
     return canPieceMoveTo(fromRow, fromCol, toRow, toCol, pieceData, playerPosition);
   }
 
