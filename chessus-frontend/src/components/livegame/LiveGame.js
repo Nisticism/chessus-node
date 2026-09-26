@@ -3601,6 +3601,28 @@ const LiveGame = () => {
   const wouldMoveResolveCheck = useCallback(
     (...args) => moveEngine.wouldMoveResolveCheck(...args), [moveEngine]);
 
+  /*
+   * The selected piece's move/attack split, for its dots only.
+   *
+   * A selected piece's dots come from validMoves, which decides what a click
+   * does and carries no split - so a square it can both move to and attack
+   * drew plain blue, and the half-and-half dot only showed while hovering a
+   * piece that was NOT selected. On a touch screen a tap selects, so it never
+   * showed at all. This is the same hover calculation, keyed by square, and is
+   * only ever read for colour.
+   */
+  const selectedDotSplit = useMemo(() => {
+    if (!selectedPiece || !gameState?.pieces) return null;
+    const map = new Map();
+    const moves = calculateValidMoves(
+      selectedPiece, parsePieces(gameState.pieces),
+      gameState.gameType?.board_width || 8, gameState.gameType?.board_height || 8,
+      false, false, true, false
+    ) || [];
+    for (const m of moves) if (!m.isRangedAttack) map.set(`${m.x},${m.y}`, m);
+    return map;
+  }, [selectedPiece, gameState?.pieces, gameState?.gameType, calculateValidMoves]);
+
   // Why this piece of mine may not be picked up now, if the piece type the
   // opponent chose rules it out. Null when it may.
   const dzBlockFor = useCallback((piece) => {
@@ -5848,8 +5870,14 @@ const LiveGame = () => {
         // the secondary castle-armed indicator takes over so the user has unambiguous feedback.
         const activeRegularMove = regularMove || hoveredRegularMove;
         const activeIsRanged = isRangedMove || isRangedHover || isRangedDragTarget || isRangedSelectedTarget;
-        const dotType = (activeRegularMove && !isImpassable && !isCastleArmed)
-          ? getMoveDotType(activeRegularMove)
+        // The selected piece's own move, coloured with the hover split (see
+        // selectedDotSplit) so "move and attack" keeps its half-and-half dot.
+        const splitForSelected = regularMove ? selectedDotSplit?.get(`${regularMove.x},${regularMove.y}`) : null;
+        const dotMove = splitForSelected
+          ? { ...regularMove, reachedByMove: splitForSelected.reachedByMove, reachedByAttack: splitForSelected.reachedByAttack }
+          : activeRegularMove;
+        const dotType = (dotMove && !isImpassable && !isCastleArmed)
+          ? getMoveDotType(dotMove)
           : null;
 
         // Whether this square is hidden by fog (used to suppress piece/indicator rendering)
