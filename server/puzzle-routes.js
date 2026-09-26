@@ -1206,9 +1206,18 @@ function registerPuzzleRoutes(app, {
         id: `probe_${tx}_${ty}`,
         x: tx, y: ty,
         team: enemySide, player_id: enemySide,
-        // A probe must be takeable, or a game whose pieces are uncapturable
-        // would report every square as movement-only.
+        /*
+         * A plain enemy piece: the question is whether THIS piece can capture
+         * on the square, not whether the probe happens to be takeable. It is a
+         * copy of the hovered piece, so it inherited that piece's protections -
+         * an uncapturable piece reported every square as movement-only, and a
+         * king (a checkmate target, which the generator will not let anyone
+         * capture) did the same: blue dots for a king that attacks every
+         * neighbouring square. Every flag that makes a TARGET special is off.
+         */
         cannot_be_captured: 0,
+        ends_game_on_checkmate: false,
+        ends_game_on_capture: false,
       };
       try {
         /*
