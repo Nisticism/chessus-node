@@ -1211,8 +1211,15 @@ function registerPuzzleRoutes(app, {
         cannot_be_captured: 0,
       };
       try {
+        /*
+         * At the puzzle's own ply count, not 0. A piece that is inactive for
+         * the first N plies (min_turns_per_move) generates nothing at ply 0,
+         * so the probe said "movement only" for every square of a
+         * turn-limited rook - blue dots where half-and-half belonged.
+         * buildGameState seeds totalHalfMoves past every such restriction.
+         */
         const reach = getPossibleMovesForPiece(
-          piece, [...state.pieces, dummy], state.gameType, 0
+          piece, [...state.pieces, dummy], state.gameType, Number(state.totalHalfMoves) || 0
         ) || [];
         return reach.some(m => Number(m.x) === tx && Number(m.y) === ty);
       } catch (_) {
