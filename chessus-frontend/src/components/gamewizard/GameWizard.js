@@ -102,6 +102,7 @@ export const gameRowToWizardData = (existingGame) => ({
     reposition_key_pieces_only: Boolean(existingGame.reposition_key_pieces_only),
     fog_of_war: Boolean(existingGame.fog_of_war),
     permanent_fog_reveal: Boolean(existingGame.permanent_fog_reveal),
+    allow_community_puzzles: Boolean(existingGame.allow_community_puzzles),
     hide_enemy_pieces: Boolean(existingGame.hide_enemy_pieces),
     illegal_move_limit: existingGame.illegal_move_limit != null ? Number(existingGame.illegal_move_limit) : 0,
 });
@@ -216,6 +217,7 @@ const GameWizard = ({ editGameId }) => {
     other_game_data: "",
     fog_of_war: false,
     permanent_fog_reveal: false,
+    allow_community_puzzles: false,
     hide_enemy_pieces: false,
     illegal_move_limit: 0,
   });

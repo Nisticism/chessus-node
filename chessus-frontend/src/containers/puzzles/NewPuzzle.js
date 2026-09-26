@@ -59,10 +59,18 @@ const NewPuzzle = () => {
          */
         const unwrap = (data) =>
           (Array.isArray(data) ? data : (data?.games || data?.rows || [])).filter(Boolean);
-        const [mineRes, platformRes] = await Promise.all([
+        /*
+         * And a third: other people's games whose creators have switched on
+         * "Let other players build puzzles for this game". Those are only here
+         * because their creator allowed it, so each is marked with who shared
+         * it. A failure here costs only this list, not the page.
+         */
+        const [mineRes, platformRes, sharedRes] = await Promise.all([
           axios.get(`${API_URL}games?creatorId=${currentUser.id}&limit=200`,
             { headers: authHeader() }),
           axios.get(`${API_URL}games?creatorUsername=${encodeURIComponent(PLATFORM_ACCOUNT_USERNAME)}&limit=50`),
+          axios.get(`${API_URL}games?openToPuzzles=1&sort=alphabetical&limit=200`)
+            .catch(() => ({ data: [] })),
         ]);
         if (cancelled) return;
         const mine = unwrap(mineRes.data).map((g) => ({ ...g, isPlatform: false }));
@@ -72,7 +80,11 @@ const NewPuzzle = () => {
           // account looking at its own list - then they are already above.
           .filter((g) => !mineIds.has(Number(g.id)))
           .map((g) => ({ ...g, isPlatform: true }));
-        setGames([...mine, ...platform]);
+        const listed = new Set([...mineIds, ...platform.map((g) => Number(g.id))]);
+        const shared = unwrap(sharedRes.data)
+          .filter((g) => !listed.has(Number(g.id)))
+          .map((g) => ({ ...g, isPlatform: false, isShared: true }));
+        setGames([...mine, ...platform, ...shared]);
       } catch (_) {
         if (!cancelled) setFailed(true);
       } finally {
@@ -136,8 +148,9 @@ const NewPuzzle = () => {
     <div className={styles["page"]}>
       <h1 className={styles["title"]}>New puzzle</h1>
       <p className={styles["sub"]}>
-        Choose the game your puzzle is played on — one of yours, or one of GridGrove's
-        own. Its pieces, board and rules are what the puzzle will use, so the solver plays
+        Choose the game your puzzle is played on — one of yours, one of GridGrove's
+        own, or one whose creator lets anyone build puzzles for it (marked 🤝 Shared).
+        Its pieces, board and rules are what the puzzle will use, so the solver plays
         it exactly as the game is.
       </p>
 
@@ -199,6 +212,16 @@ const NewPuzzle = () => {
                           searching still returns one flat list. */}
                       {g.isPlatform && (
                         <span className={styles["option-tag"]}>GridGrove</span>
+                      )}
+                      {/* Someone else's game, listed only because its creator
+                          allows anyone to build puzzles for it. */}
+                      {g.isShared && (
+                        <span
+                          className={`${styles["option-tag"]} ${styles["option-tag-shared"]}`}
+                          title={`Listed because ${g.creator_username || 'its creator'} lets anyone build puzzles for this game`}
+                        >
+                          🤝 Shared{g.creator_username && g.creator_username !== 'Anonymous' ? ` by ${g.creator_username}` : ''}
+                        </span>
                       )}
                     </span>
                     <span className={styles["option-meta"]}>

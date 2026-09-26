@@ -5219,6 +5219,20 @@ const runMigrations = async () => {
       migrationsRun++;
     }
   }
+  {
+    // The creator's permission for other people to build puzzles on the game.
+    // Deliberately not in other_game_data, which is part of the rules
+    // fingerprint (game-fingerprint.js): a permission is not a rule, and
+    // changing it must not flag every published puzzle as out of date.
+    const exists = await columnExists('game_types', 'allow_community_puzzles');
+    if (!exists) {
+      await runMigration(
+        `ALTER TABLE game_types ADD COLUMN allow_community_puzzles TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'If true, anyone may build puzzles on this game (within their usual per-game allowance)'`,
+        'Add game_types.allow_community_puzzles'
+      );
+      migrationsRun++;
+    }
+  }
 
   // Internal admin tool to track potential features (unstarted -> in_progress
   // -> completed | abandoned).

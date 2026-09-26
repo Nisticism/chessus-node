@@ -3673,6 +3673,11 @@ app.get("/api/games", optionalAuthenticate, async (req, res) => {
       whereParams.push(creatorUsername);
     }
 
+    // Games whose creators let anyone build puzzles on them (New Puzzle's list).
+    if (req.query.openToPuzzles === '1') {
+      conditions.push('gt.allow_community_puzzles = 1');
+    }
+
     if (winCondition) {
       const condMap = {
         'checkmate': 'gt.mate_condition = 1',
@@ -3886,6 +3891,9 @@ app.post("/api/games/:gameId/duplicate", authenticateToken, async (req, res) => 
     const overrides = { creator_id: userId, is_anonymous_creator: 0, is_draft: 1, draft_saved_step: 1, game_name: newName, created_at: nowStr };
     if (cols.includes('last_played_at')) overrides.last_played_at = null;
     if (cols.includes('initial_state_warning')) overrides.initial_state_warning = null;
+    // The copy is somebody's new game: whether others may build puzzles on it
+    // is theirs to decide, not inherited from the original's creator.
+    if (cols.includes('allow_community_puzzles')) overrides.allow_community_puzzles = 0;
     const overrideKeys = Object.keys(overrides).filter(k => cols.includes(k));
     const copyCols = cols.filter(c => !overrideKeys.includes(c));
     const insertCols = [...copyCols, ...overrideKeys].map(c => `\`${c}\``).join(', ');
@@ -4146,6 +4154,7 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
       forced_capture_condition:              gameData.forced_capture_condition || false,
       fog_of_war:                            gameData.fog_of_war ? 1 : 0,
       permanent_fog_reveal:                  (gameData.fog_of_war && gameData.permanent_fog_reveal) ? 1 : 0,
+      allow_community_puzzles:               gameData.allow_community_puzzles ? 1 : 0,
       hide_enemy_pieces:                     gameData.hide_enemy_pieces ? 1 : 0,
       illegal_move_limit:                    (gameData.illegal_move_limit != null && Number(gameData.illegal_move_limit) > 0) ? Math.min(100, Math.max(1, Math.floor(Number(gameData.illegal_move_limit)))) : 0,
       illegal_move_label:                    (Number(gameData.illegal_move_limit) > 0 && gameData.illegal_move_label) ? String(gameData.illegal_move_label).trim().slice(0, 50) || null : null,
@@ -9205,6 +9214,7 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
       forced_capture_condition:              gameData.forced_capture_condition || false,
       fog_of_war:                            gameData.fog_of_war ? 1 : 0,
       permanent_fog_reveal:                  (gameData.fog_of_war && gameData.permanent_fog_reveal) ? 1 : 0,
+      allow_community_puzzles:               gameData.allow_community_puzzles ? 1 : 0,
       hide_enemy_pieces:                     gameData.hide_enemy_pieces ? 1 : 0,
       illegal_move_limit:                    (gameData.illegal_move_limit != null && Number(gameData.illegal_move_limit) > 0) ? Math.min(100, Math.max(1, Math.floor(Number(gameData.illegal_move_limit)))) : 0,
       illegal_move_label:                    (Number(gameData.illegal_move_limit) > 0 && gameData.illegal_move_label) ? String(gameData.illegal_move_label).trim().slice(0, 50) || null : null,

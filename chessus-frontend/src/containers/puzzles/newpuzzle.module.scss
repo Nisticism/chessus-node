@@ -168,6 +168,14 @@
   background: rgba(212, 175, 55, 0.1);
 }
 
+/* Someone else's game, listed because its creator shares it for puzzles. */
+.option-tag-shared {
+  color: #8fd3c1;
+  border-color: rgba(143, 211, 193, 0.45);
+  background: rgba(143, 211, 193, 0.1);
+  white-space: nowrap;
+}
+
 .no-match {
   padding: 12px;
   color: var(--text-secondary);

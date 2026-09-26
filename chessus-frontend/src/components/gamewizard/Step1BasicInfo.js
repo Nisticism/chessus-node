@@ -239,6 +239,24 @@ const Step1BasicInfo = ({ gameData, updateGameData, currentUser, onApplyPreset }
           }
         />
       </div>
+
+      {/* A permission, not a rule - it lives here rather than with the rules
+          steps, and outside the puzzles' rules fingerprint. */}
+      <div className={styles["form-group"]}>
+        <ToggleSwitch
+          checked={!!currentUser && !!gameData.allow_community_puzzles}
+          onChange={(val) => handleChange("allow_community_puzzles", val)}
+          disabled={!currentUser}
+          label={
+            <span>
+              Let other players build puzzles for this game{' '}
+              <InfoTooltip text={!currentUser
+                ? "Sign in to choose who can build puzzles for your game."
+                : "When enabled, anyone can build puzzles for this game, up to their usual limit per game (3 for free accounts, uncapped for Silver Supporters). Your game appears in everyone's list on New Puzzle, marked as shared by you, and a Build a Puzzle button shows on its page. Puzzles are published under their builder's name. Turning this off stops new puzzles; ones already made stay. Without it, only you can build puzzles for your game."} />
+            </span>
+          }
+        />
+      </div>
     </div>
   );
 };

@@ -182,14 +182,17 @@ function registerPuzzleRoutes(app, {
     }
     if (isStaff(user)) return null;
     if (Number(gameType.creator_id) === Number(user.id)) return null;
+    // The creator has opened the game to everyone's puzzles, which answers
+    // the worry above: they have had their say. A draft stays private.
+    if (Number(gameType.allow_community_puzzles) === 1 && !Number(gameType.is_draft)) return null;
 
     const platformId = await platformAccountId(db_pool);
     if (platformId != null) {
       if (Number(gameType.creator_id) === platformId) return null;
       if (Number(user.id) === platformId) return null;
     }
-    return 'You can only build puzzles for games you created, or for '
-      + `${PLATFORM_ACCOUNT_USERNAME}'s own games.`;
+    return 'You can only build puzzles for games you created, for '
+      + `${PLATFORM_ACCOUNT_USERNAME}'s own games, or for games whose creators allow it.`;
   };
 
   /**
@@ -1539,7 +1542,7 @@ function registerPuzzleRoutes(app, {
     try {
       const gameTypeId = parseInt(req.params.gameTypeId, 10);
       const [[gameType]] = await db_pool.query(
-        'SELECT id, creator_id, other_game_data, simultaneous_turns FROM game_types WHERE id = ? LIMIT 1', [gameTypeId]
+        'SELECT id, creator_id, other_game_data, simultaneous_turns, allow_community_puzzles, is_draft FROM game_types WHERE id = ? LIMIT 1', [gameTypeId]
       );
       const allowance = await puzzleCreateAllowance(req.user.id, gameTypeId);
       /*
@@ -2023,7 +2026,7 @@ function registerPuzzleRoutes(app, {
        * a way around the rule rather than an exception to it.
        */
       const [[dupGameType]] = await db_pool.query(
-        'SELECT id, creator_id, other_game_data, simultaneous_turns FROM game_types WHERE id = ? LIMIT 1', [puzzle.game_type_id]
+        'SELECT id, creator_id, other_game_data, simultaneous_turns, allow_community_puzzles, is_draft FROM game_types WHERE id = ? LIMIT 1', [puzzle.game_type_id]
       );
       if (dupGameType) {
         const dupRefusal = await puzzleBuildRefusal(req.user, dupGameType);

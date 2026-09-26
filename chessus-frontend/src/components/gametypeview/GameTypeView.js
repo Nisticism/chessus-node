@@ -3188,7 +3188,7 @@ Delete the game and its puzzles anyway?`)) {
             * creator's privilege here. Creators of the game keep the entry they
             * already have below, so nobody gets two of the same button.
             */}
-          {isPlatformGame(game) && !canEdit() && currentUser && (
+          {(isPlatformGame(game) || Number(game.allow_community_puzzles) === 1) && !canEdit() && currentUser && (
             <button
               type="button"
               onClick={() => navigate(`/create/puzzle/${gameId}`)}
