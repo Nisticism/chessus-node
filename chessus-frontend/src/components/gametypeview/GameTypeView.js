@@ -30,6 +30,7 @@ import BoardZoomControls from "../common/BoardZoomControls";
 import boardVp from "../common/boardViewport.module.scss";
 import useSeo from "../../hooks/useSeo";
 import { isPlatformGame } from "../../helpers/platform-account";
+import { designationRuleSentence } from "../../helpers/designationTypes";
 // Describing how a piece moves lives in helpers/pieceRules, shared with the
 // puzzle rules modal. See the note there.
 import { describeMovementRange, describePieceMovement } from "../../helpers/pieceRules";
@@ -2531,7 +2532,7 @@ A placed piece falls towards ${fallsTo} instead of staying on the square it was 
 
     // Opponent-chooses-the-piece-type mechanic
     if (otherData.designate_piece_type === true && !game.simultaneous_turns) {
-      specialRulesContent.push(`**Opponent Chooses the Piece Type**\nBefore each of your moves, your opponent picks a piece type from a list, and you must move a piece of that type if one of them can move. If none can, you may move any piece, so the choice never takes away your last legal move. Placing a piece is always allowed.\n\n• The game opens with Player 2 choosing for Player 1.\n• The chooser's clock runs while they choose; once they have, the mover's clock runs.\n• With several actions per turn, a new type is chosen before every action.\n• Every choice is recorded in the move history, and premoves are turned off.`);
+      specialRulesContent.push(`**Opponent Chooses the Piece Type**\n${designationRuleSentence(otherData)} If none can, you may move any piece, so the choice never takes away your last legal move. Placing a piece is always allowed.\n\n• The game opens with Player 2 choosing for Player 1.\n• The chooser's clock runs while they choose; once they have, the mover's clock runs.\n• With several actions per turn, a new type is chosen before every action.\n• Every choice is recorded in the move history, and premoves are turned off.`);
     }
 
     // Veto Power mechanic

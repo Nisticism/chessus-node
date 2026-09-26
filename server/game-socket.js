@@ -10612,7 +10612,8 @@ function initializeSocket(server) {
      * game starts it (and its clock), exactly as a first move would. A bot to
      * move is set going once the choice lands.
      */
-    socket.on("designatePieceType", async ({ gameId, userId, pieceId } = {}) => {
+    // `pieceIds` (a list) when the game names several types; `pieceId` for one.
+    socket.on("designatePieceType", async ({ gameId, userId, pieceId, pieceIds } = {}) => {
       try {
         const gameIdStr = String(gameId);
         const gameState = activeGames.get(gameIdStr);
@@ -10622,7 +10623,8 @@ function initializeSocket(server) {
         if (!chooser || String(chooser.id) !== String(userId)) {
           return socket.emit("error", { message: "It is not your turn to choose a piece type" });
         }
-        const result = designated.applyChoice(gameState, pieceId == null ? null : Number(pieceId), chooser.id);
+        const picked = Array.isArray(pieceIds) ? pieceIds : (pieceId == null ? null : [pieceId]);
+        const result = designated.applyChoice(gameState, picked, chooser.id);
         if (!result.ok) return socket.emit("error", { message: result.reason });
         await finishDesignation(io, gameIdStr, gameState);
       } catch (err) {
@@ -22032,6 +22034,8 @@ function designationStatus(gameState, withChoices, gameId) {
     // Bot games get no periodic timeUpdate, so this is where the browser
     // re-anchors its clocks when the runner changes to or from the chooser.
     playerTimes: gameState.playerTimes || null,
+    // How many types the chooser names this time: the setting, or every type there is.
+    ...(due ? { count: designated.requiredCount(gameState) } : {}),
     ...(due && withChoices ? { choices: designated.choicesFor(gameState) } : {}),
   };
 }

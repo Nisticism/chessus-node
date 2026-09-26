@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, Link } from 'react-router-dom';
 import { useSelector, useDispatch } from "react-redux";
+import { designationCountWarning } from "../../helpers/designationTypes";
 import styles from "./gamewizard.module.scss";
 import StandardButton from "../standardbutton/StandardButton";
 import Divider from "../Divider/Divider";
@@ -121,6 +122,8 @@ const GameWizard = ({ editGameId }) => {
   const [isPublishedGame, setIsPublishedGame] = useState(false);
   const [loadError, setLoadError] = useState(null);
   const [showCheckmateWarning, setShowCheckmateWarning] = useState(false);
+  // "Opponent Chooses the Piece Type" naming as many types as a side has.
+  const [designationWarning, setDesignationWarning] = useState(null);
   const [imageMismatchWarning, setImageMismatchWarning] = useState(null);
   const [impassablePiecesWarning, setImpassablePiecesWarning] = useState(null); // { conflicts: [{key, piece_name, player_id}] }
   const [saveError, setSaveError] = useState(null);
@@ -525,6 +528,22 @@ const GameWizard = ({ editGameId }) => {
       } catch (e) {
         // If pieces can't be parsed, show warning since we can't verify
         setShowCheckmateWarning(true);
+        return;
+      }
+    }
+
+    /*
+     * "Opponent Chooses the Piece Type" set to name as many types as a side
+     * has: every type is named every time, so it restricts nothing for them.
+     * Said before saving, and saving anyway is fine - it is not broken, it is
+     * just not doing anything.
+     */
+    if (!skipWarning) {
+      let designationOther = {};
+      try { designationOther = JSON.parse(gameData.other_game_data || '{}') || {}; } catch { /* ignore */ }
+      const designationProblem = designationCountWarning(gameData, designationOther);
+      if (designationProblem) {
+        setDesignationWarning(designationProblem);
         return;
       }
     }
@@ -955,6 +974,26 @@ const GameWizard = ({ editGameId }) => {
               <StandardButton 
                 buttonText="Create Anyway" 
                 onClick={() => { setShowCheckmateWarning(false); handleSubmit(true); }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {designationWarning && (
+        <div className={styles["warning-overlay"]}>
+          <div className={styles["warning-modal"]}>
+            <h3>⚠️ Piece Type Setting Has No Effect</h3>
+            <p>{designationWarning}</p>
+            <p>Lower <strong>Piece types chosen</strong> under “Opponent Chooses the Piece Type” in Rules (Step 2), or save as it is.</p>
+            <div className={styles["warning-buttons"]}>
+              <StandardButton
+                buttonText="Go Back"
+                onClick={() => setDesignationWarning(null)}
+              />
+              <StandardButton
+                buttonText="Save Anyway"
+                onClick={() => { setDesignationWarning(null); handleSubmit(true); }}
               />
             </div>
           </div>

@@ -4,6 +4,7 @@ import NumberInput from "../common/NumberInput";
 import ToggleSwitch from "../common/ToggleSwitch";
 import InfoTooltip from "../piecewizard/InfoTooltip";
 import FairyStockfishInfoNote from "../common/FairyStockfishInfoNote";
+import { designationCount, designationCountWarning } from "../../helpers/designationTypes";
 
 const Step2WinConditions = ({ gameData, updateGameData }) => {
   const handleChange = (field, value) => {
@@ -688,7 +689,7 @@ const Step2WinConditions = ({ gameData, updateGameData }) => {
       {/* "Opponent chooses the piece type" - server/designated-piece.js */}
       <ToggleRow
         title="Opponent Chooses the Piece Type"
-        tooltip="Before every action, the player who is not about to act chooses a piece type from a list, and their opponent must move a piece of that type if one can move - otherwise they may move freely. The chooser's clock runs while they choose; the mover's once they have. The game opens with Player 2 choosing for Player 1. With several actions per turn, a new type is chosen before each action. Placing a piece is always allowed. Every choice is shown in the move history. The starting board must have pieces on it. Not compatible with Veto or Simultaneous Turns. In fog-of-war games the list shows every type the opponent could have, so it reveals nothing. Computer opponents use the built-in bot, which follows the rule and chooses for you."
+        tooltip="Before every action, the player who is not about to act chooses a piece type from a list (or several - see Piece types chosen), and their opponent must move a piece of a chosen type if one can move - otherwise they may move freely. The chooser's clock runs while they choose; the mover's once they have. The game opens with Player 2 choosing for Player 1. With several actions per turn, a new type is chosen before each action. Placing a piece is always allowed. Every choice is shown in the move history. The starting board must have pieces on it. Not compatible with Veto or Simultaneous Turns. In fog-of-war games the list shows every type the opponent could have, so it reveals nothing. Computer opponents use the built-in bot, which follows the rule and chooses for you."
         checked={getOtherData().designate_piece_type === true}
         onChange={(val) => setOtherDataField("designate_piece_type", val)}
       >
@@ -702,6 +703,24 @@ const Step2WinConditions = ({ gameData, updateGameData }) => {
             Not compatible with Simultaneous Turns. Turn one of them off.
           </p>
         )}
+        <div className={styles["sub-field"]}>
+          <div className={styles["form-group"]} style={{ marginBottom: '0.75rem' }}>
+            <label className={styles["form-label"]} style={{ fontSize: '0.85rem' }}>
+              Piece types chosen{' '}
+              <InfoTooltip text="How many piece types the opponent names each time (1 to 8). The mover must move a piece of any one of them, if one can move. With 1, they name a single type; with more, the mover has more freedom. If a player has no more piece types than this, every type is named every time and the rule never restricts them." />
+            </label>
+            <NumberInput
+              value={designationCount(getOtherData())}
+              onChange={(val) => setOtherDataField("designate_piece_count", Math.min(8, Math.max(1, val)))}
+              options={{ min: 1, max: 8, placeholder: "1", className: styles["form-input-small"] }}
+            />
+          </div>
+          {designationCountWarning(gameData, getOtherData()) && (
+            <p className={styles["validation-error"]} style={{ marginBottom: '0.75rem' }}>
+              {designationCountWarning(gameData, getOtherData())}
+            </p>
+          )}
+        </div>
       </ToggleRow>
 
       <ToggleRow

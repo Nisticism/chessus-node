@@ -89,9 +89,13 @@ export function useDesignation({ gameState, gameId, captureActionPieceId, onGame
     // The type in force for this action, or null (none chosen / free move).
     designation,
     choices,
+    // How many types the chooser names this time (the game's setting, or every
+    // type there is when the mover has fewer).
+    count: serverSays?.count || 1,
     log: log || [],
-    choose: (pieceId) => designatePieceType(parseInt(gameId), pieceId),
-  }), [enabled, key, needsChoice, mover, designation, choices, log, designatePieceType, gameId]);
+    // One id, or the list when the game names several types.
+    choose: (pick) => designatePieceType(parseInt(gameId), pick),
+  }), [enabled, key, needsChoice, mover, designation, choices, serverSays?.count, log, designatePieceType, gameId]);
 }
 
 /*
@@ -104,9 +108,12 @@ export function designationBlockReason(dz, piece, myPieces, movesOf) {
   if (!dz?.enabled || !piece) return null;
   if (dz.needsChoice) return "Waiting for your opponent to choose which piece type you must move.";
   const d = dz.designation;
-  if (!d || Number(piece.piece_id) === Number(d.pieceId)) return null;
+  if (!d) return null;
+  // Several types when the game names several; any of them may move.
+  const ids = new Set((Array.isArray(d.pieceIds) ? d.pieceIds : [d.pieceId]).map(Number));
+  if (ids.has(Number(piece.piece_id))) return null;
   const typeCanMove = (myPieces || []).some(
-    (p) => Number(p.piece_id) === Number(d.pieceId) && (movesOf(p) || []).length > 0
+    (p) => ids.has(Number(p.piece_id)) && (movesOf(p) || []).length > 0
   );
   return typeCanMove ? `You must move a ${d.pieceName || 'piece of the chosen type'} this action.` : null;
 }
@@ -136,11 +143,13 @@ const bannerStyle = { background: 'rgba(117, 124, 252, 0.18)', color: '#c8ccff',
 export function DesignationPanel({ dz, myPosition }) {
   const [hidden, setHidden] = useState(false);
   const [sent, setSent] = useState(null);
+  // The types ticked so far, when several are named per choice.
+  const [picked, setPicked] = useState([]);
   const choosing = !!(dz?.needsChoice && myPosition != null && dz.chooser === myPosition);
   const turnKey = dz?.needsChoice ? dz.key : null;
 
-  // A new choice to make: show the list again.
-  useEffect(() => { setHidden(false); setSent(null); }, [turnKey]);
+  // A new choice to make: show the list again, nothing ticked.
+  useEffect(() => { setHidden(false); setSent(null); setPicked([]); }, [turnKey]);
 
   if (!dz?.enabled || dz.mover == null) return null;
 
@@ -149,7 +158,9 @@ export function DesignationPanel({ dz, myPosition }) {
     if (choosing) {
       banner = (
         <>
-          Choose which piece type your opponent must move.
+          {dz.count > 1
+            ? `Choose ${dz.count} piece types; your opponent must move one of them.`
+            : 'Choose which piece type your opponent must move.'}
           {hidden && (
             <button type="button" className={styles["minimize-button"]} style={{ padding: '2px 10px' }} onClick={() => setHidden(false)}>
               Choose
@@ -172,24 +183,33 @@ export function DesignationPanel({ dz, myPosition }) {
   }
 
   const choices = dz.choices;
+  const many = dz.count > 1;
+  const togglePicked = (id) => setPicked((prev) => (prev.includes(id)
+    ? prev.filter((x) => x !== id)
+    : (prev.length >= dz.count ? prev : [...prev, id])));
   return (
     <>
       <span className={styles["move-error"]} style={bannerStyle}>{banner}</span>
       {choosing && !hidden && (
         <div className={styles["promotion-modal-overlay"]}>
           <div className={styles["promotion-modal"]} onClick={(e) => e.stopPropagation()}>
-            <h3>Choose a piece type</h3>
+            <h3>{many ? `Choose ${dz.count} piece types` : 'Choose a piece type'}</h3>
             {!choices ? (
               <p>Loading the piece types…</p>
             ) : choices.length === 0 ? (
               <p>Your opponent has no pieces to choose from, so they may move freely.</p>
             ) : (
-              <p>Your opponent must move a piece of this type, if one can move. Your clock is running.</p>
+              <p>
+                {many
+                  ? `Your opponent must move a piece of one of these ${dz.count} types, if one can move. Your clock is running.`
+                  : 'Your opponent must move a piece of this type, if one can move. Your clock is running.'}
+              </p>
             )}
             {choices && choices.length > 0 && (
               <div className={styles["promotion-options"]}>
                 {choices.map((c) => {
                   const src = imageOf(c, dz.mover);
+                  const on = picked.includes(c.pieceId);
                   return (
                     <button
                       key={c.pieceId}
@@ -197,7 +217,13 @@ export function DesignationPanel({ dz, myPosition }) {
                       className={styles["promotion-option"]}
                       disabled={sent != null}
                       title={c.name}
-                      onClick={() => { setSent(c.pieceId); dz.choose(c.pieceId); }}
+                      aria-pressed={many ? on : undefined}
+                      // Several named: each click ticks a type, and Confirm sends them.
+                      style={many && on ? { borderColor: '#757cfc', boxShadow: '0 0 0 2px rgba(117, 124, 252, 0.6)' } : undefined}
+                      onClick={() => {
+                        if (many) { togglePicked(c.pieceId); return; }
+                        setSent(c.pieceId); dz.choose(c.pieceId);
+                      }}
                     >
                       {src ? <img src={src} alt={c.name} draggable={false} /> : <span className={styles["piece-name"]}>?</span>}
                       <span className={styles["piece-label"]}>{c.name}</span>
@@ -207,6 +233,16 @@ export function DesignationPanel({ dz, myPosition }) {
               </div>
             )}
             <div className={styles["promotion-modal-actions"]}>
+              {many && choices && choices.length > 0 && (
+                <button
+                  type="button"
+                  className={styles["minimize-button"]}
+                  disabled={sent != null || picked.length !== dz.count}
+                  onClick={() => { setSent('many'); dz.choose(picked); }}
+                >
+                  Confirm {picked.length}/{dz.count}
+                </button>
+              )}
               {choices && choices.length === 0 && (
                 <button type="button" className={styles["minimize-button"]} disabled={sent != null} onClick={() => { setSent('none'); dz.choose(null); }}>
                   Continue

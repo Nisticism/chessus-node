@@ -837,9 +837,12 @@ export const SocketProvider = ({ children }) => {
   // the current opponent turn. An empty array means "skip / decline to veto".
   // Opponent chooses the piece type: pick one (null when there is nothing to
   // pick from), and ask the server what there is to choose / wake a bot chooser.
-  const designatePieceType = useCallback((gameId, pieceId) => {
+  // `pick` is one piece type id, or a list when the game names several.
+  const designatePieceType = useCallback((gameId, pick) => {
     if (!socket || !connected) return;
-    socket.emit('designatePieceType', { gameId, userId: getAnonPlayerId(gameId), pieceId });
+    socket.emit('designatePieceType', Array.isArray(pick)
+      ? { gameId, userId: getAnonPlayerId(gameId), pieceIds: pick }
+      : { gameId, userId: getAnonPlayerId(gameId), pieceId: pick });
   }, [socket, connected, getAnonPlayerId]);
 
   const designationSync = useCallback((gameId) => {

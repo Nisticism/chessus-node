@@ -48,6 +48,28 @@ function isDesignationGame(stateOrType) {
   return od.designate_piece_type === true;
 }
 
+/*
+ * How many piece types the chooser names (other_game_data.designate_piece_count,
+ * 1 to 8, default 1). The mover must move a piece of ANY of them. When the
+ * mover has fewer types than that to choose from, all of them are named - which
+ * is no restriction at all, and why the wizard warns about a count as large as
+ * a side's number of piece types.
+ */
+function designationCount(stateOrType) {
+  if (!stateOrType) return 1;
+  const gt = stateOrType.gameType || stateOrType;
+  const od = stateOrType.otherGameData || parseOther(gt.other_game_data);
+  const n = Math.floor(Number(od.designate_piece_count));
+  return Number.isFinite(n) ? Math.max(1, Math.min(8, n)) : 1;
+}
+
+/** "Knight", "Knight or Rook", "Knight, Rook or Bishop". */
+function joinNames(names) {
+  const list = (names || []).filter(Boolean);
+  if (list.length <= 1) return list[0] || '';
+  return `${list.slice(0, -1).join(', ')} or ${list[list.length - 1]}`;
+}
+
 const ownerOf = (p) => Number(p.team || p.player_id || 0);
 const otherSide = (pos) => (Number(pos) === 1 ? 2 : 1);
 
@@ -80,11 +102,17 @@ function needsChoice(gameState) {
 /** The side choosing, when a choice is due. */
 const chooserPos = (gameState) => otherSide(gameState.currentTurn);
 
-/** The chosen piece_id for the action about to be played, or null. */
-function designatedType(gameState) {
+/*
+ * The chosen piece_ids for the action about to be played, as a Set, or null
+ * when nothing restricts the move. A choice made before several types could be
+ * named has only `pieceId`.
+ */
+function designatedTypes(gameState) {
   if (!isDesignationGame(gameState) || needsChoice(gameState)) return null;
   const d = gameState.designation;
-  return d && d.pieceId != null ? Number(d.pieceId) : null;
+  if (!d) return null;
+  const ids = Array.isArray(d.pieceIds) ? d.pieceIds : (d.pieceId != null ? [d.pieceId] : []);
+  return ids.length ? new Set(ids.map(Number)) : null;
 }
 
 const pieceArt = (p) => ({
@@ -134,12 +162,12 @@ function choicesFor(gameState) {
  * type has no legal move, every move is allowed. Placements always are.
  */
 function filterMoves(gameState, legalMoves) {
-  const type = designatedType(gameState);
-  if (type == null || !Array.isArray(legalMoves)) return legalMoves;
+  const types = designatedTypes(gameState);
+  if (!types || !Array.isArray(legalMoves)) return legalMoves;
   const byPieceId = new Map((gameState.pieces || []).map((p) => [p.id, p]));
   const isType = (m) => {
     const p = byPieceId.get(m.pieceId);
-    return !!p && Number(p.piece_id) === type;
+    return !!p && types.has(Number(p.piece_id));
   };
   const isPlacement = (m) => m && (m.type === 'place' || m.isPlacement);
   const ofType = legalMoves.filter(isType);
@@ -156,42 +184,57 @@ function checkMove(gameState, move, legalMovesFor) {
   if (needsChoice(gameState)) {
     return { ok: false, reason: 'Waiting for your opponent to choose which piece type you must move.' };
   }
-  const type = designatedType(gameState);
-  if (type == null || !move) return { ok: true };
+  const types = designatedTypes(gameState);
+  if (!types || !move) return { ok: true };
   if (move.type === 'place' || move.isPlacement || move.type === 'pass') return { ok: true };
   const piece = (gameState.pieces || []).find((p) => p.id === move.pieceId);
-  if (piece && Number(piece.piece_id) === type) return { ok: true };
+  if (piece && types.has(Number(piece.piece_id))) return { ok: true };
   const legal = legalMovesFor(gameState, Number(gameState.currentTurn)) || [];
   const byPieceId = new Map((gameState.pieces || []).map((p) => [p.id, p]));
   const typeCanMove = legal.some((m) => {
     const p = byPieceId.get(m.pieceId);
-    return p && Number(p.piece_id) === type;
+    return p && types.has(Number(p.piece_id));
   });
   if (!typeCanMove) return { ok: true };
-  const name = (gameState.designation && gameState.designation.pieceName) || 'piece of the chosen type';
+  const d = gameState.designation || {};
+  const name = joinNames(d.pieceNames) || d.pieceName || 'piece of a chosen type';
   return { ok: false, reason: `You must move a ${name} this action.` };
 }
 
+/** How many types the chooser must name now: the setting, or every type there is. */
+function requiredCount(gameState) {
+  return Math.min(designationCount(gameState), choicesFor(gameState).length);
+}
+
 /*
- * Record a choice. `pieceId` null means "no type" - allowed only when there
- * was nothing to choose from - and leaves the mover free.
+ * Record a choice: exactly requiredCount different types (one id or a list).
+ * Nothing (null or []) is allowed only when there was nothing to choose from,
+ * and leaves the mover free.
  */
-function applyChoice(gameState, pieceId, chooserId) {
+function applyChoice(gameState, pieceIds, chooserId) {
   const choices = choicesFor(gameState);
-  let chosen = null;
-  if (pieceId != null) {
-    chosen = choices.find((c) => c.pieceId === Number(pieceId));
-    if (!chosen) return { ok: false, reason: 'That piece type is not one your opponent can be made to move.' };
-  } else if (choices.length) {
-    return { ok: false, reason: 'Choose a piece type.' };
+  const wanted = [...new Set((Array.isArray(pieceIds) ? pieceIds : (pieceIds == null ? [] : [pieceIds]))
+    .map(Number).filter(Number.isFinite))];
+  const need = Math.min(designationCount(gameState), choices.length);
+  const chosen = [];
+  for (const id of wanted) {
+    const c = choices.find((ch) => ch.pieceId === id);
+    if (!c) return { ok: false, reason: 'That piece type is not one your opponent can be made to move.' };
+    chosen.push(c);
+  }
+  if (chosen.length !== need) {
+    return { ok: false, reason: need === 1 ? 'Choose a piece type.' : `Choose ${need} piece types.` };
   }
   const k = actionKey(gameState);
   gameState.designation = {
     forAction: k.forAction,
     mover: k.mover,
     chooser: chooserPos(gameState),
-    pieceId: chosen ? chosen.pieceId : null,
-    pieceName: chosen ? chosen.name : null,
+    pieceIds: chosen.map((c) => c.pieceId),
+    pieceNames: chosen.map((c) => c.name),
+    // The first, for anything written before several types could be named.
+    pieceId: chosen.length ? chosen[0].pieceId : null,
+    pieceName: chosen.length ? joinNames(chosen.map((c) => c.name)) : null,
   };
   if (!Array.isArray(gameState.designationLog)) gameState.designationLog = [];
   gameState.designationLog.push({ ...gameState.designation, by: chooserId ?? null, at: Date.now() });
@@ -199,13 +242,15 @@ function applyChoice(gameState, pieceId, chooserId) {
 }
 
 /*
- * The bot's choice for its opponent: the type that leaves them the fewest
+ * The bot's choice for its opponent: the types that leave them the fewest
  * legal moves while still having at least one - the tightest squeeze that
- * does not simply hand them a free move. Ties are broken at random.
+ * does not simply hand them a free move. The types that can move come first,
+ * fewest moves first, ties in random order; types that cannot move fill any
+ * places left. Returns a list of piece ids (empty when there is nothing).
  */
 function botChoice(gameState, legalMovesFor) {
   const choices = choicesFor(gameState);
-  if (!choices.length) return null;
+  if (!choices.length) return [];
   const legal = legalMovesFor(gameState, Number(gameState.currentTurn)) || [];
   const byPieceId = new Map((gameState.pieces || []).map((p) => [p.id, p]));
   const counts = new Map();
@@ -213,11 +258,61 @@ function botChoice(gameState, legalMovesFor) {
     const p = byPieceId.get(m.pieceId);
     if (p) counts.set(Number(p.piece_id), (counts.get(Number(p.piece_id)) || 0) + 1);
   }
-  const movable = choices.filter((c) => (counts.get(c.pieceId) || 0) > 0);
-  const pool = movable.length ? movable : choices;
-  const best = Math.min(...pool.map((c) => counts.get(c.pieceId) || 0));
-  const tight = pool.filter((c) => (counts.get(c.pieceId) || 0) === best);
-  return tight[Math.floor(Math.random() * tight.length)].pieceId;
+  const moves = (c) => counts.get(c.pieceId) || 0;
+  const shuffled = choices.map((c) => ({ c, r: Math.random() }));
+  shuffled.sort((a, b) => {
+    const am = moves(a.c) > 0 ? 0 : 1;
+    const bm = moves(b.c) > 0 ? 0 : 1;
+    return am - bm || moves(a.c) - moves(b.c) || a.r - b.r;
+  });
+  return shuffled.slice(0, requiredCount(gameState)).map(({ c }) => c.pieceId);
+}
+
+/*
+ * The piece types each side has to be chosen from, for the wizard's warning:
+ * its starting pieces, what it may place, and neutral pieces (either side may
+ * move those).
+ */
+function typesPerSide(gameData) {
+  const sides = { 1: new Set(), 2: new Set() };
+  let pieces = {};
+  try { pieces = parseOther(gameData.pieces_string); } catch (_) { pieces = {}; }
+  for (const p of Object.values(pieces || {})) {
+    if (!p || p._occupied || p.piece_id == null) continue;
+    const owner = Number(p.player_id || p.team || 0);
+    if (p.is_neutral || owner === 0) { sides[1].add(Number(p.piece_id)); sides[2].add(Number(p.piece_id)); }
+    else if (sides[owner]) sides[owner].add(Number(p.piece_id));
+  }
+  const od = parseOther(gameData.other_game_data);
+  for (const t of (od.placeable_pieces || [])) {
+    if (t?.piece_id == null) continue;
+    const who = t.player == null ? 'all' : String(t.player).replace(/^p/, '');
+    for (const side of [1, 2]) {
+      if (t.is_neutral || who === 'all' || who === String(side)) sides[side].add(Number(t.piece_id));
+    }
+  }
+  return { 1: sides[1].size, 2: sides[2].size };
+}
+
+/*
+ * The warning the wizard gives when the count cannot restrict a side: that
+ * side has no more piece types than the chooser names, so every type is named
+ * every time. A warning, not an error - the game still works.
+ */
+function countWarning(gameData) {
+  if (!gameData) return null;
+  const od = parseOther(gameData.other_game_data);
+  if (od.designate_piece_type !== true) return null;
+  const n = designationCount(gameData);
+  const types = typesPerSide(gameData);
+  const loose = [1, 2].filter((side) => types[side] > 0 && types[side] <= n);
+  if (!loose.length) return null;
+  const who = loose.length === 2
+    ? `both players have ${types[1] === types[2] ? types[1] : `${types[1]} and ${types[2]}`} piece type${Math.max(types[1], types[2]) === 1 ? '' : 's'}`
+    : `Player ${loose[0]} has ${types[loose[0]]} piece type${types[loose[0]] === 1 ? '' : 's'}`;
+  return `"Opponent Chooses the Piece Type" names ${n} type${n === 1 ? '' : 's'} per choice, but ${who} - `
+    + 'every type is named every time, so the rule never restricts '
+    + (loose.length === 2 ? 'either side' : `Player ${loose[0]}`) + '.';
 }
 
 /*
@@ -247,10 +342,15 @@ function setupError(gameData) {
 }
 
 module.exports = {
+  designationCount,
+  requiredCount,
+  designatedTypes,
+  joinNames,
+  typesPerSide,
+  countWarning,
   isDesignationGame,
   needsChoice,
   chooserPos,
-  designatedType,
   choicesFor,
   filterMoves,
   checkMove,
