@@ -43,6 +43,7 @@ const {
   buildGameState, applyPly, goalMet, terminalOutcome, MECHANICAL_GOALS,
 } = require('./puzzle-validation');
 const { getAllLegalMovesForPlayer } = require('./game-socket');
+const { placeableDefinitions } = require('./puzzle-hydrate');
 
 const other = (n) => (Number(n) === 1 ? 2 : 1);
 const sq = (p) => `(${p.x},${p.y})`;
@@ -197,7 +198,11 @@ async function analyseUniqueness(rules, puzzle, opts = {}) {
     return false;
   };
 
-  const root = buildGameState(puzzle, rules.game);
+  // A placed piece needs its definition to move (see placeableDefinitions).
+  const root = buildGameState({
+    ...puzzle,
+    placeable_definitions: puzzle.placeable_definitions || placeableDefinitions(rules),
+  }, rules.game);
 
   for (let depth = 1; depth <= maxDepth; depth++) {
     base.maxDepthSearched = depth;

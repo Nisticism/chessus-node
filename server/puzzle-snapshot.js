@@ -215,7 +215,21 @@ function piecesNamedIn(game) {
   // The starting layout names its own pieces, and a game can start with a piece
   // that has no junction row.
   collect(startingPieceIds(game));
+  // And the pieces it PLACES. A piece that only ever enters by being placed is
+  // on no starting square, so nothing above named it and it hydrated with no
+  // definition - Clobber Four's token could not move in a puzzle.
+  collect(placeablePieceIds(game));
   return out;
+}
+
+/** Piece ids a game lets players place (other_game_data.placeable_pieces). */
+function placeablePieceIds(game) {
+  let data = game?.other_game_data;
+  if (typeof data === 'string') {
+    try { data = JSON.parse(data); } catch (_) { return []; }
+  }
+  const list = Array.isArray(data?.placeable_pieces) ? data.placeable_pieces : [];
+  return list.map((t) => Number(t?.piece_id)).filter((n) => Number.isFinite(n) && n > 0);
 }
 
 /** Piece ids mentioned by a game's pieces_string starting layout. */
@@ -270,12 +284,41 @@ async function loadSnapshot(db_pool, fingerprint) {
     [fingerprint]
   ).catch(() => [[null]]);
   if (!row?.payload) return null;
+  let parsed;
   try {
-    const parsed = typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload;
-    if (!parsed?.game) return null;
-    return parsed;
+    parsed = typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload;
   } catch (_) {
     return null;
+  }
+  if (!parsed?.game) return null;
+  return completeSnapshot(db_pool, fingerprint, parsed);
+}
+
+/*
+ * A snapshot frozen before piecesNamedIn knew about a kind of piece is missing
+ * that piece's definition for good - its fingerprint does not change (only
+ * pieces on starting squares are hashed), so it is never rewritten. Fill such
+ * gaps from the pieces table ONCE and save them into the snapshot, so it is
+ * frozen again from then on. A piece that no longer exists stays missing.
+ */
+async function completeSnapshot(db_pool, fingerprint, snap) {
+  const have = new Set((snap.pieces || []).map((p) => Number(p.id)));
+  const missing = [...piecesNamedIn(snap.game)].filter((id) => !have.has(id));
+  if (!missing.length) return snap;
+  try {
+    const [rows] = await db_pool.query(
+      `SELECT * FROM pieces WHERE id IN (${missing.map(() => '?').join(',')})`, missing
+    );
+    if (!rows.length) return snap;
+    const completed = { ...snap, pieces: [...(snap.pieces || []), ...rows] };
+    await db_pool.query(
+      'UPDATE puzzle_rule_snapshots SET payload = ? WHERE fingerprint = ?',
+      [JSON.stringify(completed), fingerprint]
+    );
+    return completed;
+  } catch (e) {
+    console.warn(`[puzzle] could not complete snapshot ${fingerprint}:`, e.message);
+    return snap;
   }
 }
 

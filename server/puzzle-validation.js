@@ -406,6 +406,10 @@ function buildGameState(puzzle, gameType) {
      * this was the one path that did not.
      */
     otherGameData: parseOtherGameData(gameType),
+    // What a placed piece can do, by piece id (puzzle-hydrate's
+    // placeableDefinitions). The placeable template itself is only a name and
+    // artwork.
+    placeableDefs: puzzle.placeable_definitions || null,
     enPassantTarget: null,
     /*
      * The game's STARTING roster, not this puzzle's handful of pieces.
@@ -595,6 +599,9 @@ async function applyPlacementPly(state, ply) {
     ? getImageUrlForPlayer(template.image_location, player, placedIsNeutral ? (template.neutral_image_index ?? null) : null)
     : template.image_url;
   state.pieces.push({
+    // The piece's own definition first, as the live game's enriched template
+    // does, so a placed piece moves and captures like any other.
+    ...(state.placeableDefs?.[Number(template.piece_id)] || {}),
     ...template,
     id: `placed_${x}_${y}_${state.pieces.length}`,
     piece_id: Number(template.piece_id),

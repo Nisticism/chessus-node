@@ -16165,8 +16165,17 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces, gameType) {
   
   // Check directional capture/movement
   const checkDirectional = (captureValue, moveValue, exactFlag, repeating) => {
-    const value = captureValue !== undefined && captureValue !== null ? captureValue : 
-                  (useMovementForCapture && !hasAnyCaptureDir ? moveValue : null);
+    /*
+     * With no dedicated capture direction at all, a piece that captures on its
+     * move captures along its movement - whatever the capture columns hold.
+     * They are 0 rather than NULL on many rows, and reading that 0 as "cannot
+     * capture this way" refused every capture such a piece made (Clobber Four's
+     * token: "Piece cannot capture to that square"), even though the move list
+     * - which counts 0 as unset - had offered it. The two now agree.
+     */
+    const value = hasAnyCaptureDir
+      ? (captureValue ?? null)
+      : (useMovementForCapture ? moveValue : null);
     if (!value) return false;
     if (value === 99) return true; // Infinite
     if (value > 0) {

@@ -36,7 +36,7 @@ const { analyseUniqueness, describeUniqueness } = require('./puzzle-uniqueness')
  * routes here and the snapshot backfill - and a second copy of it is exactly
  * the bug this codebase keeps having. See server/puzzle-hydrate.js.
  */
-const { hydratePosition, toEngineFields } = require('./puzzle-hydrate');
+const { hydratePosition, toEngineFields, placeableDefinitions } = require('./puzzle-hydrate');
 
 /*
  * Where uploaded piece art lives. Same rule index.js uses: an explicit
@@ -1291,6 +1291,7 @@ function registerPuzzleRoutes(app, {
 
       const state = buildGameState({
         position: await hydratePosition(rules, safeParse(puzzle.position, [])),
+        placeable_definitions: placeableDefinitions(rules),
         initial_pieces: await loadStartingRoster(rules),
         side_to_move: puzzle.side_to_move,
         setup_move: safeParse(puzzle.setup_move),
@@ -1328,6 +1329,7 @@ function registerPuzzleRoutes(app, {
 
       const state = buildGameState({
         position: await hydratePosition(rules, position),
+        placeable_definitions: placeableDefinitions(rules),
         initial_pieces: await loadStartingRoster(rules),
         side_to_move: Number(side_to_move) || 1,
         setup_move: setup_move || null,
@@ -1497,6 +1499,7 @@ function registerPuzzleRoutes(app, {
          */
         const state = buildGameState({
           position: await hydratePosition(rules, out.position),
+          placeable_definitions: placeableDefinitions(rules),
           side_to_move: puzzle.side_to_move,
           setup_move: out.setup_move,
           game_type_id: puzzle.game_type_id,
@@ -1734,6 +1737,7 @@ function registerPuzzleRoutes(app, {
        */
       const makeState = async () => buildGameState({
         position: await hydratePosition(rules, position),
+        placeable_definitions: placeableDefinitions(rules),
         initial_pieces: await loadStartingRoster(rules),
         side_to_move: Number(side_to_move) || 1,
         setup_move: setup_move || null,
@@ -2100,6 +2104,7 @@ function registerPuzzleRoutes(app, {
       const hydrated = {
         ...puzzle,
         position: await hydratePosition(rules, safeParse(puzzle.position, [])),
+        placeable_definitions: placeableDefinitions(rules),
         initial_pieces: await loadStartingRoster(rules),
         setup_move: safeParse(puzzle.setup_move),
         solution_line: safeParse(puzzle.solution_line, []),
@@ -2356,6 +2361,7 @@ function registerPuzzleRoutes(app, {
           const rules = await loadRulesFor(puzzle);
           const state = buildGameState({
             position: await hydratePosition(rules, safeParse(puzzle.position, [])),
+            placeable_definitions: placeableDefinitions(rules),
             initial_pieces: await loadStartingRoster(rules),
             side_to_move: puzzle.side_to_move,
             setup_move: safeParse(puzzle.setup_move),
@@ -2692,6 +2698,7 @@ function registerPuzzleRoutes(app, {
           const replayed = await playLine(
             {
               position: await hydratePosition(rules, safeParse(puzzle.position, [])),
+              placeable_definitions: placeableDefinitions(rules),
               initial_pieces: await loadStartingRoster(rules),
               side_to_move: puzzle.side_to_move,
               setup_move: safeParse(puzzle.setup_move),

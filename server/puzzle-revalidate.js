@@ -30,7 +30,7 @@
  */
 
 const { ensureSnapshot, readLive } = require('./puzzle-snapshot');
-const { hydratePosition } = require('./puzzle-hydrate');
+const { hydratePosition, placeableDefinitions } = require('./puzzle-hydrate');
 
 const safeParse = (v, fallback = null) => {
   if (v == null) return fallback;
@@ -78,6 +78,7 @@ async function revalidateGamePuzzles(db_pool, gameTypeId) {
     try {
       const verdict = await validatePuzzle({
         position: await hydratePosition(rules, safeParse(p.position, [])),
+        placeable_definitions: placeableDefinitions(rules),
         side_to_move: p.side_to_move,
         setup_move: safeParse(p.setup_move),
         solution_line: safeParse(p.solution_line, []),

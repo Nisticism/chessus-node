@@ -262,7 +262,35 @@ const hydratePosition = async (rules, placements) => {
   });
 };
 
+/*
+ * Engine definitions for the pieces a game PLACES, keyed by piece id.
+ *
+ * A placeable piece is listed in other_game_data by id, name and artwork only.
+ * A live game fills in the rest from the pieces table before anything is put
+ * down; a puzzle did not, so a piece placed during a line had no movement at
+ * all, and one standing in a puzzle's position had none either when the game
+ * never starts with it on the board (Clobber Four: "Piece cannot capture to
+ * that square" for an ordinary clobber). Every puzzle path passes this to the
+ * engine as puzzle.placeable_definitions.
+ */
+function placeableDefinitions(rules) {
+  const out = {};
+  let data = rules?.game?.other_game_data;
+  if (typeof data === 'string') {
+    try { data = JSON.parse(data); } catch (_) { data = null; }
+  }
+  const list = Array.isArray(data?.placeable_pieces) ? data.placeable_pieces : [];
+  if (!list.length) return out;
+  const byId = new Map((rules.pieces || []).map((r) => [Number(r.id), r]));
+  for (const t of list) {
+    const def = byId.get(Number(t?.piece_id));
+    if (def) out[Number(t.piece_id)] = toEngineFields(def);
+  }
+  return out;
+}
+
 module.exports = {
+  placeableDefinitions,
   hydratePosition, startingSquareIndex, movedState,
   toEngineFields, ENGINE_FIELD_RENAMES, JUNCTION_OVERRIDES,
 };
