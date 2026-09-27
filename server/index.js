@@ -15722,18 +15722,74 @@ app.get("/api/users/:userId/messageable-users", authenticateToken, async (req, r
   }
 });
 
-// Get conversations for a user
+// Get conversations for a user - the inbox, or the archive with ?archived=1
 app.get("/api/users/:userId/conversations", authenticateToken, async (req, res) => {
   try {
     const userId = parseInt(req.params.userId);
     if (req.user.id !== userId) {
       return res.status(403).json({ error: "Unauthorized" });
     }
-    const conversations = await dbHelpers.getConversations(userId);
+    const archived = req.query.archived === '1' || req.query.archived === 'true';
+    const conversations = await dbHelpers.getConversations(userId, { archived });
     res.json({ conversations });
   } catch (err) {
     console.error("Error fetching conversations:", err);
     res.status(500).json({ error: "Failed to fetch conversations" });
+  }
+});
+
+/*
+ * Archive or unarchive a conversation: { archived: true | false }.
+ *
+ * Archiving is per user and as of the newest message; a message after that
+ * brings it back to the inbox by itself (see getConversations).
+ */
+app.put("/api/users/:userId/conversations/:otherUserId/archive", authenticateToken, async (req, res) => {
+  try {
+    const userId = parseInt(req.params.userId);
+    if (req.user.id !== userId) return res.status(403).json({ error: "Unauthorized" });
+    const otherUserId = parseInt(req.params.otherUserId);
+    if (isNaN(otherUserId) || otherUserId === userId) return res.status(400).json({ error: "Invalid user ID" });
+    if (req.body?.archived === false) {
+      await dbHelpers.unarchiveConversation(userId, otherUserId);
+      return res.json({ archived: false });
+    }
+    const ok = await dbHelpers.archiveConversation(userId, otherUserId);
+    if (!ok) return res.status(404).json({ error: "There is no conversation to archive" });
+    res.json({ archived: true });
+  } catch (err) {
+    console.error("Error archiving conversation:", err);
+    res.status(500).json({ error: "Failed to archive conversation" });
+  }
+});
+
+/*
+ * Delete a conversation from this user's side: their own messages are emptied
+ * (the other person sees "Message was deleted" in their place) and the whole
+ * conversation, as it stands, disappears for this user. See
+ * dbHelpers.deleteConversationForUser.
+ */
+app.delete("/api/users/:userId/conversations/:otherUserId", authenticateToken, async (req, res) => {
+  try {
+    const userId = parseInt(req.params.userId);
+    if (req.user.id !== userId) return res.status(403).json({ error: "Unauthorized" });
+    const otherUserId = parseInt(req.params.otherUserId);
+    if (isNaN(otherUserId) || otherUserId === userId) return res.status(400).json({ error: "Invalid user ID" });
+    const result = await dbHelpers.deleteConversationForUser(userId, otherUserId);
+    if (!result.deleted) return res.status(404).json({ error: "There is no conversation to delete" });
+    for (const filename of result.files) fs.unlink(path.join(dmImageDir, filename), () => {});
+
+    // The other person's open inbox shows placeholders now, not the old words.
+    const io = req.app.get('io');
+    if (io) {
+      const { userSockets } = require('./game-socket');
+      const otherSocketId = userSockets?.get(otherUserId.toString());
+      if (otherSocketId) io.to(otherSocketId).emit('directMessagesDeleted', { byUserId: userId });
+    }
+    res.json({ deleted: true });
+  } catch (err) {
+    console.error("Error deleting conversation:", err);
+    res.status(500).json({ error: "Failed to delete conversation" });
   }
 });
 
@@ -15890,12 +15946,15 @@ app.get("/api/users/:userId/messages/:otherUserId/images", authenticateToken, as
     if (isNaN(otherUserId)) return res.status(400).json({ error: "Invalid user ID" });
     const u1 = Math.min(userId, otherUserId);
     const u2 = Math.max(userId, otherUserId);
+    // Nothing from before this user deleted the conversation.
+    const hidden = await dbHelpers.hiddenThrough(userId, otherUserId);
     const [rows] = await db_pool.query(
       `SELECT id, sender_id, message_id, filename, created_at, expires_at
          FROM direct_message_images
         WHERE user1_id = ? AND user2_id = ? AND expires_at > NOW()
+          AND (? IS NULL OR created_at > ?)
         ORDER BY created_at ASC`,
-      [u1, u2]
+      [u1, u2, hidden.at, hidden.at]
     );
     // Real instants, not bare DATETIMEs - see withIsoDates. Images and messages
     // have to be converted TOGETHER or the thread sorts them against each other

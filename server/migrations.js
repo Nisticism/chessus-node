@@ -5003,6 +5003,54 @@ const runMigrations = async () => {
     console.error('Error adding direct_message_images.message_id:', err.message);
   }
 
+  /*
+   * A message its sender deleted. The row stays, emptied, so the other person's
+   * side of the conversation still reads in order - their own messages with a
+   * "Message was deleted" placeholder where each of the deleter's used to be.
+   */
+  try {
+    if (!(await columnExists('direct_messages', 'deleted_at'))) {
+      await db_pool.query('ALTER TABLE direct_messages ADD COLUMN deleted_at DATETIME NULL DEFAULT NULL');
+      console.log('[DB] Added direct_messages.deleted_at');
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding direct_messages.deleted_at:', err.message);
+  }
+
+  /*
+   * Each user's own view of a conversation - one row per (user, other user),
+   * written only when they archive or delete it.
+   *
+   * archived_through_id: archived, as of the newest message then. A message
+   *   newer than that brings the conversation back to the inbox by itself, so
+   *   nothing has to un-archive it when one arrives.
+   * hidden_through_id: deleted by this user - every message up to it is gone
+   *   from their side. Their own messages in that range were emptied; the
+   *   other person's are untouched for the other person.
+   */
+  try {
+    if (!(await tableExists('dm_conversation_state'))) {
+      await runMigration(
+        `CREATE TABLE dm_conversation_state (
+          user_id INT UNSIGNED NOT NULL,
+          other_user_id INT UNSIGNED NOT NULL,
+          archived_through_id BIGINT UNSIGNED NULL,
+          archived_at DATETIME NULL,
+          hidden_through_id BIGINT UNSIGNED NULL,
+          hidden_at DATETIME NULL,
+          PRIMARY KEY (user_id, other_user_id),
+          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+          FOREIGN KEY (other_user_id) REFERENCES users(id) ON DELETE CASCADE
+        )`,
+        'Create dm_conversation_state table for archiving and deleting conversations'
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error creating dm_conversation_state table:', err.message);
+  }
+
   // ── Performance indexes for forum queries ────────────────────────────────
   // The GET /api/forums endpoint runs two aggregate subqueries (comment counts
   // and like counts) plus a correlated per-row subquery for liked_by_user.

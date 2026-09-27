@@ -1497,37 +1497,184 @@ const attachImagesToMessage = async (messageId, senderId, u1, u2, imageIds) => {
   return rows;
 };
 
-const getConversations = async (userId) => {
+/*
+ * A user's conversations - the inbox, or with { archived: true } the archive.
+ *
+ * Per-user state lives in dm_conversation_state (see migrations.js):
+ * - everything up to hidden_through_id is gone from this user's side (they
+ *   deleted the conversation), so it neither lists nor counts;
+ * - a conversation is archived while nothing newer than archived_through_id
+ *   has arrived. A new message - from either side - puts it back in the inbox.
+ */
+const getConversations = async (userId, { archived = false } = {}) => {
   const rows = await query(
-    `SELECT 
+    `SELECT
        other_user.id as user_id,
        other_user.username,
        other_user.profile_picture,
        latest.content as last_message,
+       (latest.deleted_at IS NOT NULL) as last_message_deleted,
        latest.created_at as last_message_time,
        latest.sender_id as last_sender_id,
+       st.archived_at,
        COALESCE(unread.unread_count, 0) as unread_count
      FROM (
-       SELECT 
-         CASE WHEN sender_id = ? THEN recipient_id ELSE sender_id END as other_id,
-         MAX(id) as max_id
-       FROM direct_messages
-       WHERE sender_id = ? OR recipient_id = ?
+       SELECT
+         CASE WHEN dm.sender_id = ? THEN dm.recipient_id ELSE dm.sender_id END as other_id,
+         MAX(dm.id) as max_id
+       FROM direct_messages dm
+       LEFT JOIN dm_conversation_state hs
+         ON hs.user_id = ?
+        AND hs.other_user_id = CASE WHEN dm.sender_id = ? THEN dm.recipient_id ELSE dm.sender_id END
+       WHERE (dm.sender_id = ? OR dm.recipient_id = ?)
+         AND dm.id > COALESCE(hs.hidden_through_id, 0)
        GROUP BY other_id
      ) conv
      JOIN direct_messages latest ON latest.id = conv.max_id
      JOIN users other_user ON other_user.id = conv.other_id
+     LEFT JOIN dm_conversation_state st ON st.user_id = ? AND st.other_user_id = conv.other_id
      LEFT JOIN (
        SELECT sender_id, COUNT(*) as unread_count
        FROM direct_messages
        WHERE recipient_id = ? AND is_read = 0
        GROUP BY sender_id
      ) unread ON unread.sender_id = conv.other_id
-     ORDER BY latest.created_at DESC`,
-    [userId, userId, userId, userId]
+     WHERE ${archived
+       ? 'st.archived_through_id IS NOT NULL AND conv.max_id <= st.archived_through_id'
+       : '(st.archived_through_id IS NULL OR conv.max_id > st.archived_through_id)'}
+     ORDER BY latest.id DESC`,
+    [userId, userId, userId, userId, userId, userId, userId]
   );
-  await withIsoDates(rows, ['last_message_time']);
+  for (const r of rows) {
+    r.last_message_deleted = !!Number(r.last_message_deleted);
+    if (!archived) delete r.archived_at;
+  }
+  await withIsoDates(rows, ['last_message_time', 'archived_at']);
   return rows;
+};
+
+/** The newest message between two users, or 0. */
+const latestMessageIdBetween = async (a, b) => {
+  const [row] = await query(
+    `SELECT COALESCE(MAX(id), 0) AS id FROM direct_messages
+      WHERE (sender_id = ? AND recipient_id = ?) OR (sender_id = ? AND recipient_id = ?)`,
+    [a, b, b, a]
+  );
+  return Number(row?.id) || 0;
+};
+
+/*
+ * Archive a conversation for this user, as of its newest message, and mark it
+ * read - archiving is putting it away, and an archived conversation should not
+ * keep the unread badge lit. Returns false when there is nothing to archive.
+ */
+const archiveConversation = async (userId, otherUserId) => {
+  const through = await latestMessageIdBetween(userId, otherUserId);
+  if (!through) return false;
+  await query(
+    `INSERT INTO dm_conversation_state (user_id, other_user_id, archived_through_id, archived_at)
+     VALUES (?, ?, ?, NOW())
+     ON DUPLICATE KEY UPDATE archived_through_id = VALUES(archived_through_id), archived_at = VALUES(archived_at)`,
+    [userId, otherUserId, through]
+  );
+  await markDirectMessagesRead(userId, otherUserId);
+  return true;
+};
+
+const unarchiveConversation = async (userId, otherUserId) => {
+  await query(
+    `UPDATE dm_conversation_state SET archived_through_id = NULL, archived_at = NULL
+      WHERE user_id = ? AND other_user_id = ?`,
+    [userId, otherUserId]
+  );
+};
+
+/*
+ * Delete a conversation from this user's side - their whole involvement in it.
+ *
+ * - Their own messages are emptied (text gone, marked deleted), and the images
+ *   they sent in it are removed. The other person keeps their own messages,
+ *   with a "Message was deleted" placeholder where each of these was.
+ * - Everything up to now disappears from this user's side (hidden_through_id),
+ *   including the other person's messages; it stays for the other person.
+ * - Once BOTH have deleted, nothing is left anybody can see, so those rows are
+ *   removed for good.
+ *
+ * Returns the image files that were removed, for the caller to unlink.
+ */
+const deleteConversationForUser = async (userId, otherUserId) => {
+  const through = await latestMessageIdBetween(userId, otherUserId);
+  if (!through) return { deleted: false, files: [] };
+  const u1 = Math.min(userId, otherUserId);
+  const u2 = Math.max(userId, otherUserId);
+
+  // Their own messages: emptied, and read, so nobody is left an unread badge
+  // for a message that no longer says anything.
+  await query(
+    `UPDATE direct_messages SET content = '', deleted_at = COALESCE(deleted_at, NOW()), is_read = 1
+      WHERE sender_id = ? AND recipient_id = ? AND id <= ?`,
+    [userId, otherUserId, through]
+  );
+  // The other person's messages to them are gone from their side - read.
+  await query(
+    `UPDATE direct_messages SET is_read = 1
+      WHERE sender_id = ? AND recipient_id = ? AND id <= ? AND is_read = 0`,
+    [otherUserId, userId, through]
+  );
+  // The images this user sent in the conversation, attached or loose.
+  const images = await query(
+    `SELECT id, filename FROM direct_message_images
+      WHERE user1_id = ? AND user2_id = ? AND sender_id = ?`,
+    [u1, u2, userId]
+  );
+  if (images.length) {
+    await query('DELETE FROM direct_message_images WHERE id IN (?)', [images.map((i) => i.id)]);
+  }
+  await query(
+    `INSERT INTO dm_conversation_state (user_id, other_user_id, hidden_through_id, hidden_at, archived_through_id, archived_at)
+     VALUES (?, ?, ?, NOW(), NULL, NULL)
+     ON DUPLICATE KEY UPDATE hidden_through_id = VALUES(hidden_through_id), hidden_at = VALUES(hidden_at),
+                             archived_through_id = NULL, archived_at = NULL`,
+    [userId, otherUserId, through]
+  );
+
+  // Both sides have deleted up to some point: those rows are nobody's now.
+  const files = images.map((i) => i.filename);
+  const [other] = await query(
+    'SELECT hidden_through_id, hidden_at FROM dm_conversation_state WHERE user_id = ? AND other_user_id = ?',
+    [otherUserId, userId]
+  );
+  if (other?.hidden_through_id) {
+    const both = Math.min(Number(other.hidden_through_id), through);
+    const shared = await query(
+      `SELECT id, filename FROM direct_message_images
+        WHERE user1_id = ? AND user2_id = ? AND created_at <= ?`,
+      [u1, u2, other.hidden_at]
+    );
+    if (shared.length) {
+      await query('DELETE FROM direct_message_images WHERE id IN (?)', [shared.map((i) => i.id)]);
+      files.push(...shared.map((i) => i.filename));
+    }
+    await query(
+      `DELETE FROM direct_messages
+        WHERE ((sender_id = ? AND recipient_id = ?) OR (sender_id = ? AND recipient_id = ?)) AND id <= ?`,
+      [userId, otherUserId, otherUserId, userId, both]
+    );
+  }
+  return { deleted: true, files };
+};
+
+/*
+ * Where this user's side of a conversation starts: the last message they
+ * deleted (0 when they never have), and when - images carry no message id of
+ * their own when loose, so they are cut off by time.
+ */
+const hiddenThrough = async (userId, otherUserId) => {
+  const [row] = await query(
+    'SELECT hidden_through_id, hidden_at FROM dm_conversation_state WHERE user_id = ? AND other_user_id = ?',
+    [userId, otherUserId]
+  );
+  return { id: Number(row?.hidden_through_id) || 0, at: row?.hidden_at || null };
 };
 
 /*
@@ -1561,6 +1708,8 @@ const withAttachedImages = async (messages) => {
 };
 
 const getDirectMessages = async (userId, otherUserId, page = 1, limit = 50, beforeId = null) => {
+  // Nothing from before this user deleted the conversation (see deleteConversationForUser).
+  const { id: hiddenId } = await hiddenThrough(userId, otherUserId);
   if (beforeId) {
     // Keyset pagination: load messages older than beforeId.
     // Used by the frontend "load earlier messages" button to avoid OFFSET.
@@ -1570,10 +1719,10 @@ const getDirectMessages = async (userId, otherUserId, page = 1, limit = 50, befo
          JOIN users u ON dm.sender_id = u.id
         WHERE ((dm.sender_id = ? AND dm.recipient_id = ?)
             OR (dm.sender_id = ? AND dm.recipient_id = ?))
-          AND dm.id < ?
+          AND dm.id < ? AND dm.id > ?
         ORDER BY dm.id DESC
         LIMIT ?`,
-      [userId, otherUserId, otherUserId, userId, beforeId, limit]
+      [userId, otherUserId, otherUserId, userId, beforeId, hiddenId, limit]
     );
     await withIsoDates(messages, ['created_at']);
     await withAttachedImages(messages);
@@ -1585,11 +1734,12 @@ const getDirectMessages = async (userId, otherUserId, page = 1, limit = 50, befo
     `SELECT dm.*, u.username as sender_username, u.profile_picture as sender_profile_picture
        FROM direct_messages dm
        JOIN users u ON dm.sender_id = u.id
-      WHERE (dm.sender_id = ? AND dm.recipient_id = ?)
-         OR (dm.sender_id = ? AND dm.recipient_id = ?)
-      ORDER BY dm.created_at DESC
+      WHERE ((dm.sender_id = ? AND dm.recipient_id = ?)
+          OR (dm.sender_id = ? AND dm.recipient_id = ?))
+        AND dm.id > ?
+      ORDER BY dm.created_at DESC, dm.id DESC
       LIMIT ? OFFSET ?`,
-    [userId, otherUserId, otherUserId, userId, limit, offset]
+    [userId, otherUserId, otherUserId, userId, hiddenId, limit, offset]
   );
   await withIsoDates(messages, ['created_at']);
   await withAttachedImages(messages);
@@ -1692,6 +1842,10 @@ module.exports = {
   withIsoDates,
   attachImagesToMessage,
   getConversations,
+  archiveConversation,
+  unarchiveConversation,
+  deleteConversationForUser,
+  hiddenThrough,
   getDirectMessages,
   markDirectMessagesRead,
   getUnreadDMCount,

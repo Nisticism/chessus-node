@@ -17,7 +17,7 @@ import { parseServerDate } from "../../helpers/date-formatter";
 import EmojiPickerButton from "../common/EmojiPickerButton";
 import LinkInsertButton from "../common/LinkInsertButton";
 import { renderContent } from "../../helpers/render-content";
-import { MdImage } from "react-icons/md";
+import { MdImage, MdArchive, MdUnarchive, MdDeleteOutline } from "react-icons/md";
 
 const API_URL = (process.env.REACT_APP_API_URL || "http://localhost:3001") + "/api/";
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "";
@@ -66,6 +66,17 @@ const Inbox = () => {
   const [showDropdown, setShowDropdown] = useState(false);
   const [selectedUserInfo, setSelectedUserInfo] = useState(null);
 
+  /*
+   * The archive: conversations put away, on the same route (?view=archive).
+   * Kept here rather than in the store - only this page shows it. A message in
+   * an archived conversation brings it back to the inbox (the server decides).
+   */
+  const inArchive = searchParams.get("view") === "archive";
+  const [archived, setArchived] = useState([]);
+  const [archiveLoading, setArchiveLoading] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null); // user id awaiting "delete?"
+  const [actionBusy, setActionBusy] = useState(false);
+
   // Image attachment state
   const [dmImages, setDmImages] = useState([]); // images for the active conversation
   const [imageError, setImageError] = useState(null);
@@ -102,6 +113,34 @@ const Inbox = () => {
       .catch(() => setLoading(false));
     dispatch(getUnreadDMCount(currentUser.id));
   }, [currentUser, dispatch]);
+
+  const loadArchive = useCallback(async () => {
+    if (!currentUser) return;
+    setArchiveLoading(true);
+    try {
+      const res = await axios.get(`${API_URL}users/${currentUser.id}/conversations?archived=1`, {
+        headers: authHeader(),
+      });
+      setArchived(res.data.conversations || []);
+    } catch {
+      setArchived([]);
+    }
+    setArchiveLoading(false);
+  }, [currentUser]);
+
+  // Loaded in both views: the open conversation's header needs to know whether
+  // it is archived, whichever list it was opened from.
+  useEffect(() => {
+    loadArchive();
+  }, [inArchive, loadArchive]);
+
+  /** Both lists and the badge, after anything that moves a conversation between them. */
+  const refreshLists = useCallback(() => {
+    if (!currentUser) return;
+    dispatch(getConversations(currentUser.id)).catch(() => {});
+    dispatch(getUnreadDMCount(currentUser.id));
+    loadArchive();
+  }, [currentUser, dispatch, loadArchive]);
 
   // Load messages + images when a conversation is selected
   useEffect(() => {
@@ -167,6 +206,15 @@ const Inbox = () => {
       if (message.sender_id === selectedUserId) {
         dispatch(markMessagesRead(currentUser.id, message.sender_id));
       }
+      // A new message brings an archived conversation back to the inbox.
+      if (inArchive) loadArchive();
+    };
+
+    // The other person deleted their side: their messages are placeholders now.
+    const handleDeleted = ({ byUserId }) => {
+      if (byUserId === selectedUserId) dispatch(getMessages(currentUser.id, byUserId));
+      dispatch(getConversations(currentUser.id)).catch(() => {});
+      if (inArchive) loadArchive();
     };
 
     const handleNewImage = (imageData) => {
@@ -188,21 +236,71 @@ const Inbox = () => {
     socket.on("newDirectMessage", handleNewDM);
     socket.on("newDirectMessageImage", handleNewImage);
     socket.on("directMessageImageDeleted", handleImageDeleted);
+    socket.on("directMessagesDeleted", handleDeleted);
     return () => {
+      socket.off("directMessagesDeleted", handleDeleted);
       socket.off("newDirectMessage", handleNewDM);
       socket.off("newDirectMessageImage", handleNewImage);
       socket.off("directMessageImageDeleted", handleImageDeleted);
     };
-  }, [socket, currentUser, selectedUserId, dispatch]);
+  }, [socket, currentUser, selectedUserId, dispatch, inArchive, loadArchive]);
 
+  // The view (inbox or archive) is kept when a conversation is opened.
   const handleSelectConversation = useCallback(
     (userId) => {
-      setSearchParams({ user: userId });
+      setSearchParams(inArchive ? { view: "archive", user: userId } : { user: userId });
       setError(null);
       setImageError(null);
+      setConfirmDeleteId(null);
     },
-    [setSearchParams]
+    [setSearchParams, inArchive]
   );
+
+  const showView = useCallback((archive) => {
+    const next = archive ? { view: "archive" } : {};
+    if (selectedUserId) next.user = selectedUserId;
+    setSearchParams(next);
+    setConfirmDeleteId(null);
+  }, [setSearchParams, selectedUserId]);
+
+  const setConversationArchived = useCallback(async (otherUserId, archive) => {
+    if (!currentUser || actionBusy) return;
+    setActionBusy(true);
+    setError(null);
+    try {
+      await axios.put(
+        `${API_URL}users/${currentUser.id}/conversations/${otherUserId}/archive`,
+        { archived: archive },
+        { headers: authHeader() }
+      );
+      refreshLists();
+    } catch (err) {
+      setError(err?.response?.data?.error || "Could not update that conversation");
+    }
+    setActionBusy(false);
+  }, [currentUser, actionBusy, refreshLists]);
+
+  /*
+   * Delete a conversation from your side. Your messages are removed (the other
+   * person sees "Message was deleted" where each one was) and the conversation
+   * disappears for you; the other person keeps their own messages.
+   */
+  const deleteConversation = useCallback(async (otherUserId) => {
+    if (!currentUser || actionBusy) return;
+    setActionBusy(true);
+    setError(null);
+    try {
+      await axios.delete(`${API_URL}users/${currentUser.id}/conversations/${otherUserId}`, {
+        headers: authHeader(),
+      });
+      setConfirmDeleteId(null);
+      if (selectedUserId === otherUserId) setSearchParams(inArchive ? { view: "archive" } : {});
+      refreshLists();
+    } catch (err) {
+      setError(err?.response?.data?.error || "Could not delete that conversation");
+    }
+    setActionBusy(false);
+  }, [currentUser, actionBusy, selectedUserId, setSearchParams, inArchive, refreshLists]);
 
   /*
    * Send the message and whatever is attached to it, as one thing.
@@ -237,6 +335,8 @@ const Inbox = () => {
       }
 
       await dispatch(sendMessage(currentUser.id, selectedUserId, text, uploadedIds));
+      // A message brings an archived conversation back to the inbox.
+      if (archived.some((c) => c.user_id === selectedUserId)) refreshLists();
       setNewMessage("");
       pending.forEach((x) => URL.revokeObjectURL(x.url));
       setPending([]);
@@ -437,7 +537,10 @@ const Inbox = () => {
     );
   }
 
-  const selectedConversation = conversations.find((c) => c.user_id === selectedUserId);
+  const shownConversations = inArchive ? archived : conversations;
+  const selectedConversation = conversations.find((c) => c.user_id === selectedUserId)
+    || archived.find((c) => c.user_id === selectedUserId);
+  const selectedIsArchived = archived.some((c) => c.user_id === selectedUserId);
   const displayUsername = selectedConversation?.username || selectedUserInfo?.username;
 
   // Merge messages and images into a single sorted thread
@@ -455,13 +558,24 @@ const Inbox = () => {
   return (
     <div className={styles["inbox-container"]}>
       <div className={styles["inbox-header"]}>
-        <h1 className={styles["inbox-title"]}>Inbox</h1>
-        <button
-          className={styles["new-conversation-btn"]}
-          onClick={() => setShowNewConversation(!showNewConversation)}
-        >
-          {showNewConversation ? "Cancel" : "+ New Message"}
-        </button>
+        <h1 className={styles["inbox-title"]}>{inArchive ? "Archived messages" : "Inbox"}</h1>
+        <div className={styles["inbox-header-actions"]}>
+          <button
+            className={styles["new-conversation-btn"]}
+            onClick={() => showView(!inArchive)}
+            title={inArchive ? "Back to your inbox" : "Conversations you have archived"}
+          >
+            {inArchive ? "← Inbox" : <><MdArchive aria-hidden="true" /> Archive</>}
+          </button>
+          {!inArchive && (
+            <button
+              className={styles["new-conversation-btn"]}
+              onClick={() => setShowNewConversation(!showNewConversation)}
+            >
+              {showNewConversation ? "Cancel" : "+ New Message"}
+            </button>
+          )}
+        </div>
       </div>
 
       {showNewConversation && (
@@ -517,14 +631,36 @@ const Inbox = () => {
       <div className={styles["inbox-layout"]}>
         {/* Conversations List */}
         <div className={styles["conversations-panel"]}>
-          {loading ? (
+          {(inArchive ? archiveLoading && !archived.length : loading) ? (
             <div className={styles["inbox-loading"]}>Loading conversations...</div>
-          ) : conversations.length === 0 ? (
+          ) : shownConversations.length === 0 ? (
             <div className={styles["inbox-empty-conversations"]}>
-              No conversations yet. Send a message to get started!
+              {inArchive
+                ? "No archived conversations. Archive one from your inbox to tidy it away - a new message brings it back."
+                : "No conversations yet. Send a message to get started!"}
             </div>
           ) : (
-            conversations.map((conv) => (
+            shownConversations.map((conv) => confirmDeleteId === conv.user_id ? (
+              <div key={conv.user_id} className={styles["confirm-delete"]} role="alertdialog" aria-label="Delete conversation">
+                <p>
+                  Delete your conversation with <strong>{conv.username}</strong>? It disappears for you,
+                  and your messages are removed - {conv.username} will see "Message was deleted" where
+                  each of yours was. This cannot be undone.
+                </p>
+                <div className={styles["confirm-delete-actions"]}>
+                  <button
+                    className={styles["danger-btn"]}
+                    onClick={() => deleteConversation(conv.user_id)}
+                    disabled={actionBusy}
+                  >
+                    {actionBusy ? "Deleting..." : "Delete"}
+                  </button>
+                  <button className={styles["new-conversation-btn"]} onClick={() => setConfirmDeleteId(null)}>
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
               <div
                 key={conv.user_id}
                 className={`${styles["conversation-item"]} ${
@@ -547,12 +683,52 @@ const Inbox = () => {
                     )}
                   </div>
                   <div className={styles["conversation-preview"]}>
-                    {conv.last_message?.substring(0, 50)}
-                    {conv.last_message?.length > 50 ? "..." : ""}
+                    {conv.last_message_deleted ? (
+                      <em>Message was deleted</em>
+                    ) : (
+                      <>
+                        {conv.last_message?.substring(0, 50)}
+                        {conv.last_message?.length > 50 ? "..." : ""}
+                      </>
+                    )}
                   </div>
                 </div>
                 <div className={styles["conversation-time"]}>
                   {formatTimeAgo(conv.last_message_time)}
+                </div>
+                <div className={styles["conversation-actions"]} onClick={(e) => e.stopPropagation()}>
+                  {inArchive ? (
+                    <>
+                      <button
+                        className={styles["conv-action-btn"]}
+                        onClick={() => setConversationArchived(conv.user_id, false)}
+                        disabled={actionBusy}
+                        title="Move back to your inbox"
+                        aria-label={`Unarchive conversation with ${conv.username}`}
+                      >
+                        <MdUnarchive aria-hidden="true" />
+                      </button>
+                      <button
+                        className={`${styles["conv-action-btn"]} ${styles["danger"]}`}
+                        onClick={() => setConfirmDeleteId(conv.user_id)}
+                        disabled={actionBusy}
+                        title="Delete this conversation"
+                        aria-label={`Delete conversation with ${conv.username}`}
+                      >
+                        <MdDeleteOutline aria-hidden="true" />
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      className={styles["conv-action-btn"]}
+                      onClick={() => setConversationArchived(conv.user_id, true)}
+                      disabled={actionBusy}
+                      title="Archive - tidy it away until a new message arrives"
+                      aria-label={`Archive conversation with ${conv.username}`}
+                    >
+                      <MdArchive aria-hidden="true" />
+                    </button>
+                  )}
                 </div>
               </div>
             ))
@@ -578,6 +754,43 @@ const Inbox = () => {
                   <span className={styles["image-count-badge"]} title="Images in this conversation (expire after 24 h)">
                     {dmImages.length}/{DM_IMAGE_LIMIT} images
                   </span>
+                )}
+                {selectedConversation && (
+                  <div className={styles["messages-header-actions"]}>
+                    {selectedIsArchived ? (
+                      <>
+                        <span className={styles["archived-tag"]}>Archived</span>
+                        <button
+                          className={styles["conv-action-btn"]}
+                          onClick={() => setConversationArchived(selectedUserId, false)}
+                          disabled={actionBusy}
+                          title="Move back to your inbox"
+                          aria-label="Unarchive this conversation"
+                        >
+                          <MdUnarchive aria-hidden="true" />
+                        </button>
+                        <button
+                          className={`${styles["conv-action-btn"]} ${styles["danger"]}`}
+                          onClick={() => { showView(true); setConfirmDeleteId(selectedUserId); }}
+                          disabled={actionBusy}
+                          title="Delete this conversation"
+                          aria-label="Delete this conversation"
+                        >
+                          <MdDeleteOutline aria-hidden="true" />
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        className={styles["conv-action-btn"]}
+                        onClick={() => setConversationArchived(selectedUserId, true)}
+                        disabled={actionBusy}
+                        title="Archive - tidy it away until a new message arrives"
+                        aria-label="Archive this conversation"
+                      >
+                        <MdArchive aria-hidden="true" />
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
 
@@ -611,6 +824,17 @@ const Inbox = () => {
                           {formatTimeAgo(item.created_at)}
                           <span className={styles["image-expires-hint"]} title="Images auto-delete after 24 hours"> · expires in {Math.max(0, Math.round((new Date(item.expires_at) - Date.now()) / 3600000))}h</span>
                         </div>
+                      </div>
+                    );
+                  }
+                  if (item.deleted_at) {
+                    return (
+                      <div
+                        key={item.id || idx}
+                        className={`${styles["message-bubble"]} ${styles["deleted-message"]} ${isSent ? styles["sent"] : styles["received"]}`}
+                      >
+                        <div className={styles["message-content"]}><em>Message was deleted</em></div>
+                        <div className={styles["message-time"]}>{formatTimeAgo(item.created_at)}</div>
                       </div>
                     );
                   }
