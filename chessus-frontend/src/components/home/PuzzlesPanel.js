@@ -15,6 +15,7 @@ import useSetupMoveReplay from "../common/useSetupMoveReplay";
 import { solverTrayItems } from "../../helpers/placement";
 import PuzzleBoard, { NOTATION_INSET, puzzleFlipped, squareFromPoint } from "../puzzles/PuzzleBoard";
 import { cellSize, coveringKey, clearFootprint, spanStyle, moveTarget, dotAt, movesOf, previewOutlines } from "../puzzles/puzzleFootprint";
+import usePuzzleEngine from "../puzzles/usePuzzleEngine";
 import styles from "./puzzlespanel.module.scss";
 
 /*
@@ -582,12 +583,34 @@ const PuzzlesPanel = () => {
   }, [pendingPromotion, submitMove]);
 
   /** This piece's moves, from the cache when we already asked. */
+  /*
+   * The pieces' moves, worked out in the browser - the way the puzzle page and
+   * the game page do it. Asking the server once per hovered piece was what
+   * made hovering here lag. The server is still asked (below) only until the
+   * pieces' definitions have loaded, and it still judges every move.
+   */
+  const engine = usePuzzleEngine({
+    placements: board || {},
+    gameTypeId: puzzle?.game_type_id || null,
+    enPassantTarget: puzzle?.en_passant_target || null,
+    boardWidth,
+    boardHeight,
+  });
+
   const loadHints = useCallback(async (sqX, sqY) => {
     if (!puzzle) return [];
     // Any square of a multi-tile piece asks for that piece (by its anchor).
     const key = coveringKey(board, sqX, sqY) || `${sqY},${sqX}`;
     const [y, x] = key.split(',').map(Number);
     if (hintCache.current.has(key)) return hintCache.current.get(key);
+    if (engine.ready) {
+      const piece = engine.enginePieces.find((p) => p.x === x && p.y === y);
+      if (piece) {
+        const moves = engine.hoverMovesFor(piece);
+        hintCache.current.set(key, moves);
+        return moves;
+      }
+    }
     try {
       // The CURRENT position, not the puzzle's opening one: past the first move
       // the piece to move sits somewhere the starting board never had it, so the
@@ -608,7 +631,7 @@ const PuzzlesPanel = () => {
     } catch (_) {
       return [];
     }
-  }, [puzzle, board, found]);
+  }, [puzzle, board, found, engine]);
 
   const hoverSquare = useCallback(async (x, y) => {
     // A held piece or a drag in progress owns the dots; hover must not fight it.
@@ -825,7 +848,7 @@ const PuzzlesPanel = () => {
     const wrong = verdict?.status === 'wrong' && lastTry?.x === x && lastTry?.y === y;
     const target = !!dotAt(hints, x, y);
     return [
-      picked === key ? styles["picked"] : '',
+      key && picked === key ? styles["picked"] : '',
       wrong ? styles["wrong"] : '',
       // Your own pieces and the squares they can reach get the pointer. The
       // opponent's pieces are still hoverable for a preview, but they are not

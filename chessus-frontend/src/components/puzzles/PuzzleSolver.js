@@ -4,10 +4,8 @@ import { useSelector } from "react-redux";
 import axios from "../../services/axios-interceptor";
 import API_URL from "../../global/global";
 import authHeader from "../../services/auth-header";
-import { getPieceById } from "../../actions/pieces";
 import { hasStaffRole } from "../../helpers/supporterTiers";
 import {
-  createMoveEngine,
   getMoveDotType,
   MOVE_DOT_BACKGROUNDS,
 } from "../../helpers/moveEngine";
@@ -22,6 +20,7 @@ import { solverTrayItems, withPlacers, placesPieces } from "../../helpers/placem
 import { usePuzzleVetoes, VetoPanel, VetoAnswer, ContinueNotice, MoveProgress, MoveHint } from "./PuzzleVetoes";
 import { applyPromotionDefinition, promotionPieceNumber, solvedPliesRemaining, colToFile, doesPieceOccupySquare } from "../../helpers/pieceMovementUtils";
 import { cellSize, coveringKey, clearFootprint, spanStyle, moveTarget, dotAt, movesOf, previewOutlines, moveCovers } from "./puzzleFootprint";
+import usePuzzleEngine from "./usePuzzleEngine";
 import styles from "./puzzlesolver.module.scss";
 
 /*
@@ -55,29 +54,6 @@ const imageFor = (placement, pieceDataMap) => {
   return null;
 };
 
-/*
- * The `pieces` table's column names are not the names the move engine reads. A
- * live game renames eight of them when it builds its piece objects; spreading a
- * raw row without doing the same leaves the engine seeing no movement, silently
- * - which is why a knight would show no hover dots at all.
- */
-const ENGINE_FIELD_RENAMES = {
-  ratio_one_movement: 'ratio_movement_1',
-  ratio_two_movement: 'ratio_movement_2',
-  ratio_one_capture: 'ratio_capture_1',
-  ratio_two_capture: 'ratio_capture_2',
-  step_by_step_movement_value: 'step_movement_value',
-  step_by_step_movement_style: 'step_movement_style',
-  step_by_step_capture: 'step_capture_value',
-};
-
-const toEngineFields = (row) => {
-  const out = { ...row };
-  for (const [from, to] of Object.entries(ENGINE_FIELD_RENAMES)) {
-    if (row?.[from] !== undefined) out[to] = row[from];
-  }
-  return out;
-};
 
 /** Move a piece on the board map. Anything unplayable is left alone. */
 /** A server-sent position, keyed the way the board wants it. */
@@ -285,7 +261,6 @@ const PuzzleSolver = () => {
   const [puzzle, setPuzzle] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [pieceDataMap, setPieceDataMap] = useState({});
 
   const [placements, setPlacements] = useState({});
   const [startPlacements, setStartPlacements] = useState({});
@@ -452,84 +427,11 @@ const PuzzleSolver = () => {
     }
   }, [board, puzzle]);
 
-  useEffect(() => {
-    const ids = [...new Set(Object.values(placements).map((p) => p.piece_id).filter(Boolean))];
-    const missing = ids.filter((id) => !pieceDataMap[id]);
-    if (!missing.length) return;
-    let cancelled = false;
-    (async () => {
-      const loaded = {};
-      await Promise.all(missing.map(async (id) => {
-        try { loaded[id] = await getPieceById(id); } catch (_) { /* image falls back */ }
-      }));
-      if (!cancelled && Object.keys(loaded).length) setPieceDataMap((prev) => ({ ...prev, ...loaded }));
-    })();
-    return () => { cancelled = true; };
-  }, [placements, pieceDataMap]);
-
-  /*
-   * The board stores compact placements; the move engine needs full pieces. This
-   * is the same merge the server does before it validates - piece definition,
-   * plus board position, plus the per-game-type flags that make a piece royal.
-   */
-  const enginePieces = useMemo(() => {
-    return Object.entries(placements).map(([k, pl]) => {
-      const [y, x] = k.split(',').map(Number);
-      const def = toEngineFields(pieceDataMap[pl.piece_id] || {});
-      const player = Number(pl.player_id ?? pl.team ?? 1);
-      return {
-        ...def,
-        id: pl.id || `${pl.piece_id}_${y}_${x}`,
-        piece_id: pl.piece_id,
-        x, y,
-        player_id: player,
-        team: player,
-        ends_game_on_checkmate: pl.ends_game_on_checkmate ?? def.ends_game_on_checkmate ?? false,
-        ends_game_on_capture: pl.ends_game_on_capture ?? def.ends_game_on_capture ?? false,
-        /*
-         * Castling and first-move state, all of it decided by the server and
-         * carried on the placement. The shared client engine reads exactly these
-         * names: without hasMoved it would offer a double step to a pawn halfway
-         * up the board, and without the resolved partner ids it would never draw
-         * a castling dot at all, because partner KEYS are not partner ids.
-         */
-        hasMoved: !!pl.hasMoved,
-        moveCount: Number(pl.moveCount) || 0,
-        can_castle: pl.can_castle ?? def.can_castle ?? false,
-        castling_distance: pl.castling_distance ?? def.castling_distance ?? null,
-        castling_partner_left_id: pl.castling_partner_left_id ?? null,
-        castling_partner_right_id: pl.castling_partner_right_id ?? null,
-      };
-    });
-  }, [placements, pieceDataMap]);
-
-  const specialSquares = useMemo(() => {
-    const squares = { range: {}, promotion: {}, control: {}, special: {} };
-    if (!board) return squares;
-    const fields = {
-      range: 'range_squares_string',
-      promotion: 'promotion_squares_string',
-      control: 'control_squares_string',
-      special: 'special_squares_string',
-    };
-    for (const [key, field] of Object.entries(fields)) {
-      try { if (board[field]) squares[key] = JSON.parse(board[field]); } catch (_) { /* ignore */ }
-    }
-    return squares;
-  }, [board]);
-
-  // currentPlayerPosition null, same as the replay board: hovering shows a
-  // piece's raw reachability rather than filtering by whose turn it is.
-  //
-  // The en passant target comes from the server, derived from the move that set
-  // this position up. Without it a pawn that CAN take en passant shows no dot on
-  // the square where the capture happens, and the answer looks illegal.
-  const moveEngine = useMemo(() => createMoveEngine({
-    specialSquares,
-    gameType: board,
-    enPassantTarget: puzzle?.en_passant_target || null,
-    currentPlayerPosition: null,
-  }), [specialSquares, board, puzzle?.en_passant_target]);
+  // Piece definitions, the engine's pieces and the move engine - shared with
+  // the home page puzzle and the Discord activity (see usePuzzleEngine).
+  const { pieceDataMap, enginePieces, moveEngine } = usePuzzleEngine({
+    placements, gameType: board, enPassantTarget: puzzle?.en_passant_target || null,
+  });
 
   /*
    * Fog of war, played for real.

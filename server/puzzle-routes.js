@@ -27,6 +27,32 @@ const {
 const footprintOf = (p) => ((Number(p?.piece_width) || 1) > 1 || (Number(p?.piece_height) || 1) > 1
   ? { piece_width: Number(p.piece_width) || 1, piece_height: Number(p.piece_height) || 1 } : {});
 
+/*
+ * What the engine decided about each piece of a puzzle position, merged onto
+ * it by square: whether it has moved (a pawn's double step, a king's
+ * castling), its castling partners, and a multi-tile piece's size. A board
+ * that works out moves in the browser needs all of it - without hasMoved it
+ * offers a double step to a pawn halfway up the board.
+ */
+const withEngineState = (position, state) => {
+  const bySquare = new Map(state.pieces.map(p => [`${p.y},${p.x}`, p]));
+  return position.map((pl) => {
+    const engine = bySquare.get(`${Number(pl.y)},${Number(pl.x)}`);
+    if (!engine) return pl;
+    return {
+      ...pl,
+      id: engine.id,
+      hasMoved: !!engine.hasMoved,
+      moveCount: Number(engine.moveCount) || 0,
+      can_castle: !!engine.can_castle,
+      castling_distance: engine.castling_distance ?? null,
+      castling_partner_left_id: engine.castling_partner_left_id ?? null,
+      castling_partner_right_id: engine.castling_partner_right_id ?? null,
+      ...footprintOf(engine),
+    };
+  });
+};
+
 /** The other player. Two players, so this is the whole of it. */
 const otherSide = (n) => (Number(n) === 1 ? 2 : 1);
 const {
@@ -657,6 +683,23 @@ function registerPuzzleRoutes(app, {
         image_location: p.image_location || null,
         ...footprintOf(p),
       }));
+      /*
+       * The same per-piece engine state the puzzle page gets (withEngineState),
+       * so the card's own move engine does not offer a moved pawn its double
+       * step. A failure here only loses that, not the card.
+       */
+      try {
+        const state = buildGameState({
+          position: hydrated,
+          placeable_definitions: placeableDefinitions(rules),
+          side_to_move: Number(row.side_to_move) || 1,
+          setup_move: safeParse(row.setup_move),
+          game_type_id: row.game_type_id,
+        }, rules.game);
+        position = withEngineState(position, state);
+      } catch (stateErr) {
+        console.warn(`[puzzle] daily card engine state for puzzle ${row.puzzle_id}: ${stateErr.message}`);
+      }
     } catch (err) {
       /*
        * A game that has been deleted, or rules that will not load. The card is
@@ -1597,24 +1640,7 @@ function registerPuzzleRoutes(app, {
         }, gameType);
         out.en_passant_target = state.enPassantTarget || null;
 
-        const bySquare = new Map(state.pieces.map(p => [`${p.y},${p.x}`, p]));
-        out.position = out.position.map((pl) => {
-          const engine = bySquare.get(`${Number(pl.y)},${Number(pl.x)}`);
-          if (!engine) return pl;
-          return {
-            ...pl,
-            id: engine.id,
-            hasMoved: !!engine.hasMoved,
-            moveCount: Number(engine.moveCount) || 0,
-            can_castle: !!engine.can_castle,
-            castling_distance: engine.castling_distance ?? null,
-            castling_partner_left_id: engine.castling_partner_left_id ?? null,
-            castling_partner_right_id: engine.castling_partner_right_id ?? null,
-            // A multi-tile piece's size, so the board can draw its whole
-            // footprint and take whatever a move lands on under it.
-            ...footprintOf(engine),
-          };
-        });
+        out.position = withEngineState(out.position, state);
       }
       res.json({ puzzle: out });
     } catch (err) {
