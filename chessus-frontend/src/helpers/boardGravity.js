@@ -31,17 +31,30 @@ export const gravityOf = (gameType) => {
  * Same walk as the server's: run to the far edge of the column, then back until
  * a square is free.
  */
-export const restingSquare = (gravity, clicked, boardWidth, boardHeight, isOccupied) => {
+// `size` ({ w, h }): a multi-tile piece's whole footprint falls as one and
+// its anchor (top-left) is returned - same rule as the server.
+export const restingSquare = (gravity, clicked, boardWidth, boardHeight, isOccupied, size = null) => {
   if (!gravity) return clicked;
   const { dx, dy } = gravity;
-  const onBoard = (x, y) => x >= 0 && y >= 0 && x < boardWidth && y < boardHeight;
+  const w = Math.max(1, (size && size.w) || 1);
+  const h = Math.max(1, (size && size.h) || 1);
+  const onBoard = (x, y) => x >= 0 && y >= 0 && x + w <= boardWidth && y + h <= boardHeight;
+  const footprintOccupied = (x, y) => {
+    for (let fy = 0; fy < h; fy++) {
+      for (let fx = 0; fx < w; fx++) if (isOccupied(x + fx, y + fy)) return true;
+    }
+    return false;
+  };
 
   let x = Number(clicked.x);
   let y = Number(clicked.y);
+  if (!(x >= 0 && y >= 0 && x < boardWidth && y < boardHeight)) return null;
+  x = Math.min(x, boardWidth - w);
+  y = Math.min(y, boardHeight - h);
   if (!onBoard(x, y)) return null;
 
   while (onBoard(x + dx, y + dy)) { x += dx; y += dy; }
-  while (onBoard(x, y) && isOccupied(x, y)) { x -= dx; y -= dy; }
+  while (onBoard(x, y) && footprintOccupied(x, y)) { x -= dx; y -= dy; }
 
   return onBoard(x, y) ? { x, y } : null;
 };

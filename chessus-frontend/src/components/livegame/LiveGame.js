@@ -34,20 +34,21 @@ import useTouchPieceGestures from "../common/useTouchPieceGestures";
 import BoardZoomControls from "../common/BoardZoomControls";
 import boardVp from "../common/boardViewport.module.scss";
 import {
-  canRangedAttackTo,
   isRangedPathClear,
   colToFile,
   rowToRank,
   formatMoveNotation,
   findPieceAtSquare,
   doesPieceOccupySquare,
-  replayToMove
+  replayToMove,
+  rangedFromFootprint
 } from "../../helpers/pieceMovementUtils";
 import { createMoveEngine, getMoveDotType, MOVE_DOT_BACKGROUNDS } from "../../helpers/moveEngine";
 import { totalMaterialValue } from "../../utils/pieceValueEstimator";
 import { getFallbackPieceImage } from "../../utils/pieceFallback";
 import { gravityOf, restingSquare } from "../../helpers/boardGravity";
-import { moveCoveringSquare, grabbedCell, squareUnderPointer, pieceClickedAt } from "../../helpers/multiTileTargets";
+import { landingCoversPiece, moveCoveringSquare, movesCoveringSquare, moveForDrop, grabbedCell, squareUnderPointer, pointerSquare, pieceClickedAt, landingBox, sameBox } from "../../helpers/multiTileTargets";
+import MultiTileOutlines from "./MultiTileOutlines";
 import { toggleUpvote, getUpvoteStatus } from "../../actions/games";
 import useFairyStockfish from "../../hooks/useFairyStockfish";
 import {
@@ -89,6 +90,12 @@ const parseVetoSig = (sig) => {
     castling: parts.some(p => p.startsWith('c')),
   };
 };
+// Ranged fire from a piece's whole footprint (a multi-tile piece fires from
+// whichever of its squares reaches), deciding step-by-step ranged pieces with
+// stepReach(shooter, x, y, others). Returns { reach, clear }.
+const rangedReach = (piece, tx, ty, pieces, team, stepReach) =>
+  rangedFromFootprint(piece, tx, ty, pieces, team, piece.step_by_step_attack_range ? stepReach : null);
+
 // Algebraic square label (a1-style) for a board of the given height.
 const vetoSquareLabel = (p, boardHeight) => p ? `${colToFile(p.x)}${boardHeight - p.y}` : '?';
 
@@ -465,6 +472,8 @@ const LiveGame = () => {
   const [dragValidMoves, setDragValidMoves] = useState([]);
   // Square currently under the cursor during a drag (for hover feedback).
   const [dragOverSquare, setDragOverSquare] = useState(null);
+  // Where a dragged or selected multi-tile piece would land: { pieceId, x, y, w, h }.
+  const [landingPreview, setLandingPreview] = useState(null);
   const dragOverSquareRef = useRef(null);
   const dragGrabOffsetRef = useRef({ x: 0, y: 0 });
   const [inCheck, setInCheck] = useState(false);
@@ -3384,10 +3393,44 @@ const LiveGame = () => {
     }
     return m;
   }, [vetoSelection, gameState?.gameType?.board_height]);
-  const vetoCandidateSquares = useMemo(
-    () => new Set((vetoPieceMoves || []).map(m => `${m.x},${m.y}`)),
-    [vetoPieceMoves]
-  );
+  const vetoCandidateSquares = useMemo(() => {
+    // A multi-tile configuration is chosen by any square it covers (see
+    // handleSquareClick), so mark them all - except the piece's own squares.
+    const w = vetoSelectedPiece?.piece_width || 1;
+    const h = vetoSelectedPiece?.piece_height || 1;
+    const set = new Set();
+    for (const m of vetoPieceMoves || []) {
+      const mw = m.isRangedAttack ? 1 : w;
+      const mh = m.isRangedAttack ? 1 : h;
+      for (let dy = 0; dy < mh; dy++) {
+        for (let dx = 0; dx < mw; dx++) {
+          if (vetoSelectedPiece && (w > 1 || h > 1) && doesPieceOccupySquare(vetoSelectedPiece, m.x + dx, m.y + dy)) continue;
+          set.add(`${m.x + dx},${m.y + dy}`);
+        }
+      }
+    }
+    return set;
+  }, [vetoPieceMoves, vetoSelectedPiece]);
+
+  // Outlines for vetoed multi-tile moves (selected by me, or banned for me):
+  // a veto bans one landing of the piece, which its anchor's X cannot show.
+  const vetoOutlineBoxes = useMemo(() => {
+    const boxes = [];
+    const pieces = parsePieces(gameState?.pieces || []);
+    const add = (from, to) => {
+      const piece = from && pieces.find(p => p.x === from.x && p.y === from.y);
+      const box = landingBox(piece, to);
+      if (box && !boxes.some(b => sameBox(b, box))) boxes.push({ ...box, kind: 'veto' });
+    };
+    for (const d of vetoSelection || []) if (d && !d.isRangedAttack && d.type !== 'place') add(d.from, d.to);
+    if (vetoBannedMover == null || (currentPlayer?.position ?? null) === vetoBannedMover) {
+      for (const sig of vetoBanned || []) {
+        const d = parseVetoSig(sig);
+        if (d && !d.isPlace && !d.ranged) add(d.from, d.to);
+      }
+    }
+    return boxes;
+  }, [vetoSelection, vetoBanned, vetoBannedMover, currentPlayer?.position, gameState?.pieces]);
 
   // Fog permanent reveal: initialize accumulated set from localStorage when game+player is known
   useEffect(() => {
@@ -3700,12 +3743,19 @@ const LiveGame = () => {
         // Clicking a candidate destination bans the next un-selected move-type to
         // that square (movement/capture first, then ranged) so a move and a ranged
         // attack to the same square can be vetoed separately, and vetoes stack.
-        const targets = vetoSelectedPiece ? vetoPieceMoves.filter(m => m.x === x && m.y === y) : [];
+        // A multi-tile piece: every configuration covering the square, best
+        // first, so repeated clicks veto them one after another. Its own
+        // squares stay a click on the piece.
+        const covering = byAnchor || !vetoSelectedPiece || doesPieceOccupySquare(vetoSelectedPiece, x, y)
+          ? [] : movesCoveringSquare(vetoPieceMoves, vetoSelectedPiece, x, y);
+        const targets = !vetoSelectedPiece ? []
+          : covering.length ? [...covering, ...vetoPieceMoves.filter(m => m.isRangedAttack && m.x === x && m.y === y)]
+            : vetoPieceMoves.filter(m => m.x === x && m.y === y);
         if (targets.length > 0) {
           const descs = targets.map(t => ({
             pieceId: vetoSelectedPiece.id,
             from: { x: vetoSelectedPiece.x, y: vetoSelectedPiece.y },
-            to: { x, y },
+            to: { x: t.x, y: t.y },
             isRangedAttack: !!t.isRangedAttack,
             isCastling: !!t.isCastling,
             castlingWith: t.castlingWith,
@@ -3818,7 +3868,7 @@ const LiveGame = () => {
     // If selected piece can capture allies and there's a valid capture move to this ally, skip re-selection
     const hasAllyCaptureMove = selectedPiece && isOwnPiece && clickedPiece && selectedPiece.can_capture_allies &&
       clickedPiece.id !== selectedPiece.id &&
-      validMoves.some(m => m.isCapture && doesPieceOccupySquare(clickedPiece, m.x, m.y));
+      validMoves.some(m => m.isCapture && landingCoversPiece(selectedPiece, m, clickedPiece));
     // Close-range castling: the castling partner sits on the castle-destination square.
     // Clicking it must execute the castle, not re-select the partner.
     const hasCastlingMoveToPartner = !!(selectedPiece && isOwnPiece && clickedPiece &&
@@ -4203,6 +4253,7 @@ const LiveGame = () => {
         setVetoSelectedPiece(piece);
         setVetoPieceMoves(moves);
         setDragValidMoves(moves);
+        dragGrabOffsetRef.current = grabbedCell(piece, e.currentTarget.getBoundingClientRect(), e.clientX, e.clientY, flipBoardRef.current);
         e.dataTransfer.effectAllowed = 'move';
         e.dataTransfer.setData('text/plain', String(piece.id));
         const pieceEl = e.currentTarget;
@@ -4267,6 +4318,7 @@ const LiveGame = () => {
     setValidMoves([]);
     dragOverSquareRef.current = null;
     setDragOverSquare(null);
+    setLandingPreview(null);
     // Clear any in-progress castle-hold arming from the drag.
     if (castleHoldTimerRef.current) { clearTimeout(castleHoldTimerRef.current); castleHoldTimerRef.current = null; }
     dragCastleHoverRef.current = null;
@@ -4274,10 +4326,17 @@ const LiveGame = () => {
     setCastleArmedSquare(null);
   }, []);
 
-  const handleDragOver = useCallback((e, x, y) => {
+  const handleDragOver = useCallback((e, squareX, squareY) => {
     e.preventDefault();
     e.stopPropagation();
     e.dataTransfer.dropEffect = 'move';
+    // Over a multi-tile piece the event reports its anchor square; the pointer
+    // says which square is really under it.
+    const sq = squareUnderPointer(boardRef.current, e, gameState?.gameType?.board_width || 8, gameState?.gameType?.board_height || 8, flipBoardRef.current)
+      || { x: squareX, y: squareY };
+    const { x, y } = sq;
+    const landing = landingBox(draggedPiece, moveForDrop(dragValidMoves, draggedPiece, dragGrabOffsetRef.current, x, y));
+    setLandingPreview(prev => (sameBox(prev, landing) ? prev : landing && { ...landing, pieceId: draggedPiece.id }));
 
     // Hover feedback: track the square under the cursor (update only on change).
     if (x != null && y != null && (dragOverSquareRef.current?.x !== x || dragOverSquareRef.current?.y !== y)) {
@@ -4317,13 +4376,20 @@ const LiveGame = () => {
       setCastleHoldSquare(null);
       setCastleArmedSquare({ x, y });
     }, 1000);
-  }, [draggedPiece, dragValidMoves]);
+  }, [draggedPiece, dragValidMoves, gameState?.gameType?.board_width, gameState?.gameType?.board_height]);
 
   const handleDrop = useCallback((e, targetX, targetY) => {
     e.preventDefault();
     e.stopPropagation();
     dragOverSquareRef.current = null;
     setDragOverSquare(null);
+    setLandingPreview(null);
+    // The square under the pointer (a drop over a multi-tile piece, this one
+    // included, otherwise reports that piece's anchor square), and for a
+    // multi-tile piece the move it means - see moveForDrop.
+    const dropSq = squareUnderPointer(boardRef.current, e, gameState?.gameType?.board_width || 8, gameState?.gameType?.board_height || 8, flipBoardRef.current)
+      || { x: targetX, y: targetY };
+    const droppedMove = moveForDrop(dragValidMoves, draggedPiece, dragGrabOffsetRef.current, dropSq.x, dropSq.y);
     
     if (!draggedPiece) {
       return;
@@ -4361,7 +4427,10 @@ const LiveGame = () => {
       const dpTeam = draggedPiece.player_id || draggedPiece.team;
       const isMoverPiece = (dpTeam === moverPos || draggedPiece.is_neutral) && !(currentPlayer && dpTeam === currentPlayer.position);
       if (vetoSelectActive && isMoverPiece) {
-        const targets = (dragValidMoves || []).filter(m => m.x === targetX && m.y === targetY);
+        // A multi-tile piece's drop names one landing - that configuration is vetoed.
+        const vx = droppedMove ? droppedMove.x : targetX;
+        const vy = droppedMove ? droppedMove.y : targetY;
+        const targets = (dragValidMoves || []).filter(m => m.x === vx && m.y === vy);
         if (targets.length > 0) {
           const perTurnCap = vetoMyBudget?.perTurnRemaining ?? Math.max(1, Math.min(5, Number(gt.veto_per_turn_limit) || 1));
           const perGameCap = vetoMyBudget?.perGameRemaining;
@@ -4369,7 +4438,7 @@ const LiveGame = () => {
           const descs = targets.map(t => ({
             pieceId: draggedPiece.id,
             from: { x: draggedPiece.x, y: draggedPiece.y },
-            to: { x: targetX, y: targetY },
+            to: { x: t.x, y: t.y },
             isRangedAttack: !!t.isRangedAttack,
             isCastling: !!t.isCastling,
             castlingWith: t.castlingWith,
@@ -4406,9 +4475,8 @@ const LiveGame = () => {
     // the pointer: a drop over a multi-tile piece (this one included) otherwise
     // reports that piece's anchor square.
     const grabOffset = dragGrabOffsetRef.current;
-    const underPointer = squareUnderPointer(boardRef.current, e, gameState?.gameType?.board_width || 8, gameState?.gameType?.board_height || 8, flipBoardRef.current);
-    const anchorX = (underPointer ? underPointer.x : targetX) - (grabOffset.x || 0);
-    const anchorY = (underPointer ? underPointer.y : targetY) - (grabOffset.y || 0);
+    const anchorX = dropSq.x - (grabOffset.x || 0);
+    const anchorY = dropSq.y - (grabOffset.y || 0);
 
     // Dropped back where it was. (A multi-tile piece moving one square right or
     // down lands its anchor on a square it already covers - that is a move.)
@@ -4418,8 +4486,10 @@ const LiveGame = () => {
       return;
     }
 
-    // Check if target is a valid move (exact match or multi-tile footprint overlap)
-    let validMove = dragValidMoves.find(m => m.x === anchorX && m.y === anchorY);
+    // A multi-tile piece goes where the grabbed square - or failing that the
+    // nearest square of it that can - lands on the drop square. Otherwise the
+    // exact destination (or, below, a multi-tile footprint overlap).
+    let validMove = droppedMove || dragValidMoves.find(m => m.x === anchorX && m.y === anchorY);
     if (!validMove && draggedPiece) {
       const dpw = draggedPiece.piece_width || 1;
       const dph = draggedPiece.piece_height || 1;
@@ -4789,8 +4859,11 @@ const LiveGame = () => {
     if (td.isDragging) {
       e.preventDefault();
       setTouchDragPos({ x: touch.clientX, y: touch.clientY });
+      const sq = pointerSquare(boardRef.current, touch.clientX, touch.clientY, gameState?.gameType?.board_width || 8, gameState?.gameType?.board_height || 8, flipBoardRef.current);
+      const landing = sq && landingBox(td.piece, moveForDrop(td.moves, td.piece, td.grabOffset, sq.x, sq.y));
+      setLandingPreview(prev => (sameBox(prev, landing) ? prev : landing && { ...landing, pieceId: td.piece.id }));
     }
-  }, []);
+  }, [gameState?.gameType?.board_width, gameState?.gameType?.board_height]);
 
   const handleTouchEnd = useCallback((e) => {
     const td = touchDragRef.current;
@@ -4809,8 +4882,10 @@ const LiveGame = () => {
       let displayRow = Math.floor(relY / (boardRect.height / boardHeight));
 
       // Convert from display coordinates to game coordinates (account for flip)
-      let targetX = shouldFlipBoard ? (boardWidth - 1 - displayCol) : displayCol;
-      let targetY = shouldFlipBoard ? (boardHeight - 1 - displayRow) : displayRow;
+      const underFinger = pointerSquare(boardRef.current, touch.clientX, touch.clientY, boardWidth, boardHeight, shouldFlipBoard);
+      let targetX = underFinger ? underFinger.x : (shouldFlipBoard ? (boardWidth - 1 - displayCol) : displayCol);
+      let targetY = underFinger ? underFinger.y : (shouldFlipBoard ? (boardHeight - 1 - displayRow) : displayRow);
+      setLandingPreview(null);
 
       // Adjust for multi-tile grab offset
       const grabOffset = td.grabOffset || { x: 0, y: 0 };
@@ -4850,7 +4925,12 @@ const LiveGame = () => {
          *
          * Dropped back on its own square it simply stays picked up.
          */
-        if (anchorX !== piece.x || anchorY !== piece.y) {
+        // A multi-tile piece goes where the grabbed square (or the nearest
+        // square of it that can) lands under the finger - see moveForDrop.
+        const dropped = moveForDrop(td.moves, piece, grabOffset, targetX, targetY);
+        if (dropped) {
+          handleSquareClickRef.current(dropped.x, dropped.y, true);
+        } else if (anchorX !== piece.x || anchorY !== piece.y) {
           handleSquareClickRef.current(anchorX, anchorY, true);
         }
         touchDragRef.current = { piece: null, moves: [], startX: 0, startY: 0, isDragging: false, grabOffset: { x: 0, y: 0 } };
@@ -5029,12 +5109,11 @@ const LiveGame = () => {
           const targetPiece = findPieceAtSquare(allPieces, target.x, target.y);
           const sourceTeam = data.piece.player_id || data.piece.team;
           const targetTeam = targetPiece?.player_id || targetPiece?.team;
-          const isStepRangedDrag = !!data.piece.step_by_step_attack_range;
-          const isValidTarget = isStepRangedDrag
-            ? canReachStepByStepRanged(data.piece, target.x, target.y, allPieces, bw, bh)
-            : canRangedAttackTo(data.piece.y, data.piece.x, target.y, target.x, data.piece, sourceTeam);
+          const rangedDrag = rangedReach(data.piece, target.x, target.y, allPieces, sourceTeam,
+            (shooter, tx, ty, others) => canReachStepByStepRanged(shooter, tx, ty, others, bw, bh));
+          const isValidTarget = rangedDrag.reach;
           const isEnemyTarget = targetPiece && targetTeam !== sourceTeam && !targetPiece.cannot_be_captured && !targetPiece.ends_game_on_checkmate;
-          const pathBlocked = !isStepRangedDrag && !isRangedPathClear(data.piece.x, data.piece.y, target.x, target.y, data.piece, allPieces, sourceTeam);
+          const pathBlocked = !rangedDrag.clear;
 
           if (isValidTarget && pathBlocked && (isEnemyTarget || canPremoveRanged)) {
             showIllegalMoveWarning("Ranged attack is blocked by another piece");
@@ -5155,13 +5234,12 @@ const LiveGame = () => {
       const bh = gameState?.gameType?.board_height || 8;
       
       // Check if this is a valid ranged attack target (or potential target for premoves)
-      const isStepRanged = !!rangedSelectedPiece.step_by_step_attack_range;
-      const isValidTarget = isStepRanged
-        ? canReachStepByStepRanged(rangedSelectedPiece, x, y, pieces, bw, bh)
-        : canRangedAttackTo(rangedSelectedPiece.y, rangedSelectedPiece.x, y, x, rangedSelectedPiece, sourceTeam);
+      const rangedSel = rangedReach(rangedSelectedPiece, x, y, pieces, sourceTeam,
+        (shooter, tx, ty, others) => canReachStepByStepRanged(shooter, tx, ty, others, bw, bh));
+      const isValidTarget = rangedSel.reach;
       const isEnemyTarget = targetPiece && targetTeam !== sourceTeam && !targetPiece.cannot_be_captured && !targetPiece.ends_game_on_checkmate;
       const canPremoveRanged = (!isMyTurn || !!gameState.botPlayer) && gameState.allowPremoves !== false && myRepositionsDone;
-      const pathBlocked = !isStepRanged && !isRangedPathClear(rangedSelectedPiece.x, rangedSelectedPiece.y, x, y, rangedSelectedPiece, pieces, sourceTeam);
+      const pathBlocked = !rangedSel.clear;
 
       if (isValidTarget && pathBlocked && (isEnemyTarget || canPremoveRanged)) {
         showIllegalMoveWarning("Ranged attack is blocked by another piece");
@@ -5828,20 +5906,16 @@ const LiveGame = () => {
           && !(piece && ((piece.player_id || piece.team) === (rangedAttackSource.player_id || rangedAttackSource.team)))
           && !(piece?.cannot_be_captured)
           && !(piece?.ends_game_on_checkmate)
-          && (rangedAttackSource.step_by_step_attack_range
-            ? canReachStepByStepRanged(rangedAttackSource, gameX, gameY, pieces, gameState?.gameType?.board_width || 8, gameState?.gameType?.board_height || 8)
-            : (canRangedAttackTo(rangedAttackSource.y, rangedAttackSource.x, gameY, gameX, rangedAttackSource, rangedAttackSource.player_id || rangedAttackSource.team)
-              && isRangedPathClear(rangedAttackSource.x, rangedAttackSource.y, gameX, gameY, rangedAttackSource, pieces, rangedAttackSource.player_id || rangedAttackSource.team)));
+          && rangedReach(rangedAttackSource, gameX, gameY, pieces, rangedAttackSource.player_id || rangedAttackSource.team,
+            (shooter, tx, ty, others) => canReachStepByStepRanged(shooter, tx, ty, others, gameState?.gameType?.board_width || 8, gameState?.gameType?.board_height || 8)).clear;
         // Right-click-twice mode: highlight valid ranged squares (path-checked)
         const isRangedSelectedTarget = !rangedAttackSource && rangedSelectedPiece
           && !(piece && ((piece.player_id || piece.team) === (rangedSelectedPiece.player_id || rangedSelectedPiece.team)))
           && !(piece?.cannot_be_captured)
           && !(piece?.ends_game_on_checkmate)
-          && (rangedSelectedPiece.step_by_step_attack_range
-            ? canReachStepByStepRanged(rangedSelectedPiece, gameX, gameY, pieces, gameState?.gameType?.board_width || 8, gameState?.gameType?.board_height || 8)
-            : (canRangedAttackTo(rangedSelectedPiece.y, rangedSelectedPiece.x, gameY, gameX, rangedSelectedPiece, rangedSelectedPiece.player_id || rangedSelectedPiece.team)
-              && isRangedPathClear(rangedSelectedPiece.x, rangedSelectedPiece.y, gameX, gameY, rangedSelectedPiece, pieces, rangedSelectedPiece.player_id || rangedSelectedPiece.team)));
-        const isRangedSelectedSource = rangedSelectedPiece && rangedSelectedPiece.x === gameX && rangedSelectedPiece.y === gameY;
+          && rangedReach(rangedSelectedPiece, gameX, gameY, pieces, rangedSelectedPiece.player_id || rangedSelectedPiece.team,
+            (shooter, tx, ty, others) => canReachStepByStepRanged(shooter, tx, ty, others, gameState?.gameType?.board_width || 8, gameState?.gameType?.board_height || 8)).clear;
+        const isRangedSelectedSource = rangedSelectedPiece && doesPieceOccupySquare(rangedSelectedPiece, gameX, gameY);
 
         // Points-square overlay: always show for custom squares with control points when a points condition is active
         const squareCfgForPoints = specialSquares.special[`${gameY},${gameX}`];
@@ -6312,6 +6386,15 @@ const LiveGame = () => {
           <div 
             ref={boardRef}
             data-touch-board=""
+            onMouseMove={(e) => {
+              // A selected multi-tile piece: outline where a click here would put it.
+              if (!selectedPiece || draggedPiece) return;
+              const sq = pointerSquare(boardRef.current, e.clientX, e.clientY, boardWidth, boardHeight, shouldFlipBoard);
+              const inOwn = sq && doesPieceOccupySquare(selectedPiece, sq.x, sq.y);
+              const landing = sq && !inOwn && landingBox(selectedPiece, moveCoveringSquare(validMoves, selectedPiece, sq.x, sq.y));
+              setLandingPreview(prev => (sameBox(prev, landing) ? prev : landing && { ...landing, pieceId: selectedPiece.id }));
+            }}
+            onMouseLeave={() => { if (!draggedPiece) setLandingPreview(null); }}
             className={styles["game-board"]}
             style={{
               gridTemplateColumns: `repeat(${boardWidth}, ${squareSize}px)`,
@@ -6376,6 +6459,16 @@ const LiveGame = () => {
                 </svg>
               );
             })()}
+            <MultiTileOutlines
+              boxes={[
+                ...(landingPreview && [draggedPiece, touchDragPiece, selectedPiece].some(p => p && p.id === landingPreview.pieceId)
+                  ? [{ ...landingPreview, kind: 'landing' }] : []),
+                ...vetoOutlineBoxes,
+              ]}
+              boardWidth={boardWidth}
+              boardHeight={boardHeight}
+              flipped={shouldFlipBoard}
+            />
             {/* Touch drag ghost piece for mobile */}
             {touchDragPiece && touchDragPos && (() => {
               const piece = touchDragPiece;
@@ -6395,8 +6488,9 @@ const LiveGame = () => {
               return (
                 <div style={{
                   position: 'fixed',
-                  left: touchDragPos.x - cellSize / 2,
-                  top: touchDragPos.y - cellSize / 2,
+                  // Held by the square it was grabbed by (drawn mirrored on a flipped board).
+                  left: touchDragPos.x - cellSize * ((shouldFlipBoard ? (piece.piece_width || 1) - 1 - (touchDragRef.current.grabOffset?.x || 0) : (touchDragRef.current.grabOffset?.x || 0)) + 0.5),
+                  top: touchDragPos.y - cellSize * ((shouldFlipBoard ? (piece.piece_height || 1) - 1 - (touchDragRef.current.grabOffset?.y || 0) : (touchDragRef.current.grabOffset?.y || 0)) + 0.5),
                   width: cellSize * (piece.piece_width || 1),
                   height: cellSize * (piece.piece_height || 1),
                   pointerEvents: 'none',

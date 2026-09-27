@@ -17,8 +17,7 @@
 import {
   canPieceMoveTo as canPieceMoveToUtil,
   canCaptureOnMoveTo as canCaptureOnMoveToUtil,
-  canRangedAttackTo,
-  isRangedPathClear,
+  rangedFromFootprint,
   findPieceAtSquare,
   doesPieceOccupySquare,
   doesPieceFitOnBoard,
@@ -689,6 +688,49 @@ export const createMoveEngine = ({
   };
 
   // Check if L-shape path is clear considering hopping abilities
+  /**
+   * Is there an L route a multi-tile piece can take with its whole footprint?
+   *
+   * A ratio (knight-shaped) move of (dx, dy) goes one way first and then the
+   * other. The whole piece takes the same route, so every one of its squares
+   * travels a parallel L, and the move is open when, for either order, none of
+   * those Ls crosses a piece `canPass` refuses. The piece's own squares never
+   * obstruct, and the landing footprint is judged as the destination, not as
+   * the path.
+   */
+  const footprintLRouteClear = (piece, dx, dy, pieces, canPass) => {
+    const w = piece.piece_width || 1;
+    const h = piece.piece_height || 1;
+    const toX = piece.x + dx;
+    const toY = piece.y + dy;
+    const sX = Math.sign(dx);
+    const sY = Math.sign(dy);
+    const inLanding = (x, y) => x >= toX && x < toX + w && y >= toY && y < toY + h;
+    const blocked = (x, y) => {
+      if (inLanding(x, y)) return false;
+      const p = findPieceAtSquare(pieces, x, y);
+      return !!p && p.id !== piece.id && !canPass(p);
+    };
+    const routeClear = (xFirst) => {
+      for (let fy = 0; fy < h; fy++) {
+        for (let fx = 0; fx < w; fx++) {
+          let x = piece.x + fx;
+          let y = piece.y + fy;
+          const legs = xFirst ? [[sX, 0, Math.abs(dx)], [0, sY, Math.abs(dy)]] : [[0, sY, Math.abs(dy)], [sX, 0, Math.abs(dx)]];
+          for (const [lx, ly, n] of legs) {
+            for (let i = 0; i < n; i++) {
+              x += lx;
+              y += ly;
+              if (blocked(x, y)) return false;
+            }
+          }
+        }
+      }
+      return true;
+    };
+    return routeClear(true) || routeClear(false);
+  };
+
   const checkRatioPathClear = (piece, targetX, targetY, pieces) => {
     const canHopAllies = piece.can_hop_over_allies === 1 || piece.can_hop_over_allies === true;
     const canHopEnemies = piece.can_hop_over_enemies === 1 || piece.can_hop_over_enemies === true;
@@ -704,6 +746,14 @@ export const createMoveEngine = ({
     const dy = targetY - piece.y;
     const absDx = Math.abs(dx);
     const absDy = Math.abs(dy);
+
+    // A multi-tile piece takes one L route with its whole footprint.
+    if ((piece.piece_width || 1) > 1 || (piece.piece_height || 1) > 1) {
+      return footprintLRouteClear(piece, dx, dy, pieces, (p) => {
+        const ally = (p.player_id || p.team) === pieceOwner;
+        return ally ? canHopAllies : canHopEnemies;
+      });
+    }
     
     // If no hopping ability, check if both L-shape paths are clear
     if (!canHopAllies && !canHopEnemies) {
@@ -1043,7 +1093,8 @@ export const createMoveEngine = ({
             if (p.id === piece.id || capturedIds.has(p.id)) return false;
             if (!doesPieceOccupySquare(p, toX + fdx, toY + fdy)) return false;
             const pOwner = p.player_id || p.team;
-            return pOwner !== pieceOwner;
+            // An ally under the footprint is taken too when the piece captures allies.
+            return pOwner !== pieceOwner || !!piece.can_capture_allies;
           });
           if (found) capturedIds.add(found.id);
         }
@@ -1238,7 +1289,8 @@ export const createMoveEngine = ({
           if (blockedByInvincible) continue;
           // Only friendly pieces should block the destination (enemies are captured)
           // For premoves, skip this check (friendly pieces might be captured before premove executes)
-          if (!forPremove && !isDestinationClear(piece, toX, toY, pieces.filter(p => {
+          // (A piece that captures allies takes a friend under its footprint too.)
+          if (!forPremove && !piece.can_capture_allies && !isDestinationClear(piece, toX, toY, pieces.filter(p => {
             const pTeam = p.player_id || p.team;
             return pTeam === pieceTeam && p.id !== piece.id;
           }), null)) continue;
@@ -1450,24 +1502,31 @@ export const createMoveEngine = ({
             const hxDiff = Math.abs(toX - piece.x);
             const hyDiff = Math.abs(toY - piece.y);
             if (hxDiff === hyDiff || hxDiff === 0 || hyDiff === 0) {
-              let cx = piece.x + hdx;
-              let cy = piece.y + hdy;
-              while ((cx !== toX || cy !== toY) && !hopBlocked) {
-                const hopPiece = findPieceAtSquare(pieces, cx, cy);
-                if (hopPiece && hopPiece.id !== piece.id) {
-                  const hopTeam = hopPiece.player_id || hopPiece.team;
-                  if (hopTeam !== pieceTeam) {
-                    if ((hopPiece.cannot_be_captured || hopPiece.ends_game_on_checkmate) && !permissive) {
-                      hopBlocked = true;
-                    } else {
-                      hopCapturedSet.add(hopPiece.id);
+              // Each square of a multi-tile piece travels its own parallel
+              // line, and hops whatever that line passes over (as the server's
+              // getPiecesHoppedOver does). One line for a single square.
+              for (let sdy = 0; sdy < ph && !hopBlocked; sdy++) {
+                for (let sdx = 0; sdx < pw && !hopBlocked; sdx++) {
+                  let cx = piece.x + sdx + hdx;
+                  let cy = piece.y + sdy + hdy;
+                  while ((cx !== toX + sdx || cy !== toY + sdy) && !hopBlocked) {
+                    const hopPiece = findPieceAtSquare(pieces, cx, cy);
+                    if (hopPiece && hopPiece.id !== piece.id) {
+                      const hopTeam = hopPiece.player_id || hopPiece.team;
+                      if (hopTeam !== pieceTeam) {
+                        if ((hopPiece.cannot_be_captured || hopPiece.ends_game_on_checkmate) && !permissive) {
+                          hopBlocked = true;
+                        } else {
+                          hopCapturedSet.add(hopPiece.id);
+                        }
+                      } else if (!canHopAllies) {
+                        hopBlocked = true;
+                      }
                     }
-                  } else if (!canHopAllies) {
-                    hopBlocked = true;
+                    cx += hdx;
+                    cy += hdy;
                   }
                 }
-                cx += hdx;
-                cy += hdy;
               }
             }
             if (!hopBlocked && hopCapturedSet.size > 0) {
@@ -1796,20 +1855,13 @@ export const createMoveEngine = ({
           // Do NOT skip when only a regular move exists — a piece can both move to a square
           // and ranged-attack it, and both indicators should be shown simultaneously.
           if (moves.some(m => m.x === toX && m.y === toY && m.isRangedAttack)) continue;
+          // From any square of a multi-tile piece's footprint; step-by-step
+          // ranged uses BFS path-finding so walls block correctly.
           const isStepByStepRanged = !!piece.step_by_step_attack_range;
-          if (isStepByStepRanged) {
-            // Use BFS path-finding for step-by-step ranged attacks so walls block correctly
-            if (!canReachStepByStepRanged(piece, toX, toY, pieces, boardWidth, boardHeight)) {
-              continue;
-            }
-          } else if (canRangedAttackTo(piece.y, piece.x, toY, toX, piece, pieceTeam)) {
-            // Check if ranged path is clear (blocked by pieces unless can fire over)
-            if (!isRangedPathClear(piece.x, piece.y, toX, toY, piece, pieces, pieceTeam)) {
-              continue;
-            }
-          } else {
-            continue;
-          }
+          const stepReach = isStepByStepRanged
+            ? (shooter, tx, ty, others) => canReachStepByStepRanged(shooter, tx, ty, others, boardWidth, boardHeight)
+            : null;
+          if (!rangedFromFootprint(piece, toX, toY, pieces, pieceTeam, stepReach).clear) continue;
           {
             const hasTarget = !!targetPiece;
             // For premoves, include empty ranged squares as potential targets

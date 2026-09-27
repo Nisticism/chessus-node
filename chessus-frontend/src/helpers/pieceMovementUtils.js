@@ -1459,3 +1459,37 @@ export const replayToMove = (initialPieces, moveHistory, targetIndex, definition
 
   return pieces;
 };
+
+/**
+ * Ranged fire from a piece's footprint (mirrors rangedFromFootprint in
+ * server/game-socket.js).
+ *
+ * A multi-tile piece fires from whichever of its squares can reach the target,
+ * so its range counts from its edge rather than its anchor, and its own squares
+ * never block the shot. A single-square piece is exactly canRangedAttackTo +
+ * isRangedPathClear from its square. `stepReach(shooter, tx, ty, others)`, when
+ * given, decides a step-by-step ranged piece instead.
+ *
+ * @returns {{ reach: boolean, clear: boolean }}
+ */
+export const rangedFromFootprint = (piece, tx, ty, pieces, team, stepReach = null) => {
+  const w = piece.piece_width || 1;
+  const h = piece.piece_height || 1;
+  const multi = w > 1 || h > 1;
+  if (tx >= piece.x && tx < piece.x + w && ty >= piece.y && ty < piece.y + h) return { reach: false, clear: false };
+  const others = multi ? pieces.filter(p => p.id !== piece.id) : pieces;
+  let reach = false;
+  for (let fy = 0; fy < h; fy++) {
+    for (let fx = 0; fx < w; fx++) {
+      const shooter = multi ? { ...piece, x: piece.x + fx, y: piece.y + fy } : piece;
+      if (stepReach) {
+        if (stepReach(shooter, tx, ty, others)) return { reach: true, clear: true };
+        continue;
+      }
+      if (!canRangedAttackTo(shooter.y, shooter.x, ty, tx, shooter, team)) continue;
+      reach = true;
+      if (isRangedPathClear(shooter.x, shooter.y, tx, ty, shooter, pieces, team)) return { reach: true, clear: true };
+    }
+  }
+  return { reach, clear: false };
+};

@@ -19,6 +19,14 @@ const {
   goalMet, terminalOutcome,
 } = require('./puzzle-validation');
 
+/*
+ * A multi-tile piece's size, for a position sent to a board: without it the
+ * board draws the piece on its anchor square alone and cannot tell what a move
+ * lands on under the rest of it. Nothing for a single-square piece.
+ */
+const footprintOf = (p) => ((Number(p?.piece_width) || 1) > 1 || (Number(p?.piece_height) || 1) > 1
+  ? { piece_width: Number(p.piece_width) || 1, piece_height: Number(p.piece_height) || 1 } : {});
+
 /** The other player. Two players, so this is the whole of it. */
 const otherSide = (n) => (Number(n) === 1 ? 2 : 1);
 const {
@@ -647,6 +655,7 @@ function registerPuzzleRoutes(app, {
         piece_name: p.piece_name || null,
         image_url: p.image_url || null,
         image_location: p.image_location || null,
+        ...footprintOf(p),
       }));
     } catch (err) {
       /*
@@ -1601,6 +1610,9 @@ function registerPuzzleRoutes(app, {
             castling_distance: engine.castling_distance ?? null,
             castling_partner_left_id: engine.castling_partner_left_id ?? null,
             castling_partner_right_id: engine.castling_partner_right_id ?? null,
+            // A multi-tile piece's size, so the board can draw its whole
+            // footprint and take whatever a move lands on under it.
+            ...footprintOf(engine),
           };
         });
       }
@@ -2746,6 +2758,7 @@ function registerPuzzleRoutes(app, {
                */
               image_url: pc.image_url || mine.image_url || null,
               x: Number(pc.x), y: Number(pc.y),
+              ...footprintOf(pc),
             };
           });
         }

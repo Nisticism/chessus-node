@@ -898,38 +898,89 @@ function collectPromotionSquares(gameType) {
  * TO is a separate (and asynchronous) matter, handled by getPromotionOptions.
  */
 function squarePromotesFor(gameType, piece, destX, destY) {
-  if (!piece || !piece.can_promote || piece.disable_promotion || !gameType) return false;
+  return promotionCellFor(gameType, piece, destX, destY) !== null;
+}
+
+/**
+ * The square of a piece landing at (destX, destY) that promotes it, or null.
+ *
+ * A multi-tile piece promotes when ANY square it lands on is a promotion
+ * square for it. Its leading edge reaches the far rank first, and for the
+ * player moving down the board that edge is not the anchor (top-left) - an
+ * anchor-only test meant such a piece could never promote at all.
+ */
+function promotionCellFor(gameType, piece, destX, destY) {
+  if (!piece || !piece.can_promote || piece.disable_promotion || !gameType) return null;
 
   const squares = collectPromotionSquares(gameType);
-  const key = `${destY},${destX}`;
-  const cfg = squares[key];
-  if (!cfg) return false;
+  const w = piece.piece_width || 1;
+  const h = piece.piece_height || 1;
+  const pieceOwner = piece.player_id || piece.team;
+  const isNeutralPiece = piece.is_neutral || pieceOwner === 0;
 
   // A promotion square can belong to one player, to the neutral side, or to
   // everybody. 'all', 'both' and an absent value all mean everybody.
-  if (cfg && typeof cfg === 'object') {
+  const appliesToPiece = (cfg) => {
+    if (!cfg || typeof cfg !== 'object') return true;
     const restriction = cfg.appliesToPlayer;
-    if (restriction && restriction !== 'all' && restriction !== 'both') {
-      const pieceOwner = piece.player_id || piece.team;
-      const isNeutralPiece = piece.is_neutral || pieceOwner === 0;
-      if (restriction === 'neutral') {
-        if (!isNeutralPiece) return false;
-      } else {
-        // 'p1', 'p2', 'p3', ... - neutral pieces never qualify.
-        const match = String(restriction).match(/^p(\d+)$/);
-        if (match) {
-          if (isNeutralPiece) return false;
-          if (pieceOwner !== parseInt(match[1], 10)) return false;
-        }
+    if (!restriction || restriction === 'all' || restriction === 'both') return true;
+    if (restriction === 'neutral') return !!isNeutralPiece;
+    // 'p1', 'p2', 'p3', ... - neutral pieces never qualify.
+    const match = String(restriction).match(/^p(\d+)$/);
+    if (!match) return true;
+    return !isNeutralPiece && pieceOwner === parseInt(match[1], 10);
+  };
+
+  // A piece that begins the game on a promotion square does not promote by
+  // returning to it; the square has to be reached. (Every square of a
+  // multi-tile piece's starting footprint counts as started on.)
+  const startedOn = (x, y) => piece.initial_x != null && piece.initial_y != null
+    && x >= piece.initial_x && x < piece.initial_x + w
+    && y >= piece.initial_y && y < piece.initial_y + h;
+
+  for (let fy = 0; fy < h; fy++) {
+    for (let fx = 0; fx < w; fx++) {
+      const x = destX + fx;
+      const y = destY + fy;
+      const cfg = squares[`${y},${x}`];
+      if (!cfg || !appliesToPiece(cfg) || startedOn(x, y)) continue;
+      return { x, y };
+    }
+  }
+  return null;
+}
+
+/**
+ * Where a promoted piece sits when the piece it becomes is a different size.
+ *
+ * The new footprint keeps covering the square that promoted it (so the
+ * promotion still "happened there"), must fit on the board and must not
+ * overlap another piece. Of those, the one overlapping the old footprint most
+ * wins, then the one nearest the old anchor. Null when nothing fits - the
+ * caller then keeps the piece's old size rather than overlap another piece.
+ */
+function promotedAnchorFor(gameState, piece, newW, newH) {
+  const boardWidth = gameState.gameType?.board_width || 8;
+  const boardHeight = gameState.gameType?.board_height || 8;
+  const oldW = piece.piece_width || 1;
+  const oldH = piece.piece_height || 1;
+  const cell = promotionCellFor(gameState.gameType, piece, piece.x, piece.y) || { x: piece.x, y: piece.y };
+  let best = null;
+  let bestRank = null;
+  for (let ay = cell.y - newH + 1; ay <= cell.y; ay++) {
+    for (let ax = cell.x - newW + 1; ax <= cell.x; ax++) {
+      if (!doesPieceFitOnBoard(ax, ay, newW, newH, boardWidth, boardHeight)) continue;
+      if (!isDestinationClearServer({ id: piece.id, piece_width: newW, piece_height: newH }, ax, ay, gameState.pieces, null)) continue;
+      const overlapW = Math.max(0, Math.min(ax + newW, piece.x + oldW) - Math.max(ax, piece.x));
+      const overlapH = Math.max(0, Math.min(ay + newH, piece.y + oldH) - Math.max(ay, piece.y));
+      const rank = [-(overlapW * overlapH), Math.abs(ax - piece.x) + Math.abs(ay - piece.y)];
+      if (!bestRank || rank[0] < bestRank[0] || (rank[0] === bestRank[0] && rank[1] < bestRank[1])) {
+        best = { x: ax, y: ay };
+        bestRank = rank;
       }
     }
   }
-
-  // A piece that begins the game on a promotion square does not promote by
-  // returning to it; the square has to be reached.
-  if (`${piece.initial_y},${piece.initial_x}` === key) return false;
-
-  return true;
+  return best;
 }
 
 /**
@@ -7078,11 +7129,16 @@ function initializeSocket(server) {
           const gravity = gravityOf(gameState.gameType);
           let placeX = clickedX;
           let placeY = clickedY;
+          // The piece being placed, for the size of what falls.
+          const placingTemplate = move.placePieceId != null
+            ? (otherData.placeable_pieces || []).find(pp => pp.piece_id === move.placePieceId)
+            : (otherData.placeable_pieces || [])[0];
 
           if (gravity) {
             const landed = restingSquare(
               gravity, { x: clickedX, y: clickedY }, boardWidth, boardHeight,
-              (gx, gy) => gameState.pieces.some(p => doesPieceOccupySquare(p, gx, gy))
+              (gx, gy) => gameState.pieces.some(p => doesPieceOccupySquare(p, gx, gy)),
+              { w: placingTemplate?.piece_width || 1, h: placingTemplate?.piece_height || 1 }
             );
             if (!landed) {
               return socket.emit("error", { message: "That column is full" });
@@ -8113,8 +8169,7 @@ function initializeSocket(server) {
               const tOwner = t.team || t.player_id;
               if (tOwner === rangedOwner) return false;
               if (t.cannot_be_captured) return false;
-              if (!canRangedAttackTo(rangedPiece.y, rangedPiece.x, t.y, t.x, rangedPiece, rangedOwner, gameState.gameType)) return false;
-              if (!isRangedPathClear(rangedPiece.x, rangedPiece.y, t.x, t.y, rangedPiece, gameState.pieces, rangedOwner, gameState.gameType)) return false;
+              if (!rangedFromFootprint(rangedPiece, t.x, t.y, gameState.pieces, rangedOwner, gameState.gameType).clear) return false;
               // Restriction zone: cannot ranged-attack outside the zone when on a zone square.
               if (rangedPiece.cannot_move_outside_zone) {
                 const zones = collectRestrictionZoneSquares(gameState.gameType);
@@ -13741,65 +13796,45 @@ function initializeCastlingPartners(gameState) {
 function getPiecesHoppedOver(fromX, fromY, toX, toY, movingPiece, allPieces) {
   const pieceOwner = movingPiece.team || movingPiece.player_id;
   const hoppedPieces = [];
-  
+
   const dx = toX - fromX;
   const dy = toY - fromY;
-  const absDx = Math.abs(dx);
-  const absDy = Math.abs(dy);
-  
-  // For diagonal movement (checkers-style)
-  if (absDx === absDy && absDx > 0) {
-    const stepX = dx > 0 ? 1 : -1;
-    const stepY = dy > 0 ? 1 : -1;
-    
-    let x = fromX + stepX;
-    let y = fromY + stepY;
-    
-    while (x !== toX || y !== toY) {
-      const pieceAtSquare = findPieceAtSquare(allPieces, x, y);
-      if (pieceAtSquare && pieceAtSquare.id !== movingPiece.id) {
-        const pieceAtSquareOwner = pieceAtSquare.team || pieceAtSquare.player_id;
-        // Only capture enemy pieces
-        if (pieceAtSquareOwner !== pieceOwner) {
-          hoppedPieces.push(pieceAtSquare);
+  // Only straight or diagonal jumps hop anything.
+  if (!((dx === 0) !== (dy === 0) || (Math.abs(dx) === Math.abs(dy) && dx !== 0))) return hoppedPieces;
+  const stepX = Math.sign(dx);
+  const stepY = Math.sign(dy);
+
+  /*
+   * Every square of the piece travels its own parallel line, so a multi-tile
+   * piece hops whatever any of its squares passes over - not only what lies on
+   * its anchor's line. Pieces under the landing footprint are not hopped;
+   * the move captures those as it lands. For a single square this is the one
+   * line from the start to the landing square.
+   */
+  const w = movingPiece.piece_width || 1;
+  const h = movingPiece.piece_height || 1;
+  const underLanding = (p) => p.x < toX + w && toX < p.x + (p.piece_width || 1)
+    && p.y < toY + h && toY < p.y + (p.piece_height || 1);
+  for (let fy = 0; fy < h; fy++) {
+    for (let fx = 0; fx < w; fx++) {
+      let x = fromX + fx + stepX;
+      let y = fromY + fy + stepY;
+      while (x !== toX + fx || y !== toY + fy) {
+        const pieceAtSquare = findPieceAtSquare(allPieces, x, y);
+        if (pieceAtSquare && pieceAtSquare.id !== movingPiece.id && !hoppedPieces.includes(pieceAtSquare)
+            && !(w * h > 1 && underLanding(pieceAtSquare))) {
+          const pieceAtSquareOwner = pieceAtSquare.team || pieceAtSquare.player_id;
+          // Only capture enemy pieces
+          if (pieceAtSquareOwner !== pieceOwner) {
+            hoppedPieces.push(pieceAtSquare);
+          }
         }
+        x += stepX;
+        y += stepY;
       }
-      x += stepX;
-      y += stepY;
     }
   }
-  // For straight line movement
-  else if (dx === 0 && dy !== 0) {
-    const stepY = dy > 0 ? 1 : -1;
-    let y = fromY + stepY;
-    
-    while (y !== toY) {
-      const pieceAtSquare = findPieceAtSquare(allPieces, fromX, y);
-      if (pieceAtSquare && pieceAtSquare.id !== movingPiece.id) {
-        const pieceAtSquareOwner = pieceAtSquare.team || pieceAtSquare.player_id;
-        if (pieceAtSquareOwner !== pieceOwner) {
-          hoppedPieces.push(pieceAtSquare);
-        }
-      }
-      y += stepY;
-    }
-  }
-  else if (dy === 0 && dx !== 0) {
-    const stepX = dx > 0 ? 1 : -1;
-    let x = fromX + stepX;
-    
-    while (x !== toX) {
-      const pieceAtSquare = findPieceAtSquare(allPieces, x, fromY);
-      if (pieceAtSquare && pieceAtSquare.id !== movingPiece.id) {
-        const pieceAtSquareOwner = pieceAtSquare.team || pieceAtSquare.player_id;
-        if (pieceAtSquareOwner !== pieceOwner) {
-          hoppedPieces.push(pieceAtSquare);
-        }
-      }
-      x += stepX;
-    }
-  }
-  
+
   return hoppedPieces;
 }
 
@@ -14037,7 +14072,8 @@ async function validateAndApplyMove(gameState, move, options = {}) {
           if (p.id === pieceId || seenIds.has(p.id)) return false;
           if (!doesPieceOccupySquare(p, to.x + fdx, to.y + fdy)) return false;
           const pOwner = p.team || p.player_id;
-          return pOwner !== pieceOwnerPosition;
+          // A piece that captures allies takes a friend under its footprint too.
+          return pOwner !== pieceOwnerPosition || !!piece.can_capture_allies;
         });
         if (idx !== -1) {
           seenIds.add(pieces[idx].id);
@@ -14160,21 +14196,16 @@ async function validateAndApplyMove(gameState, move, options = {}) {
     // Validate using ranged attack rules
     const boardWidth = gameState.gameType?.board_width || 8;
     const boardHeight = gameState.gameType?.board_height || 8;
+    // From any square of a multi-tile piece's footprint - see rangedFromFootprint.
     const isStepByStepRanged = !!piece.step_by_step_attack_range;
-    if (isStepByStepRanged) {
-      if (!canReachStepByStepRanged(piece, to.x, to.y, pieces, boardWidth, boardHeight)) {
-        return { valid: false, reason: "Piece cannot ranged attack that square" };
-      }
-    } else {
-      const canRanged = canRangedAttackTo(piece.y, piece.x, to.y, to.x, piece, pieceOwnerPosition);
-      if (!canRanged) {
-        return { valid: false, reason: "Piece cannot ranged attack that square" };
-      }
-      // Check if path is clear for ranged attack (unless piece can fire over)
-      const pathClear = isRangedPathClear(piece.x, piece.y, to.x, to.y, piece, pieces, pieceOwnerPosition, gameState.gameType);
-      if (!pathClear) {
-        return { valid: false, reason: "Ranged attack is blocked by another piece" };
-      }
+    const ranged = rangedFromFootprint(piece, to.x, to.y, pieces, pieceOwnerPosition, gameState.gameType, null,
+      isStepByStepRanged ? { width: boardWidth, height: boardHeight } : null);
+    if (!ranged.reach) {
+      return { valid: false, reason: "Piece cannot ranged attack that square" };
+    }
+    // Check if path is clear for ranged attack (unless piece can fire over)
+    if (!ranged.clear) {
+      return { valid: false, reason: "Ranged attack is blocked by another piece" };
     }
 
     // Restriction zone: a piece with cannot_move_outside_zone on a zone square
@@ -15085,8 +15116,20 @@ async function applyPromotionToPiece(gameState, pieceId, promoteToPieceId, promo
     } catch (e) { /* ignore */ }
   }
 
+  // The piece it becomes may be a different size (a pawn crowned as a 2x2
+  // giant, a 2x2 reduced to a 1x1). Spreading the old piece kept the old
+  // size under the new image.
+  const newW = Math.max(1, Number(fullPieceData.piece_width) || 1);
+  const newH = Math.max(1, Number(fullPieceData.piece_height) || 1);
+  let sizeAndPlace = {};
+  if (newW !== (piece.piece_width || 1) || newH !== (piece.piece_height || 1)) {
+    const anchor = promotedAnchorFor(gameState, piece, newW, newH);
+    if (anchor) sizeAndPlace = { piece_width: newW, piece_height: newH, x: anchor.x, y: anchor.y };
+  }
+
   const promotedPiece = {
     ...piece,
+    ...sizeAndPlace,
     piece_id: fullPieceData.id,
     piece_name: fullPieceData.piece_name,
     image_location: fullPieceData.image_location,
@@ -15624,6 +15667,61 @@ function doesPieceFitOnBoard(anchorX, anchorY, pieceWidth, pieceHeight, boardWid
 }
 
 /**
+ * Is there an L route a multi-tile piece can take with its whole footprint?
+ *
+ * A ratio (knight-shaped) move of (dx, dy) goes one way first and then the
+ * other. The whole piece takes the same route, so every one of its squares
+ * travels a parallel L, and the move is open when, for either order, none of
+ * those Ls crosses a piece `canPass` refuses. The piece's own squares never
+ * obstruct, and the landing footprint is judged as the destination, not as
+ * the path.
+ */
+const footprintLRouteClear = (piece, dx, dy, pieces, canPass) => {
+  const w = piece.piece_width || 1;
+  const h = piece.piece_height || 1;
+  const toX = piece.x + dx;
+  const toY = piece.y + dy;
+  const sX = Math.sign(dx);
+  const sY = Math.sign(dy);
+  const inLanding = (x, y) => x >= toX && x < toX + w && y >= toY && y < toY + h;
+  const blocked = (x, y) => {
+    if (inLanding(x, y)) return false;
+    const p = findPieceAtSquare(pieces, x, y);
+    return !!p && p.id !== piece.id && !canPass(p);
+  };
+  const routeClear = (xFirst) => {
+    for (let fy = 0; fy < h; fy++) {
+      for (let fx = 0; fx < w; fx++) {
+        let x = piece.x + fx;
+        let y = piece.y + fy;
+        const legs = xFirst ? [[sX, 0, Math.abs(dx)], [0, sY, Math.abs(dy)]] : [[0, sY, Math.abs(dy)], [sX, 0, Math.abs(dx)]];
+        for (const [lx, ly, n] of legs) {
+          for (let i = 0; i < n; i++) {
+            x += lx;
+            y += ly;
+            if (blocked(x, y)) return false;
+          }
+        }
+      }
+    }
+    return true;
+  };
+  return routeClear(true) || routeClear(false);
+};
+
+/**
+ * Can a piece made from `template` be placed with its anchor at (x, y)? Its
+ * whole footprint must be on the board and empty - a multi-tile piece covers
+ * more than the square it is placed by.
+ */
+function placementFootprintFree(pieces, x, y, template, boardWidth, boardHeight) {
+  const w = template?.piece_width || 1;
+  const h = template?.piece_height || 1;
+  if (!doesPieceFitOnBoard(x, y, w, h, boardWidth, boardHeight)) return false;
+  return isDestinationClearServer({ id: null, piece_width: w, piece_height: h }, x, y, pieces, null);
+}
+
+/**
  * Check if moving a piece to a destination would overlap other pieces.
  * Returns true if the destination is clear.
  */
@@ -15846,6 +15944,42 @@ function canReachStepByStepRanged(piece, targetX, targetY, allPieces, boardWidth
  * Check if the ranged attack path is blocked by other pieces
  * Returns true if the path is clear, false if blocked
  */
+/**
+ * Ranged fire from a piece's footprint.
+ *
+ * A multi-tile piece fires from whichever of its squares can reach the target,
+ * so its range counts from its edge rather than its anchor (top-left), and its
+ * own squares never block the shot. A single-square piece is exactly the old
+ * canRangedAttackTo + isRangedPathClear from its square.
+ *
+ * Returns { reach, clear }: reach - some square's range pattern covers the
+ * target; clear - some square covers it with an open path. `patternGameType`
+ * is what canRangedAttackTo gets (null reproduces callers that measured the
+ * pattern without range-square bonuses); `stepBoard` ({ width, height }) routes
+ * a step-by-step ranged piece through canReachStepByStepRanged instead.
+ */
+function rangedFromFootprint(piece, tx, ty, pieces, owner, gameType, patternGameType = gameType, stepBoard = null) {
+  const w = piece.piece_width || 1;
+  const h = piece.piece_height || 1;
+  const multi = w > 1 || h > 1;
+  if (tx >= piece.x && tx < piece.x + w && ty >= piece.y && ty < piece.y + h) return { reach: false, clear: false };
+  const others = multi ? pieces.filter(p => p.id !== piece.id) : pieces;
+  let reach = false;
+  for (let fy = 0; fy < h; fy++) {
+    for (let fx = 0; fx < w; fx++) {
+      const shooter = multi ? { ...piece, x: piece.x + fx, y: piece.y + fy } : piece;
+      if (stepBoard) {
+        if (canReachStepByStepRanged(shooter, tx, ty, others, stepBoard.width, stepBoard.height)) return { reach: true, clear: true };
+        continue;
+      }
+      if (!canRangedAttackTo(shooter.y, shooter.x, ty, tx, shooter, owner, patternGameType)) continue;
+      reach = true;
+      if (isRangedPathClear(shooter.x, shooter.y, tx, ty, shooter, pieces, owner, gameType)) return { reach: true, clear: true };
+    }
+  }
+  return { reach, clear: false };
+}
+
 function isRangedPathClear(fromX, fromY, toX, toY, piece, allPieces, pieceOwnerPosition, gameType) {
   const canFireOverAllies = piece.can_fire_over_allies === 1 || piece.can_fire_over_allies === true;
   const canFireOverEnemies = piece.can_fire_over_enemies === 1 || piece.can_fire_over_enemies === true;
@@ -15959,6 +16093,11 @@ function canRangedAttackTo(fromRow, fromCol, toRow, toCol, pieceData, playerPosi
  * This is a simplified version - ideally should use full piece movement data
  */
 function canPieceAttackSquare(piece, targetX, targetY, allPieces, gameType) {
+  // A multi-tile piece's own squares never obstruct its own paths (a move of
+  // one square right or down walks the anchor across them).
+  if ((piece.piece_width || 1) > 1 || (piece.piece_height || 1) > 1) {
+    allPieces = allPieces.filter(p => p.id !== piece.id);
+  }
   // Apply range square bonus
   if (gameType) piece = applyRangeSquareBonus(piece, gameType);
 
@@ -16519,6 +16658,9 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces, gameType) {
       }
       
       if (exactRatioHopOnlyAtk && !ratioPathHasPieceAtk(piece.x, piece.y, targetX, targetY)) return false;
+      // A multi-tile piece takes one L route with its whole footprint.
+      if (((piece.piece_width || 1) > 1 || (piece.piece_height || 1) > 1)
+        && !footprintLRouteClear(piece, targetX - piece.x, targetY - piece.y, allPieces, canHopOver)) return false;
       return path1Clear || path2Clear;
     }
   }
@@ -16699,6 +16841,11 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces, gameType) {
  * This validates ONLY the movement rules, not capture rules
  */
 function canPieceMoveToSquare(piece, targetX, targetY, allPieces, gameType = null) {
+  // A multi-tile piece's own squares never obstruct its own paths (a move of
+  // one square right or down walks the anchor across them).
+  if ((piece.piece_width || 1) > 1 || (piece.piece_height || 1) > 1) {
+    allPieces = allPieces.filter(p => p.id !== piece.id);
+  }
   const dx = targetX - piece.x;
   const dy = targetY - piece.y;
   const absDx = Math.abs(dx);
@@ -17068,6 +17215,9 @@ function canPieceMoveToSquare(piece, targetX, targetY, allPieces, gameType = nul
       }
       
       if (exactRatioHopOnly && !ratioPathHasPieceMove(piece.x, piece.y, targetX, targetY)) return false;
+      // A multi-tile piece takes one L route with its whole footprint.
+      if (((piece.piece_width || 1) > 1 || (piece.piece_height || 1) > 1)
+        && !footprintLRouteClear(piece, targetX - piece.x, targetY - piece.y, allPieces, canHopOver)) return false;
       return path1Clear || path2Clear;
     }
   }
@@ -18061,6 +18211,13 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
         return (_ratioHasAnyPiece = false);
       };
 
+      // A multi-tile piece needs one L route open for its whole footprint (see
+      // footprintLRouteClear); the anchor checks below then run as before.
+      if (isMultiTileGen && !hasGhostwalkGen && !footprintLRouteClear(piece, dx, dy, allPieces, (p) => {
+        const ally = (p.team || p.player_id) === pieceOwner;
+        return ally ? (canHopAllies || canHopAlliesAtk) : (canHopEnemies || canHopEnemiesAtk);
+      })) continue;
+
       // Check if piece has NO hopping ability at all
       const noHoppingAbility = !hasGhostwalkGen && !canHopAllies && !canHopEnemies;
       
@@ -18531,10 +18688,9 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
       const occ = occupantAt(move.x, move.y);
       if (!occ) return true;
       if (occ.cannot_be_captured) return false;
-      // A friend under the footprint blocks even with can_capture_allies:
-      // validateAndApplyMove only takes enemies from a multi-tile landing and
-      // the frontend engine likewise refuses the square.
-      if ((occ.team || occ.player_id) === moverOwner) return false;
+      // A friend under the footprint blocks, unless the piece captures allies
+      // (validateAndApplyMove then takes it with the rest of the footprint).
+      if ((occ.team || occ.player_id) === moverOwner && !piece.can_capture_allies) return false;
       return true;
     });
   }
@@ -19266,8 +19422,7 @@ function findAvailableCaptureForPlayer(gameState, playerPosition) {
         const owner = target.team || target.player_id;
         if (owner === playerPosition) continue;
         if (target.cannot_be_captured) continue;
-        if (!canRangedAttackTo(piece.y, piece.x, target.y, target.x, piece, playerPosition, gameType)) continue;
-        if (!isRangedPathClear(piece.x, piece.y, target.x, target.y, piece, pieces, playerPosition, gameType)) continue;
+        if (!rangedFromFootprint(piece, target.x, target.y, pieces, playerPosition, gameType).clear) continue;
         // Restriction zone: skip out-of-zone targets unless allowRangedOutsideZone is set.
         if (piece.cannot_move_outside_zone) {
           const zones = collectRestrictionZoneSquares(gameType);
@@ -19405,8 +19560,7 @@ function getAllLegalMovesForPlayer(gameState, playerPosition) {
         const targetOwner = target.team || target.player_id;
         if (targetOwner === playerPosition) continue;
         if (target.cannot_be_captured) continue;
-        if (!canRangedAttackTo(piece.y, piece.x, target.y, target.x, piece, playerPosition, gameType)) continue;
-        if (!isRangedPathClear(piece.x, piece.y, target.x, target.y, piece, pieces, playerPosition, gameType)) continue;
+        if (!rangedFromFootprint(piece, target.x, target.y, pieces, playerPosition, gameType).clear) continue;
         // Restriction zone: skip out-of-zone targets unless allowRangedOutsideZone is set.
         if (piece.cannot_move_outside_zone) {
           const zones = collectRestrictionZoneSquares(gameType);
@@ -19501,9 +19655,13 @@ function getAllLegalMovesForPlayer(gameState, playerPosition) {
           }
         }
 
-        const pushPlacementsFor = (x, y) => {
+        // onlyTemplate: a gravity drop lands differently for each size of piece.
+        const pushPlacementsFor = (x, y, onlyTemplate = null) => {
           if (!isPlacementAllowedHere(x, y)) return;
           for (const p of piecesToPlace) {
+            if (onlyTemplate && p !== onlyTemplate) continue;
+            // A multi-tile piece needs its whole footprint on the board and empty.
+            if (!placementFootprintFree(pieces, x, y, p, boardWidth, boardHeight)) continue;
             if (wouldPlacementLeaveInCheck(x, y, p)) continue;
             if (placementViolatesSelfCapture(gameState, x, y, playerPosition, p)) continue;
             if (placementRepeatsBannedPosition(gameState, x, y, playerPosition, p)) continue;
@@ -19538,23 +19696,27 @@ function getAllLegalMovesForPlayer(gameState, playerPosition) {
            * apply a placement.
            */
           const gravity = gravityOf(gameType);
-          const isOccupied = (gx, gy) => pieces.some(p => p.x === gx && p.y === gy && !p._occupied);
-          const seen = new Set();
-          for (let y = 0; y < boardHeight; y++) {
-            for (let x = 0; x < boardWidth; x++) {
-              const landed = restingSquare(gravity, { x, y }, boardWidth, boardHeight, isOccupied);
-              if (!landed) continue;                       // that column is full
-              const key = `${landed.y},${landed.x}`;
-              if (seen.has(key)) continue;                 // already offered
-              seen.add(key);
-              pushPlacementsFor(landed.x, landed.y);
+          const isOccupied = (gx, gy) => pieces.some(p => !p._occupied && doesPieceOccupySquare(p, gx, gy));
+          // Each size of piece falls to its own resting squares.
+          for (const template of piecesToPlace) {
+            const size = { w: template?.piece_width || 1, h: template?.piece_height || 1 };
+            const seen = new Set();
+            for (let y = 0; y < boardHeight; y++) {
+              for (let x = 0; x < boardWidth; x++) {
+                const landed = restingSquare(gravity, { x, y }, boardWidth, boardHeight, isOccupied, size);
+                if (!landed) continue;                       // that column is full
+                const key = `${landed.y},${landed.x}`;
+                if (seen.has(key)) continue;                 // already offered
+                seen.add(key);
+                pushPlacementsFor(landed.x, landed.y, template);
+              }
             }
           }
         } else {
           // Free placement: any unoccupied square is valid.
           for (let y = 0; y < boardHeight; y++) {
             for (let x = 0; x < boardWidth; x++) {
-              const occupied = pieces.some(p => p.x === x && p.y === y && !p._occupied);
+              const occupied = pieces.some(p => !p._occupied && doesPieceOccupySquare(p, x, y));
               if (occupied) continue;
               pushPlacementsFor(x, y);
             }
@@ -20768,10 +20930,14 @@ async function _processBotTurnInner(io, gameId, gameState, precomputedMove = nul
          * copies of the same logic.
          */
         const botGravity = gravityOf(gameState.gameType);
+        const botTemplateForSize = bestMove.placePieceId != null
+          ? (otherData.placeable_pieces || []).find(pp => pp.piece_id === bestMove.placePieceId)
+          : (otherData.placeable_pieces || [])[0];
         if (botGravity) {
           const landed = restingSquare(
             botGravity, { x: placeX, y: placeY }, boardWidth, boardHeight,
-            (gx, gy) => gameState.pieces.some(p => p.x === gx && p.y === gy)
+            (gx, gy) => gameState.pieces.some(p => doesPieceOccupySquare(p, gx, gy)),
+            { w: botTemplateForSize?.piece_width || 1, h: botTemplateForSize?.piece_height || 1 }
           );
           if (!landed) {
             console.warn(`[Bot] Column full at (${placeX},${placeY}) in game ${gameId}`);
@@ -20780,7 +20946,7 @@ async function _processBotTurnInner(io, gameId, gameState, precomputedMove = nul
           }
           placeX = landed.x;
           placeY = landed.y;
-        } else if (gameState.pieces.some(p => p.x === placeX && p.y === placeY)) {
+        } else if (!placementFootprintFree(gameState.pieces, placeX, placeY, botTemplateForSize, boardWidth, boardHeight)) {
           console.warn(`[Bot] Placement square occupied (${placeX},${placeY}) in game ${gameId}`);
           clearTimeout(safetyTimer);
           return;
@@ -21208,8 +21374,7 @@ async function _processBotTurnInner(io, gameId, gameState, precomputedMove = nul
             const tOwner = t.team || t.player_id;
             if (tOwner === rcOwner) return false;
             if (t.cannot_be_captured) return false;
-            if (!canRangedAttackTo(rcPiece.y, rcPiece.x, t.y, t.x, rcPiece, rcOwner, gameState.gameType)) return false;
-            if (!isRangedPathClear(rcPiece.x, rcPiece.y, t.x, t.y, rcPiece, gameState.pieces, rcOwner, gameState.gameType)) return false;
+            if (!rangedFromFootprint(rcPiece, t.x, t.y, gameState.pieces, rcOwner, gameState.gameType).clear) return false;
             return true;
           });
           if (rcTargets.length === 0) break;
@@ -21764,8 +21929,7 @@ async function _processBotTurnInner(io, gameId, gameState, precomputedMove = nul
                     const tOwner = t.team || t.player_id;
                     if (tOwner === pmCapOwner) return false;
                     if (t.cannot_be_captured) return false;
-                    if (!canRangedAttackTo(pmCapPiece.y, pmCapPiece.x, t.y, t.x, pmCapPiece, pmCapOwner, gameState.gameType)) return false;
-                    if (!isRangedPathClear(pmCapPiece.x, pmCapPiece.y, t.x, t.y, pmCapPiece, gameState.pieces, pmCapOwner, gameState.gameType)) return false;
+                    if (!rangedFromFootprint(pmCapPiece, t.x, t.y, gameState.pieces, pmCapOwner, gameState.gameType).clear) return false;
                     // Restriction zone: skip out-of-zone targets unless allowRangedOutsideZone is set.
                     if (pmCapPiece.cannot_move_outside_zone) {
                       const zones = collectRestrictionZoneSquares(gameState.gameType);
@@ -22906,7 +23070,7 @@ function evaluateInitialPosition(gameType, initialPieces) {
         } catch (e) { return 0; }
       }
 
-      const occupied = (gx, gy) => !!state.pieces.find(p => p.x === gx && p.y === gy && !p._occupied);
+      const occupied = (gx, gy) => !!state.pieces.find(p => !p._occupied && doesPieceOccupySquare(p, gx, gy));
       const piecesToPlace = placeable.length > 0 ? placeable.length : 1;
 
       /*

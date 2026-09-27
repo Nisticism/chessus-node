@@ -16,6 +16,7 @@ import BoardZoomControls from "../common/BoardZoomControls";
 import boardVp from "../common/boardViewport.module.scss";
 import { BoardCoordinates, NOTATION_INSET, puzzleFlipped } from "./PuzzleBoard";
 import { useBuilderVetoes, BuilderVetoPanel, PlyVetoNote, SetupVetoNote } from "./BuilderVetoes";
+import { cellSize, coveringKey, clearFootprint, spanStyle, moveTarget, dotAt, movesOf, anchorsOnly, withSizes } from "./puzzleFootprint";
 import styles from "./puzzlebuilder.module.scss";
 
 /*
@@ -158,6 +159,12 @@ const PuzzleBuilder = () => {
   const [dailyModalOpen, setDailyModalOpen] = useState(false);
 
   const [pieceDataMap, setPieceDataMap] = useState({});
+  // Once piece definitions arrive, each multi-tile piece's size is written on
+  // its placement, so the board can draw and move its whole footprint.
+  useEffect(() => {
+    setPlacements((prev) => withSizes(prev, pieceDataMap));
+    setStartingPlacements((prev) => withSizes(prev, pieceDataMap));
+  }, [pieceDataMap]);
 
   /*
    * Which goals this game can offer, and its rules, both from the server. The
@@ -287,6 +294,9 @@ const PuzzleBuilder = () => {
         setGame(data);
         let parsed = {};
         try { parsed = data.pieces_string ? JSON.parse(data.pieces_string) : {}; } catch (_) { parsed = {}; }
+        // A multi-tile piece is one entry at its anchor; the squares it also
+        // covers are listed as `_occupied` markers, which are not pieces.
+        parsed = anchorsOnly(parsed);
         setStartingPlacements(parsed);
 
         /*
@@ -324,6 +334,8 @@ const PuzzleBuilder = () => {
               image_location: pc.image_location,
               ends_game_on_checkmate: pc.ends_game_on_checkmate,
               ends_game_on_capture: pc.ends_game_on_capture,
+              ...((pc.piece_width || 1) > 1 || (pc.piece_height || 1) > 1
+                ? { piece_width: pc.piece_width || 1, piece_height: pc.piece_height || 1 } : {}),
             };
           }
           setPlacements(seeded);
@@ -556,6 +568,8 @@ const PuzzleBuilder = () => {
       const mover = next[fromKey];
       if (!mover) return;
       delete next[fromKey];
+      const moverSize = cellSize(mover);
+      if (moverSize.w > 1 || moverSize.h > 1) clearFootprint(next, ply.to.x, ply.to.y, moverSize.w, moverSize.h);
       const landed = {
         ...mover,
         /*
@@ -841,7 +855,10 @@ const PuzzleBuilder = () => {
    */
   const hintBoardKey = useMemo(() => JSON.stringify(hintPosition), [hintPosition]);
 
-  const loadHints = useCallback(async (x, y) => {
+  const loadHints = useCallback(async (sqX, sqY) => {
+    // Any square of a multi-tile piece asks for that piece, by its anchor.
+    const pieceKey = coveringKey(hintBoard, sqX, sqY) || keyOf(sqX, sqY);
+    const [y, x] = pieceKey.split(',').map(Number);
     const cacheKey = `${hintBoardKey}|${x},${y}`;
     if (hintCache.current.has(cacheKey)) return hintCache.current.get(cacheKey);
     try {
@@ -850,7 +867,7 @@ const PuzzleBuilder = () => {
         { position: hintPosition, side_to_move: sideToMove, setup_move: setupMove, x, y },
         { headers: authHeader() }
       );
-      const moves = data?.moves || [];
+      const moves = movesOf({ ...(hintBoard[pieceKey] || {}), x, y }, data?.moves || []);
       // Bounded so a long building session cannot grow it without limit.
       if (hintCache.current.size > 400) hintCache.current.clear();
       hintCache.current.set(cacheKey, moves);
@@ -858,12 +875,12 @@ const PuzzleBuilder = () => {
     } catch (_) {
       return [];
     }
-  }, [gameId, hintPosition, hintBoardKey, sideToMove, setupMove]);
+  }, [gameId, hintPosition, hintBoardKey, hintBoard, sideToMove, setupMove]);
 
   const hoverSquare = useCallback(async (x, y) => {
     // A held piece owns the board's attention; hover must not fight it.
     if (selected || trayPick) return;
-    if (!hintBoard[keyOf(x, y)]) { setHints([]); return; }
+    if (!coveringKey(hintBoard, x, y)) { setHints([]); return; }
     const moves = await loadHints(x, y);
     // The pointer may have moved on while the request was out.
     setHints((prev) => (selected || trayPick ? prev : moves));
@@ -890,9 +907,25 @@ const PuzzleBuilder = () => {
 
   const handleSquareClick = useCallback((x, y) => {
     if (veto.handleClick(x, y)) return;
-    const k = keyOf(x, y);
     // Arranging edits the starting position; recording plays forward from it.
-    const here = (mode === 'solution' ? solutionBoard : placements)[k];
+    const cells = mode === 'solution' ? solutionBoard : placements;
+    // The piece covering the square (any square of a multi-tile piece is it);
+    // `dest` is the square itself, where a piece put down lands its anchor.
+    const k = coveringKey(cells, x, y) || keyOf(x, y);
+    const dest = keyOf(x, y);
+    const here = cells[k];
+    // Putting a piece down: its whole footprint must fit, and it replaces
+    // whatever it lands on. Null when it would hang off the board.
+    const putDown = (prev, piece, skipKey = null) => {
+      const { w, h } = cellSize(piece);
+      if (x + w > boardWidth || y + h > boardHeight) return null;
+      const next = { ...prev };
+      if (skipKey) delete next[skipKey];
+      clearFootprint(next, x, y, w, h);
+      next[dest] = piece;
+      return next;
+    };
+    const doesNotFit = () => setCheckResult({ tone: 'warn', text: 'That piece does not fit there - it would hang off the board.' });
 
     /*
      * Setup mode records the move that LED INTO the position - the opponent's
@@ -923,7 +956,7 @@ const PuzzleBuilder = () => {
         return;
       }
       if (selected === k) { setSelected(null); return; }
-      if (placements[k]) {
+      if (coveringKey(placements, x, y)) {
         setCheckResult({ tone: 'warn', text: 'A piece cannot have come from an occupied square.' });
         return;
       }
@@ -947,16 +980,17 @@ const PuzzleBuilder = () => {
        * re-pick between each one would be its own small punishment.
        */
       if (trayPick) {
-        setPlacements((prev) => ({
-          ...prev,
-          [k]: {
-            piece_id: Number(trayPick.template.piece_id),
-            player_id: Number(trayPick.player),
-            piece_name: trayPick.template.name || trayPick.template.piece_name || null,
-            image_location: trayPick.template.image_location || null,
-            ...(trayPick.template.is_neutral ? { is_neutral: true } : {}),
-          },
-        }));
+        const def = pieceDataMap[trayPick.template.piece_id] || trayPick.template;
+        const piece = withSizes({ p: {
+          piece_id: Number(trayPick.template.piece_id),
+          player_id: Number(trayPick.player),
+          piece_name: trayPick.template.name || trayPick.template.piece_name || null,
+          image_location: trayPick.template.image_location || null,
+          ...(trayPick.template.is_neutral ? { is_neutral: true } : {}),
+        } }, { [trayPick.template.piece_id]: def }).p;
+        const next = putDown(placements, piece);
+        if (!next) { doesNotFit(); return; }
+        setPlacements(next);
         setSelected(null);
         return;
       }
@@ -967,13 +1001,10 @@ const PuzzleBuilder = () => {
         return;
       }
       if (selected) {
-        setPlacements((prev) => {
-          const next = { ...prev };
-          const moving = next[selected];
-          delete next[selected];
-          if (moving) next[k] = moving;
-          return next;
-        });
+        const moving = placements[selected];
+        const next = moving ? putDown(placements, moving, selected) : placements;
+        if (!next) { doesNotFit(); return; }
+        setPlacements(next);
         setSelected(null);
         return;
       }
@@ -1048,14 +1079,16 @@ const PuzzleBuilder = () => {
     if (selected === k) { setSelected(null); return; }
     const [fy, fx] = selected.split(',').map(Number);
     const mover = solutionBoard[selected];
+    // A multi-tile piece's anchor lands where the clicked square says - see moveTarget.
+    const to = moveTarget(hints, { ...(mover || {}), x: fx, y: fy }, x, y);
     recordPly({
       from: { x: fx, y: fy },
-      to: { x, y },
+      to,
       pieceId: mover?.id || `${mover?.piece_id}_${fy}_${fx}`,
     });
     setSelected(null);
     setCheckResult(null);
-  }, [mode, selected, trayPick, placements, solutionBoard, nextSide, lineFull, sideToMove, recordPly, veto]);
+  }, [mode, selected, trayPick, placements, solutionBoard, nextSide, lineFull, sideToMove, recordPly, veto, hints, pieceDataMap, boardWidth, boardHeight]);
 
   /*
    * Whether each step has been done, and what follows it.
@@ -1357,11 +1390,13 @@ const PuzzleBuilder = () => {
       const y = flipped ? boardHeight - 1 - row : row;
       const k = keyOf(x, y);
       const p = boardCells[k];
+      // The piece covering this square, anchored here or not (multi-tile).
+      const coverKey = coveringKey(boardCells, x, y);
       const isLight = (x + y) % 2 === 0;
-      const isSelected = selected === k;
+      const isSelected = !!coverKey && selected === coverKey;
       // Highlight the move just recorded, so the line reads as you build it.
       // In setup mode that is the opponent's last move instead.
-      const hint = (veto.hints.length ? veto.hints : hints).find((m) => Number(m.x) === x && Number(m.y) === y);
+      const hint = dotAt(veto.hints.length ? veto.hints : hints, x, y);
       const shown = mode === 'setup' ? setupMove : lastPly;
       // A placement has no origin square to light up, only a destination.
       const isFrom = !!shown?.from && shown.from.x === x && shown.from.y === y;
@@ -1384,11 +1419,12 @@ const PuzzleBuilder = () => {
           onClick={() => handleSquareClick(x, y)}
           onMouseEnter={() => hoverSquare(x, y)}
           onMouseLeave={unhoverSquare}
-          title={p ? `${p.piece_name} (Player ${p.player_id})` : ''}
+          title={coverKey ? `${boardCells[coverKey].piece_name} (Player ${boardCells[coverKey].player_id})` : ''}
         >
           {(() => {
             const src = imageFor(p, pieceDataMap);
-            return src ? <img src={src} alt={p.piece_name} draggable={false} /> : (
+            // A multi-tile piece is drawn once, from its anchor, over its footprint.
+            return src ? <img src={src} alt={p.piece_name} draggable={false} style={spanStyle(p, flipped) || undefined} /> : (
               p ? <span className={styles["piece-fallback"]}>{(p.piece_name || '?').charAt(0)}</span> : null
             );
           })()}

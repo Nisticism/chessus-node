@@ -47,6 +47,11 @@ function gravityOf(gameType) {
 /**
  * Where a piece dropped at (x, y) actually comes to rest.
  *
+ * `size` ({ w, h }) is the piece's footprint when it covers more than one
+ * square: the whole footprint falls as one, the anchor (top-left) is what is
+ * returned, and a square counts as free only when every square the footprint
+ * would cover there is free. A click anywhere in the columns it spans works.
+ *
  * Walks from the clicked square in the direction of gravity for as long as the
  * next square is empty and on the board. Returns null when the clicked square
  * is itself occupied AND cannot fall - which is how a full column is refused,
@@ -66,11 +71,19 @@ function gravityOf(gameType) {
  * @returns {{x:number,y:number}|null}  the resting square, or null if the
  *   column is full
  */
-function restingSquare(gravity, clicked, boardWidth, boardHeight, isOccupied) {
+function restingSquare(gravity, clicked, boardWidth, boardHeight, isOccupied, size = null) {
   if (!gravity) return clicked;
 
   const { dx, dy } = gravity;
-  const onBoard = (x, y) => x >= 0 && y >= 0 && x < boardWidth && y < boardHeight;
+  const w = Math.max(1, (size && size.w) || 1);
+  const h = Math.max(1, (size && size.h) || 1);
+  const onBoard = (x, y) => x >= 0 && y >= 0 && x + w <= boardWidth && y + h <= boardHeight;
+  const footprintOccupied = (x, y) => {
+    for (let fy = 0; fy < h; fy++) {
+      for (let fx = 0; fx < w; fx++) if (isOccupied(x + fx, y + fy)) return true;
+    }
+    return false;
+  };
 
   /*
    * Start at the far edge of the column the click landed in and walk BACK
@@ -80,13 +93,17 @@ function restingSquare(gravity, clicked, boardWidth, boardHeight, isOccupied) {
    */
   let x = Number(clicked.x);
   let y = Number(clicked.y);
+  if (!(x >= 0 && y >= 0 && x < boardWidth && y < boardHeight)) return null;
+  // A wide or tall piece clicked near the far side still has to fit.
+  x = Math.min(x, boardWidth - w);
+  y = Math.min(y, boardHeight - h);
   if (!onBoard(x, y)) return null;
 
   // Run to the far edge in the direction of the fall.
   while (onBoard(x + dx, y + dy)) { x += dx; y += dy; }
 
   // Then walk back until a square is free.
-  while (onBoard(x, y) && isOccupied(x, y)) { x -= dx; y -= dy; }
+  while (onBoard(x, y) && footprintOccupied(x, y)) { x -= dx; y -= dy; }
 
   if (!onBoard(x, y)) return null;   // the whole column is full
   return { x, y };

@@ -12,6 +12,7 @@ import PuzzleBoard, { NOTATION_INSET, puzzleFlipped, squareFromPoint } from "../
 import useDiscordSdk from "./useDiscordSdk";
 import { launchedPuzzleId, getLaunchParams } from "../../helpers/discord-launch-params";
 import GameRulesModal from "../common/GameRulesModal";
+import { cellSize, coveringKey, clearFootprint, spanStyle, moveTarget, dotAt, movesOf } from "../puzzles/puzzleFootprint";
 import styles from "./discordactivity.module.scss";
 
 /*
@@ -114,6 +115,9 @@ const applyMove = (cells, move, recorded, promotionArt = null) => {
   if (!mover) return cells;
   const next = { ...cells };
   delete next[fromKey];
+  // A multi-tile piece takes everything its footprint lands on.
+  const size = cellSize(mover);
+  if (size.w > 1 || size.h > 1) clearFootprint(next, m.to.x, m.to.y, size.w, size.h);
   const landed = {
     ...mover,
     // Keep the id the piece had on its STARTING square, so a later move by the
@@ -471,9 +475,11 @@ export default function DiscordActivity() {
   const darkColor = '#08234d';
 
   // ---------------------------------------------------------------- moves --
-  const loadHints = useCallback(async (x, y) => {
+  const loadHints = useCallback(async (sqX, sqY) => {
     if (!puzzle) return [];
-    const key = `${y},${x}`;
+    // Any square of a multi-tile piece asks for that piece (by its anchor).
+    const key = coveringKey(board, sqX, sqY) || `${sqY},${sqX}`;
+    const [y, x] = key.split(',').map(Number);
     if (hintCache.current.has(key)) return hintCache.current.get(key);
     try {
       // The current position, so a piece that has already moved lights up the
@@ -484,7 +490,7 @@ export default function DiscordActivity() {
         setup_move: found.length ? null : puzzle.setup_move,
         x, y,
       });
-      const moves = data?.moves || [];
+      const moves = movesOf({ ...(board?.[key] || {}), x, y }, data?.moves || []);
       hintCache.current.set(key, moves);
       return moves;
     } catch (_) {
@@ -645,10 +651,13 @@ export default function DiscordActivity() {
    * A custom game's promotion list turns out to fit in this frame perfectly
    * well; it is the same dialog the site uses.
    */
-  const tryMove = useCallback(async (fromKey, x, y) => {
+  // grab: the square a multi-tile piece was dragged by, as an offset from its anchor.
+  const tryMove = useCallback(async (fromKey, clickX, clickY, grab = null) => {
     if (!puzzle || busy || finished) return;
     const [fy, fx] = fromKey.split(',').map(Number);
     const mover = board?.[fromKey];
+    // Where a multi-tile piece's anchor lands, from its moves (the hints).
+    const { x, y } = moveTarget(hints, { ...mover, x: fx, y: fy }, clickX, clickY, grab);
     setPicked(null);
     setHints([]);
     setLastTry({ x, y });
@@ -760,7 +769,7 @@ export default function DiscordActivity() {
 
   // For the shared touch rules: is there a piece here, and may it be moved?
   const squarePiece = useCallback((x, y) => {
-    const here = board?.[`${y},${x}`];
+    const here = board?.[coveringKey(board, x, y)];
     if (!here) return null;
     const movable = !!puzzle && !busy && !finished && !replaying
       && Number(here.player_id) === Number(puzzle.side_to_move);
@@ -770,12 +779,14 @@ export default function DiscordActivity() {
   const startPress = useCallback((e, x, y) => {
     // `replaying`: the position is still arriving.
     if (!puzzle || busy || finished || replaying) return;
-    const key = `${y},${x}`;
+    const key = coveringKey(board, x, y) || `${y},${x}`;
     const here = board?.[key];
     if (!here || Number(here.player_id) !== Number(puzzle.side_to_move)) return;
+    const [ay, ax] = key.split(',').map(Number);
     setPicked(key);
     setVerdict(null);
-    setDrag({ fromKey: key, x: e.clientX, y: e.clientY });
+    // `grab`: which square of a multi-tile piece was pressed.
+    setDrag({ fromKey: key, x: e.clientX, y: e.clientY, grab: { x: x - ax, y: y - ay } });
     loadHints(x, y).then(setHints);
   }, [puzzle, busy, finished, replaying, board, loadHints]);
 
@@ -788,10 +799,11 @@ export default function DiscordActivity() {
       setDrag(null);
       if (!sq) { setPicked(null); setHints([]); return; }
       const [fy, fx] = from.split(',').map(Number);
+      const grab = drag.grab || { x: 0, y: 0 };
       // Press and release on the same square is a click, so the piece stays
       // selected and click-then-click still works.
-      if (sq.x === fx && sq.y === fy) return;
-      tryMove(from, sq.x, sq.y);
+      if (sq.x === fx + grab.x && sq.y === fy + grab.y) return;
+      tryMove(from, sq.x, sq.y, grab);
     };
     // The browser took the gesture over (a scroll, a system swipe): the
     // drag ends where it started, with the piece still picked up.
@@ -890,11 +902,12 @@ export default function DiscordActivity() {
      * ordinary move.
      */
     if (trayPick) {
-      const mineHere = board?.[`${y},${x}`];
+      const mineHere = board?.[coveringKey(board, x, y)];
       if (!mineHere || Number(mineHere.player_id) !== Number(puzzle.side_to_move)) { tryPlace(x, y); return; }
       setTrayPick(null);
     }
-    const key = `${y},${x}`;
+    // The piece covering the square - any square of a multi-tile piece is it.
+    const key = coveringKey(board, x, y) || `${y},${x}`;
     const here = board?.[key];
     if (!picked) {
       if (!here || Number(here.player_id) !== Number(puzzle.side_to_move)) return;
@@ -926,7 +939,7 @@ export default function DiscordActivity() {
 
   const hoverSquare = useCallback(async (x, y) => {
     if (!puzzle || finished || picked || drag || replaying) return;
-    if (!board?.[`${y},${x}`]) { setHints([]); return; }
+    if (!coveringKey(board, x, y)) { setHints([]); return; }
     const moves = await loadHints(x, y);
     setHints((prev) => (picked || drag ? prev : moves));
   }, [puzzle, finished, picked, drag, replaying, board, loadHints]);
@@ -946,21 +959,21 @@ export default function DiscordActivity() {
   }, [shownBoard]);
 
   const squareClass = useCallback((x, y) => {
-    const key = `${y},${x}`;
-    const pl = bySquare.get(key);
+    const key = coveringKey(shownBoard, x, y);
+    const pl = key ? bySquare.get(key) : null;
     const mine = pl && Number(pl.player_id) === Number(puzzle?.side_to_move);
     const wrong = verdict?.status === 'wrong' && lastTry?.x === x && lastTry?.y === y;
-    const target = hints.some((m) => m.x === x && m.y === y);
+    const target = !!dotAt(hints, x, y);
     return [
       picked === key ? styles["picked"] : '',
       wrong ? styles["wrong"] : '',
       (mine || target) && !finished ? styles["grabbable"] : '',
     ].filter(Boolean).join(' ');
-  }, [bySquare, puzzle?.side_to_move, picked, verdict, lastTry, finished, hints]);
+  }, [bySquare, shownBoard, puzzle?.side_to_move, picked, verdict, lastTry, finished, hints]);
 
   const renderSquare = useCallback((x, y) => {
     const pl = bySquare.get(`${y},${x}`);
-    const hint = hints.find((m) => m.x === x && m.y === y);
+    const hint = dotAt(hints, x, y);
     const src = imageFor(pl);
     return (
       <>
@@ -969,7 +982,8 @@ export default function DiscordActivity() {
               src={src}
               alt={pl.piece_name || ''}
               draggable={false}
-              style={drag && drag.fromKey === `${y},${x}` ? { opacity: 0 } : undefined}
+              // A multi-tile piece is drawn once, from its anchor, over its footprint.
+              style={spanStyle(pl, flipped, drag && drag.fromKey === `${y},${x}` ? { opacity: 0 } : null) || undefined}
             />
           : <span className={styles["piece-letter"]}>{(pl.piece_name || '?').charAt(0)}</span>)}
         {!!hint && (
@@ -990,7 +1004,7 @@ export default function DiscordActivity() {
         )}
       </>
     );
-  }, [bySquare, hints, drag]);
+  }, [bySquare, hints, drag, flipped]);
 
   /*
    * Ask for a link code. Nothing is linked by pressing this - it hands back six
@@ -1084,7 +1098,8 @@ export default function DiscordActivity() {
             draggable={false}
             style={{
               left: drag.x, top: drag.y,
-              width: vp.squareSize, height: vp.squareSize,
+              width: vp.squareSize * cellSize(board?.[drag.fromKey]).w,
+              height: vp.squareSize * cellSize(board?.[drag.fromKey]).h,
             }}
           />
         )}

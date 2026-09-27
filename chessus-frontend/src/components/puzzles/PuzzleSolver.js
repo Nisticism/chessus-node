@@ -20,7 +20,8 @@ import GameRulesModal from "../common/GameRulesModal";
 import useSetupMoveReplay from "../common/useSetupMoveReplay";
 import { solverTrayItems, withPlacers, placesPieces } from "../../helpers/placement";
 import { usePuzzleVetoes, VetoPanel, VetoAnswer, ContinueNotice, MoveProgress, MoveHint } from "./PuzzleVetoes";
-import { applyPromotionDefinition, promotionPieceNumber, solvedPliesRemaining, colToFile } from "../../helpers/pieceMovementUtils";
+import { applyPromotionDefinition, promotionPieceNumber, solvedPliesRemaining, colToFile, doesPieceOccupySquare } from "../../helpers/pieceMovementUtils";
+import { cellSize, coveringKey, clearFootprint, spanStyle, moveTarget, dotAt, movesOf } from "./puzzleFootprint";
 import styles from "./puzzlesolver.module.scss";
 
 /*
@@ -164,6 +165,10 @@ const applyPly = (cells, ply, art = null) => {
   };
   // A fresh object, so mutating it is nobody else's business.
   applyPromotionToCell(landed, ply, art);
+  // A multi-tile piece takes everything its footprint lands on, not only what
+  // stood on its anchor square.
+  const size = cellSize(mover);
+  if (size.w > 1 || size.h > 1) clearFootprint(next, ply.to.x, ply.to.y, size.w, size.h);
   next[keyOf(ply.to.x, ply.to.y)] = landed;
 
   /*
@@ -594,13 +599,13 @@ const PuzzleSolver = () => {
     // squares a piece's capture pattern covers while empty (a pawn's
     // diagonals) are drawn as attacks, where before only a square with an
     // enemy already on it ever showed one.
-    setHoveredMoves(moveEngine.calculateValidMoves(
+    setHoveredMoves(movesOf(piece, moveEngine.calculateValidMoves(
       piece, enginePieces, boardWidth, boardHeight,
       false,  // skipCheckFilter
       false,  // forPremove
       true,   // forHoverDisplay
       true    // forFog
-    ) || []);
+    )));
   }, [moveEngine, enginePieces, board, boardWidth, boardHeight]);
 
   /*
@@ -763,11 +768,23 @@ const PuzzleSolver = () => {
    * expects - a king-slides-two move without those flags is simply illegal, so a
    * solver who found the right idea would be told they were wrong.
    */
-  const playFrom = useCallback(async (fromKey, x, y) => {
+  // grab: the square a multi-tile piece was dragged by, as an offset from its anchor.
+  const playFrom = useCallback(async (fromKey, clickX, clickY, grab = null) => {
     const [fy, fx] = fromKey.split(',').map(Number);
     const mover = placements[fromKey];
     setSelected(null);
     setHoveredMoves([]);
+    // A multi-tile piece's destination is where its anchor lands, chosen from
+    // its legal moves by the square that was clicked or dropped on.
+    let target = { x: clickX, y: clickY };
+    try {
+      const moverPiece = enginePieces.find((p) => p.x === fx && p.y === fy);
+      if (moverPiece) {
+        target = moveTarget(moveEngine.calculateValidMoves(moverPiece, enginePieces, boardWidth, boardHeight) || [],
+          moverPiece, clickX, clickY, grab);
+      }
+    } catch (_) { /* the server decides */ }
+    const { x, y } = target;
     let move = {
       from: { x: fx, y: fy },
       to: { x, y },
@@ -936,10 +953,12 @@ const PuzzleSolver = () => {
     // `replaying`: the opponent's move is still arriving, and a piece picked up
     // mid-replay would be dragged off a position that is about to change.
     if (busy || finished || replaying || vet.awaiting || e.button !== 0) return;
-    const k = keyOf(x, y);
+    // Any square of a multi-tile piece picks it up; `grab` is which one.
+    const k = coveringKey(placements, x, y) || keyOf(x, y);
     const here = placements[k];
     if (!here || Number(here.player_id) !== Number(puzzle?.side_to_move)) return;
-    pendingRef.current = { fromKey: k, startX: e.clientX, startY: e.clientY };
+    const [ay, ax] = k.split(',').map(Number);
+    pendingRef.current = { fromKey: k, startX: e.clientX, startY: e.clientY, grab: { x: x - ax, y: y - ay } };
   }, [busy, finished, replaying, placements, puzzle, vet.awaiting]);
 
   useEffect(() => {
@@ -968,9 +987,10 @@ const PuzzleSolver = () => {
       setHoveredMoves([]);
       const target = squareAtPoint(e.clientX, e.clientY);
       const [fy, fx] = pending.fromKey.split(',').map(Number);
+      const grab = pending.grab || { x: 0, y: 0 };
       // Dropped off the board, or back where it started: nothing happened.
-      if (!target || (target.x === fx && target.y === fy)) return;
-      playFrom(pending.fromKey, target.x, target.y);
+      if (!target || (target.x === fx + grab.x && target.y === fy + grab.y)) return;
+      playFrom(pending.fromKey, target.x, target.y, grab);
     };
 
     // Only a press or drag that was actually running is cancelled: on Android
@@ -994,7 +1014,8 @@ const PuzzleSolver = () => {
   const handleSquareClick = useCallback((x, y, how = null) => {
     if (busy || finished || replaying) return;
     if (vet.handleClick(x, y)) return;
-    const k = keyOf(x, y);
+    // The piece covering the square - any square of a multi-tile piece is it.
+    const k = coveringKey(placements, x, y) || keyOf(x, y);
     const here = placements[k];
     /*
      * A piece held from the tray answers by being PUT DOWN, so one click ends
@@ -1034,7 +1055,7 @@ const PuzzleSolver = () => {
      * selection, anything else puts the piece down and shows what was tapped.
      */
     if (how && how.touch) {
-      const tapped = enginePieces.find((p) => p.x === x && p.y === y);
+      const tapped = enginePieces.find((p) => doesPieceOccupySquare(p, x, y));
       if (here && Number(here.player_id) === Number(puzzle?.side_to_move)) setSelected(k);
       else setSelected(null);
       hoverPiece(tapped);
@@ -1179,6 +1200,8 @@ const PuzzleSolver = () => {
    */
   const squareState = (x, y) => {
     const k = keyOf(x, y);
+    // The piece covering this square, anchored here or not (multi-tile).
+    const coverKey = coveringKey(reviewPlacements || shown, x, y);
     /*
      * Stepping through a revealed answer bypasses the setup-move replay: that
      * animation is for arriving at the puzzle, and by now the puzzle is over.
@@ -1201,14 +1224,14 @@ const PuzzleSolver = () => {
     // Placements only have to carry a piece id; the name lives on the piece
     // definition, so fall back to it rather than showing "undefined".
     const pieceName = p ? (p.piece_name || pieceDataMap[p.piece_id]?.piece_name || 'Piece') : '';
-    return { k, rawPiece, p, fogged, concealed, pieceName };
+    return { k, coverKey, rawPiece, p, fogged, concealed, pieceName };
   };
 
   const squareClass = (x, y) => {
-    const { k, fogged } = squareState(x, y);
-    const mine = shown[k] && Number(shown[k].player_id) === Number(puzzle.side_to_move);
+    const { coverKey, fogged } = squareState(x, y);
+    const mine = shown[coverKey] && Number(shown[coverKey].player_id) === Number(puzzle.side_to_move);
     return [
-      selected === k ? styles["selected"] : '',
+      coverKey && selected === coverKey ? styles["selected"] : '',
       fogged ? styles["fogged"] : '',
       setup && !fogged && ((setup.from?.x === x && setup.from?.y === y) || (setup.to?.x === x && setup.to?.y === y)) ? styles["setup"] : '',
       lastTry && lastTry.to.x === x && lastTry.to.y === y && outcome === 'wrong' ? styles["wrong"] : '',
@@ -1228,8 +1251,10 @@ const PuzzleSolver = () => {
   const renderSquare = (x, y) => {
     const { k, p, concealed, pieceName } = squareState(x, y);
     const src = concealed ? null : imageFor(p, pieceDataMap);
-    const dot = (vet.pickDots.length ? vet.pickDots : hoveredMoves).find((m) => m.x === x && m.y === y);
+    const dot = dotAt(vet.pickDots.length ? vet.pickDots : hoveredMoves, x, y);
     const isDragOrigin = !!drag && drag.fromKey === k;
+    // A multi-tile piece is drawn once, from its anchor, over its whole footprint.
+    const imgStyle = spanStyle(p, flipped, isDragOrigin ? { opacity: 0 } : null);
     return (
       <>
         {src
@@ -1239,7 +1264,7 @@ const PuzzleSolver = () => {
               draggable={false}
               // While it is being dragged the piece is drawn under the cursor
               // instead, so the square it came from reads as empty.
-              style={isDragOrigin ? { opacity: 0 } : undefined}
+              style={imgStyle || undefined}
             />
           : concealed
             ? <span className={styles["concealed-piece"]} aria-label="Unknown enemy piece">?</span>
@@ -1271,8 +1296,8 @@ const PuzzleSolver = () => {
           style={{
             left: drag.x,
             top: drag.y,
-            width: vp.squareSize,
-            height: vp.squareSize,
+            width: vp.squareSize * cellSize(draggedPlacement).w,
+            height: vp.squareSize * cellSize(draggedPlacement).h,
           }}
         />
       )}
@@ -1336,16 +1361,16 @@ const PuzzleSolver = () => {
               onSquarePointerDown={startPress}
               liftedSquare={selected}
               squarePiece={(x, y) => {
-                const here = placements[keyOf(x, y)];
+                const here = placements[coveringKey(placements, x, y) || keyOf(x, y)];
                 if (!here) return null;
                 const movable = !busy && !finished && !replaying
                   && Number(here.player_id) === Number(puzzle?.side_to_move);
                 return movable ? 'own' : 'other';
               }}
-              onSquareLift={(x, y) => setSelected(keyOf(x, y))}
+              onSquareLift={(x, y) => setSelected(coveringKey(placements, x, y) || keyOf(x, y))}
               onSquareMouseEnter={(x, y) => {
                 if (!finished && !selected && !drag && !replaying) {
-                  hoverPiece(enginePieces.find((e) => e.x === x && e.y === y));
+                  hoverPiece(enginePieces.find((e) => doesPieceOccupySquare(e, x, y)));
                 }
               }}
               onSquareMouseLeave={() => { if (!selected && !drag) setHoveredMoves([]); }}
