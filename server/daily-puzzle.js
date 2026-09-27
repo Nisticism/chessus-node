@@ -167,6 +167,71 @@ const DAILY_DISCRETION =
   'Meeting all of this does not guarantee selection. The site owner and admins can '
   + "schedule, replace or remove any day's puzzle at any time, for any reason.";
 
+/*
+ * Does a puzzle's recorded answer actually do what the puzzle says?
+ *
+ * validation_status is only as good as whatever set it, and a generator once
+ * set 'valid' on lines that were merely LEGAL: a "Mate in four" whose stored
+ * line stopped after two of the solver's moves (the engine's own line had been
+ * cut short), and mates the engine believed in for a game whose rules it had
+ * wrong. Solvers were told "Solved!" two moves into a mate in four.
+ *
+ * So the queue asks the site's own validator before it schedules anything, and
+ * for a goal the engine can score, requires the line to END with the goal met.
+ * Goals it cannot score are the creator's call, as they are everywhere else, and
+ * pass. Asked of the puzzle about to be scheduled, not the whole pool, and the
+ * answer is cached for the run.
+ */
+const lineMeetsGoal = async (db_pool, p) => {
+  // Required here, not at the top: these load the whole engine, and this file
+  // is loaded by modules the engine itself depends on.
+  const { validatePuzzle, playLine, terminalOutcome, MECHANICAL_GOALS } = require('./puzzle-validation');
+  const { rulesForPuzzle } = require('./puzzle-snapshot');
+  const { hydratePosition, placeableDefinitions } = require('./puzzle-hydrate');
+  if (!MECHANICAL_GOALS.has(p.goal)) return true;
+  const parse = (v, fallback) => {
+    if (v == null) return fallback;
+    if (typeof v !== 'string') return v;
+    try { return JSON.parse(v); } catch (_) { return fallback; }
+  };
+  const line = parse(p.solution_line, []);
+  if (!Array.isArray(line) || !line.length) return false;
+  try {
+    const rules = await rulesForPuzzle(db_pool, p);
+    if (!rules?.game) return false;
+    const puzzle = {
+      position: await hydratePosition(rules, parse(p.position, [])),
+      placeable_definitions: placeableDefinitions(rules),
+      side_to_move: p.side_to_move,
+      setup_move: parse(p.setup_move, null),
+      solution_line: line,
+      goal: p.goal,
+      game_type_id: p.game_type_id,
+    };
+    // validatePuzzle may mutate what it is handed; the replay below gets its own copy.
+    const verdict = await validatePuzzle(JSON.parse(JSON.stringify(puzzle)), rules.game);
+    if (!verdict.intendedWorks) return false;
+    // A one-move puzzle is valid (or ambiguous) exactly when its move does it.
+    if (line.length === 1) return verdict.status === 'valid' || verdict.status === 'ambiguous';
+    if (verdict.goalReached) return true;
+    /*
+     * Or the line ends the game in the solver's favour by the game's own rule -
+     * a captured or bared king in a game won that way, where "checkmate" is
+     * the builder's nearest label. The same test scripts/audit-puzzle-lines.js
+     * applies. A draw, or a line that simply stops, does not count.
+     */
+    const played = await playLine(puzzle, rules.game, line);
+    if (!played.ok) return false;
+    const side = Number(p.side_to_move);
+    const toMove = line.length % 2 === 1 ? (side === 1 ? 2 : 1) : side;
+    const outcome = terminalOutcome(played.state, toMove, played.ctx);
+    return !!(outcome && Number(outcome.winner) === side);
+  } catch (err) {
+    console.warn(`[daily-puzzle] could not check puzzle ${p.id}: ${err.message}`);
+    return false;
+  }
+};
+
 function createDailyPuzzle({ db_pool }) {
   /*
    * Everything a card or a board needs about a scheduled puzzle. Written once
@@ -274,9 +339,32 @@ function createDailyPuzzle({ db_pool }) {
     for (const r of scheduledDepths) placed[depthBucket(r.depth)] += Number(r.n);
 
     const [candidates] = await db_pool.query(
-      `SELECT p.id, p.game_type_id, p.rating, p.created_at, p.solution_depth ${ELIGIBLE_SQL}
+      `SELECT p.id, p.game_type_id, p.rating, p.created_at, p.solution_depth,
+              p.position, p.side_to_move, p.setup_move, p.solution_line, p.goal, p.rule_snapshot
+       ${ELIGIBLE_SQL}
        ORDER BY p.game_type_id, p.id`
     );
+    // lineMeetsGoal, once per puzzle per run. A puzzle that fails is skipped,
+    // never scheduled, and reported.
+    const checked = new Map();
+    const rejected = [];
+    const sound = async (c) => {
+      if (!checked.has(c.id)) {
+        const ok = await lineMeetsGoal(db_pool, c);
+        checked.set(c.id, ok);
+        if (!ok) rejected.push(c.id);
+      }
+      return checked.get(c.id);
+    };
+    // The first puzzle in `list` that is unused, matches `test`, and holds up.
+    const firstSound = async (list, test) => {
+      for (const c of list) {
+        if (usedPuzzleIds.has(c.id) || !test(c)) continue;
+        // eslint-disable-next-line no-await-in-loop
+        if (await sound(c)) return c;
+      }
+      return null;
+    };
     if (!candidates.length) {
       return { scheduled: [], filledThrough: null, ranOut: true, candidates: 0 };
     }
@@ -330,17 +418,22 @@ function createDailyPuzzle({ db_pool }) {
       let chosen = null;
       for (const depth of wanted) {
         for (const [gameTypeId, list] of options) {
-          const pick = list.find(c => !usedPuzzleIds.has(c.id) && depthBucket(c.solution_depth) === depth);
+          // eslint-disable-next-line no-await-in-loop
+          const pick = await firstSound(list, c => depthBucket(c.solution_depth) === depth);
           if (pick) { chosen = { gameTypeId, pick, depth }; break; }
         }
         if (chosen) break;
       }
       // Nothing matched a depth we want; take the longest-waiting game anyway.
       if (!chosen) {
-        const [gameTypeId, list] = options[0];
-        const pick = list.find(c => !usedPuzzleIds.has(c.id));
-        chosen = { gameTypeId, pick, depth: depthBucket(pick.solution_depth) };
+        for (const [gameTypeId, list] of options) {
+          // eslint-disable-next-line no-await-in-loop
+          const pick = await firstSound(list, () => true);
+          if (pick) { chosen = { gameTypeId, pick, depth: depthBucket(pick.solution_depth) }; break; }
+        }
       }
+      // Every remaining candidate failed its own line: stop, as for running out.
+      if (!chosen) { ranOut = true; break; }
 
       usedPuzzleIds.add(chosen.pick.id);
       lastUsed.set(chosen.gameTypeId, date);
@@ -356,10 +449,15 @@ function createDailyPuzzle({ db_pool }) {
       );
     }
 
+    if (rejected.length) {
+      console.warn(`[daily-puzzle] not scheduled - line does not meet its goal: ${rejected.map(id => `#${id}`).join(', ')}`);
+    }
+
     return {
       scheduled,
       filledThrough: scheduled.length ? scheduled[scheduled.length - 1].date : null,
       ranOut,
+      rejected,
       candidates: candidates.length,
       horizonEnd: end,
     };
@@ -376,5 +474,5 @@ function createDailyPuzzle({ db_pool }) {
 
 module.exports = {
   createDailyPuzzle, HORIZON_DAYS, MIN_GAME_GAP_DAYS, DEPTH_SHARE,
-  DAILY_REQUIREMENTS, DAILY_DISCRETION,
+  DAILY_REQUIREMENTS, DAILY_DISCRETION, lineMeetsGoal,
 };

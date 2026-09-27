@@ -488,7 +488,13 @@ const TITLE_FOR_MATE = {
                 line.push({ ...move, ...(res.promotedTo || {}) });
               }
 
-              if (translated && line.length >= 2) {
+              /*
+               * The WHOLE mate, or nothing. The engine's principal variation can
+               * stop short of the mate it reports, and a line cut at "at least
+               * two plies" was stored as a mate in four that ended after the
+               * solver's second move - so the puzzle said "Solved" halfway.
+               */
+              if (translated && line.length === attemptMate * 2 - 1) {
                 // eslint-disable-next-line no-await-in-loop
                 const uniq = await firstMoveIsUnique(
                   attemptPosition, side, { from: setupMove.from, to: setupMove.to },
@@ -515,7 +521,13 @@ const TITLE_FOR_MATE = {
                     { ...candidate, position: JSON.parse(JSON.stringify(attemptPosition)) },
                     game
                   );
-                  if (verdict.intendedWorks) {
+                  /*
+                   * Legal is not enough: the line has to END in the site's own
+                   * checkmate. The engine can believe in a mate the site's rules
+                   * do not have (a piece it models differently), and
+                   * intendedWorks alone let those through as 'valid'.
+                   */
+                  if (verdict.intendedWorks && verdict.goalReached) {
                     hit = {
                       position: candidate.position,
                       side_to_move: side,
