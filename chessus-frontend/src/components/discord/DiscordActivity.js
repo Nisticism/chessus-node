@@ -9,10 +9,11 @@ import useSetupMoveReplay from "../common/useSetupMoveReplay";
 import { solverTrayItems } from "../../helpers/placement";
 import { applyPromotionDefinition, promotionPieceNumber, solvedPliesRemaining } from "../../helpers/pieceMovementUtils";
 import PuzzleBoard, { NOTATION_INSET, puzzleFlipped, squareFromPoint } from "../puzzles/PuzzleBoard";
+import { useTapOutside } from "../common/useTouchPieceGestures";
 import useDiscordSdk from "./useDiscordSdk";
 import { launchedPuzzleId, getLaunchParams } from "../../helpers/discord-launch-params";
 import GameRulesModal from "../common/GameRulesModal";
-import { cellSize, coveringKey, clearFootprint, spanStyle, moveTarget, dotAt, movesOf, previewOutlines } from "../puzzles/puzzleFootprint";
+import { cellSize, coveringKey, clearFootprint, spanStyle, moveTarget, dotAt, movesOf, previewOutlines, tapMovesTo } from "../puzzles/puzzleFootprint";
 import usePuzzleEngine from "../puzzles/usePuzzleEngine";
 import styles from "./discordactivity.module.scss";
 
@@ -484,6 +485,9 @@ export default function DiscordActivity() {
    * made hovering here lag. The server is still asked (below) only until the
    * pieces' definitions have loaded, and it still judges every move.
    */
+  // On a touch screen, a tap outside the board puts a picked-up piece down.
+  useTapOutside(boardRef, () => { setPicked(null); setHints([]); });
+
   const engine = usePuzzleEngine({
     placements: board || {},
     gameTypeId: puzzle?.game_type_id || null,
@@ -949,19 +953,20 @@ export default function DiscordActivity() {
      */
     if (picked === key) { setPicked(null); loadHints(x, y).then(setHints); return; }
     /*
-     * A finger tap never moves - press and drag does (useTouchPieceGestures).
-     * A second tap meant to pick a different piece was being read as a move
-     * onto it, so a tap now only selects: another of your pieces takes the
-     * selection, anything else puts the piece down and shows what was tapped.
+     * A finger tap on a square the piece can go to moves it, as a click does.
+     * Tapping another of your pieces picks that one up instead, and any other
+     * tap puts the piece down and shows what was tapped (tapMovesTo). Tapping
+     * outside the board puts it down too (useTapOutside).
      */
-    if (how && how.touch) {
+    const ownHere = !!here && Number(here.player_id) === Number(puzzle.side_to_move);
+    if (how && how.touch && !tapMovesTo(hints, picked, x, y, ownHere)) {
       setPicked(here && Number(here.player_id) === Number(puzzle.side_to_move) ? key : null);
       if (here) loadHints(x, y).then(setHints);
       else setHints([]);
       return;
     }
     tryMove(picked, x, y);
-  }, [puzzle, busy, finished, replaying, board, picked, tryMove, loadHints, trayPick, tryPlace]);
+  }, [puzzle, busy, finished, replaying, board, picked, tryMove, loadHints, trayPick, tryPlace, hints]);
 
   const hoverSquare = useCallback(async (x, y) => {
     if (!puzzle || finished || picked || drag || replaying) return;

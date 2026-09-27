@@ -13,16 +13,15 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
  *                              own pieces lifts it (the board's click path)
  *   press a lifted piece       drags it straight away - no long press
  *   long-press your piece      lifts it and drags from that same press
- *   tap, then tap a square     does NOT move. On a touch screen a tap only
- *                              selects: another of your pieces switches the
- *                              selection, anything else puts it down. Moving
- *                              is press-and-drag only, because a second tap
- *                              meant to pick a different piece was being read
- *                              as a move onto it.
+ *   tap, then tap a square     moves there when it is one of the piece's
+ *                              moves, as a click does. Tapping another of your
+ *                              pieces picks that one up instead; tapping
+ *                              anything else puts the piece down.
+ *   tap outside the board      puts a picked-up piece down (useTapOutside).
  *
  * isTouchTap(), returned by the hook, says whether the click being handled
- * came from a finger tap, so a board can apply that last rule in its click
- * handler. A drag never produces a click at all (see swallowClickUntil).
+ * came from a finger tap, for a board whose click path treats a tap
+ * differently. A drag never produces a click at all (see swallowClickUntil).
  *
  * HOW THE BOARD TAKES PART
  *
@@ -220,4 +219,41 @@ export default function useTouchPieceGestures(boardRef, options = {}) {
   }, [node, enabled]);
 
   return { isTouchTap };
+}
+
+/*
+ * A finger tap anywhere OUTSIDE the board: how a picked-up piece is put down
+ * on a touch screen, now that a tap on the board can move it. A tap is a
+ * touch that starts outside `ref`'s element and lifts without travelling (a
+ * scroll is not a tap). Mouse clicks are not affected.
+ */
+const TAP_SLOP_PX = 10;
+export function useTapOutside(ref, onTapOutside) {
+  const handler = useRef(onTapOutside);
+  handler.current = onTapOutside;
+  useEffect(() => {
+    let start = null;
+    const onStart = (e) => {
+      const node = ref && ref.current;
+      const t = e.touches && e.touches[0];
+      start = node && t && e.touches.length === 1 && !node.contains(e.target)
+        ? { x: t.clientX, y: t.clientY } : null;
+    };
+    const onEnd = (e) => {
+      if (!start) return;
+      const t = e.changedTouches && e.changedTouches[0];
+      const still = t && Math.abs(t.clientX - start.x) <= TAP_SLOP_PX && Math.abs(t.clientY - start.y) <= TAP_SLOP_PX;
+      start = null;
+      if (still && handler.current) handler.current();
+    };
+    const onCancel = () => { start = null; };
+    document.addEventListener('touchstart', onStart, { passive: true, capture: true });
+    document.addEventListener('touchend', onEnd, { passive: true, capture: true });
+    document.addEventListener('touchcancel', onCancel, { passive: true, capture: true });
+    return () => {
+      document.removeEventListener('touchstart', onStart, { capture: true });
+      document.removeEventListener('touchend', onEnd, { capture: true });
+      document.removeEventListener('touchcancel', onCancel, { capture: true });
+    };
+  }, [ref]);
 }

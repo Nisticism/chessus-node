@@ -167,3 +167,21 @@ export const moveCovers = (move, cells, end, x, y) => {
   const { w, h } = cellSize(move.to ? cells?.[`${move.to.y},${move.to.x}`] : null);
   return x >= at.x && x < at.x + w && y >= at.y && y < at.y + h;
 };
+
+/**
+ * On a touch screen, does a tap on (x, y) MOVE the selected piece (anchored at
+ * `activeKey`, "y,x")?
+ *
+ * Yes when the square shows one of its moves (a dot that is a real move or
+ * capture, not a square it merely attacks). Never onto one of your own pieces:
+ * tapping another of your pieces picks that one up instead, which is what a
+ * second tap on a piece nearly always means.
+ */
+export const tapMovesTo = (moves, activeKey, x, y, ownPieceThere) => {
+  if (ownPieceThere) return false;
+  // Only the selected piece's own moves count - not a stale hover's.
+  const piece = moves && moves.forPiece;
+  if (!piece || `${piece.y},${piece.x}` !== activeKey) return false;
+  const dot = dotAt(moves, x, y);
+  return !!dot && !dot.isPotentialCapture;
+};

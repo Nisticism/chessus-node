@@ -30,7 +30,7 @@ import PieceBadges from "../common/PieceBadges";
 import GameChat from "./GameChat";
 import ToggleSwitch from "../common/ToggleSwitch";
 import useBoardViewport from "../common/useBoardViewport";
-import useTouchPieceGestures from "../common/useTouchPieceGestures";
+import useTouchPieceGestures, { useTapOutside } from "../common/useTouchPieceGestures";
 import BoardZoomControls from "../common/BoardZoomControls";
 import boardVp from "../common/boardViewport.module.scss";
 import {
@@ -4829,8 +4829,11 @@ const LiveGame = () => {
     armTouchDrag(piece, e.touches[0], e.currentTarget, false);
   }, [armTouchDrag]);
 
+  // On a touch screen, a tap outside the board puts a picked-up piece down.
+  useTapOutside(boardRef, () => { setSelectedPiece(null); setValidMoves([]); setLandingPreview(null); });
+
   // The shared touch rules, bound to this board.
-  const { isTouchTap } = useTouchPieceGestures(boardRef, {
+  useTouchPieceGestures(boardRef, {
     // A tap shows the piece's hover styles, as resting a pointer on it would.
     onTap: (info) => {
       if (!(gameState?.showPieceHelpers || showMovableIndicators)) return;
@@ -4845,37 +4848,14 @@ const LiveGame = () => {
   });
 
   /*
-   * A click on a square. From a mouse it is handleSquareClick, unchanged.
-   *
-   * From a finger it never MOVES the selected piece - press and drag does. A
-   * second tap meant to pick a different piece, or to look at an enemy one,
-   * was being read as a move or a capture onto it. So a tap on a square the
-   * selected piece could go to puts the piece down instead, and then selects
-   * what was tapped if it is yours (through the ordinary click path, once the
-   * deselect has landed), or shows its moves if it is not. Every other tap -
-   * selecting, deselecting on an empty square, placing, vetoing, cancelling a
-   * premove - goes to handleSquareClick exactly as before.
+   * A click or a finger tap on a square: the same thing. A tap on one of the
+   * selected piece's moves makes it, a tap on another of your pieces picks
+   * that one up, and anything else puts the piece down - exactly what a click
+   * does. A tap outside the board puts it down too (useTapOutside above).
    */
   const handleBoardTap = useCallback((x, y) => {
-    if (isTouchTap() && selectedPiece && !doesPieceOccupySquare(selectedPiece, x, y)) {
-      const spw = selectedPiece.piece_width || 1;
-      const sph = selectedPiece.piece_height || 1;
-      const wouldMove = validMoves.some((m) => (m.isRangedAttack
-        ? m.x === x && m.y === y
-        : x >= m.x && x < m.x + spw && y >= m.y && y < m.y + sph));
-      if (wouldMove) {
-        const tapped = findPieceAtSquare(parsePieces(gameState?.pieces || []), x, y);
-        setSelectedPiece(null);
-        setValidMoves([]);
-        if (tapped) {
-          setTimeout(() => { if (handleSquareClickRef.current) handleSquareClickRef.current(x, y); }, 0);
-          if (gameState?.showPieceHelpers || showMovableIndicators) handlePieceHover(tapped);
-        }
-        return;
-      }
-    }
     handleSquareClick(x, y);
-  }, [isTouchTap, selectedPiece, validMoves, gameState, handleSquareClick, handlePieceHover, showMovableIndicators]);
+  }, [handleSquareClick]);
 
   const handleTouchMove = useCallback((e) => {
     const td = touchDragRef.current;

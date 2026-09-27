@@ -18,6 +18,7 @@ import { BoardCoordinates, NOTATION_INSET, puzzleFlipped } from "./PuzzleBoard";
 import { useBuilderVetoes, BuilderVetoPanel, PlyVetoNote, SetupVetoNote } from "./BuilderVetoes";
 import { cellSize, coveringKey, clearFootprint, spanStyle, moveTarget, dotAt, movesOf, anchorsOnly, withSizes, previewOutlines } from "./puzzleFootprint";
 import FootprintOutlines from "../common/FootprintOutlines";
+import { useTapOutside } from "../common/useTouchPieceGestures";
 import styles from "./puzzlebuilder.module.scss";
 
 /*
@@ -128,6 +129,9 @@ const PuzzleBuilder = () => {
   const [selected, setSelected] = useState(null); // "y,x" of the held piece
   // The square under the pointer, for the preview outline of a multi-tile piece.
   const [pointerSq, setPointerSq] = useState(null);
+  // The board grid. On a touch screen, a tap outside it puts a picked-up piece down.
+  const gridRef = useRef(null);
+  useTapOutside(gridRef, () => setSelected(null));
   // Which square of the piece was clicked when choosing the opponent's last
   // move (an offset from its anchor): the next click says where THAT square
   // came from.
@@ -1595,6 +1599,7 @@ const PuzzleBuilder = () => {
               <div style={vp.contentStyle}>
                 <BoardCoordinates boardWidth={boardWidth} boardHeight={boardHeight} squareSize={vp.squareSize} flipped={flipped}>
                   <div
+                    ref={gridRef}
                     className={styles["board"]}
                     style={{ gridTemplateColumns: `repeat(${boardWidth}, ${vp.squareSize}px)` }}
                   >

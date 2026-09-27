@@ -12,6 +12,7 @@ import {
 import useBoardViewport from "../common/useBoardViewport";
 import BoardZoomControls from "../common/BoardZoomControls";
 import PuzzleBoard, { NOTATION_INSET, puzzleFlipped, squareFromPoint } from "./PuzzleBoard";
+import { useTapOutside } from "../common/useTouchPieceGestures";
 import PlacementTray from "../common/PlacementTray";
 import PromotionChooser from "../common/PromotionChooser";
 import GameRulesModal from "../common/GameRulesModal";
@@ -19,7 +20,7 @@ import useSetupMoveReplay from "../common/useSetupMoveReplay";
 import { solverTrayItems, withPlacers, placesPieces } from "../../helpers/placement";
 import { usePuzzleVetoes, VetoPanel, VetoAnswer, ContinueNotice, MoveProgress, MoveHint } from "./PuzzleVetoes";
 import { applyPromotionDefinition, promotionPieceNumber, solvedPliesRemaining, colToFile, doesPieceOccupySquare } from "../../helpers/pieceMovementUtils";
-import { cellSize, coveringKey, clearFootprint, spanStyle, moveTarget, dotAt, movesOf, previewOutlines, moveCovers } from "./puzzleFootprint";
+import { cellSize, coveringKey, clearFootprint, spanStyle, moveTarget, dotAt, movesOf, previewOutlines, moveCovers, tapMovesTo } from "./puzzleFootprint";
 import usePuzzleEngine from "./usePuzzleEngine";
 import styles from "./puzzlesolver.module.scss";
 
@@ -426,6 +427,9 @@ const PuzzleSolver = () => {
       setPuzzle((p) => ({ ...p, board_width: board.board_width, board_height: board.board_height, game_name: board.game_name }));
     }
   }, [board, puzzle]);
+
+  // On a touch screen, a tap outside the board puts a picked-up piece down.
+  useTapOutside(boardRef, () => { setSelected(null); setHoveredMoves([]); });
 
   // Piece definitions, the engine's pieces and the move engine - shared with
   // the home page puzzle and the Discord activity (see usePuzzleEngine).
@@ -953,12 +957,13 @@ const PuzzleSolver = () => {
     }
     if (selected === k) { setSelected(null); return; }
     /*
-     * A finger tap never moves - press and drag does (useTouchPieceGestures).
-     * A second tap meant to pick a different piece was being read as a move
-     * onto it, so a tap now only selects: another of your pieces takes the
-     * selection, anything else puts the piece down and shows what was tapped.
+     * A finger tap on a square the piece can go to moves it, as a click does.
+     * Tapping another of your pieces picks that one up instead, and any other
+     * tap puts the piece down and shows what was tapped (tapMovesTo). Tapping
+     * outside the board puts it down too (useTapOutside).
      */
-    if (how && how.touch) {
+    const ownHere = !!here && Number(here.player_id) === Number(puzzle?.side_to_move);
+    if (how && how.touch && !tapMovesTo(hoveredMoves, selected, x, y, ownHere)) {
       const tapped = enginePieces.find((p) => doesPieceOccupySquare(p, x, y));
       if (here && Number(here.player_id) === Number(puzzle?.side_to_move)) setSelected(k);
       else setSelected(null);
@@ -966,7 +971,7 @@ const PuzzleSolver = () => {
       return;
     }
     playFrom(selected, x, y);
-  }, [busy, finished, replaying, selected, placements, puzzle, playFrom, trayPick, submit, enginePieces, hoverPiece, vet]);
+  }, [busy, finished, replaying, selected, placements, puzzle, playFrom, trayPick, submit, enginePieces, hoverPiece, vet, hoveredMoves]);
 
   const sendFeedback = async () => {
     setFeedbackNotice(null);

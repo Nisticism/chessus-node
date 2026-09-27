@@ -17,7 +17,7 @@ import SquareHighlightOverlay from "../../components/common/SquareHighlightOverl
 import { handlePieceImageError } from "../../utils/pieceFallback";
 import { normalizePromotionOverride } from "../../helpers/promotionOverride";
 import useBoardViewport from "../../components/common/useBoardViewport";
-import useTouchPieceGestures from "../../components/common/useTouchPieceGestures";
+import useTouchPieceGestures, { useTapOutside } from "../../components/common/useTouchPieceGestures";
 import BoardZoomControls from "../../components/common/BoardZoomControls";
 import boardVp from "../../components/common/boardViewport.module.scss";
 
@@ -3108,8 +3108,11 @@ const Sandbox = () => {
     setHoveredHighlights(highlights);
   }, [activeSandbox, canPieceMoveTo, canPieceCaptureTo, showHighlights]);
 
+  // On a touch screen, a tap outside the board puts a picked-up piece down.
+  useTapOutside(boardRef, () => { setSelectedPiece(null); setValidMoves([]); });
+
   // The site-wide touch rules, bound to this board - see useTouchPieceGestures.
-  const { isTouchTap } = useTouchPieceGestures(boardRef, {
+  useTouchPieceGestures(boardRef, {
     // A tap shows the piece's hover styles, as resting a pointer on it would.
     onTap: (info) => {
       const piece = (activeSandbox?.pieces || []).find((p) => String(p.id) === info.key);
@@ -3123,39 +3126,13 @@ const Sandbox = () => {
   });
 
   /*
-   * A click on a square. From a mouse, handleSquareClick unchanged. From a
-   * finger it never moves the selected piece - press and drag does.
-   *
-   * Decided from what was tapped, not from validMoves: switching the selection
-   * here clears validMoves rather than recomputing it, and the click handler
-   * then works a move out for itself, so a rule reading validMoves let the
-   * second tap through as a move. With a piece selected, a tap on another of
-   * that side's pieces selects it (the ordinary click path does that); a tap
-   * on anything else only puts the selected piece down. Taps with nothing
-   * selected - selecting, placing - are handleSquareClick as before.
+   * A click or a finger tap on a square: the same thing - a tap on one of the
+   * selected piece's moves makes it, as a click does. A tap outside the board
+   * puts the piece down (useTapOutside above).
    */
   const handleBoardTap = useCallback((x, y) => {
-    if (isTouchTap() && selectedPiece && activeSandbox) {
-      const spw = selectedPiece.piece_width || 1;
-      const sph = selectedPiece.piece_height || 1;
-      const onSelf = x >= selectedPiece.x && x < selectedPiece.x + spw && y >= selectedPiece.y && y < selectedPiece.y + sph;
-      if (!onSelf) {
-        const tapped = findPieceAt(activeSandbox.pieces, x, y);
-        const selectedTeam = selectedPiece.team || selectedPiece.player_id;
-        const tappedTeam = tapped && (tapped.team || tapped.player_id);
-        if (tapped && tappedTeam === selectedTeam) {
-          // The click path switches the selection to a piece of the same side.
-          handleSquareClick(x, y);
-          return;
-        }
-        setSelectedPiece(null);
-        setValidMoves([]);
-        if (tapped) handlePieceHover(tapped);
-        return;
-      }
-    }
     handleSquareClick(x, y);
-  }, [isTouchTap, selectedPiece, activeSandbox, findPieceAt, handleSquareClick, handlePieceHover]);
+  }, [handleSquareClick]);
 
   // Handle drag start for pieces on the board (game movement with validation)
   const handleBoardPieceDragStart = useCallback((e, piece) => {
