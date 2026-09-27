@@ -76,6 +76,22 @@ const toDateKey = (d) => {
 const todayKey = () => toDateKey(new Date());
 
 /*
+ * A DATE column's value as a key. It is already a calendar day, so it is taken
+ * as one - never turned into an instant and formatted back.
+ *
+ * The pool returns dates as strings (configs/db.js: dateStrings), and
+ * toDateKey(new Date('2026-09-27')) is UTC midnight shown in Eastern time: the
+ * 26th. Every scheduled day read as the day before, so the queue tried to fill
+ * days that were taken (INSERT IGNORE quietly skipped them) and treated real
+ * gaps as taken - days went out with no puzzle at all.
+ */
+const pad2 = (n) => String(n).padStart(2, '0');
+const dbDateKey = (v) => {
+  if (v instanceof Date) return `${v.getFullYear()}-${pad2(v.getMonth() + 1)}-${pad2(v.getDate())}`;
+  return String(v).slice(0, 10);
+};
+
+/*
  * Calendar arithmetic on the key itself, deliberately NOT through toDateKey.
  *
  * A key is already a local date with no time in it. Parsing one as UTC midnight
@@ -316,12 +332,12 @@ function createDailyPuzzle({ db_pool }) {
       'SELECT puzzle_date, game_type_id FROM daily_puzzles WHERE puzzle_date >= ?',
       [addDays(start, -MIN_GAME_GAP_DAYS)]
     );
-    const takenDates = new Set(existing.map(r => toDateKey(new Date(r.puzzle_date))));
+    const takenDates = new Set(existing.map(r => dbDateKey(r.puzzle_date)));
     // When each game type was last used, so the gap rule can be applied without
     // another query per candidate day.
     const lastUsed = new Map();
     for (const r of existing) {
-      const key = toDateKey(new Date(r.puzzle_date));
+      const key = dbDateKey(r.puzzle_date);
       const prev = lastUsed.get(r.game_type_id);
       if (!prev || key > prev) lastUsed.set(r.game_type_id, key);
     }
