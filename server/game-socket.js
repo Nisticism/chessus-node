@@ -7082,7 +7082,7 @@ function initializeSocket(server) {
           if (gravity) {
             const landed = restingSquare(
               gravity, { x: clickedX, y: clickedY }, boardWidth, boardHeight,
-              (gx, gy) => gameState.pieces.some(p => p.x === gx && p.y === gy)
+              (gx, gy) => gameState.pieces.some(p => doesPieceOccupySquare(p, gx, gy))
             );
             if (!landed) {
               return socket.emit("error", { message: "That column is full" });
@@ -7093,8 +7093,9 @@ function initializeSocket(server) {
             // piece actually landed rather than where the pointer was.
             move.to = { x: placeX, y: placeY };
           } else {
-            // Validate square is empty
-            const existingPiece = gameState.pieces.find(p => p.x === placeX && p.y === placeY);
+            // Validate square is empty - including the squares a multi-tile
+            // piece covers beyond its anchor.
+            const existingPiece = gameState.pieces.find(p => doesPieceOccupySquare(p, placeX, placeY));
             if (existingPiece) {
               return socket.emit("error", { message: "Square is already occupied" });
             }
@@ -7116,6 +7117,21 @@ function initializeSocket(server) {
 
           if (!pieceTemplate) {
             return socket.emit("error", { message: "No valid piece to place" });
+          }
+
+          // A multi-tile piece is placed by its anchor (top-left square) and
+          // needs its whole footprint on the board and empty.
+          {
+            const tw = pieceTemplate.piece_width || 1;
+            const th = pieceTemplate.piece_height || 1;
+            if (tw > 1 || th > 1) {
+              if (!doesPieceFitOnBoard(placeX, placeY, tw, th, boardWidth, boardHeight)) {
+                return socket.emit("error", { message: "That piece does not fit there" });
+              }
+              if (!isDestinationClearServer({ id: null, piece_width: tw, piece_height: th }, placeX, placeY, gameState.pieces, null)) {
+                return socket.emit("error", { message: "Square is already occupied" });
+              }
+            }
           }
 
           // Per-entry ownership: a piece assigned to a specific player can only be
@@ -14629,28 +14645,42 @@ async function validateAndApplyMove(gameState, move, options = {}) {
         }
         // Add landing square
         pathSteps.push({ x: to.x, y: to.y });
-        
+
+        // A multi-tile piece tramples everything its whole footprint passes
+        // over, not just the line its anchor (top-left square) walks.
+        const footprintAt = (ax, ay) => {
+          const cells = [];
+          for (let fy = 0; fy < (movingPiece.piece_height || 1); fy++) {
+            for (let fx = 0; fx < (movingPiece.piece_width || 1); fx++) cells.push({ x: ax + fx, y: ay + fy });
+          }
+          return cells;
+        };
+
         for (const step of pathSteps) {
-          // Add the path square itself
-          const pathKey = `${step.x},${step.y}`;
-          affectedSquares.add(pathKey);
-          pathSquares.add(pathKey);
-          
-          // Add surrounding squares within radius
-          if (trampleRadius > 0) {
-            for (let ry = -trampleRadius; ry <= trampleRadius; ry++) {
-              for (let rx = -trampleRadius; rx <= trampleRadius; rx++) {
-                affectedSquares.add(`${step.x + rx},${step.y + ry}`);
+          for (const cell of footprintAt(step.x, step.y)) {
+            // Add the path square itself
+            const pathKey = `${cell.x},${cell.y}`;
+            affectedSquares.add(pathKey);
+            pathSquares.add(pathKey);
+
+            // Add surrounding squares within radius
+            if (trampleRadius > 0) {
+              for (let ry = -trampleRadius; ry <= trampleRadius; ry++) {
+                for (let rx = -trampleRadius; rx <= trampleRadius; rx++) {
+                  affectedSquares.add(`${cell.x + rx},${cell.y + ry}`);
+                }
               }
             }
           }
         }
-        
-        // Also add radius around starting square (take off)
+
+        // Also add radius around starting square(s) (take off)
         if (trampleRadius > 0) {
-          for (let ry = -trampleRadius; ry <= trampleRadius; ry++) {
-            for (let rx = -trampleRadius; rx <= trampleRadius; rx++) {
-              affectedSquares.add(`${from.x + rx},${from.y + ry}`);
+          for (const cell of footprintAt(from.x, from.y)) {
+            for (let ry = -trampleRadius; ry <= trampleRadius; ry++) {
+              for (let rx = -trampleRadius; rx <= trampleRadius; rx++) {
+                affectedSquares.add(`${cell.x + rx},${cell.y + ry}`);
+              }
             }
           }
         }
@@ -14713,12 +14743,27 @@ async function validateAndApplyMove(gameState, move, options = {}) {
       damagedPieces.forEach(d => attackedPieceIds.add(d.id));
       if (capturedPiece) attackedPieceIds.add(capturedPiece.id);
 
-      // Collect squares within attack radius of landing square
-      for (let ry = -attackRadiusVal; ry <= attackRadiusVal; ry++) {
-        for (let rx = -attackRadiusVal; rx <= attackRadiusVal; rx++) {
-          if (rx === 0 && ry === 0) continue; // Skip landing square itself (already handled by normal capture)
-          const tx = to.x + rx;
-          const ty = to.y + ry;
+      // Collect squares within attack radius of the landing square - of every
+      // square a multi-tile piece lands on, so the splash surrounds the whole
+      // footprint rather than its top-left corner.
+      const landW = movingPiece.piece_width || 1;
+      const landH = movingPiece.piece_height || 1;
+      const splashSquares = new Map();
+      for (let fy = 0; fy < landH; fy++) {
+        for (let fx = 0; fx < landW; fx++) {
+          for (let ry = -attackRadiusVal; ry <= attackRadiusVal; ry++) {
+            for (let rx = -attackRadiusVal; rx <= attackRadiusVal; rx++) {
+              const sx = to.x + fx + rx;
+              const sy = to.y + fy + ry;
+              // Skip the landing squares themselves (already handled by normal capture)
+              if (sx >= to.x && sx < to.x + landW && sy >= to.y && sy < to.y + landH) continue;
+              splashSquares.set(`${sx},${sy}`, { tx: sx, ty: sy });
+            }
+          }
+        }
+      }
+      for (const { tx, ty } of splashSquares.values()) {
+        {
           const targetPiece = findPieceAtSquare(pieces, tx, ty);
           if (!targetPiece) continue;
           if (targetPiece.id === movingPiece.id) continue;
@@ -17520,6 +17565,42 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
     return canHopEnemiesGen;
   };
 
+  /*
+   * Multi-tile pieces move by displacing their whole footprint. "One square
+   * right" moves every square the piece covers one square right, so its leading
+   * edge advances one square beyond the footprint and the landing overlaps
+   * squares it already covers. This generator walks the anchor (top-left), so:
+   * - a square the piece itself covers never obstructs its own path
+   *   (pieceAtGen), and
+   * - what a destination holds is whatever the LANDING FOOTPRINT covers, not
+   *   just the anchor square (occupantAt). An enemy under any of those squares
+   *   makes the move a capture; a piece that cannot be taken there blocks it.
+   * For a single-square piece both are exactly findPieceAtSquare.
+   */
+  const footW = piece.piece_width || 1;
+  const footH = piece.piece_height || 1;
+  const isMultiTileGen = footW > 1 || footH > 1;
+  const othersGen = isMultiTileGen ? allPieces.filter(p => p.id !== piece.id) : allPieces;
+  const pieceAtGen = (x, y) => findPieceAtSquare(othersGen, x, y);
+  const occupantAt = (ax, ay) => {
+    if (!isMultiTileGen) return pieceAtGen(ax, ay);
+    const found = [];
+    for (let fy = 0; fy < footH; fy++) {
+      for (let fx = 0; fx < footW; fx++) {
+        const p = findPieceAtSquare(othersGen, ax + fx, ay + fy);
+        if (p && !found.includes(p)) found.push(p);
+      }
+    }
+    if (!found.length) return null;
+    // The occupant that decides the move: one that blocks it outranks one that
+    // could be captured, so a footprint holding an enemy AND a friend (or an
+    // immune piece) is never offered as a capture.
+    const moverOwner = piece.team || piece.player_id;
+    const rank = (p) => ((p.team || p.player_id) === moverOwner ? 0
+      : p.cannot_be_captured ? 1 : p.ends_game_on_checkmate ? 2 : 3);
+    return found.sort((a, b) => rank(a) - rank(b))[0];
+  };
+
   // Collect impassable squares — pieces cannot land on or pass through them
   // (unless they have ghostwalk; hopping pieces can pass through but not land)
   const impassableSet = collectImpassableSquares(gameType);
@@ -17543,7 +17624,7 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
           if (impassableSet && impassableSet.has(`${y},${x}`) && !hasGhostwalkGen && !allowHop) {
             return false;
           }
-          const blocking = findPieceAtSquare(allPieces, x, y);
+          const blocking = pieceAtGen(x, y);
           if (blocking && blocking.id !== piece.id) {
             if (!allowHop || !canHopOverPieceGen(blocking)) {
               return false;
@@ -17561,7 +17642,7 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
     const sX = toX > fromX ? 1 : toX < fromX ? -1 : 0;
     const sY = toY > fromY ? 1 : toY < fromY ? -1 : 0;
     let x = fromX + sX, y = fromY + sY;
-    while (x !== toX || y !== toY) { if (findPieceAtSquare(allPieces, x, y)) return true; x += sX; y += sY; }
+    while (x !== toX || y !== toY) { if (pieceAtGen(x, y)) return true; x += sX; y += sY; }
     return false;
   };
   
@@ -17635,7 +17716,7 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
       // Check if path is clear up to this point (with hopping support)
       if (!isPathClear(piece.x, piece.y, targetX, targetY, canHopDir)) break;
       
-      const targetPiece = findPieceAtSquare(allPieces, targetX, targetY);
+      const targetPiece = occupantAt(targetX, targetY);
       if (targetPiece) {
         const pieceOwner = piece.team || piece.player_id;
         const targetOwner = targetPiece.team || targetPiece.player_id;
@@ -17850,7 +17931,7 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
         if (!isPathClear(piece.x, piece.y, viaX, viaY, canHop)) break;
 
         // Via square itself must be empty (unless hopping allows occupancy and requireEmptyVia is false)
-        const viaPiece = findPieceAtSquare(allPieces, viaX, viaY);
+        const viaPiece = occupantAt(viaX, viaY);
         if (viaPiece) {
           if (!viaCanBeOccupied) break; // via occupied and we need it empty
           // If hopping and via occupied, we can turn here; but don't break — continue to second leg
@@ -17892,7 +17973,7 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
             // Path from via to landing must be clear
             if (!isPathClear(viaX, viaY, toX, toY, canHop)) break;
 
-            const targetPiece = findPieceAtSquare(allPieces, toX, toY);
+            const targetPiece = occupantAt(toX, toY);
             if (targetPiece) {
               const targetOwner = targetPiece.team || targetPiece.player_id;
               if (isLandingSecond && !targetPiece.cannot_be_captured) {
@@ -17973,10 +18054,10 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
         const sX = dx > 0 ? 1 : dx < 0 ? -1 : 0;
         const sY = dy > 0 ? 1 : dy < 0 ? -1 : 0;
         const aX = Math.abs(dx), aY = Math.abs(dy);
-        for (let i = 1; i <= aX; i++) { const cx = piece.x + sX * i, cy = piece.y; if ((cx !== targetX || cy !== targetY) && findPieceAtSquare(allPieces, cx, cy)) return (_ratioHasAnyPiece = true); }
-        for (let i = 1; i <= aY; i++) { const cx = piece.x + sX * aX, cy = piece.y + sY * i; if ((cx !== targetX || cy !== targetY) && findPieceAtSquare(allPieces, cx, cy)) return (_ratioHasAnyPiece = true); }
-        for (let i = 1; i <= aY; i++) { const cx = piece.x, cy = piece.y + sY * i; if ((cx !== targetX || cy !== targetY) && findPieceAtSquare(allPieces, cx, cy)) return (_ratioHasAnyPiece = true); }
-        for (let i = 1; i <= aX; i++) { const cx = piece.x + sX * i, cy = piece.y + sY * aY; if ((cx !== targetX || cy !== targetY) && findPieceAtSquare(allPieces, cx, cy)) return (_ratioHasAnyPiece = true); }
+        for (let i = 1; i <= aX; i++) { const cx = piece.x + sX * i, cy = piece.y; if ((cx !== targetX || cy !== targetY) && pieceAtGen(cx, cy)) return (_ratioHasAnyPiece = true); }
+        for (let i = 1; i <= aY; i++) { const cx = piece.x + sX * aX, cy = piece.y + sY * i; if ((cx !== targetX || cy !== targetY) && pieceAtGen(cx, cy)) return (_ratioHasAnyPiece = true); }
+        for (let i = 1; i <= aY; i++) { const cx = piece.x, cy = piece.y + sY * i; if ((cx !== targetX || cy !== targetY) && pieceAtGen(cx, cy)) return (_ratioHasAnyPiece = true); }
+        for (let i = 1; i <= aX; i++) { const cx = piece.x + sX * i, cy = piece.y + sY * aY; if ((cx !== targetX || cy !== targetY) && pieceAtGen(cx, cy)) return (_ratioHasAnyPiece = true); }
         return (_ratioHasAnyPiece = false);
       };
 
@@ -17998,7 +18079,7 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
           const checkX = piece.x + (primaryIsX ? primaryDir * i : 0);
           const checkY = piece.y + (primaryIsX ? 0 : secondaryDir * i);
           if (checkX !== targetX || checkY !== targetY) {
-            if (findPieceAtSquare(allPieces, checkX, checkY)) {
+            if (pieceAtGen(checkX, checkY)) {
               path1Clear = false;
               break;
             }
@@ -18009,7 +18090,7 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
             const checkX = piece.x + (primaryIsX ? primaryDir * absRatio1 : tertiaryDir * i);
             const checkY = piece.y + (primaryIsX ? tertiaryDir * i : secondaryDir * absRatio1);
             if (checkX !== targetX || checkY !== targetY) {
-              if (findPieceAtSquare(allPieces, checkX, checkY)) {
+              if (pieceAtGen(checkX, checkY)) {
                 path1Clear = false;
                 break;
               }
@@ -18023,7 +18104,7 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
           const checkX = piece.x + (primaryIsX ? 0 : tertiaryDir * i);
           const checkY = piece.y + (primaryIsX ? tertiaryDir * i : 0);
           if (checkX !== targetX || checkY !== targetY) {
-            if (findPieceAtSquare(allPieces, checkX, checkY)) {
+            if (pieceAtGen(checkX, checkY)) {
               path2Clear = false;
               break;
             }
@@ -18034,7 +18115,7 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
             const checkX = piece.x + (primaryIsX ? primaryDir * i : tertiaryDir * absRatio2);
             const checkY = piece.y + (primaryIsX ? tertiaryDir * absRatio2 : secondaryDir * i);
             if (checkX !== targetX || checkY !== targetY) {
-              if (findPieceAtSquare(allPieces, checkX, checkY)) {
+              if (pieceAtGen(checkX, checkY)) {
                 path2Clear = false;
                 break;
               }
@@ -18076,7 +18157,7 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
           const checkX = piece.x + (primaryIsX ? primaryDir * i : 0);
           const checkY = piece.y + (primaryIsX ? 0 : secondaryDir * i);
           if (checkX !== targetX || checkY !== targetY) {
-            const obstruction = findPieceAtSquare(allPieces, checkX, checkY);
+            const obstruction = pieceAtGen(checkX, checkY);
             if (obstruction && !canHopOver(obstruction)) {
               path1Clear = false;
               break;
@@ -18088,7 +18169,7 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
             const checkX = piece.x + (primaryIsX ? primaryDir * absRatio1 : tertiaryDir * i);
             const checkY = piece.y + (primaryIsX ? tertiaryDir * i : secondaryDir * absRatio1);
             if (checkX !== targetX || checkY !== targetY) {
-              const obstruction = findPieceAtSquare(allPieces, checkX, checkY);
+              const obstruction = pieceAtGen(checkX, checkY);
               if (obstruction && !canHopOver(obstruction)) {
                 path1Clear = false;
                 break;
@@ -18103,7 +18184,7 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
           const checkX = piece.x + (primaryIsX ? 0 : tertiaryDir * i);
           const checkY = piece.y + (primaryIsX ? tertiaryDir * i : 0);
           if (checkX !== targetX || checkY !== targetY) {
-            const obstruction = findPieceAtSquare(allPieces, checkX, checkY);
+            const obstruction = pieceAtGen(checkX, checkY);
             if (obstruction && !canHopOver(obstruction)) {
               path2Clear = false;
               break;
@@ -18115,7 +18196,7 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
             const checkX = piece.x + (primaryIsX ? primaryDir * i : tertiaryDir * absRatio2);
             const checkY = piece.y + (primaryIsX ? tertiaryDir * absRatio2 : secondaryDir * i);
             if (checkX !== targetX || checkY !== targetY) {
-              const obstruction = findPieceAtSquare(allPieces, checkX, checkY);
+              const obstruction = pieceAtGen(checkX, checkY);
               if (obstruction && !canHopOver(obstruction)) {
                 path2Clear = false;
                 break;
@@ -18130,7 +18211,7 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
         }
       }
       
-      const targetPiece = findPieceAtSquare(allPieces, targetX, targetY);
+      const targetPiece = occupantAt(targetX, targetY);
       if (targetPiece) {
         const pieceOwner = piece.team || piece.player_id;
         const targetOwner = targetPiece.team || targetPiece.player_id;
@@ -18184,7 +18265,7 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
                 break;
               }
               if (hopStopAtOccupied || hopStopAtOccupiedAtk) {
-                const blocking = findPieceAtSquare(allPieces, intX, intY);
+                const blocking = pieceAtGen(intX, intY);
                 if (blocking && blocking.id !== piece.id) {
                   blockedLine = true;
                   break;
@@ -18194,7 +18275,7 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
           }
           if (blockedLine) break;
 
-          const targetPiece = findPieceAtSquare(allPieces, targetX, targetY);
+          const targetPiece = occupantAt(targetX, targetY);
           if (targetPiece) {
             const targetOwner = targetPiece.team || targetPiece.player_id;
             let addedCapture = false;
@@ -18239,7 +18320,7 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
         // sitting at the corner is fine — only the king's own path matters).
         let pathClear = true;
         for (let x = piece.x - 1; x >= piece.x - castleDist; x--) {
-          const occupant = findPieceAtSquare(allPieces, x, piece.y);
+          const occupant = pieceAtGen(x, piece.y);
           if (occupant && occupant.id !== rookPiece.id) {
             pathClear = false;
             break;
@@ -18279,7 +18360,7 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
         // sitting at the corner is fine — only the king's own path matters).
         let pathClear = true;
         for (let x = piece.x + 1; x <= piece.x + castleDist; x++) {
-          const occupant = findPieceAtSquare(allPieces, x, piece.y);
+          const occupant = pieceAtGen(x, piece.y);
           if (occupant && occupant.id !== rookPiece.id) {
             pathClear = false;
             break;
@@ -18324,7 +18405,7 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
           if (!isValidSquare(targetX, targetY)) continue;
           // Check if already in moves
           if (moves.some(m => m.x === targetX && m.y === targetY)) continue;
-          const targetPiece = findPieceAtSquare(allPieces, targetX, targetY);
+          const targetPiece = occupantAt(targetX, targetY);
           // Only land on empty squares. Custom movement squares are
           // movement-only; captures must come from custom_attack_squares.
           if (!targetPiece) {
@@ -18349,7 +18430,7 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
           const targetY = piece.y + offsetY;
           if (!isValidSquare(targetX, targetY)) continue;
           if (moves.some(m => m.x === targetX && m.y === targetY)) continue;
-          const targetPiece = findPieceAtSquare(allPieces, targetX, targetY);
+          const targetPiece = occupantAt(targetX, targetY);
           if (targetPiece) {
             const targetOwner = targetPiece.team || targetPiece.player_id;
             if (!targetPiece.cannot_be_captured && targetOwner !== pieceOwner) {
@@ -18405,7 +18486,7 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
             if (!isValidSquare(cx, cy)) continue;
             const capKey = `${cx},${cy}`;
             if (addedMoves.has(capKey)) continue;
-            const tgt = findPieceAtSquare(allPieces, cx, cy);
+            const tgt = occupantAt(cx, cy);
             if (tgt && tgt.id !== piece.id) {
               const tgtOwner = tgt.team || tgt.player_id;
               if (tgtOwner !== pieceOwner && !tgt.cannot_be_captured) {
@@ -18426,7 +18507,7 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
           if (!isValidSquare(nx, ny)) continue;
           if (bfsVisited.has(key)) continue;
           // Any occupant (ally or enemy) blocks path through
-          if (findPieceAtSquare(allPieces, nx, ny)) continue;
+          if (occupantAt(nx, ny)) continue;
           bfsVisited.add(key);
           if (!addedMoves.has(key)) {
             moves.push({ x: nx, y: ny });
@@ -18438,24 +18519,24 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
     }
   }
 
-  // Filter out moves where multi-tile piece doesn't fit or overlaps friendly pieces
-  const pw = piece.piece_width || 1;
-  const ph = piece.piece_height || 1;
-  if (pw > 1 || ph > 1) {
-    const multiMoves = moves.filter(move => {
-      if (!doesPieceFitOnBoard(move.x, move.y, pw, ph, boardWidth, boardHeight)) return false;
-      if (!isDestinationClearServer(piece, move.x, move.y, allPieces, null)) return false;
+  // A multi-tile destination must fit on the board, and its landing footprint
+  // may hold only pieces this move takes (occupantAt ranks a blocker first).
+  // Earlier this rejected ANY piece in the footprint, so a multi-tile piece
+  // was never offered a capture, and it returned early, skipping the filters
+  // below (direction-change requirement, duplicates, checkmate-only targets).
+  if (isMultiTileGen) {
+    const moverOwner = piece.team || piece.player_id;
+    moves = moves.filter(move => {
+      if (!doesPieceFitOnBoard(move.x, move.y, footW, footH, boardWidth, boardHeight)) return false;
+      const occ = occupantAt(move.x, move.y);
+      if (!occ) return true;
+      if (occ.cannot_be_captured) return false;
+      // A friend under the footprint blocks even with can_capture_allies:
+      // validateAndApplyMove only takes enemies from a multi-tile landing and
+      // the frontend engine likewise refuses the square.
+      if ((occ.team || occ.player_id) === moverOwner) return false;
       return true;
     });
-    // Restriction zone filter for multi-tile moves:
-    // Only restrict if the piece is currently standing on a zone square.
-    if (piece.cannot_move_outside_zone) {
-      const zones = collectRestrictionZoneSquares(gameType);
-      if (zones && zones.has(`${piece.y},${piece.x}`)) {
-        return multiMoves.filter(m => zones.has(`${m.y},${m.x}`));
-      }
-    }
-    return multiMoves;
   }
 
   // Restriction zone filter: once a piece with cannot_move_outside_zone is
@@ -18479,14 +18560,14 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
     const dcCapDests = new Set();
     for (const m of moves) {
       if (!m.isDirectionChange) continue;
-      const dp = findPieceAtSquare(allPieces, m.x, m.y);
+      const dp = occupantAt(m.x, m.y);
       const isEnemy = dp && (dp.team || dp.player_id) !== pieceOwnerDC;
       if (isEnemy) dcCapDests.add(`${m.x},${m.y}`);
       else dcMoveDests.add(`${m.x},${m.y}`);
     }
     moves = moves.filter(m => {
       if (m.isDirectionChange) return true;
-      const dp = findPieceAtSquare(allPieces, m.x, m.y);
+      const dp = occupantAt(m.x, m.y);
       const isEnemy = dp && (dp.team || dp.player_id) !== pieceOwnerDC;
       if (isEnemy && requireDCCap) return dcCapDests.has(`${m.x},${m.y}`);
       if (!isEnemy && requireDCMov) return dcMoveDests.has(`${m.x},${m.y}`);
@@ -18529,7 +18610,7 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
   {
     const attackerOwner = piece.team || piece.player_id;
     moves = moves.filter(m => {
-      const target = findPieceAtSquare(allPieces, m.x, m.y);
+      const target = occupantAt(m.x, m.y);
       if (!target || target.id === piece.id) return true;
       if (!target.ends_game_on_checkmate) return true;
       return (target.team || target.player_id) === attackerOwner;

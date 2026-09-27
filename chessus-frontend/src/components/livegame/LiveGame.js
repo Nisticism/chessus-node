@@ -47,6 +47,7 @@ import { createMoveEngine, getMoveDotType, MOVE_DOT_BACKGROUNDS } from "../../he
 import { totalMaterialValue } from "../../utils/pieceValueEstimator";
 import { getFallbackPieceImage } from "../../utils/pieceFallback";
 import { gravityOf, restingSquare } from "../../helpers/boardGravity";
+import { moveCoveringSquare, grabbedCell, squareUnderPointer, pieceClickedAt } from "../../helpers/multiTileTargets";
 import { toggleUpvote, getUpvoteStatus } from "../../actions/games";
 import useFairyStockfish from "../../hooks/useFairyStockfish";
 import {
@@ -826,6 +827,9 @@ const LiveGame = () => {
   const [rangedMousePos, setRangedMousePos] = useState(null);
   const [, setRangedTargetSquare] = useState(null);
   const boardRef = useRef(null);
+  // shouldFlipBoard is computed further down than the drag handlers that need
+  // it, so they read it from here.
+  const flipBoardRef = useRef(false);
   const rightClickDataRef = useRef(null);
   const [rangedSelectedPiece, setRangedSelectedPiece] = useState(null); // for right-click-twice mode
 
@@ -3636,7 +3640,11 @@ const LiveGame = () => {
 
   // Handle square click
   /* eslint-disable react-hooks/exhaustive-deps */
-  const handleSquareClick = useCallback((x, y) => {
+  /*
+   * byAnchor: (x, y) is where a dragged piece's anchor lands, not a square that
+   * was clicked. For a multi-tile piece the two differ - see multiTileTargets.
+   */
+  const handleSquareClick = useCallback((x, y, byAnchor = false) => {
     // Block interactions while a move is pending confirmation
     if (pendingMove) return;
     // Reactive veto: clicking my under-review held move's from/to square retracts
@@ -3755,7 +3763,9 @@ const LiveGame = () => {
     }
 
     const pieces = parsePieces(gameState.pieces);
-    const clickedPiece = findPieceAtSquare(pieces, x, y);
+    // A dragged multi-tile piece moving one square right or down lands its
+    // anchor on itself; that is the move, not a click on the piece.
+    const clickedPiece = pieceClickedAt(pieces, x, y, selectedPiece, byAnchor);
 
     // Check if clicking on own piece (or any piece when waiting/previewing)
     const isPreviewMode = gameState.status === 'waiting' || gameState.status === 'ready';
@@ -3871,6 +3881,8 @@ const LiveGame = () => {
       if (hasCastlingMoveToPartner && clickedPiece) {
         move = validMoves.find(m => m.isCastling && m.castlingWith === clickedPiece.id);
       }
+      // A click names a square a multi-tile piece should cover; a drop names its anchor.
+      if (!move && !byAnchor) move = moveCoveringSquare(validMoves, selectedPiece, x, y);
       if (!move) move = validMoves.find(m => m.x === x && m.y === y && !m.isCastling);
       if (!move) move = validMoves.find(m => m.x === x && m.y === y);
       if (!move && selectedPiece) {
@@ -3944,7 +3956,8 @@ const LiveGame = () => {
         setValidMoves([]);
       }
     } else if (canPremove) {
-      let move = validMoves.find(m => m.x === x && m.y === y);
+      let move = byAnchor ? null : moveCoveringSquare(validMoves, selectedPiece, x, y);
+      if (!move) move = validMoves.find(m => m.x === x && m.y === y);
       if (!move && selectedPiece) {
         const spw = selectedPiece.piece_width || 1;
         const sph = selectedPiece.piece_height || 1;
@@ -4214,22 +4227,8 @@ const LiveGame = () => {
     setDraggedPiece(piece);
     setSelectedPiece(piece);
     
-    // Calculate grab offset within the piece footprint for multi-tile pieces
-    const pw = piece.piece_width || 1;
-    const ph = piece.piece_height || 1;
-    if (pw > 1 || ph > 1) {
-      const rect = e.currentTarget.getBoundingClientRect();
-      const relX = e.clientX - rect.left;
-      const relY = e.clientY - rect.top;
-      const cellWidth = rect.width / pw;
-      const cellHeight = rect.height / ph;
-      dragGrabOffsetRef.current = {
-        x: Math.floor(relX / cellWidth),
-        y: Math.floor(relY / cellHeight)
-      };
-    } else {
-      dragGrabOffsetRef.current = { x: 0, y: 0 };
-    }
+    // Which of a multi-tile piece's squares it was grabbed by
+    dragGrabOffsetRef.current = grabbedCell(piece, e.currentTarget.getBoundingClientRect(), e.clientX, e.clientY, flipBoardRef.current);
     
     // Calculate valid moves for the dragged piece
     const pieces = parsePieces(gameState.pieces);
@@ -4403,16 +4402,17 @@ const LiveGame = () => {
       return;
     }
 
-    // Adjust drop coordinates for multi-tile grab offset
+    // Adjust drop coordinates for multi-tile grab offset. The square comes from
+    // the pointer: a drop over a multi-tile piece (this one included) otherwise
+    // reports that piece's anchor square.
     const grabOffset = dragGrabOffsetRef.current;
-    const anchorX = targetX - (grabOffset.x || 0);
-    const anchorY = targetY - (grabOffset.y || 0);
+    const underPointer = squareUnderPointer(boardRef.current, e, gameState?.gameType?.board_width || 8, gameState?.gameType?.board_height || 8, flipBoardRef.current);
+    const anchorX = (underPointer ? underPointer.x : targetX) - (grabOffset.x || 0);
+    const anchorY = (underPointer ? underPointer.y : targetY) - (grabOffset.y || 0);
 
-    // Don't move if dropping within the piece's own current footprint
-    const selfW = draggedPiece.piece_width || 1;
-    const selfH = draggedPiece.piece_height || 1;
-    if (anchorX >= draggedPiece.x && anchorX < draggedPiece.x + selfW &&
-        anchorY >= draggedPiece.y && anchorY < draggedPiece.y + selfH) {
+    // Dropped back where it was. (A multi-tile piece moving one square right or
+    // down lands its anchor on a square it already covers - that is a move.)
+    if (anchorX === draggedPiece.x && anchorY === draggedPiece.y) {
       setDraggedPiece(null);
       setDragValidMoves([]);
       return;
@@ -4576,6 +4576,7 @@ const LiveGame = () => {
     if (boardGravity) return false;
     return currentPlayer.position === 2;
   }, [currentPlayer, boardGravity]);
+  flipBoardRef.current = shouldFlipBoard;
 
   // Compute captured pieces for each player from move history
   const capturedPieces = useMemo(() => {
@@ -4700,20 +4701,7 @@ const LiveGame = () => {
     }
 
     // Calculate grab offset within the piece footprint for multi-tile pieces
-    const pw = piece.piece_width || 1;
-    const ph = piece.piece_height || 1;
-    let grabOffset = { x: 0, y: 0 };
-    if ((pw > 1 || ph > 1) && el) {
-      const rect = el.getBoundingClientRect();
-      const relX = touch.clientX - rect.left;
-      const relY = touch.clientY - rect.top;
-      const cellWidth = rect.width / pw;
-      const cellHeight = rect.height / ph;
-      grabOffset = {
-        x: Math.floor(relX / cellWidth),
-        y: Math.floor(relY / cellHeight)
-      };
-    }
+    const grabOffset = grabbedCell(piece, el ? el.getBoundingClientRect() : null, touch.clientX, touch.clientY, flipBoardRef.current);
 
     const pieces = parsePieces(gameState.pieces);
     const fogProbe = !!(gameState?.hideEnemyPieces && isMyTurn);
@@ -4848,9 +4836,6 @@ const LiveGame = () => {
           return;
         }
 
-        const pw = piece.piece_width || 1;
-        const ph = piece.piece_height || 1;
-
         /*
          * The drop does EXACTLY what a tap on that square does with this piece
          * selected - the same handler, not a copy of it.
@@ -4865,9 +4850,8 @@ const LiveGame = () => {
          *
          * Dropped back on its own square it simply stays picked up.
          */
-        const onOwnFootprint = anchorX >= piece.x && anchorX < piece.x + pw && anchorY >= piece.y && anchorY < piece.y + ph;
-        if (!onOwnFootprint) {
-          handleSquareClickRef.current(anchorX, anchorY);
+        if (anchorX !== piece.x || anchorY !== piece.y) {
+          handleSquareClickRef.current(anchorX, anchorY, true);
         }
         touchDragRef.current = { piece: null, moves: [], startX: 0, startY: 0, isDragging: false, grabOffset: { x: 0, y: 0 } };
         setTouchDragPiece(null);
@@ -5930,7 +5914,12 @@ const LiveGame = () => {
               ${activeIsRanged ? styles["has-ranged-dot"] : ''}
               ${isRepositionable ? styles["reposition-eligible"] : ''}
             `}
-            onClick={() => handleBoardTap(gameX, gameY)}
+            onClick={(e) => {
+              // Over a multi-tile piece the event reports its anchor square;
+              // the pointer says which of its squares was actually clicked.
+              const s = squareUnderPointer(boardRef.current, e, boardWidth, boardHeight, shouldFlipBoard);
+              handleBoardTap(s ? s.x : gameX, s ? s.y : gameY);
+            }}
             onDragOver={(e) => handleDragOver(e, gameX, gameY)}
             onDrop={(e) => handleDrop(e, gameX, gameY)}
             onMouseDown={(e) => handleSquareMouseDown(e, gameX, gameY)}

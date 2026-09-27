@@ -604,7 +604,9 @@ export const createMoveEngine = ({
 
     while (x !== toX || y !== toY) {
       const blockingPiece = findPieceAtSquare(pieces, x, y);
-      if (blockingPiece) {
+      // A multi-tile piece's own squares are never in its way: moving right or
+      // down, each sub-square's path runs through squares the piece covers.
+      if (blockingPiece && blockingPiece.id !== pieceData?.id) {
         const blockingTeam = blockingPiece.player_id || blockingPiece.team;
         const isAlly = blockingTeam === pieceTeam;
         
@@ -1159,6 +1161,13 @@ export const createMoveEngine = ({
     const pieceTeam = piece.player_id || piece.team;
     const pw = piece.piece_width || 1;
     const ph = piece.piece_height || 1;
+    // A piece in the path that is not the mover. A multi-tile piece moving right
+    // or down walks its anchor across squares it already covers; those are not
+    // pieces it hops over.
+    const otherPieceAt = (x, y) => {
+      const p = findPieceAtSquare(pieces, x, y);
+      return p && p.id !== piece.id ? p : null;
+    };
 
     // Determine whether this piece's first-move-only abilities are blocked because of
     // custom-square configuration:
@@ -1519,7 +1528,7 @@ export const createMoveEngine = ({
             let cx = piece.x + dx;
             let cy = piece.y + dy;
             while ((cx !== toX || cy !== toY) && !hasHopPiece) {
-              if (findPieceAtSquare(pieces, cx, cy)) hasHopPiece = true;
+              if (otherPieceAt(cx, cy)) hasHopPiece = true;
               cx += dx;
               cy += dy;
             }
@@ -1539,7 +1548,7 @@ export const createMoveEngine = ({
             let cx = piece.x + dx;
             let cy = piece.y + dy;
             while (cx !== toX || cy !== toY) {
-              if (findPieceAtSquare(pieces, cx, cy)) hopCount++;
+              if (otherPieceAt(cx, cy)) hopCount++;
               cx += dx;
               cy += dy;
             }
@@ -1559,7 +1568,7 @@ export const createMoveEngine = ({
             let cx = piece.x + dx;
             let cy = piece.y + dy;
             while ((cx !== toX || cy !== toY) && !hasHopPiece) {
-              if (findPieceAtSquare(pieces, cx, cy)) hasHopPiece = true;
+              if (otherPieceAt(cx, cy)) hasHopPiece = true;
               cx += dx;
               cy += dy;
             }
@@ -1579,7 +1588,7 @@ export const createMoveEngine = ({
             let cx = piece.x + dx;
             let cy = piece.y + dy;
             while (cx !== toX || cy !== toY) {
-              if (findPieceAtSquare(pieces, cx, cy)) hopCount++;
+              if (otherPieceAt(cx, cy)) hopCount++;
               cx += dx;
               cy += dy;
             }
