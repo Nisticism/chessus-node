@@ -182,15 +182,19 @@ const useSetupMoveReplay = ({
     const at = pointAlong(waypoints, easeInOut(progress));
     const src = imageFor ? imageFor(rewound.mover) : null;
     if (src) {
+      // A multi-tile piece travels at its full size, drawn from its anchor
+      // (from the opposite corner on a flipped board).
+      const w = Number(rewound.mover?.piece_width) || 1;
+      const h = Number(rewound.mover?.piece_height) || 1;
       overlay = {
         src,
         alt: rewound.mover?.piece_name || '',
         style: {
           position: 'fixed',
-          left: rect.left + (flipped ? boardWidth - 1 - at.x : at.x) * squareSize,
-          top: rect.top + (flipped ? boardHeight - 1 - at.y : at.y) * squareSize,
-          width: squareSize,
-          height: squareSize,
+          left: rect.left + (flipped ? boardWidth - w - at.x : at.x) * squareSize,
+          top: rect.top + (flipped ? boardHeight - h - at.y : at.y) * squareSize,
+          width: squareSize * w,
+          height: squareSize * h,
           pointerEvents: 'none',
           zIndex: 45,
           objectFit: 'contain',

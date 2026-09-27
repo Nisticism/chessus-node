@@ -133,3 +133,37 @@ export const withSizes = (cells, defs) => {
   }
   return out || cells;
 };
+
+/**
+ * The preview outline for the multi-tile piece in hand, as FootprintOutlines
+ * boxes, or null. `moves` are its moves (tagged by movesOf) and `activeKey`
+ * the piece's anchor key - the moves are only used when they are that piece's.
+ * Dragged: `grab` is the square it was picked up by, and the outline is where
+ * the drop at `sq` would put it (moveForDrop). Selected and pointed with: no
+ * grab, and the outline is where a click on `sq` would put it.
+ */
+export const previewOutlines = (moves, activeKey, sq, grab = null) => {
+  const piece = moves && moves.forPiece;
+  if (!sq || !activeKey || !isMultiTile(piece) || `${piece.y},${piece.x}` !== activeKey) return null;
+  const { w, h } = cellSize(piece);
+  if (grab) {
+    // Back over the square it was picked up from: putting it down there is no move.
+    if (sq.x === piece.x + grab.x && sq.y === piece.y + grab.y) return null;
+  } else if (sq.x >= piece.x && sq.x < piece.x + w && sq.y >= piece.y && sq.y < piece.y + h) {
+    return null;
+  }
+  const m = grab ? moveForDrop(moves, piece, grab, sq.x, sq.y) : moveCoveringSquare(moves, piece, sq.x, sq.y);
+  return m ? [{ x: m.x, y: m.y, w, h, kind: 'preview' }] : null;
+};
+
+/**
+ * Is square (x, y) under the moving piece at one `end` ('from' or 'to') of a
+ * move - its whole footprint for a multi-tile piece, found standing on the
+ * move's destination in `cells`? A single square otherwise.
+ */
+export const moveCovers = (move, cells, end, x, y) => {
+  const at = move && move[end];
+  if (!at) return false;
+  const { w, h } = cellSize(move.to ? cells?.[`${move.to.y},${move.to.x}`] : null);
+  return x >= at.x && x < at.x + w && y >= at.y && y < at.y + h;
+};

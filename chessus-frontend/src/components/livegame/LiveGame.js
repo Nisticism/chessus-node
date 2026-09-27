@@ -48,7 +48,7 @@ import { totalMaterialValue } from "../../utils/pieceValueEstimator";
 import { getFallbackPieceImage } from "../../utils/pieceFallback";
 import { gravityOf, restingSquare } from "../../helpers/boardGravity";
 import { landingCoversPiece, moveCoveringSquare, movesCoveringSquare, moveForDrop, grabbedCell, squareUnderPointer, pointerSquare, pieceClickedAt, landingBox, sameBox } from "../../helpers/multiTileTargets";
-import MultiTileOutlines from "./MultiTileOutlines";
+import FootprintOutlines from "../common/FootprintOutlines";
 import { toggleUpvote, getUpvoteStatus } from "../../actions/games";
 import useFairyStockfish from "../../hooks/useFairyStockfish";
 import {
@@ -120,6 +120,38 @@ const getDeployablePieces = (otherData, reserves, position) => {
   const list = ((otherData && otherData.placeable_pieces) || []).filter(pp => isPlaceableEligible(pp, position));
   if (!reserves) return list;
   return list.filter(pp => getReserveCount(reserves, position, pp.piece_id) > 0);
+};
+
+/*
+ * The footprint a placement would put down: the deployable pieces' shared size,
+ * or null when they differ - the piece is then chosen after the click, so
+ * there is no one size to show or to drop.
+ */
+const placingSize = (deployables) => {
+  if (!deployables || !deployables.length) return null;
+  const w = deployables[0].piece_width || 1;
+  const h = deployables[0].piece_height || 1;
+  return deployables.every(d => (d.piece_width || 1) === w && (d.piece_height || 1) === h) ? { w, h } : null;
+};
+
+/*
+ * Where a placement at the pointer would put the piece, as a preview box
+ * ({ x, y, w, h, pieceId: 'place' }), or null. Shown on a board that drops
+ * pieces (where the piece lands is not where you point) and for a multi-tile
+ * piece (which covers more than the square you point at).
+ */
+const placementPreviewBox = (sq, gravity, size, boardWidth, boardHeight, pieces) => {
+  if (!sq || !size) return null;
+  if (!gravity && size.w === 1 && size.h === 1) return null;
+  const occupied = (x, y) => !!findPieceAtSquare(pieces, x, y);
+  const at = gravity ? restingSquare(gravity, sq, boardWidth, boardHeight, occupied, size) : sq;
+  if (!at || at.x + size.w > boardWidth || at.y + size.h > boardHeight) return null;
+  if (!gravity) {
+    for (let fy = 0; fy < size.h; fy++) {
+      for (let fx = 0; fx < size.w; fx++) if (occupied(at.x + fx, at.y + fy)) return null;
+    }
+  }
+  return { x: at.x, y: at.y, w: size.w, h: size.h, pieceId: 'place' };
 };
 
 // If the current player has any "confine placement to here" square, they may only
@@ -4101,7 +4133,8 @@ const LiveGame = () => {
         const gh = gameState.gameType?.board_height || 8;
         const landing = boardGravity
           ? restingSquare(boardGravity, { x, y }, gw, gh,
-            (gx, gy) => !!findPieceAtSquare(parsePieces(gameState.pieces || []), gx, gy))
+            (gx, gy) => !!findPieceAtSquare(parsePieces(gameState.pieces || []), gx, gy),
+            placingSize(getDeployablePieces(otherData, gameState.reserves, currentPlayer?.position)))
           : { x, y };
         if (boardGravity && !landing) {
           showIllegalMoveWarning("That column is full");
@@ -4139,6 +4172,8 @@ const LiveGame = () => {
         }
         setSelectedPiece(null);
         setValidMoves([]);
+        // The preview was of this placement; the next pointer move draws the next one.
+        setLandingPreview(null);
         return;
       }
 
@@ -5299,7 +5334,8 @@ const LiveGame = () => {
         const gh = gameState.gameType?.board_height || 8;
         const landing = boardGravity
           ? restingSquare(boardGravity, { x, y }, gw, gh,
-            (gx, gy) => !!findPieceAtSquare(pieces, gx, gy))
+            (gx, gy) => !!findPieceAtSquare(pieces, gx, gy),
+            placingSize(getDeployablePieces(gameState.otherGameData || {}, gameState.reserves, currentPlayer?.position)))
           : { x, y };
         if (boardGravity && !landing) {
           showIllegalMoveWarning("That column is full");
@@ -6387,12 +6423,21 @@ const LiveGame = () => {
             ref={boardRef}
             data-touch-board=""
             onMouseMove={(e) => {
-              // A selected multi-tile piece: outline where a click here would put it.
-              if (!selectedPiece || draggedPiece) return;
+              if (draggedPiece) return;
               const sq = pointerSquare(boardRef.current, e.clientX, e.clientY, boardWidth, boardHeight, shouldFlipBoard);
-              const inOwn = sq && doesPieceOccupySquare(selectedPiece, sq.x, sq.y);
-              const landing = sq && !inOwn && landingBox(selectedPiece, moveCoveringSquare(validMoves, selectedPiece, sq.x, sq.y));
-              setLandingPreview(prev => (sameBox(prev, landing) ? prev : landing && { ...landing, pieceId: selectedPiece.id }));
+              let landing = null;
+              if (selectedPiece && validMoves.length) {
+                // A selected multi-tile piece: outline where a click here would put it.
+                const inOwn = sq && doesPieceOccupySquare(selectedPiece, sq.x, sq.y);
+                const box = sq && !inOwn && landingBox(selectedPiece, moveCoveringSquare(validMoves, selectedPiece, sq.x, sq.y));
+                landing = box ? { ...box, pieceId: selectedPiece.id } : null;
+              } else if (isMyTurn && gameState?.otherGameData?.place_pieces_action) {
+                // A placement: where the piece would come to rest, at its full size.
+                landing = placementPreviewBox(sq, boardGravity,
+                  placingSize(getDeployablePieces(gameState.otherGameData, gameState.reserves, currentPlayer?.position)),
+                  boardWidth, boardHeight, parsePieces(gameState.pieces || []));
+              }
+              setLandingPreview(prev => (sameBox(prev, landing) ? prev : landing));
             }}
             onMouseLeave={() => { if (!draggedPiece) setLandingPreview(null); }}
             className={styles["game-board"]}
@@ -6459,10 +6504,11 @@ const LiveGame = () => {
                 </svg>
               );
             })()}
-            <MultiTileOutlines
+            <FootprintOutlines
               boxes={[
-                ...(landingPreview && [draggedPiece, touchDragPiece, selectedPiece].some(p => p && p.id === landingPreview.pieceId)
-                  ? [{ ...landingPreview, kind: 'landing' }] : []),
+                ...(landingPreview && (landingPreview.pieceId === 'place'
+                  || [draggedPiece, touchDragPiece, selectedPiece].some(p => p && p.id === landingPreview.pieceId))
+                  ? [{ ...landingPreview, kind: 'preview' }] : []),
                 ...vetoOutlineBoxes,
               ]}
               boardWidth={boardWidth}

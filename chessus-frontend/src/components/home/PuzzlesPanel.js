@@ -14,7 +14,7 @@ import { applyPromotionDefinition, promotionPieceNumber, solvedPliesRemaining } 
 import useSetupMoveReplay from "../common/useSetupMoveReplay";
 import { solverTrayItems } from "../../helpers/placement";
 import PuzzleBoard, { NOTATION_INSET, puzzleFlipped, squareFromPoint } from "../puzzles/PuzzleBoard";
-import { cellSize, coveringKey, clearFootprint, spanStyle, moveTarget, dotAt, movesOf } from "../puzzles/puzzleFootprint";
+import { cellSize, coveringKey, clearFootprint, spanStyle, moveTarget, dotAt, movesOf, previewOutlines } from "../puzzles/puzzleFootprint";
 import styles from "./puzzlespanel.module.scss";
 
 /*
@@ -239,7 +239,9 @@ const PuzzlesPanel = () => {
    * the only option on a keyboard - but dragging is what a board invites, and
    * making people double-click to move a piece feels broken.
    */
-  const [drag, setDrag] = useState(null);   // { fromKey, x, y }
+  const [drag, setDrag] = useState(null);   // { fromKey, x, y, grab }
+  // The square under the pointer, for a picked multi-tile piece's preview outline.
+  const [pointerSq, setPointerSq] = useState(null);
   const boardRef = useRef(null);
   /*
    * Hovering a piece shows where it can go, exactly as the solver page does.
@@ -946,8 +948,11 @@ const PuzzlesPanel = () => {
                   onSquarePointerDown={startPress}
                   liftedSquare={picked}
                   squarePiece={squarePiece}
-                  onSquareMouseEnter={hoverSquare}
-                  onSquareMouseLeave={unhoverSquare}
+                  onSquareMouseEnter={(x, y) => { setPointerSq({ x, y }); hoverSquare(x, y); }}
+                  onSquareMouseLeave={() => { setPointerSq(null); unhoverSquare(); }}
+                  // Where a multi-tile piece in hand would land - dragged, or picked and pointed with.
+                  outlines={finished ? null : previewOutlines(hints, drag ? drag.fromKey : picked,
+                    drag ? squareAt(drag.x, drag.y) : pointerSq, drag ? drag.grab : null)}
                 />
               </div>
 

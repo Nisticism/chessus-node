@@ -35,6 +35,22 @@ export const boardBeforeSetupMove = (board, setupMove) => {
   // Nothing on the destination, or the origin already occupied: the stored
   // move does not describe this position, so there is nothing safe to show.
   if (!mover || board[fromKey]) return null;
+  // A multi-tile piece's whole origin footprint must be free of every other
+  // piece - its own squares excepted, since one that moved a single square
+  // overlaps where it came from.
+  const w = Number(mover.piece_width) || 1;
+  const h = Number(mover.piece_height) || 1;
+  if (w > 1 || h > 1) {
+    const fx = setupMove.from.x;
+    const fy = setupMove.from.y;
+    for (const [key, cell] of Object.entries(board)) {
+      if (key === toKey || !cell) continue;
+      const [cy, cx] = key.split(',').map(Number);
+      const cw = Number(cell.piece_width) || 1;
+      const ch = Number(cell.piece_height) || 1;
+      if (cx < fx + w && fx < cx + cw && cy < fy + h && fy < cy + ch) return null;
+    }
+  }
 
   const before = { ...board };
   delete before[toKey];

@@ -21,7 +21,7 @@ import useSetupMoveReplay from "../common/useSetupMoveReplay";
 import { solverTrayItems, withPlacers, placesPieces } from "../../helpers/placement";
 import { usePuzzleVetoes, VetoPanel, VetoAnswer, ContinueNotice, MoveProgress, MoveHint } from "./PuzzleVetoes";
 import { applyPromotionDefinition, promotionPieceNumber, solvedPliesRemaining, colToFile, doesPieceOccupySquare } from "../../helpers/pieceMovementUtils";
-import { cellSize, coveringKey, clearFootprint, spanStyle, moveTarget, dotAt, movesOf } from "./puzzleFootprint";
+import { cellSize, coveringKey, clearFootprint, spanStyle, moveTarget, dotAt, movesOf, previewOutlines, moveCovers } from "./puzzleFootprint";
 import styles from "./puzzlesolver.module.scss";
 
 /*
@@ -358,7 +358,9 @@ const PuzzleSolver = () => {
    * `pending` is a press that has not moved far enough to count as a drag yet,
    * so a plain click still selects rather than being swallowed.
    */
-  const [drag, setDrag] = useState(null); // { fromKey, x, y }
+  const [drag, setDrag] = useState(null); // { fromKey, x, y, grab }
+  // The square under the pointer, for a selected multi-tile piece's preview outline.
+  const [pointerSq, setPointerSq] = useState(null);
   const pendingRef = useRef(null);        // { fromKey, startX, startY }
   const boardRef = useRef(null);
 
@@ -976,7 +978,7 @@ const PuzzleSolver = () => {
         hoverPiece(enginePieces.find((p) => p.x === fx && p.y === fy));
         setSelected(null);
       }
-      setDrag({ fromKey: pending.fromKey, x: e.clientX, y: e.clientY });
+      setDrag({ fromKey: pending.fromKey, x: e.clientX, y: e.clientY, grab: pending.grab });
     };
 
     const onUp = (e) => {
@@ -1233,10 +1235,10 @@ const PuzzleSolver = () => {
     return [
       coverKey && selected === coverKey ? styles["selected"] : '',
       fogged ? styles["fogged"] : '',
-      setup && !fogged && ((setup.from?.x === x && setup.from?.y === y) || (setup.to?.x === x && setup.to?.y === y)) ? styles["setup"] : '',
+      setup && !fogged && (moveCovers(setup, reviewPlacements || shown, 'from', x, y) || moveCovers(setup, reviewPlacements || shown, 'to', x, y)) ? styles["setup"] : '',
       lastTry && lastTry.to.x === x && lastTry.to.y === y && outcome === 'wrong' ? styles["wrong"] : '',
-      sol && sol.from?.x === x && sol.from?.y === y ? styles["sol-from"] : '',
-      sol && sol.to?.x === x && sol.to?.y === y ? styles["sol-to"] : '',
+      sol && moveCovers(sol, reviewPlacements || shown, 'from', x, y) ? styles["sol-from"] : '',
+      sol && moveCovers(sol, reviewPlacements || shown, 'to', x, y) ? styles["sol-to"] : '',
       mine && !finished ? styles["grabbable"] : '',
       ...(finished ? [] : vet.squareMarks(x, y).map((m) => styles[m])),
     ].filter(Boolean).join(' ');
@@ -1369,11 +1371,15 @@ const PuzzleSolver = () => {
               }}
               onSquareLift={(x, y) => setSelected(coveringKey(placements, x, y) || keyOf(x, y))}
               onSquareMouseEnter={(x, y) => {
+                setPointerSq({ x, y });
                 if (!finished && !selected && !drag && !replaying) {
                   hoverPiece(enginePieces.find((e) => doesPieceOccupySquare(e, x, y)));
                 }
               }}
-              onSquareMouseLeave={() => { if (!selected && !drag) setHoveredMoves([]); }}
+              onSquareMouseLeave={() => { setPointerSq(null); if (!selected && !drag) setHoveredMoves([]); }}
+              // Where a multi-tile piece in hand would land - dragged, or selected and pointed with.
+              outlines={finished ? null : previewOutlines(hoveredMoves, drag ? drag.fromKey : selected,
+                drag ? squareAtPoint(drag.x, drag.y) : pointerSq, drag ? drag.grab : null)}
             />
             <BoardZoomControls {...vp.controlProps} />
           </div>

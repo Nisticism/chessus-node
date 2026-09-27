@@ -16,7 +16,8 @@ import BoardZoomControls from "../common/BoardZoomControls";
 import boardVp from "../common/boardViewport.module.scss";
 import { BoardCoordinates, NOTATION_INSET, puzzleFlipped } from "./PuzzleBoard";
 import { useBuilderVetoes, BuilderVetoPanel, PlyVetoNote, SetupVetoNote } from "./BuilderVetoes";
-import { cellSize, coveringKey, clearFootprint, spanStyle, moveTarget, dotAt, movesOf, anchorsOnly, withSizes } from "./puzzleFootprint";
+import { cellSize, coveringKey, clearFootprint, spanStyle, moveTarget, dotAt, movesOf, anchorsOnly, withSizes, previewOutlines } from "./puzzleFootprint";
+import FootprintOutlines from "../common/FootprintOutlines";
 import styles from "./puzzlebuilder.module.scss";
 
 /*
@@ -49,6 +50,35 @@ const FALLBACK_GOALS = [
 
 // Declared locally, as everywhere else in the app - global.js does not export it.
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";
+
+/*
+ * The preview outline (see FootprintOutlines) for what a click on the square
+ * under the pointer would do with a multi-tile piece in hand: put a tray piece
+ * down, move a piece while arranging, record a solution move, or mark where
+ * the opponent's last move came from. Null when nothing multi-tile is held.
+ */
+const builderOutline = ({ mode, trayPick, selected, cells, pointerSq, hints, setupGrab, defs, boardWidth, boardHeight }) => {
+  if (!pointerSq) return null;
+  const box = (x, y, size) => (
+    (size.w > 1 || size.h > 1) && x >= 0 && y >= 0 && x + size.w <= boardWidth && y + size.h <= boardHeight
+      ? [{ x, y, w: size.w, h: size.h, kind: 'preview' }] : null);
+  if (mode === 'arrange' && trayPick) {
+    return box(pointerSq.x, pointerSq.y, cellSize(defs[trayPick.template.piece_id] || trayPick.template));
+  }
+  const piece = selected ? cells[selected] : null;
+  if (!piece) return null;
+  const size = cellSize(piece);
+  const [ay, ax] = selected.split(',').map(Number);
+  const onSelf = pointerSq.x >= ax && pointerSq.x < ax + size.w && pointerSq.y >= ay && pointerSq.y < ay + size.h;
+  if (mode === 'arrange') return onSelf ? null : box(pointerSq.x, pointerSq.y, size);
+  if (mode === 'setup') {
+    const g = setupGrab || { x: 0, y: 0 };
+    if (pointerSq.x === ax + g.x && pointerSq.y === ay + g.y) return null;
+    return box(pointerSq.x - g.x, pointerSq.y - g.y, size);
+  }
+  if (mode === 'solution') return previewOutlines(hints, selected, pointerSq);
+  return null;
+};
 
 const keyOf = (x, y) => `${y},${x}`;
 
@@ -96,6 +126,12 @@ const PuzzleBuilder = () => {
 
   const [mode, setMode] = useState('arrange');   // 'arrange' | 'setup' | 'solution'
   const [selected, setSelected] = useState(null); // "y,x" of the held piece
+  // The square under the pointer, for the preview outline of a multi-tile piece.
+  const [pointerSq, setPointerSq] = useState(null);
+  // Which square of the piece was clicked when choosing the opponent's last
+  // move (an offset from its anchor): the next click says where THAT square
+  // came from.
+  const [setupGrab, setSetupGrab] = useState(null);
   /*
    * The piece held from the tray, in a game where pieces are PLACED rather than
    * started with. Shape: { key, template, player }.
@@ -952,16 +988,37 @@ const PuzzleBuilder = () => {
           });
           return;
         }
+        const [ay, ax] = k.split(',').map(Number);
+        setSetupGrab({ x: x - ax, y: y - ay });
         setSelected(k);
         return;
       }
-      if (selected === k) { setSelected(null); return; }
-      if (coveringKey(placements, x, y)) {
-        setCheckResult({ tone: 'warn', text: 'A piece cannot have come from an occupied square.' });
+      const [ty, tx] = selected.split(',').map(Number);
+      const grab = setupGrab || { x: 0, y: 0 };
+      // The square of the piece clicked first, clicked again: put it down.
+      if (x === tx + grab.x && y === ty + grab.y) { setSelected(null); return; }
+      /*
+       * The second click is where the square clicked FIRST came from, so the
+       * piece's origin is its footprint moved by the same amount - the rule a
+       * drag follows. A multi-tile piece that moved one square overlaps where
+       * it was, so its own squares are allowed; anybody else's are not.
+       */
+      const from = { x: x - grab.x, y: y - grab.y };
+      const { w, h } = cellSize(placements[selected]);
+      if (from.x < 0 || from.y < 0 || from.x + w > boardWidth || from.y + h > boardHeight) {
+        setCheckResult({ tone: 'warn', text: 'The piece could not have come from there - it would not fit on the board.' });
         return;
       }
-      const [ty, tx] = selected.split(',').map(Number);
-      setSetupMove({ from: { x, y }, to: { x: tx, y: ty } });
+      for (let fy = 0; fy < h; fy++) {
+        for (let fx = 0; fx < w; fx++) {
+          const other = coveringKey(placements, from.x + fx, from.y + fy);
+          if (other && other !== selected) {
+            setCheckResult({ tone: 'warn', text: 'A piece cannot have come from an occupied square.' });
+            return;
+          }
+        }
+      }
+      setSetupMove({ from, to: { x: tx, y: ty } });
       setSelected(null);
       setCheckResult({ tone: 'ok', text: 'Last move recorded. En passant will be judged from it.' });
       return;
@@ -1088,7 +1145,7 @@ const PuzzleBuilder = () => {
     });
     setSelected(null);
     setCheckResult(null);
-  }, [mode, selected, trayPick, placements, solutionBoard, nextSide, lineFull, sideToMove, recordPly, veto, hints, pieceDataMap, boardWidth, boardHeight]);
+  }, [mode, selected, trayPick, placements, solutionBoard, nextSide, lineFull, sideToMove, recordPly, veto, hints, pieceDataMap, boardWidth, boardHeight, setupGrab]);
 
   /*
    * Whether each step has been done, and what follows it.
@@ -1399,8 +1456,11 @@ const PuzzleBuilder = () => {
       const hint = dotAt(veto.hints.length ? veto.hints : hints, x, y);
       const shown = mode === 'setup' ? setupMove : lastPly;
       // A placement has no origin square to light up, only a destination.
-      const isFrom = !!shown?.from && shown.from.x === x && shown.from.y === y;
-      const isTo = !!shown?.to && shown.to.x === x && shown.to.y === y;
+      // The moving piece's whole footprint, at both ends of the move.
+      const shownSize = cellSize(shown?.to ? boardCells[keyOf(shown.to.x, shown.to.y)] : null);
+      const inShown = (pt) => !!pt && x >= pt.x && x < pt.x + shownSize.w && y >= pt.y && y < pt.y + shownSize.h;
+      const isFrom = inShown(shown?.from);
+      const isTo = inShown(shown?.to);
       squares.push(
         <div
           key={k}
@@ -1417,8 +1477,8 @@ const PuzzleBuilder = () => {
             height: vp.squareSize,
           }}
           onClick={() => handleSquareClick(x, y)}
-          onMouseEnter={() => hoverSquare(x, y)}
-          onMouseLeave={unhoverSquare}
+          onMouseEnter={() => { setPointerSq({ x, y }); hoverSquare(x, y); }}
+          onMouseLeave={() => { setPointerSq(null); unhoverSquare(); }}
           title={coverKey ? `${boardCells[coverKey].piece_name} (Player ${boardCells[coverKey].player_id})` : ''}
         >
           {(() => {
@@ -1539,6 +1599,15 @@ const PuzzleBuilder = () => {
                     style={{ gridTemplateColumns: `repeat(${boardWidth}, ${vp.squareSize}px)` }}
                   >
                     {squares}
+                    <FootprintOutlines
+                      boxes={builderOutline({
+                        mode, trayPick, selected, cells: boardCells, pointerSq, hints, setupGrab,
+                        defs: pieceDataMap, boardWidth, boardHeight,
+                      })}
+                      boardWidth={boardWidth}
+                      boardHeight={boardHeight}
+                      flipped={flipped}
+                    />
                   </div>
                 </BoardCoordinates>
               </div>

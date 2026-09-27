@@ -266,6 +266,8 @@
 /* Sized square-by-square from useBoardViewport, so extreme aspect ratios fit
    and can be zoomed instead of overflowing. */
 .board {
+  // Footprint outlines are positioned against the grid.
+  position: relative;
   display: grid;
   gap: 0;
   border: 2px solid var(--panel-border);

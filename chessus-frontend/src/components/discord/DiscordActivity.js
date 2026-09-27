@@ -12,7 +12,7 @@ import PuzzleBoard, { NOTATION_INSET, puzzleFlipped, squareFromPoint } from "../
 import useDiscordSdk from "./useDiscordSdk";
 import { launchedPuzzleId, getLaunchParams } from "../../helpers/discord-launch-params";
 import GameRulesModal from "../common/GameRulesModal";
-import { cellSize, coveringKey, clearFootprint, spanStyle, moveTarget, dotAt, movesOf } from "../puzzles/puzzleFootprint";
+import { cellSize, coveringKey, clearFootprint, spanStyle, moveTarget, dotAt, movesOf, previewOutlines } from "../puzzles/puzzleFootprint";
 import styles from "./discordactivity.module.scss";
 
 /*
@@ -218,6 +218,8 @@ export default function DiscordActivity() {
   const [busy, setBusy] = useState(false);
   const [lastTry, setLastTry] = useState(null);
   const [drag, setDrag] = useState(null);
+  // The square under the pointer, for a picked multi-tile piece's preview outline.
+  const [pointerSq, setPointerSq] = useState(null);
   /*
    * A multi-move puzzle is played out here rather than handed off, because
    * inside Discord there is nowhere to hand off TO. Every move found so far is
@@ -1082,8 +1084,11 @@ export default function DiscordActivity() {
           onSquarePointerDown={startPress}
           liftedSquare={picked}
           squarePiece={squarePiece}
-          onSquareMouseEnter={hoverSquare}
-          onSquareMouseLeave={unhoverSquare}
+          onSquareMouseEnter={(x, y) => { setPointerSq({ x, y }); hoverSquare(x, y); }}
+          onSquareMouseLeave={() => { setPointerSq(null); unhoverSquare(); }}
+          // Where a multi-tile piece in hand would land - dragged, or picked and pointed with.
+          outlines={finished ? null : previewOutlines(hints, drag ? drag.fromKey : picked,
+            drag ? squareAt(drag.x, drag.y) : pointerSq, drag ? drag.grab : null)}
           boardRef={boardRef}
         />
         {/* The opponent's last move, in flight. */}

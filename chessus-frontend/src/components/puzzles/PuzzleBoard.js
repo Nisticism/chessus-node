@@ -3,7 +3,9 @@ import boardVp from "../common/boardViewport.module.scss";
 import useTouchPieceGestures from "../common/useTouchPieceGestures";
 import { colToFile, rowToRank } from "../../helpers/pieceMovementUtils";
 
-import styles from "./puzzleboard.module.scss";
+import FootprintOutlines from "../common/FootprintOutlines";
+import styles from "./puzzleboard.module.scss";
+
 
 /*
  * Room the coordinates take beside and below the board, in px. Callers add it
@@ -143,6 +145,12 @@ const PuzzleBoard = ({
   // The solver measures the board element to turn a pointer position into a
   // square while dragging, so it needs a handle on it.
   boardRef,
+  /*
+   * Footprint outlines snapped onto the squares ({ x, y, w, h, kind }) - where
+   * a multi-tile piece being dragged or pointed with would land. The same
+   * component and style as every other board's previews.
+   */
+  outlines = null,
 }) => {
   const boardEl = useRef(null);
   const setBoardEl = useCallback((el) => {
@@ -260,6 +268,7 @@ const PuzzleBoard = ({
             style={{ gridTemplateColumns: `repeat(${boardWidth}, ${vp.squareSize}px)` }}
           >
             {squares}
+            <FootprintOutlines boxes={outlines} boardWidth={boardWidth} boardHeight={boardHeight} flipped={flipped} />
           </div>
         </BoardCoordinates>
       </div>
