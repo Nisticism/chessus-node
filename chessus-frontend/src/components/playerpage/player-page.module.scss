@@ -169,6 +169,12 @@
 
 .profile-header-info {
   flex-grow: 1;
+  /* The page centres its text; this column lines up with its stats and
+     buttons instead (centred again on a phone, where the header is one
+     centred column). */
+  text-align: left;
+  /* The name below is sized against this column's width (cqi). */
+  container-type: inline-size;
   /*
    * A flex item's automatic minimum size is its CONTENT's width, so a username
    * with no spaces in it made this box as wide as the name and carried the page
@@ -178,6 +184,15 @@
 
   .username {
     font-size: 2.5rem;
+    /*
+     * Shrink a long name to fit the column rather than break it. A bold
+     * letter here averages 0.48-0.58em (measured on real usernames, up to 20
+     * characters), so column / (letters x 0.6) fits them on one line; only
+     * runs of wide letters like "mmmm" still wrap. Capped at the usual size,
+     * floored so a name never turns tiny. Browsers without container units
+     * keep the line above.
+     */
+    font-size: clamp(1.25rem, calc(100cqi / (var(--name-len, 12) * 0.6)), 2.5rem);
     color: var(--text-heading);
     margin: 0 0 10px 0;
     /*
@@ -342,7 +357,10 @@
  * accent colour - but nothing is drawn around them, and the row adds a line of
  * height rather than a column of boxes.
  */
+/* Under the name and badges, in the same column (see PlayerPage), so nothing
+   sits beside the username and it has the header's full width. */
 .profile-stats {
+  margin-top: 12px;
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
@@ -655,6 +673,7 @@
 
     .username {
       font-size: 2rem;
+      font-size: clamp(1.25rem, calc(100cqi / (var(--name-len, 12) * 0.6)), 2rem);
     }
   }
 
@@ -668,6 +687,20 @@
      the narrow-screen block still has something to say about the stats. */
   .profile-stats {
     gap: 4px 18px;
+  }
+
+  /* The header is one centred column here; its rows centre with it. */
+  .profile-header-info {
+    text-align: center;
+    /* A size container takes no width from its content, so in this centred
+       column it has to be told to fill the row. */
+    align-self: stretch;
+  }
+
+  .profile-stats,
+  .badges-row,
+  .friend-action {
+    justify-content: center;
   }
 
   .info-grid {

@@ -632,7 +632,8 @@ const PlayerPage = (props) => {
                 </div>
               </div>
               <div className={styles["profile-header-info"]}>
-                <h1 className={styles["username"]}>{username}</h1>
+                {/* --name-len sizes the name to fit its column (see .username). */}
+                <h1 className={styles["username"]} style={{ '--name-len': String(username || '').length || 1 }}>{username}</h1>
                 <div className={styles["badges-row"]}>
                   {(() => {
                     const role = (currentUser && username === currentUser.username 
@@ -660,6 +661,43 @@ const PlayerPage = (props) => {
                         : playerPageUser?.hide_donation_badge
                     }
                   />
+                </div>
+                {/*
+                  * The ratings sit under the name, not beside it. Beside it they
+                  * took a share of the row, and a long username with no spaces
+                  * broke mid-word ("machadopaulohen / r") with the rest of the
+                  * header empty. Under it, the name has the header's full width.
+                  */}
+                <div className={styles["profile-stats"]}>
+                  <div className={styles["elo-display"]}>
+                    <div className={styles["elo-label"]}>ELO Rating</div>
+                    <div className={styles["elo-value"]}>
+                      {playerPageUser?.elo ?? currentUser?.elo ?? 1000}
+                    </div>
+                  </div>
+                  {/* Only once they have solved something. Everybody starts on the
+                      same number, and showing that as a rating would claim a
+                      standing nobody has earned yet. Kept separate from ELO
+                      because they measure different things - beating people, and
+                      reading positions. */}
+                  {playerPageUser?.puzzles_solved > 0 && playerPageUser?.puzzle_elo != null && (
+                    <div className={styles["elo-display"]}>
+                      <div className={styles["elo-label"]}>Puzzle Rating</div>
+                      <div className={styles["elo-value"]}>{playerPageUser.puzzle_elo}</div>
+                    </div>
+                  )}
+                  {playerPageUser?.last_active_at && (
+                    <div className={styles["last-active-display"]}>
+                      <span className={styles["last-active-label"]}>Last Active:</span>
+                      <span className={styles["last-active-value"]}>
+                        {parseServerDate(playerPageUser.last_active_at).toLocaleDateString(undefined, {
+                          year: 'numeric',
+                          month: 'short',
+                          day: 'numeric'
+                        })}
+                      </span>
+                    </div>
+                  )}
                 </div>
                 {/* Add Friend / Remove Friend button for other users */}
                 {currentUser && playerPageUser && currentUser.id !== playerPageUser.id && (
@@ -746,46 +784,6 @@ const PlayerPage = (props) => {
                   </div>
                 )}
               </div>
-              <div className={styles["profile-stats"]}>
-                <div className={styles["elo-display"]}>
-                  <div className={styles["elo-label"]}>ELO Rating</div>
-                  <div className={styles["elo-value"]}>
-                    {playerPageUser?.elo ?? currentUser?.elo ?? 1000}
-                  </div>
-                </div>
-                {/* Only once they have solved something. Everybody starts on the
-                    same number, and showing that as a rating would claim a
-                    standing nobody has earned yet. Kept separate from ELO
-                    because they measure different things - beating people, and
-                    reading positions. */}
-                {playerPageUser?.puzzles_solved > 0 && playerPageUser?.puzzle_elo != null && (
-                  <div className={styles["elo-display"]}>
-                    <div className={styles["elo-label"]}>Puzzle Rating</div>
-                    <div className={styles["elo-value"]}>{playerPageUser.puzzle_elo}</div>
-                  </div>
-                )}
-                {/* Only present when they opted in - the server attaches this
-                    field solely for a profile whose owner asked for it, so its
-                    presence IS the permission. */}
-                {playerPageUser?.discord_username && (
-                  <div className={styles["last-active-display"]}>
-                    <span className={styles["last-active-label"]}>Discord:</span>
-                    <span className={styles["last-active-value"]}>{playerPageUser.discord_username}</span>
-                  </div>
-                )}
-                {playerPageUser?.last_active_at && (
-                  <div className={styles["last-active-display"]}>
-                    <span className={styles["last-active-label"]}>Last Active:</span>
-                    <span className={styles["last-active-value"]}>
-                      {parseServerDate(playerPageUser.last_active_at).toLocaleDateString(undefined, {
-                        year: 'numeric',
-                        month: 'short',
-                        day: 'numeric'
-                      })}
-                    </span>
-                  </div>
-                )}
-              </div>
             </div>
 
             <div className={styles["profile-content"]}>
@@ -862,7 +860,7 @@ const PlayerPage = (props) => {
               {/* Also on your own profile with nothing connected yet - otherwise
                   there is nowhere to connect the first thing from. */}
               {(playerPageUser?.chess_com_username || playerPageUser?.lichess_username
-                || playerPageUser?.twitch_channel || isOwnProfilePage) && (
+                || playerPageUser?.twitch_channel || playerPageUser?.discord_username || isOwnProfilePage) && (
                 <div className={styles["info-card"]}>
                   <h2 className={styles["card-title"]}>Connected Accounts</h2>
                   <div className={styles["info-grid"]}>
@@ -909,13 +907,27 @@ const PlayerPage = (props) => {
                       </div>
                     )}
                     {/*
-                      * Your own profile only.
-                      *
-                      * The other three are usernames on public sites the person
-                      * chose to advertise. A Discord link is not that - it is an
-                      * account connection, and publishing somebody's Discord
-                      * identity is a decision they have not been asked to make.
-                      * So this is a control you operate, not a badge others read.
+                      * Somebody else's Discord name, only when they chose to show
+                      * it: the server attaches discord_username solely for a
+                      * profile whose owner switched "Show my Discord name on my
+                      * public profile" on, so its presence IS the permission.
+                      * Plain text - a Discord name has no public page to link to.
+                      * On your own profile the panel below shows it, with the
+                      * switch.
+                      */}
+                    {!isOwnProfilePage && playerPageUser?.discord_username && (
+                      <div className={styles["info-item"]}>
+                        <span className={styles["info-label"]}>Discord</span>
+                        <span className={styles["info-value"]} style={{ wordBreak: 'break-all' }}>
+                          {playerPageUser.discord_username}
+                        </span>
+                      </div>
+                    )}
+                    {/*
+                      * Your own profile only: the link itself is an account
+                      * connection, so this is a control you operate - including
+                      * whether others see your Discord name - not a badge others
+                      * read.
                       */}
                     {isOwnProfilePage && (
                       <DiscordLinkPanel
