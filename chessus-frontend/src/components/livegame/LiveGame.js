@@ -4224,10 +4224,35 @@ const LiveGame = () => {
     setHoveredMoves(moves);
   }, [gameState, calculateValidMoves]);
 
+  /*
+   * Picking up a piece while reviewing the move history. The board then shows
+   * a replay, not the live position, and a move staged from it went to a board
+   * nobody could see: the piece stayed put through "Confirm your move?" and the
+   * hover dots came from the live position. So picking up a piece goes back to
+   * the live board. At the latest move the replay is the live position, and the
+   * move carries on with the live piece; at an earlier one the pieces on screen
+   * are not where they stand, so it only goes back. Returns the piece to move,
+   * or null.
+   */
+  const livePieceFromReview = useCallback((piece) => {
+    if (ghostMoveIndex === null) return piece;
+    // A finished game, or a spectator, stays in review: nothing to move.
+    if (!currentPlayer || !['active', 'ready'].includes(gameState?.status)) return null;
+    setGhostMoveIndex(null);
+    if (ghostMoveIndex < (gameState?.moveHistory?.length || 0) - 1) return null;
+    const live = parsePieces(gameState?.pieces).find((p) => p.id === piece?.id);
+    return live && live.x === piece.x && live.y === piece.y ? live : null;
+  }, [ghostMoveIndex, currentPlayer, gameState?.status, gameState?.moveHistory, gameState?.pieces]);
+
   // Drag and drop handlers
-  const handleDragStart = useCallback((e, piece) => {
+  const handleDragStart = useCallback((e, grabbed) => {
     // Block dragging while a move is pending confirmation
     if (pendingMove) {
+      e.preventDefault();
+      return;
+    }
+    const piece = livePieceFromReview(grabbed);
+    if (!piece) {
       e.preventDefault();
       return;
     }
@@ -4343,7 +4368,7 @@ const LiveGame = () => {
     e.dataTransfer.setDragImage(pieceEl, rect.width / 2, rect.height / 2);
     
     e.currentTarget.style.opacity = '0.5';
-  }, [isMyTurn, gameState, currentPlayer, calculateValidMoves, pendingMove, showPromotionModal, vetoDoneThisTurn, vetoWindow, reactiveMoveLocked, dzBlockFor, showIllegalMoveWarning]);
+  }, [isMyTurn, gameState, currentPlayer, calculateValidMoves, pendingMove, showPromotionModal, vetoDoneThisTurn, vetoWindow, reactiveMoveLocked, dzBlockFor, showIllegalMoveWarning, livePieceFromReview]);
 
   const handleDragEnd = useCallback((e) => {
     e.currentTarget.style.opacity = '1';
@@ -4761,9 +4786,11 @@ const LiveGame = () => {
    * A touch on an unselected piece does nothing here: a swipe scrolls, and a
    * tap reaches onClick, which selects it exactly as a mouse click does.
    */
-  const armTouchDrag = useCallback((piece, touch, el, fromLongPress) => {
+  const armTouchDrag = useCallback((grabbed, touch, el, fromLongPress) => {
     // Block dragging while a move is pending confirmation
     if (pendingMove) return;
+    const piece = livePieceFromReview(grabbed);
+    if (!piece) return;
     // Block dragging while my reactive move is awaiting the opponent's veto.
     if (reactiveMoveLocked) return;
 
@@ -4823,7 +4850,7 @@ const LiveGame = () => {
     touchDragRef.current = { piece, moves, startX: touch.clientX, startY: touch.clientY, isDragging: false, grabOffset };
     setSelectedPiece(piece);
     setValidMoves(moves);
-  }, [isMyTurn, isMyRepositionTurn, gameState, currentPlayer, calculateValidMoves, pendingMove, captureActionPieceId, showIllegalMoveWarning, showPromotionModal, reactiveMoveLocked, selectedPiece, dzBlockFor]);
+  }, [isMyTurn, isMyRepositionTurn, gameState, currentPlayer, calculateValidMoves, pendingMove, captureActionPieceId, showIllegalMoveWarning, showPromotionModal, reactiveMoveLocked, selectedPiece, dzBlockFor, livePieceFromReview]);
 
   const handleTouchStart = useCallback((e, piece) => {
     armTouchDrag(piece, e.touches[0], e.currentTarget, false);
