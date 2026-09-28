@@ -22,7 +22,7 @@ import authHeader from "../../services/auth-header";
 import { useSocket } from "../../contexts/SocketContext";
 import styles from "./livegame.module.scss";
 import soundManager from "../../utils/soundEffects";
-import PromotionModal from "./PromotionModal";
+import PromotionModal, { promotionOptionImageUrl } from "./PromotionModal";
 import { useDesignation, designationBlockReason, isDesignationState, DesignationPanel, DesignationTag } from "./Designation";
 import { applySvgStretchBackground } from "../../helpers/svgStretchUtils";
 import BoardLegend from "../common/BoardLegend";
@@ -365,6 +365,22 @@ const formatGameOverReasonShort = (reason) => {
   }
 };
 
+/*
+ * The board with a correspondence move's promotion shown on the moving piece,
+ * before the move is confirmed. Only its look changes: the server builds the
+ * real promoted piece when the move arrives.
+ */
+const showChosenPromotion = (state, pieceId, option, promotingPiece) => {
+  if (!state?.pieces) return state;
+  const image = promotionOptionImageUrl(option, promotingPiece);
+  return {
+    ...state,
+    pieces: parsePieces(state.pieces).map((p) => (p.id === pieceId
+      ? { ...p, piece_name: option.piece_name || p.piece_name, ...(image ? { image, image_url: image } : {}) }
+      : p)),
+  };
+};
+
 const LiveGame = () => {
   const { gameId } = useParams();
   const navigate = useNavigate();
@@ -394,6 +410,7 @@ const LiveGame = () => {
     clearPremove: sendClearPremove,
     cancelPromotion,
     promotePiece,
+    previewPromotion,
     skipCaptureAction,
     skipRangedCaptureAction,
     submitReposition,
@@ -747,7 +764,12 @@ const LiveGame = () => {
     const saved = localStorage.getItem('turnConfirmEnabled');
     return saved === null ? true : saved === 'true';
   });
-  const [pendingMove, setPendingMove] = useState(null); // {gameId, moveData} awaiting confirmation
+  // {gameId, moveData, promotion} awaiting confirmation. promotion is 'checking'
+  // while the server says what the move would promote to, and 'choose' until
+  // the player has picked - Confirm waits for both.
+  const [pendingMove, setPendingMove] = useState(null);
+  const pendingMoveRef = useRef(null);
+  pendingMoveRef.current = pendingMove;
   const [preConfirmState, setPreConfirmState] = useState(null); // snapshot of gameState before visual preview
   const optimisticMoveSnapshotRef = useRef(null); // Snapshot for reverting rejected optimistic previews
   const moveTimingRef = useRef(null); // {t, type} — measures submit -> server-confirm latency
@@ -969,7 +991,32 @@ const LiveGame = () => {
       } else {
         setGameState((prev) => applyOptimisticMovePreview(prev, moveData));
       }
-      setPendingMove({ gameId: gId, moveData });
+      /*
+       * A move that promotes is confirmed together with its promotion. Ask the
+       * server what it would promote to; with a choice to make, the promotion
+       * modal opens now and Confirm waits for it (handlePromotionSelect). The
+       * choice travels with the move, and the server promotes on arrival.
+       */
+      const mover = parsePieces(gameState?.pieces).find((p) => p.id === moveData.pieceId);
+      const mayPromote = moveData.type !== 'place' && !moveData.isRangedAttack
+        && !!mover?.can_promote && !mover.disable_promotion;
+      setPendingMove({ gameId: gId, moveData, promotion: mayPromote ? 'checking' : null });
+      if (mayPromote) {
+        previewPromotion(gId, moveData).then((options) => {
+          if (pendingMoveRef.current?.moveData !== moveData) return; // cancelled meanwhile
+          if (options.length > 1) {
+            setPromotionData({ pieceId: moveData.pieceId, pieceName: mover.piece_name, options, promotingPiece: mover, preConfirm: true });
+            setShowPromotionModal(true);
+            setPromotionMinimized(false);
+          } else if (options.length === 1) {
+            // The server promotes to the only option by itself; show it now.
+            setGameState((prev) => showChosenPromotion(prev, moveData.pieceId, options[0], mover));
+          }
+          setPendingMove((prev) => (prev?.moveData === moveData
+            ? { ...prev, promotion: options.length > 1 ? 'choose' : null }
+            : prev));
+        });
+      }
     } else {
       // Veto games may HOLD the move for the opponent's veto decision. We still
       // apply the mover's own optimistic preview (like a premove) so the move
@@ -1023,7 +1070,7 @@ const LiveGame = () => {
         }
       }
     }
-  }, [turnConfirmEnabled, gameState?.isCorrespondence, gameState?.timeControl, gameState?.pieces, gameState?.currentTurn, gameState?.players, gameState?.otherGameData, gameState?.gameType?.simultaneous_turns, gameState?.gameType?.simul_turns_submit_mode, gameState?.gameType?.veto_enabled, gameState?.gameType?.veto_style, gameState?.status, simulSubmittedThisRound, vetoOpponentSubmitted, makeMove, createOptimisticSnapshot, applyOptimisticMovePreview, applyOptimisticPlacementPreview]);
+  }, [turnConfirmEnabled, gameState?.isCorrespondence, gameState?.timeControl, gameState?.pieces, gameState?.currentTurn, gameState?.players, gameState?.otherGameData, gameState?.gameType?.simultaneous_turns, gameState?.gameType?.simul_turns_submit_mode, gameState?.gameType?.veto_enabled, gameState?.gameType?.veto_style, gameState?.status, simulSubmittedThisRound, vetoOpponentSubmitted, makeMove, previewPromotion, createOptimisticSnapshot, applyOptimisticMovePreview, applyOptimisticPlacementPreview]);
 
   /* eslint-disable react-hooks/rules-of-hooks -- False positive: all hooks below are unconditionally at the top level. eslint-plugin-react-hooks v4.4.0 CFG analysis limit reached in this large component. */
   // Cancel the pre-emptive staged pre-move: revert the optimistic board and drop it.
@@ -1070,7 +1117,8 @@ const LiveGame = () => {
   }, [preConfirmState, clearOptimisticMoveSnapshot]);
 
   const confirmPendingMove = useCallback(() => {
-    if (pendingMove) {
+    // A promotion still being looked up or chosen is part of the move.
+    if (pendingMove && !pendingMove.promotion) {
       makeMove(pendingMove.gameId, pendingMove.moveData);
       setPendingMove(null);
       setPreConfirmState(null);
@@ -1078,6 +1126,12 @@ const LiveGame = () => {
   }, [pendingMove, makeMove]);
 
   const cancelPendingMove = useCallback(() => {
+    // The promotion being chosen for it goes with it.
+    if (promotionData?.preConfirm) {
+      setShowPromotionModal(false);
+      setPromotionData(null);
+      setPromotionMinimized(false);
+    }
     if (preConfirmState) {
       setGameState(prev => ({
         ...prev,
@@ -1088,7 +1142,7 @@ const LiveGame = () => {
     clearOptimisticMoveSnapshot();
     setPendingMove(null);
     setPreConfirmState(null);
-  }, [preConfirmState, clearOptimisticMoveSnapshot]);
+  }, [preConfirmState, clearOptimisticMoveSnapshot, promotionData]);
 
   // Track window size for responsive board sizing
   useEffect(() => {
@@ -5473,6 +5527,21 @@ const LiveGame = () => {
       ? selectedPiece.promotion_target_player
       : null;
 
+    // A correspondence move not yet confirmed: the choice joins the move, the
+    // board shows it, and Confirm sends both (see submitMove).
+    if (promotionData.preConfirm) {
+      setPendingMove((prev) => (prev ? {
+        ...prev,
+        promotion: null,
+        moveData: { ...prev.moveData, promoteToPieceId: selectedPiece.piece_id, promoteToPlayerId: targetPlayer },
+      } : prev));
+      setGameState((prev) => showChosenPromotion(prev, promotionData.pieceId, selectedPiece, promotionData.promotingPiece));
+      setShowPromotionModal(false);
+      setPromotionData(null);
+      setPromotionMinimized(false);
+      return;
+    }
+
     if (promotionIsSimul) {
       simulPromotionChoice(parseInt(gameId), promotionData.pieceId, selectedPiece.piece_id, targetPlayer);
       // Hide the modal immediately — server doesn't echo a per-player ack
@@ -5490,9 +5559,14 @@ const LiveGame = () => {
 
   // Handle promotion cancel — reverts the move on the server so the player can choose again
   const handlePromotionCancel = useCallback(() => {
+    // Not sent yet: cancelling the promotion cancels the move, here.
+    if (promotionData?.preConfirm) {
+      cancelPendingMove();
+      return;
+    }
     cancelPromotion(parseInt(gameId));
     // Modal closes when the server responds with promotionCancelled
-  }, [gameId, cancelPromotion]);
+  }, [gameId, cancelPromotion, promotionData, cancelPendingMove]);
 
   const handlePromotionMinimize = useCallback(() => {
     setPromotionMinimized(true);
@@ -7348,19 +7422,9 @@ const LiveGame = () => {
                 onChange={(v) => {
                   setTurnConfirmEnabled(v);
                   localStorage.setItem('turnConfirmEnabled', v);
-                  if (!v) {
-                    // Revert any optimistic board preview before clearing the pending move
-                    if (preConfirmState) {
-                      setGameState(prev => ({
-                        ...prev,
-                        pieces: preConfirmState.pieces,
-                        currentTurn: preConfirmState.currentTurn
-                      }));
-                    }
-                    clearOptimisticMoveSnapshot();
-                    setPendingMove(null);
-                    setPreConfirmState(null);
-                  }
+                  // Turning it off drops the unconfirmed move, and any promotion
+                  // being chosen for it, and puts the board back.
+                  if (!v) cancelPendingMove();
                 }}
                 label="Confirm moves"
               />
@@ -7375,7 +7439,7 @@ const LiveGame = () => {
               <div className={styles["move-confirm-section"]}>
                 <span className={styles["move-confirm-label"]}>Confirm your move?</span>
                 <div className={styles["move-confirm-buttons"]}>
-                  <button className={`${styles.btn} ${styles["btn-confirm"]}`} onClick={confirmPendingMove}>Confirm</button>
+                  <button className={`${styles.btn} ${styles["btn-confirm"]}`} onClick={confirmPendingMove} disabled={!!pendingMove.promotion} title={pendingMove.promotion ? "Choose what to promote to first" : undefined}>Confirm</button>
                   <button className={`${styles.btn} ${styles["btn-cancel"]}`} onClick={cancelPendingMove}>Cancel</button>
                 </div>
               </div>
@@ -7471,7 +7535,7 @@ const LiveGame = () => {
               >
                 <span className={styles["move-confirm-label"]}>Confirm your move?</span>
                 <div className={styles["move-confirm-buttons"]}>
-                  <button className={`${styles.btn} ${styles["btn-confirm"]}`} onClick={confirmPendingMove}>Confirm</button>
+                  <button className={`${styles.btn} ${styles["btn-confirm"]}`} onClick={confirmPendingMove} disabled={!!pendingMove.promotion} title={pendingMove.promotion ? "Choose what to promote to first" : undefined}>Confirm</button>
                   <button className={`${styles.btn} ${styles["btn-cancel"]}`} onClick={cancelPendingMove}>Cancel</button>
                 </div>
               </div>

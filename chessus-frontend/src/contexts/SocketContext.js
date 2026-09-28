@@ -803,6 +803,17 @@ export const SocketProvider = ({ children }) => {
     });
   }, [socket, connected, getAnonPlayerId]);
 
+  // What a move would promote to, without making it (server: previewPromotion).
+  // Resolves to the options - an empty list when it does not promote.
+  const previewPromotion = useCallback((gameId, move) => new Promise((resolve) => {
+    if (!socket || !connected) return resolve([]);
+    const timer = setTimeout(() => resolve([]), 8000);
+    socket.emit('previewPromotion', { gameId, userId: getAnonPlayerId(gameId), move }, (res) => {
+      clearTimeout(timer);
+      resolve(Array.isArray(res?.options) ? res.options : []);
+    });
+  }), [socket, connected, getAnonPlayerId]);
+
   // Skip a pending capture action (bonus extra-capture sequence)
   const skipCaptureAction = useCallback((gameId) => {
     if (!socket || !connected) return;
@@ -922,6 +933,7 @@ export const SocketProvider = ({ children }) => {
     clearPremove,
     cancelPromotion,
     promotePiece,
+    previewPromotion,
     skipCaptureAction,
     skipRangedCaptureAction,
     submitReposition,

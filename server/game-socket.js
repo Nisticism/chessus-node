@@ -7898,10 +7898,21 @@ function initializeSocket(server) {
             movesWithoutCaptureBeforeMove,
           };
 
-          // Auto-promote if only 1 option (skip the modal)
-          if (moveResult.promotionEligible.options.length === 1) {
-            const autoChoice = moveResult.promotionEligible.options[0];
-            console.log(`Auto-promoting piece ${moveResult.promotionEligible.pieceId} to ${autoChoice.piece_name} (only 1 option)`);
+          /*
+           * Promote now, without asking, when there is only one option - or
+           * when the move already says what to promote to. A correspondence
+           * move is confirmed with its promotion (see previewPromotion), so
+           * the choice arrives with it. A choice that is no longer an option
+           * falls through to asking, as before.
+           */
+          const promoOptions = moveResult.promotionEligible.options;
+          const preChosen = move?.promoteToPieceId != null
+            ? promoOptions.find((o) => Number(o.piece_id) === Number(move.promoteToPieceId)
+              && (move.promoteToPlayerId == null || Number(o.promotion_target_player) === Number(move.promoteToPlayerId)))
+            : null;
+          if (promoOptions.length === 1 || preChosen) {
+            const autoChoice = preChosen || promoOptions[0];
+            console.log(`Promoting piece ${moveResult.promotionEligible.pieceId} to ${autoChoice.piece_name} (${preChosen ? 'chosen with the move' : 'only 1 option'})`);
 
             const promotedPiece = await applyPromotionToPiece(gameState, moveResult.promotionEligible.pieceId, autoChoice.piece_id, autoChoice.promotion_target_player);
             gameState.pendingPromotion = null;
@@ -10050,6 +10061,36 @@ function initializeSocket(server) {
       } catch (error) {
         console.error("Error processing pass:", error);
         socket.emit("error", { message: "Failed to pass" });
+      }
+    });
+
+    /*
+     * What a move would promote to, without making it. A correspondence move
+     * waits for "Confirm your move?", and the promotion is part of what gets
+     * confirmed: the page asks here, lets the player choose before Confirm, and
+     * sends the choice with the move - makeMove then promotes straight away.
+     * Read-only. The options are worked out on a copy of the board with the
+     * move made, since what stands on the board decides some of them (limits
+     * to the original count).
+     */
+    socket.on("previewPromotion", async (data, ack) => {
+      const reply = typeof ack === 'function' ? ack : () => {};
+      try {
+        const { gameId, userId, move } = data || {};
+        const gameState = gameId != null ? activeGames.get(gameId.toString()) : null;
+        const player = gameState?.players?.find((p) => String(p.id) === String(userId));
+        const piece = player && move?.to ? (gameState.pieces || []).find((p) => p.id === move.pieceId) : null;
+        if (!piece || (piece.player_id || piece.team) !== player.position) return reply({ options: [] });
+        const to = { x: Number(move.to.x), y: Number(move.to.y) };
+        const moved = { ...piece, x: to.x, y: to.y };
+        const pieces = gameState.pieces
+          .filter((p) => p.id === piece.id || !(p.x === to.x && p.y === to.y))
+          .map((p) => (p.id === piece.id ? moved : p));
+        const eligible = await checkPromotionEligibility(moved, to, { ...gameState, pieces });
+        reply({ options: eligible?.options || [] });
+      } catch (err) {
+        console.error('previewPromotion error:', err.message);
+        reply({ options: [] });
       }
     });
 
