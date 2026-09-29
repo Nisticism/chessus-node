@@ -185,6 +185,9 @@ const PieceWizard = ({ editPieceId = null }) => {
     
     capture_actions_per_turn: 1,
     ranged_capture_actions_per_turn: 1,
+    movement_actions_per_turn: 1,
+    capture_uses_movement_action: false,
+    movement_uses_capture_action: false,
     can_fire_over_allies: false,
     can_fire_over_enemies: false,
     
@@ -462,6 +465,9 @@ const PieceWizard = ({ editPieceId = null }) => {
             
             capture_actions_per_turn: piece.capture_actions_per_turn || 1,
             ranged_capture_actions_per_turn: piece.ranged_capture_actions_per_turn || 1,
+            movement_actions_per_turn: piece.movement_actions_per_turn || 1,
+            capture_uses_movement_action: !!piece.capture_uses_movement_action,
+            movement_uses_capture_action: !!piece.movement_uses_capture_action,
             
             // Ranged attack firing over pieces
             can_fire_over_allies: !!piece.can_fire_over_allies,

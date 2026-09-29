@@ -882,6 +882,27 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
         />
       </div>
 
+      {/* Movement actions per turn - the counterpart of Capture Actions Per Turn */}
+      <div className={styles["condition-section"]}>
+        <h3>Movement Actions <InfoTooltip text="Let this piece move more than once in a single turn. Each move that does not capture uses one movement action; the piece keeps the turn until it has none left, or the player skips the rest. While it still has capture actions (set in Attack) it can also capture on any of these moves. The whole run counts as one of the game's Actions Per Turn." /></h3>
+        <div className={styles["sub-field"]}>
+          <label>Movement Actions Per Turn <InfoTooltip text="How many non-capturing moves this piece can make in one turn, 1 to 8. 1 is an ordinary piece. There is no unlimited setting: unlike enemies to capture, empty squares never run out, so the turn could go on forever." /></label>
+          <NumberInput
+            value={pieceData.movement_actions_per_turn || 1}
+            onChange={(val) => updatePieceData({ movement_actions_per_turn: Math.min(8, Math.max(1, val || 1)) })}
+            options={{ min: 1, max: 8, placeholder: "1", className: styles["form-input-small"] }}
+          />
+        </div>
+        <div className={styles["sub-field"]}>
+          <ToggleSwitch
+            checked={!!pieceData.movement_uses_capture_action}
+            onChange={(v) => updatePieceData({ movement_uses_capture_action: v })}
+            label="A move also uses a capture action"
+            tooltip={<InfoTooltip text="Each non-capturing move this piece makes also counts against its Capture Actions Per Turn (set in Attack). Turn this on, and 'A capture also uses a movement action' there, to give the piece one total number of actions per turn, captures and moves alike. Only matters when the piece has more than one Movement Action." />}
+          />
+        </div>
+      </div>
+
       {/* Live Preview */}
       <div className={styles["board-preview-section"]}>
         <h3>Movement Preview</h3>

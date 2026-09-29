@@ -366,6 +366,74 @@ const formatGameOverReasonShort = (reason) => {
 };
 
 /*
+ * The capture/movement (or ranged capture) actions this player is in the middle
+ * of, as a loaded game state carries them - so a refresh keeps the banner, the
+ * Skip button and the right dots. Without it the page showed nothing while the
+ * server still waited for that piece's next action.
+ */
+const pieceSequenceFromState = (state, myId) => {
+  if (!state || myId == null) return null;
+  const mine = (pid) => pid != null && String(pid) === String(myId);
+  const pieceById = (id) => parsePieces(state.pieces).find((p) => p.id === id);
+  if (state.captureActionsPieceId != null && mine(state.captureActionsPlayerId)) {
+    const p = pieceById(state.captureActionsPieceId);
+    const allow = state.pieceActionsAllow || { capture: true, move: false };
+    return {
+      pieceId: state.captureActionsPieceId,
+      data: {
+        actionsUsed: state.captureActionsUsed, actionsTotal: p?.capture_actions_per_turn ?? 1,
+        movesUsed: state.movementActionsUsed || 0,
+        movesTotal: Math.min(8, Math.max(1, Number(p?.movement_actions_per_turn) || 1)),
+        allowCapture: !!allow.capture, allowMove: !!allow.move, isRanged: false,
+      },
+    };
+  }
+  if (state.rangedCaptureActionsPieceId != null && mine(state.rangedCaptureActionsPlayerId)) {
+    const p = pieceById(state.rangedCaptureActionsPieceId);
+    return {
+      pieceId: state.rangedCaptureActionsPieceId,
+      data: { actionsUsed: state.rangedCaptureActionsUsed, actionsTotal: p?.ranged_capture_actions_per_turn ?? 1, isRanged: true },
+    };
+  }
+  return null;
+};
+
+/*
+ * The banner for a piece's pending actions: what it may do next, and how many
+ * it has used of each kind that has a limit.
+ */
+const sequenceBanner = (data) => {
+  if (!data) return { text: '', counts: null };
+  if (data.isRanged) {
+    return {
+      text: 'Ranged capture action available! Fire again with the same piece, or skip.',
+      counts: data.actionsTotal !== -1 && data.actionsUsed != null ? `${data.actionsUsed}/${data.actionsTotal}` : null,
+    };
+  }
+  const text = data.allowMove && data.allowCapture
+    ? 'This piece can act again! Move or capture with the highlighted piece, or skip.'
+    : data.allowMove
+      ? 'Movement action available! Move the highlighted piece again, or skip.'
+      : 'Capture action available! Move the highlighted piece to capture an enemy, or skip.';
+  const parts = [];
+  if (data.allowMove && data.movesTotal > 1) parts.push(`moves ${data.movesUsed}/${data.movesTotal}`);
+  if (data.actionsTotal !== -1 && data.actionsUsed != null) parts.push(data.allowMove ? `captures ${data.actionsUsed}/${data.actionsTotal}` : `${data.actionsUsed}/${data.actionsTotal}`);
+  return { text, counts: parts.length ? parts.join(', ') : null };
+};
+
+/*
+ * While a piece is in the middle of its capture/movement actions, only the
+ * kinds of move it still has actions for (the server's pieceActionsAfter).
+ * The server refuses the rest; drawn as dots they only invited the refusal.
+ */
+const keepSequenceMoves = (moves, piece, seq) => {
+  if (!seq || !seq.data || !piece || piece.id !== seq.id || !Array.isArray(moves)) return moves;
+  const { isRanged, allowCapture = true, allowMove = false } = seq.data;
+  if (isRanged) return moves.filter((m) => m.isRangedAttack);
+  return moves.filter((m) => !m.isRangedAttack && (m.isCapture ? allowCapture : allowMove));
+};
+
+/*
  * The board with a correspondence move's promotion shown on the moving piece,
  * before the move is confirmed. Only its look changes: the server builds the
  * real promoted piece when the move arrives.
@@ -469,7 +537,11 @@ const LiveGame = () => {
   const [rerollNotice, setRerollNotice] = useState(null);
   // Capture actions per turn: server signals that the piece can make a bonus capture
   const [captureActionPieceId, setCaptureActionPieceId] = useState(null);
-  const [captureActionData, setCaptureActionData] = useState(null); // { actionsUsed, actionsTotal, isRanged }
+  // { actionsUsed, actionsTotal, movesUsed, movesTotal, allowCapture, allowMove, isRanged }
+  const [captureActionData, setCaptureActionData] = useState(null);
+  // The same, for callbacks that must not re-create on every change (keepSequenceMoves).
+  const pieceSequenceRef = useRef(null);
+  pieceSequenceRef.current = captureActionPieceId != null ? { id: captureActionPieceId, data: captureActionData } : null;
   // ─── Veto power state ───────────────────────────────────────────────────────
   // vetoWindow: set when a veto window is open and I'm the vetoer ({ style, revealMove, budget }).
   const [vetoWindow, setVetoWindow] = useState(null);
@@ -1287,6 +1359,11 @@ const LiveGame = () => {
         }
         clearOptimisticMoveSnapshot();
         setGameState(state);
+        {
+          const seq = pieceSequenceFromState(state, currentUser ? currentUser.id : (socket?.id ? `anon_${socket.id}` : null));
+          setCaptureActionPieceId(seq ? seq.pieceId : null);
+          setCaptureActionData(seq ? seq.data : null);
+        }
 
         // Restore simul-turns submission state from server-side pendingSimulMoves.
         // If this player already submitted a move this round (e.g. after a refresh),
@@ -2196,6 +2273,11 @@ const LiveGame = () => {
       if (parseInt(state.id) === parseInt(gameId)) {
         clearOptimisticMoveSnapshot();
         setGameState(state);
+        {
+          const seq = pieceSequenceFromState(state, currentUser ? currentUser.id : (socket?.id ? `anon_${socket.id}` : null));
+          setCaptureActionPieceId(seq ? seq.pieceId : null);
+          setCaptureActionData(seq ? seq.data : null);
+        }
         setLoading(false);
         if (state.playerScores) setPlayerScores(state.playerScores);
         // Restore illegal-move counters on reconnect / page restore so the
@@ -2670,12 +2752,17 @@ const LiveGame = () => {
     });
 
     // Capture actions per turn: bonus capture opportunity after a normal capture
-    const unsubscribeCaptureActionRequired = onGameEvent("captureActionRequired", ({ gameId: caGameId, pieceId, actionsUsed, actionsTotal, gameState: newState }) => {
+    // Capture / movement actions: the same piece may act again (server:
+    // pieceActionsAfter). allowCapture / allowMove say which kinds it still has.
+    const unsubscribeCaptureActionRequired = onGameEvent("captureActionRequired", ({ gameId: caGameId, pieceId, actionsUsed, actionsTotal, movesUsed, movesTotal, allowCapture, allowMove, gameState: newState }) => {
       if (parseInt(caGameId) !== parseInt(gameId)) return;
       clearOptimisticMoveSnapshot();
       setGameState(prev => ({ ...prev, ...newState, pieces: newState.pieces ? [...newState.pieces] : prev?.pieces }));
       setCaptureActionPieceId(pieceId);
-      setCaptureActionData({ actionsUsed, actionsTotal, isRanged: false });
+      setCaptureActionData({
+        actionsUsed, actionsTotal, movesUsed, movesTotal,
+        allowCapture: allowCapture !== false, allowMove: !!allowMove, isRanged: false,
+      });
       setSelectedPiece(null);
       setValidMoves([]);
     });
@@ -3989,7 +4076,7 @@ const LiveGame = () => {
         false,             // forHoverDisplay
         fogProbe           // forFog - include attack-only-empty squares for hidden-piece probing
       );
-      setValidMoves(moves);
+      setValidMoves(keepSequenceMoves(moves, clickedPiece, pieceSequenceRef.current));
       return;
     }
 
@@ -4409,8 +4496,9 @@ const LiveGame = () => {
       false,             // forHoverDisplay
       fogProbe           // forFog - include attack-only-empty squares for hidden-piece probing
     );
-    setDragValidMoves(moves);
-    setValidMoves(moves);
+    const sequenceMoves = keepSequenceMoves(moves, piece, pieceSequenceRef.current);
+    setDragValidMoves(sequenceMoves);
+    setValidMoves(sequenceMoves);
     
     e.dataTransfer.effectAllowed = 'move';
     // Set drag data to make it work properly
@@ -4891,7 +4979,7 @@ const LiveGame = () => {
 
     const pieces = parsePieces(gameState.pieces);
     const fogProbe = !!(gameState?.hideEnemyPieces && isMyTurn);
-    const moves = calculateValidMoves(
+    const moves = keepSequenceMoves(calculateValidMoves(
       piece, pieces,
       gameState.gameType?.board_width || 8,
       gameState.gameType?.board_height || 8,
@@ -4899,7 +4987,7 @@ const LiveGame = () => {
       canDragForPremove,
       false,             // forHoverDisplay
       fogProbe           // forFog - include attack-only-empty squares for hidden-piece probing
-    );
+    ), piece, pieceSequenceRef.current);
 
     touchDragRef.current = { piece, moves, startX: touch.clientX, startY: touch.clientY, isDragging: false, grabOffset };
     setSelectedPiece(piece);
@@ -6985,11 +7073,9 @@ const LiveGame = () => {
             )}
             {captureActionPieceId != null && isMyTurn && (
               <span className={styles["move-error"]} style={{ background: 'rgba(80, 220, 120, 0.18)', color: '#7fffb0', display: 'flex', alignItems: 'center', gap: 8 }}>
-                {captureActionData?.isRanged
-                  ? `Ranged capture action available! Fire again with the same piece, or skip.`
-                  : `Capture action available! Move the highlighted piece to capture an enemy, or skip.`}
-                {captureActionData?.actionsTotal !== -1 && captureActionData?.actionsUsed != null && (
-                  <span style={{ opacity: 0.7, fontSize: '0.85em' }}>({captureActionData.actionsUsed}/{captureActionData.actionsTotal})</span>
+                {sequenceBanner(captureActionData).text}
+                {sequenceBanner(captureActionData).counts && (
+                  <span style={{ opacity: 0.7, fontSize: '0.85em' }}>({sequenceBanner(captureActionData).counts})</span>
                 )}
                 <button
                   type="button"

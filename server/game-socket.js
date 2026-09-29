@@ -4638,6 +4638,9 @@ function initializeSocket(server) {
               step_by_step_attack_range: (fullPieceData.step_by_step_attack_value != null && fullPieceData.step_by_step_attack_value !== 0) ? (fullPieceData.step_by_step_attack_style ? -Math.abs(fullPieceData.step_by_step_attack_value) : fullPieceData.step_by_step_attack_value) : null,
               capture_actions_per_turn: fullPieceData.capture_actions_per_turn,
               ranged_capture_actions_per_turn: fullPieceData.ranged_capture_actions_per_turn,
+              movement_actions_per_turn: fullPieceData.movement_actions_per_turn,
+              capture_uses_movement_action: fullPieceData.capture_uses_movement_action,
+              movement_uses_capture_action: fullPieceData.movement_uses_capture_action,
               can_fire_over_allies: fullPieceData.can_fire_over_allies,
               can_fire_over_enemies: fullPieceData.can_fire_over_enemies,
               // En passant
@@ -5299,6 +5302,9 @@ function initializeSocket(server) {
               step_by_step_attack_range: (fullPieceData.step_by_step_attack_value != null && fullPieceData.step_by_step_attack_value !== 0) ? (fullPieceData.step_by_step_attack_style ? -Math.abs(fullPieceData.step_by_step_attack_value) : fullPieceData.step_by_step_attack_value) : null,
               capture_actions_per_turn: fullPieceData.capture_actions_per_turn,
               ranged_capture_actions_per_turn: fullPieceData.ranged_capture_actions_per_turn,
+              movement_actions_per_turn: fullPieceData.movement_actions_per_turn,
+              capture_uses_movement_action: fullPieceData.capture_uses_movement_action,
+              movement_uses_capture_action: fullPieceData.movement_uses_capture_action,
               can_fire_over_allies: fullPieceData.can_fire_over_allies,
               can_fire_over_enemies: fullPieceData.can_fire_over_enemies,
               can_en_passant: fullPieceData.can_en_passant,
@@ -6248,6 +6254,9 @@ function initializeSocket(server) {
                   step_by_step_attack_range: (fullPieceData.step_by_step_attack_value != null && fullPieceData.step_by_step_attack_value !== 0) ? (fullPieceData.step_by_step_attack_style ? -Math.abs(fullPieceData.step_by_step_attack_value) : fullPieceData.step_by_step_attack_value) : null,
                   capture_actions_per_turn: fullPieceData.capture_actions_per_turn,
                   ranged_capture_actions_per_turn: fullPieceData.ranged_capture_actions_per_turn,
+                  movement_actions_per_turn: fullPieceData.movement_actions_per_turn,
+                  capture_uses_movement_action: fullPieceData.capture_uses_movement_action,
+                  movement_uses_capture_action: fullPieceData.movement_uses_capture_action,
                   can_fire_over_allies: fullPieceData.can_fire_over_allies,
                   can_fire_over_enemies: fullPieceData.can_fire_over_enemies,
                   // En passant
@@ -6996,11 +7005,12 @@ function initializeSocket(server) {
           return socket.emit("error", { message: "Please complete your promotion choice before making another move" });
         }
 
-        // Enforce capture actions: if a capture action sequence is in progress, only the same piece can move
+        // A piece in the middle of its capture/movement actions (see
+        // pieceActionsAfter): only that piece may act, and only in a way it
+        // still has actions for.
         if (gameState.captureActionsPieceId != null && move.pieceId !== gameState.captureActionsPieceId) {
-          return socket.emit("error", { message: "You must use the same piece for your capture action, or skip it" });
+          return socket.emit("error", { message: "You must use the same piece for its remaining actions, or skip them" });
         }
-        // Capture actions must actually capture something: prevents using a free movement action after a capture action
         if (gameState.captureActionsPieceId != null && move.pieceId === gameState.captureActionsPieceId && !move.isRangedAttack) {
           const moverPiece = gameState.pieces.find(p => p.id === move.pieceId);
           const moverPos = moverPiece ? (moverPiece.team || moverPiece.player_id) : null;
@@ -7008,7 +7018,13 @@ function initializeSocket(server) {
             const pOwner = p.team || p.player_id;
             return p.id !== move.pieceId && pOwner !== moverPos && doesPieceOccupySquare(p, move.to.x, move.to.y);
           });
-          if (!hasEnemyAtDest) {
+          // Sequences saved before movement actions existed carry no flags:
+          // they were capture-only.
+          const allow = gameState.pieceActionsAllow || { capture: true, move: false };
+          if (hasEnemyAtDest && !allow.capture) {
+            return socket.emit("error", { message: "This piece has no capture actions left this turn - move without capturing, or skip" });
+          }
+          if (!hasEnemyAtDest && !allow.move) {
             return socket.emit("error", { message: "You must capture an enemy piece with this piece, or skip your remaining capture action" });
           }
         }
@@ -8101,23 +8117,15 @@ function initializeSocket(server) {
           return; // Wait for chain capture or skip
         }
 
-        // Check if capture actions are available (extra deliberate move-capture actions per turn)
-        if (moveResult.captureActionsAvailable && moveResult.movingPiece) {
-          // Verify the piece actually has valid capture targets; if not, auto-skip
+        // Capture / movement actions: may this piece act again this turn? Only
+        // offered when it has something it can actually do (pieceActionOptions);
+        // otherwise the sequence just ends.
+        if ((moveResult.captureActionsAvailable || moveResult.movementActionsAvailable) && moveResult.movingPiece) {
           const capturePiece = gameState.pieces.find(p => p.id === moveResult.movingPiece.id);
-          const captureOwner = capturePiece ? (capturePiece.team || capturePiece.player_id) : null;
-          let captureMoves = [];
-          try {
-            if (capturePiece) captureMoves = getPossibleMovesForPiece(capturePiece, gameState.pieces, gameState.gameType, gameState.totalHalfMoves || 0);
-          } catch (e) { /* ignore */ }
-          const hasCaptureTargets = capturePiece && captureMoves.some(sq =>
-            gameState.pieces.some(p => p.id !== capturePiece.id && doesPieceOccupySquare(p, sq.x, sq.y) && (p.team || p.player_id) !== captureOwner)
-          );
+          const actionOptions = pieceActionOptions(gameState, capturePiece, moveResult.pieceActions);
 
-          if (hasCaptureTargets) {
-          gameState.captureActionsPieceId = moveResult.movingPiece.id;
-          gameState.captureActionsPlayerId = userId;
-          gameState.captureActionsUsed = (gameState.captureActionsUsed || 0) + 1;
+          if (capturePiece && (actionOptions.capture || actionOptions.move)) {
+          startPieceActions(gameState, capturePiece, userId, moveResult.pieceActions, actionOptions);
 
           await db_pool.query(
             "UPDATE games SET pieces = ?, other_data = ? WHERE id = ?",
@@ -8149,9 +8157,7 @@ function initializeSocket(server) {
 
           emitToGameRoom(io, gameState, "captureActionRequired", {
             gameId,
-            pieceId: gameState.captureActionsPieceId,
-            actionsUsed: gameState.captureActionsUsed,
-            actionsTotal: moveResult.movingPiece.capture_actions_per_turn,
+            ...pieceActionsPayload(gameState, capturePiece),
             move: moveRecord,
             gameState: {
               pieces: gameState.pieces,
@@ -8163,10 +8169,10 @@ function initializeSocket(server) {
             }
           });
 
-          console.log(`Capture action available in game ${gameId} for piece ${gameState.captureActionsPieceId} (${gameState.captureActionsUsed}/${moveResult.movingPiece.capture_actions_per_turn})`);
-          return; // Wait for capture action or skip
-          } // end if (hasCaptureTargets)
-          // No capture targets available — fall through to end-of-turn processing
+          console.log(`Piece actions available in game ${gameId} for piece ${gameState.captureActionsPieceId} (captures ${gameState.captureActionsUsed}, moves ${gameState.movementActionsUsed})`);
+          return; // Wait for the next action or a skip
+          } // end if (it can act)
+          // Nothing it can do - fall through to end-of-turn processing
         }
 
         // Check if ranged capture actions are available
@@ -8249,10 +8255,8 @@ function initializeSocket(server) {
         gameState.chainCapturePlayerId = null;
         gameState.chainCaptureHopCount = 0;
 
-        // Clear any capture action state after a move that didn't trigger more actions
-        gameState.captureActionsPieceId = null;
-        gameState.captureActionsPlayerId = null;
-        gameState.captureActionsUsed = 0;
+        // Clear any capture/movement action state after a move that didn't trigger more actions
+        clearPieceActions(gameState);
         gameState.rangedCaptureActionsPieceId = null;
         gameState.rangedCaptureActionsPlayerId = null;
         gameState.rangedCaptureActionsUsed = 0;
@@ -8695,9 +8699,15 @@ function initializeSocket(server) {
 
             // If the premove triggered a multi-capture chain, set up the capture action state
             // instead of switching turns — the player needs to make another capture.
-            if ((premoveResult.captureActionsAvailable || premoveResult.rangedCaptureActionsAvailable) && premoveResult.movingPiece) {
+            // Capture / movement actions: only when the piece can actually take one.
+            const pmLivePiece = premoveResult.movingPiece && gameState.pieces.find(p => p.id === premoveResult.movingPiece.id);
+            const pmMeleeOptions = !premoveResult.rangedCaptureActionsAvailable
+              ? pieceActionOptions(gameState, pmLivePiece, premoveResult.pieceActions)
+              : null;
+            const pmMeleeActs = !!(pmMeleeOptions && (pmMeleeOptions.capture || pmMeleeOptions.move));
+            if ((pmMeleeActs || premoveResult.rangedCaptureActionsAvailable) && premoveResult.movingPiece) {
               const pmIsRanged = !!premoveResult.rangedCaptureActionsAvailable;
-              const pmCapPiece = premoveResult.movingPiece;
+              const pmCapPiece = pmLivePiece || premoveResult.movingPiece;
               const pmCapUsed = 1;
               const pmCapTotal = pmIsRanged
                 ? (pmCapPiece.ranged_capture_actions_per_turn || pmCapPiece.capture_actions_per_turn || 1)
@@ -8707,9 +8717,7 @@ function initializeSocket(server) {
                 gameState.rangedCaptureActionsPlayerId = nextPlayer.id;
                 gameState.rangedCaptureActionsUsed = pmCapUsed;
               } else {
-                gameState.captureActionsPieceId = pmCapPiece.id;
-                gameState.captureActionsPlayerId = nextPlayer.id;
-                gameState.captureActionsUsed = pmCapUsed;
+                startPieceActions(gameState, pmCapPiece, nextPlayer.id, premoveResult.pieceActions, pmMeleeOptions);
               }
               premoveExecuted = true;
               // Update board state in DB (turn stays with the premover)
@@ -8734,9 +8742,9 @@ function initializeSocket(server) {
               const pmCaptureEvent = pmIsRanged ? "rangedCaptureActionRequired" : "captureActionRequired";
               io.to(`game-${gameId}`).emit(pmCaptureEvent, {
                 gameId,
-                pieceId: pmCapPiece.id,
-                actionsUsed: pmCapUsed,
-                actionsTotal: pmCapTotal,
+                ...(pmIsRanged
+                  ? { pieceId: pmCapPiece.id, actionsUsed: pmCapUsed, actionsTotal: pmCapTotal }
+                  : pieceActionsPayload(gameState, pmCapPiece)),
                 gameState: {
                   pieces: gameState.pieces,
                   currentTurn: gameState.currentTurn,
@@ -10416,15 +10424,25 @@ function initializeSocket(server) {
           return socket.emit("error", { message: "No capture action pending for you" });
         }
 
-        // Clear capture action state
-        gameState.captureActionsPieceId = null;
-        gameState.captureActionsPlayerId = null;
-        gameState.captureActionsUsed = 0;
+        const sequencePiece = gameState.pieces.find(p => p.id === gameState.captureActionsPieceId);
+
+        // Clear capture/movement action state
+        clearPieceActions(gameState);
         gameState.chainCapturePieceId = null;
         gameState.chainCapturePlayerId = null;
         gameState.chainCaptureHopCount = 0;
 
-        // Switch turns (capture action was a bonus; now end the turn)
+        /*
+         * The piece's whole sequence was ONE of the turn's actions_per_turn, as
+         * it is when it ends by itself. The turn passes only if that was the
+         * last - skipping used to end the turn outright, and a game with two or
+         * more actions per turn lost the ones still owed.
+         */
+        const skipMustMoveFree = !!(sequencePiece?.must_move_if_able && !sequencePiece.must_move_uses_action);
+        if (!skipMustMoveFree) gameState.actionsThisTurn = (gameState.actionsThisTurn || 0) + 1;
+        const skipTurnPasses = gameState.actionsThisTurn >= (gameState.gameType?.actions_per_turn || 1);
+
+        if (skipTurnPasses) {
         gameState.currentTurn = gameState.currentTurn === 1 ? 2 : 1;
         gameState.actionsThisTurn = 0;
 
@@ -10455,6 +10473,7 @@ function initializeSocket(server) {
           await finishNoLegalMoveGame(io, gameIdStr, gameState, skipNoMove);
           return;
         }
+        } // end if (skipTurnPasses)
 
         // Check win/check conditions
         const checkResult = checkForCheck(gameState, gameState.currentTurn);
@@ -10480,7 +10499,7 @@ function initializeSocket(server) {
             allowPremoves: gameState.allowPremoves,
             rated: gameState.rated,
             controlSquareTracking: gameState.controlSquareTracking,
-            actionsThisTurn: 0,
+            actionsThisTurn: gameState.actionsThisTurn || 0,
             actionsPerTurn: gameState.gameType?.actions_per_turn || 1
           }
         });
@@ -10498,8 +10517,9 @@ function initializeSocket(server) {
           processBotTurn(io, gameId, gameState);
         }
 
-        // Notify opponent in correspondence / no-time-control games.
-        await sendCorrespondenceMoveNotification(io, gameId, gameState, userId);
+        // Notify opponent in correspondence / no-time-control games - once the
+        // turn is theirs.
+        if (skipTurnPasses) await sendCorrespondenceMoveNotification(io, gameId, gameState, userId);
       } catch (err) {
         console.error("Error in skipCaptureAction:", err);
         socket.emit("error", { message: "Failed to skip capture action" });
@@ -10636,6 +10656,8 @@ function initializeSocket(server) {
           return socket.emit("error", { message: "No ranged capture action pending for you" });
         }
 
+        const rangedSequencePiece = gameState.pieces.find(p => p.id === gameState.rangedCaptureActionsPieceId);
+
         // Clear ranged capture action state
         gameState.rangedCaptureActionsPieceId = null;
         gameState.rangedCaptureActionsPlayerId = null;
@@ -10644,7 +10666,13 @@ function initializeSocket(server) {
         gameState.chainCapturePlayerId = null;
         gameState.chainCaptureHopCount = 0;
 
-        // Switch turns
+        // As skipCaptureAction: the sequence was one of the turn's actions, and
+        // the turn passes only if it was the last.
+        const rangedSkipMustMoveFree = !!(rangedSequencePiece?.must_move_if_able && !rangedSequencePiece.must_move_uses_action);
+        if (!rangedSkipMustMoveFree) gameState.actionsThisTurn = (gameState.actionsThisTurn || 0) + 1;
+        const rangedSkipTurnPasses = gameState.actionsThisTurn >= (gameState.gameType?.actions_per_turn || 1);
+
+        if (rangedSkipTurnPasses) {
         gameState.currentTurn = gameState.currentTurn === 1 ? 2 : 1;
         gameState.actionsThisTurn = 0;
 
@@ -10675,6 +10703,7 @@ function initializeSocket(server) {
           await finishNoLegalMoveGame(io, gameIdStr, gameState, rangedSkipNoMove);
           return;
         }
+        } // end if (rangedSkipTurnPasses)
 
         const checkResultRanged = checkForCheck(gameState, gameState.currentTurn);
         gameState.inCheck = checkResultRanged.inCheck;
@@ -10698,7 +10727,7 @@ function initializeSocket(server) {
             allowPremoves: gameState.allowPremoves,
             rated: gameState.rated,
             controlSquareTracking: gameState.controlSquareTracking,
-            actionsThisTurn: 0,
+            actionsThisTurn: gameState.actionsThisTurn || 0,
             actionsPerTurn: gameState.gameType?.actions_per_turn || 1
           }
         });
@@ -10708,8 +10737,9 @@ function initializeSocket(server) {
           processBotTurn(io, gameId, gameState);
         }
 
-        // Notify opponent in correspondence / no-time-control games.
-        await sendCorrespondenceMoveNotification(io, gameId, gameState, userId);
+        // Notify opponent in correspondence / no-time-control games - once the
+        // turn is theirs.
+        if (rangedSkipTurnPasses) await sendCorrespondenceMoveNotification(io, gameId, gameState, userId);
       } catch (err) {
         console.error("Error in skipRangedCaptureAction:", err);
         socket.emit("error", { message: "Failed to skip ranged capture action" });
@@ -11293,6 +11323,9 @@ function initializeSocket(server) {
                     step_by_step_attack_range: (fullPieceData.step_by_step_attack_value != null && fullPieceData.step_by_step_attack_value !== 0) ? (fullPieceData.step_by_step_attack_style ? -Math.abs(fullPieceData.step_by_step_attack_value) : fullPieceData.step_by_step_attack_value) : null,
                     capture_actions_per_turn: fullPieceData.capture_actions_per_turn,
                     ranged_capture_actions_per_turn: fullPieceData.ranged_capture_actions_per_turn,
+                    movement_actions_per_turn: fullPieceData.movement_actions_per_turn,
+                    capture_uses_movement_action: fullPieceData.capture_uses_movement_action,
+                    movement_uses_capture_action: fullPieceData.movement_uses_capture_action,
                     can_fire_over_allies: fullPieceData.can_fire_over_allies,
                     can_fire_over_enemies: fullPieceData.can_fire_over_enemies,
                     // En passant
@@ -13963,6 +13996,94 @@ function deriveEnPassantTarget(movingPiece, from, to) {
   };
 }
 
+/*
+ * What one piece may still do in its turn, after the action it just took.
+ *
+ * Two budgets, both per piece per turn, the first action included:
+ * - capture_actions_per_turn: how many times it may capture (-1 = unlimited);
+ * - movement_actions_per_turn: how many non-capturing moves it may make (1-8,
+ *   never unlimited - unlike enemies, empty squares do not run out).
+ * With the link flags a capture also spends a movement action
+ * (capture_uses_movement_action) and a move also spends a capture action
+ * (movement_uses_capture_action), so both on gives the piece one total.
+ *
+ * A piece with one movement action keeps the original capture-action rule
+ * exactly: only a capture earns another action, and only captures may follow.
+ * With more, any action may be followed by either kind while its budget lasts.
+ * The whole sequence is ONE of the game's actions_per_turn.
+ *
+ * `gameState.captureActionsUsed` / `movementActionsUsed` hold the counts so far
+ * in the sequence (0 outside one), so this only reads them.
+ */
+function pieceActionsAfter(piece, gameState, didCapture) {
+  const captureLimit = Number(piece.capture_actions_per_turn ?? 1) || 1; // -1 unlimited
+  const moveLimit = Math.min(8, Math.max(1, Number(piece.movement_actions_per_turn) || 1));
+  const inSequence = gameState.captureActionsPieceId === piece.id;
+  let captures = inSequence ? (gameState.captureActionsUsed || 0) : 0;
+  let moves = inSequence ? (gameState.movementActionsUsed || 0) : 0;
+  if (didCapture) {
+    captures += 1;
+    if (piece.capture_uses_movement_action) moves += 1;
+  } else {
+    moves += 1;
+    if (piece.movement_uses_capture_action) captures += 1;
+  }
+  const capturesLeft = captureLimit === -1 || captures < captureLimit;
+  const movesLeft = moves < moveLimit;
+  if (moveLimit <= 1) {
+    return { captures, moves, canCapture: didCapture && captureLimit !== 1 && capturesLeft, canMove: false };
+  }
+  return { captures, moves, canCapture: capturesLeft, canMove: movesLeft };
+}
+
+/*
+ * Of what pieceActionsAfter allows, what this piece can actually do from where
+ * it stands: an enemy to capture, an empty square to move to. Neither means the
+ * sequence is over, and nobody is asked to skip an action they cannot take.
+ */
+function pieceActionOptions(gameState, piece, pieceActions) {
+  if (!piece || !pieceActions || (!pieceActions.canCapture && !pieceActions.canMove)) return { capture: false, move: false };
+  const owner = piece.team || piece.player_id;
+  let squares = [];
+  try { squares = getPossibleMovesForPiece(piece, gameState.pieces, gameState.gameType, gameState.totalHalfMoves || 0); } catch (e) { /* none */ }
+  const occupant = (sq) => gameState.pieces.find((p) => p.id !== piece.id && doesPieceOccupySquare(p, sq.x, sq.y));
+  const melee = squares.filter((sq) => !sq.isRangedAttack);
+  return {
+    capture: !!pieceActions.canCapture && melee.some((sq) => { const o = occupant(sq); return o && (o.team || o.player_id) !== owner; }),
+    move: !!pieceActions.canMove && melee.some((sq) => !occupant(sq)),
+  };
+}
+
+/* A piece's follow-up sequence begins (or goes on): who, how far, what next. */
+function startPieceActions(gameState, piece, playerId, pieceActions, allow) {
+  gameState.captureActionsPieceId = piece.id;
+  gameState.captureActionsPlayerId = playerId;
+  gameState.captureActionsUsed = pieceActions.captures;
+  gameState.movementActionsUsed = pieceActions.moves;
+  gameState.pieceActionsAllow = { capture: !!allow.capture, move: !!allow.move };
+}
+
+function clearPieceActions(gameState) {
+  gameState.captureActionsPieceId = null;
+  gameState.captureActionsPlayerId = null;
+  gameState.captureActionsUsed = 0;
+  gameState.movementActionsUsed = 0;
+  gameState.pieceActionsAllow = null;
+}
+
+/* What the page needs to show the sequence: counts, limits, what is allowed. */
+function pieceActionsPayload(gameState, piece) {
+  return {
+    pieceId: gameState.captureActionsPieceId,
+    actionsUsed: gameState.captureActionsUsed,
+    actionsTotal: piece?.capture_actions_per_turn ?? 1,
+    movesUsed: gameState.movementActionsUsed || 0,
+    movesTotal: Math.min(8, Math.max(1, Number(piece?.movement_actions_per_turn) || 1)),
+    allowCapture: !!gameState.pieceActionsAllow?.capture,
+    allowMove: !!gameState.pieceActionsAllow?.move,
+  };
+}
+
 /**
  * Basic move validation - checks if move is legal based on piece rules
  * @param {Object} options - Optional settings
@@ -14604,6 +14725,8 @@ async function validateAndApplyMove(gameState, move, options = {}) {
   let hoppedCaptures = [];
   let chainCaptureAvailable = false;
   let captureActionsAvailable = false;
+  let movementActionsAvailable = false;
+  let pieceActions = null;
   let rangedCaptureActionsAvailable = false;
   
   if (movingPiece) {
@@ -14891,16 +15014,13 @@ async function validateAndApplyMove(gameState, move, options = {}) {
       }
     }
 
-    // Check for capture actions per turn (extra deliberate move-capture actions per turn)
-    // Only counts direct captures — hop captures (checkers-style) use chain_capture_enabled
-    const captureActionsPerTurn = movingPiece.capture_actions_per_turn ?? 1;
-    const isHopOnlyCapture = hoppedCaptures.length > 0 && capturedPiece === null;
-    if (!isHopOnlyCapture && capturedPiece !== null && (captureActionsPerTurn > 1 || captureActionsPerTurn === -1)) {
-      const captureActionsUsed = (gameState.captureActionsUsed || 0) + 1;
-      const captureUnlimited = captureActionsPerTurn === -1;
-      if (captureUnlimited || captureActionsUsed < captureActionsPerTurn) {
-        captureActionsAvailable = true;
-      }
+    // Capture and movement actions per turn: may this piece act again? (see
+    // pieceActionsAfter). Hop captures (checkers-style) belong to
+    // chain_capture_enabled and take no part.
+    if (hoppedCaptures.length === 0) {
+      pieceActions = pieceActionsAfter(movingPiece, gameState, capturedPiece !== null);
+      captureActionsAvailable = pieceActions.canCapture;
+      movementActionsAvailable = pieceActions.canMove;
     }
 
     // Check for promotion eligibility
@@ -14922,7 +15042,7 @@ async function validateAndApplyMove(gameState, move, options = {}) {
    */
   const moverSurvived = pieces.some(p => p.id === movingPiece.id);
 
-  return { valid: true, captured: capturedPiece, allCaptured: allCapturedPieces, damagedPieces, promotionEligible, movingPiece, isEnPassantCapture, hoppedCaptures, chainCaptureAvailable, captureActionsAvailable, destinationWasOccupied, moverSurvived };
+  return { valid: true, captured: capturedPiece, allCaptured: allCapturedPieces, damagedPieces, promotionEligible, movingPiece, isEnPassantCapture, hoppedCaptures, chainCaptureAvailable, captureActionsAvailable, movementActionsAvailable, pieceActions, destinationWasOccupied, moverSurvived };
 }
 
 /**
@@ -15272,6 +15392,9 @@ async function applyPromotionToPiece(gameState, pieceId, promoteToPieceId, promo
     step_by_step_attack_range: (fullPieceData.step_by_step_attack_value != null && fullPieceData.step_by_step_attack_value !== 0) ? (fullPieceData.step_by_step_attack_style ? -Math.abs(fullPieceData.step_by_step_attack_value) : fullPieceData.step_by_step_attack_value) : null,
     capture_actions_per_turn: fullPieceData.capture_actions_per_turn,
     ranged_capture_actions_per_turn: fullPieceData.ranged_capture_actions_per_turn,
+    movement_actions_per_turn: fullPieceData.movement_actions_per_turn,
+    capture_uses_movement_action: fullPieceData.capture_uses_movement_action,
+    movement_uses_capture_action: fullPieceData.movement_uses_capture_action,
     can_fire_over_allies: fullPieceData.can_fire_over_allies,
     can_fire_over_enemies: fullPieceData.can_fire_over_enemies,
     can_en_passant: fullPieceData.can_en_passant,
@@ -21359,10 +21482,9 @@ async function _processBotTurnInner(io, gameId, gameState, precomputedMove = nul
       }
 
       // 5b. Handle capture actions — bot executes them all (up to the limit)
+      // (Captures only: the bot passes on movement actions - see pieceActionsAfter.)
       if (moveResult.captureActionsAvailable && moveResult.movingPiece) {
-        gameState.captureActionsPieceId = moveResult.movingPiece.id;
-        gameState.captureActionsPlayerId = botPlayer.id;
-        gameState.captureActionsUsed = (gameState.captureActionsUsed || 0) + 1;
+        startPieceActions(gameState, moveResult.movingPiece, botPlayer.id, moveResult.pieceActions, { capture: true, move: false });
         let capLoopResult = moveResult;
         while (capLoopResult.captureActionsAvailable && gameState.captureActionsPieceId != null) {
           const capPiece = gameState.pieces.find(p => p.id === gameState.captureActionsPieceId);
@@ -21387,18 +21509,14 @@ async function _processBotTurnInner(io, gameId, gameState, precomputedMove = nul
           };
           gameState.moveHistory.push(capRecord);
           if (capResult.captureActionsAvailable) {
-            gameState.captureActionsUsed++;
+            startPieceActions(gameState, capPiece, botPlayer.id, capResult.pieceActions, { capture: true, move: false });
           } else {
-            gameState.captureActionsPieceId = null;
-            gameState.captureActionsPlayerId = null;
-            gameState.captureActionsUsed = 0;
+            clearPieceActions(gameState);
           }
           capLoopResult = capResult;
         }
         // Ensure state is cleared after loop
-        gameState.captureActionsPieceId = null;
-        gameState.captureActionsPlayerId = null;
-        gameState.captureActionsUsed = 0;
+        clearPieceActions(gameState);
       }
       if (moveResult.rangedCaptureActionsAvailable && moveResult.movingPiece) {
         gameState.rangedCaptureActionsPieceId = moveResult.movingPiece.id;
@@ -21949,13 +22067,14 @@ async function _processBotTurnInner(io, gameId, gameState, precomputedMove = nul
             // instead of switching turns — the human player needs to make another capture.
             // Mirror the non-premove path: verify there are actually valid targets first;
             // if not, fall through to normal turn-end processing.
-            if ((premoveResult.captureActionsAvailable || premoveResult.rangedCaptureActionsAvailable) && premoveResult.movingPiece) {
+            if ((premoveResult.captureActionsAvailable || premoveResult.movementActionsAvailable || premoveResult.rangedCaptureActionsAvailable) && premoveResult.movingPiece) {
               const pmIsRanged = !!premoveResult.rangedCaptureActionsAvailable;
               const pmCapPiece = gameState.pieces.find(p => p.id === premoveResult.movingPiece.id) || premoveResult.movingPiece;
               const pmCapOwner = pmCapPiece.team || pmCapPiece.player_id;
 
               // Check if there are actually valid targets before setting up the action state
               let pmHasTargets = false;
+              let pmMeleeOptions = null;
               if (pmIsRanged) {
                 const _pmAllowRangedOutside = (() => {
                   if (!pmCapPiece || !pmCapPiece.cannot_move_outside_zone) return true;
@@ -21981,11 +22100,9 @@ async function _processBotTurnInner(io, gameId, gameState, precomputedMove = nul
                     return true;
                   }));
               } else {
-                let pmCapMoves = [];
-                try { if (pmCapPiece) pmCapMoves = getPossibleMovesForPiece(pmCapPiece, gameState.pieces, gameState.gameType, gameState.totalHalfMoves || 0); } catch (e) {}
-                pmHasTargets = pmCapMoves.some(sq =>
-                  gameState.pieces.some(p => p.id !== pmCapPiece.id && doesPieceOccupySquare(p, sq.x, sq.y) && (p.team || p.player_id) !== pmCapOwner)
-                );
+                // Capture / movement actions: whatever it can still do.
+                pmMeleeOptions = pieceActionOptions(gameState, pmCapPiece, premoveResult.pieceActions);
+                pmHasTargets = pmMeleeOptions.capture || pmMeleeOptions.move;
               }
 
               if (pmHasTargets) {
@@ -21998,9 +22115,7 @@ async function _processBotTurnInner(io, gameId, gameState, precomputedMove = nul
                 gameState.rangedCaptureActionsPlayerId = humanPlayer.id;
                 gameState.rangedCaptureActionsUsed = pmCapUsed;
               } else {
-                gameState.captureActionsPieceId = pmCapPiece.id;
-                gameState.captureActionsPlayerId = humanPlayer.id;
-                gameState.captureActionsUsed = pmCapUsed;
+                startPieceActions(gameState, pmCapPiece, humanPlayer.id, premoveResult.pieceActions, pmMeleeOptions);
               }
               // Update board state in DB (turn stays with the human player)
               await db_pool.query(
@@ -22022,9 +22137,9 @@ async function _processBotTurnInner(io, gameId, gameState, precomputedMove = nul
               const pmCaptureEvent = pmIsRanged ? "rangedCaptureActionRequired" : "captureActionRequired";
               io.to(`game-${gameId}`).emit(pmCaptureEvent, {
                 gameId,
-                pieceId: pmCapPiece.id,
-                actionsUsed: pmCapUsed,
-                actionsTotal: pmCapTotal,
+                ...(pmIsRanged
+                  ? { pieceId: pmCapPiece.id, actionsUsed: pmCapUsed, actionsTotal: pmCapTotal }
+                  : pieceActionsPayload(gameState, pmCapPiece)),
                 gameState: {
                   pieces: gameState.pieces,
                   currentTurn: gameState.currentTurn,

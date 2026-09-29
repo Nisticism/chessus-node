@@ -362,16 +362,24 @@ const PieceStep3Attack = ({ pieceData, updatePieceData }) => {
         {pieceData.can_capture_enemy_on_move && (
           <>
             <div className={styles["sub-field"]}>
-              <label>Capture Actions Per Turn <InfoTooltip text="Grants this piece additional capture-only move actions per turn. After capturing an enemy normally, the piece can move and capture again — up to this many times total per turn. The player may skip remaining actions at any time. Does not apply to ghostwalk/trample passthrough captures or hop captures (those use Chain Capture)." /></label>
+              <label>Capture Actions Per Turn <InfoTooltip text="How many times this piece can capture in one turn (1-8, or unlimited). After it captures, it can capture again right away - the same piece, before the turn passes - until these run out, or the player skips the rest. With more than one Movement Action it can also capture on any of its moves. The whole run counts as one of the game's Actions Per Turn. Does not apply to ghostwalk/trample passthrough captures or hop captures (those use Chain Capture)." /></label>
               <NumberInput
                 value={pieceData.capture_actions_per_turn === -1 ? "" : (pieceData.capture_actions_per_turn || 1)}
-                onChange={(val) => handleChange("capture_actions_per_turn", val)}
-                options={{ min: 1, max: 16, disabled: pieceData.capture_actions_per_turn === -1, placeholder: "1", className: styles["form-input-small"] }}
+                onChange={(val) => handleChange("capture_actions_per_turn", Math.min(8, Math.max(1, val || 1)))}
+                options={{ min: 1, max: 8, disabled: pieceData.capture_actions_per_turn === -1, placeholder: "1", className: styles["form-input-small"] }}
               />
               <ToggleSwitch inline size="small"
                 checked={pieceData.capture_actions_per_turn === -1}
                 onChange={(v) => handleChange("capture_actions_per_turn", v ? -1 : 1)}
                 label="Unlimited"
+              />
+            </div>
+            <div className={styles["sub-field"]}>
+              <ToggleSwitch
+                checked={!!pieceData.capture_uses_movement_action}
+                onChange={(v) => handleChange("capture_uses_movement_action", v)}
+                label="A capture also uses a movement action"
+                tooltip={<InfoTooltip text="Each capture this piece makes also counts against its Movement Actions Per Turn (set under Movement). Turn this on, and 'A move also uses a capture action' there, to give the piece one total number of actions per turn, captures and moves alike. Only matters when the piece has more than one Movement Action." />}
               />
             </div>
 
@@ -1017,11 +1025,11 @@ const PieceStep3Attack = ({ pieceData, updatePieceData }) => {
         {pieceData.can_capture_enemy_via_range && (
           <>
             <div className={styles["sub-field"]}>
-              <label>Ranged Capture Actions Per Turn <InfoTooltip text="Grants this piece additional ranged attack actions per turn. After firing at an enemy, the piece can fire again from the same position — up to this many times total per turn. The player may skip remaining actions at any time." /></label>
+              <label>Ranged Capture Actions Per Turn <InfoTooltip text="How many times this piece can fire in one turn (1-8, or unlimited). After firing at an enemy, it can fire again from the same position until these run out, or the player skips the rest. The whole run counts as one of the game's Actions Per Turn." /></label>
               <NumberInput
                 value={pieceData.ranged_capture_actions_per_turn === -1 ? "" : (pieceData.ranged_capture_actions_per_turn || 1)}
-                onChange={(val) => handleChange("ranged_capture_actions_per_turn", val)}
-                options={{ min: 1, max: 16, disabled: pieceData.ranged_capture_actions_per_turn === -1, placeholder: "1", className: styles["form-input-small"] }}
+                onChange={(val) => handleChange("ranged_capture_actions_per_turn", Math.min(8, Math.max(1, val || 1)))}
+                options={{ min: 1, max: 8, disabled: pieceData.ranged_capture_actions_per_turn === -1, placeholder: "1", className: styles["form-input-small"] }}
               />
               <ToggleSwitch inline size="small"
                 checked={pieceData.ranged_capture_actions_per_turn === -1}

@@ -5019,6 +5019,28 @@ const runMigrations = async () => {
   }
 
   /*
+   * Movement actions per turn, and the two flags that link a piece's capture
+   * and movement actions into one total. Only added when missing - nothing is
+   * written to existing rows (NULL / 0 mean one movement action, unlinked, which
+   * is exactly how every piece behaved before). See pieceActionsAfter.
+   */
+  for (const [col, def] of [
+    ['movement_actions_per_turn', 'INT DEFAULT NULL'],
+    ['capture_uses_movement_action', 'TINYINT(1) NOT NULL DEFAULT 0'],
+    ['movement_uses_capture_action', 'TINYINT(1) NOT NULL DEFAULT 0'],
+  ]) {
+    try {
+      if (!(await columnExists('pieces', col))) {
+        await db_pool.query(`ALTER TABLE pieces ADD COLUMN ${col} ${def}`);
+        console.log(`[DB] Added pieces.${col}`);
+        migrationsRun++;
+      }
+    } catch (err) {
+      console.error(`Error adding pieces.${col}:`, err.message);
+    }
+  }
+
+  /*
    * Each user's own view of a conversation - one row per (user, other user),
    * written only when they archive or delete it.
    *

@@ -558,7 +558,7 @@ const Step2WinConditions = ({ gameData, updateGameData }) => {
         <div className={styles["form-group"]}>
           <label className={styles["form-label"]}>
             Actions Per Turn{' '}
-            <InfoTooltip text="How many moves or actions each player can make during a single turn. In standard chess this is 1. Increase for games where players can move multiple pieces per turn. Maximum of 8 actions per turn." />
+            <InfoTooltip text="How many actions each player takes in a single turn, 1 to 8. In standard chess this is 1. With more, a player can move several pieces - or the same piece again - before the turn passes. A piece with extra Capture or Movement Actions (set on the piece) spends only one of these however many times it goes: its whole run is one action, and skipping the rest of it still leaves the player any actions they have left." />
           </label>
           <NumberInput
             value={gameData.actions_per_turn || 1}

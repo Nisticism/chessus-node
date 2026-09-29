@@ -1062,6 +1062,22 @@ const PieceView = () => {
             </div>
           )}
 
+          {/* Movement actions: moves more than once per turn */}
+          {pieceToDisplay.movement_actions_per_turn > 1 && (
+            <div className={styles["ability-card"]}>
+              <div className={styles["ability-header"]}>
+                <span className={styles["ability-icon"]}>⏩</span>
+                <h3>Movement Actions</h3>
+              </div>
+              <div className={styles["ability-properties"]}>
+                <div className={styles["property-tag"]}>
+                  {pieceToDisplay.movement_actions_per_turn} movement actions per turn
+                  {pieceToDisplay.movement_uses_capture_action ? ' (each uses a capture action)' : ''}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Ratio Movement */}
           {pieceToDisplay.ratio_movement_style && (
             <div className={styles["ability-card"]}>
@@ -1492,11 +1508,13 @@ const PieceView = () => {
                       ` (max ${piece.max_directional_capture_iterations}x)`}
                   </div>
                 )}
-                {pieceToDisplay.capture_actions_per_turn != null && pieceToDisplay.capture_actions_per_turn > 1 && (
+                {(pieceToDisplay.capture_actions_per_turn === -1 || pieceToDisplay.capture_actions_per_turn > 1) && (
                   <div className={styles["property-tag"]}>
-                    {pieceToDisplay.capture_actions_per_turn === -1 ? 'Unlimited' : pieceToDisplay.capture_actions_per_turn} capture action{pieceToDisplay.capture_actions_per_turn !== 2 ? 's' : ''} per turn
+                    {pieceToDisplay.capture_actions_per_turn === -1 ? 'Unlimited' : pieceToDisplay.capture_actions_per_turn} capture actions per turn
+                    {pieceToDisplay.capture_uses_movement_action && pieceToDisplay.movement_actions_per_turn > 1 ? ' (each uses a movement action)' : ''}
                   </div>
                 )}
+
               </div>
             </div>
           )}
@@ -1586,9 +1604,9 @@ const PieceView = () => {
                     Step Range: {Math.abs(pieceToDisplay.step_by_step_attack_range)} squares{pieceToDisplay.step_by_step_attack_range < 0 ? ' (Manhattan — orthogonal only)' : ' (Chebyshev — any direction)'}
                   </div>
                 )}
-                {pieceToDisplay.ranged_capture_actions_per_turn != null && pieceToDisplay.ranged_capture_actions_per_turn > 1 && (
+                {(pieceToDisplay.ranged_capture_actions_per_turn === -1 || pieceToDisplay.ranged_capture_actions_per_turn > 1) && (
                   <div className={styles["property-tag"]}>
-                    {pieceToDisplay.ranged_capture_actions_per_turn === -1 ? 'Unlimited' : pieceToDisplay.ranged_capture_actions_per_turn} ranged capture action{pieceToDisplay.ranged_capture_actions_per_turn !== 2 ? 's' : ''} per turn
+                    {pieceToDisplay.ranged_capture_actions_per_turn === -1 ? 'Unlimited' : pieceToDisplay.ranged_capture_actions_per_turn} ranged capture actions per turn
                   </div>
                 )}
                 {pieceToDisplay.repeating_directional_ranged_attack && (

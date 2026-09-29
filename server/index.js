@@ -2794,6 +2794,7 @@ const CMP_BOOL_COLS = [
   // same piece.
   'step_by_step_movement_no_orthogonal', 'step_by_step_capture_no_orthogonal',
   'step_by_step_attack_no_orthogonal',
+  'capture_uses_movement_action', 'movement_uses_capture_action',
 ];
 const CMP_INT_COLS = [
   'piece_width','piece_height',
@@ -2815,7 +2816,7 @@ const CMP_INT_COLS = [
   'down_right_attack_range_available_for','down_attack_range_available_for','down_left_attack_range_available_for','left_attack_range_available_for',
   'ratio_one_attack_range','ratio_two_attack_range',
   'step_by_step_attack_value',
-  'capture_actions_per_turn','ranged_capture_actions_per_turn',
+  'capture_actions_per_turn','ranged_capture_actions_per_turn','movement_actions_per_turn',
   'max_chain_hops',
   'max_directional_hop_pieces','max_directional_hop_pieces_attack',
   'available_for_captures',
@@ -3364,6 +3365,11 @@ addGate(['max_ratio_iterations', 'min_ratio_iterations'],
 addGate(['repeating_ratio_capture'], gHasRatioCapture);
 addGate(['max_ratio_capture_iterations'],
   (p) => gHasRatioCapture(p) && gBool(p.repeating_ratio_capture));
+
+// With one movement action a piece has no sequence to link (the capture-action
+// rule is unchanged), so the link flags only matter once it has more.
+addGate(['capture_uses_movement_action', 'movement_uses_capture_action'],
+  (p) => (Number(p.movement_actions_per_turn) || 1) > 1);
 
 // Everything ranged is inert without a ranged attack
 addGate([
@@ -5736,6 +5742,7 @@ app.post("/api/games/:gameId/uniqueness-check", authenticateToken, async (req, r
       'min_ratio_ranged_attack_iterations',
       'step_by_step_attack_style', 'step_by_step_attack_value',
       'capture_actions_per_turn', 'ranged_capture_actions_per_turn',
+      'movement_actions_per_turn', 'capture_uses_movement_action', 'movement_uses_capture_action',
       'special_scenario_moves', 'special_scenario_captures',
       'has_checkmate_rule', 'has_check_rule', 'has_lose_on_capture_rule',
       'can_castle', 'can_promote',
@@ -9726,6 +9733,7 @@ app.post("/api/pieces/create", authenticateToken, multerWrap(pieceUpload.array('
         ratio_one_attack_range, ratio_two_attack_range,
         step_by_step_attack_style, step_by_step_attack_value, step_by_step_attack_no_orthogonal,
         capture_actions_per_turn, ranged_capture_actions_per_turn,
+        movement_actions_per_turn, capture_uses_movement_action, movement_uses_capture_action,
         special_scenario_captures,
         can_fire_over_allies, can_fire_over_enemies, can_en_passant,
         capture_on_hop, chain_capture_enabled, free_move_after_promotion, promotion_pieces_ids,
@@ -9754,7 +9762,7 @@ app.post("/api/pieces/create", authenticateToken, multerWrap(pieceUpload.array('
         require_direction_change, require_direction_change_capture,
         image_sources_json,
         created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const pieceWidth = Math.min(4, Math.max(1, parseInt(pieceData.piece_width) || 1));
@@ -9897,8 +9905,12 @@ app.post("/api/pieces/create", authenticateToken, multerWrap(pieceUpload.array('
       pieceData.step_by_step_attack_style === 'true',
       parseInt(pieceData.step_by_step_attack_value) || null,
       parseBooleanField(pieceData.step_by_step_attack_no_orthogonal),
-      (() => { const v = parseInt(pieceData.capture_actions_per_turn); return v === -1 ? -1 : Math.min(16, Math.max(1, v || 1)); })(),
-      hasRangedAttack ? (() => { const v = parseInt(pieceData.ranged_capture_actions_per_turn); return v === -1 ? -1 : Math.min(16, Math.max(1, v || 1)); })() : null,
+      (() => { const v = parseInt(pieceData.capture_actions_per_turn); return v === -1 ? -1 : Math.min(8, Math.max(1, v || 1)); })(),
+      hasRangedAttack ? (() => { const v = parseInt(pieceData.ranged_capture_actions_per_turn); return v === -1 ? -1 : Math.min(8, Math.max(1, v || 1)); })() : null,
+      // Movement actions: 1-8, never unlimited (see pieceActionsAfter).
+      Math.min(8, Math.max(1, parseInt(pieceData.movement_actions_per_turn) || 1)),
+      parseBooleanField(pieceData.capture_uses_movement_action),
+      parseBooleanField(pieceData.movement_uses_capture_action),
       pieceData.special_scenario_captures || null,
       // Ranged firing over pieces
       parseBooleanField(pieceData.can_fire_over_allies),
@@ -10432,6 +10444,9 @@ app.put("/api/pieces/:pieceId", authenticateToken, multerWrap(pieceUpload.array(
         step_by_step_attack_no_orthogonal = ?,
         capture_actions_per_turn = ?,
         ranged_capture_actions_per_turn = ?,
+        movement_actions_per_turn = ?,
+        capture_uses_movement_action = ?,
+        movement_uses_capture_action = ?,
         special_scenario_captures = ?,
         can_fire_over_allies = ?,
         can_fire_over_enemies = ?,
@@ -10615,8 +10630,12 @@ app.put("/api/pieces/:pieceId", authenticateToken, multerWrap(pieceUpload.array(
       pieceData.step_by_step_attack_style === 'true',
       parseInt(pieceData.step_by_step_attack_value) || null,
       parseBooleanField(pieceData.step_by_step_attack_no_orthogonal),
-      (() => { const v = parseInt(pieceData.capture_actions_per_turn); return v === -1 ? -1 : Math.min(16, Math.max(1, v || 1)); })(),
-      hasRangedAttack ? (() => { const v = parseInt(pieceData.ranged_capture_actions_per_turn); return v === -1 ? -1 : Math.min(16, Math.max(1, v || 1)); })() : null,
+      (() => { const v = parseInt(pieceData.capture_actions_per_turn); return v === -1 ? -1 : Math.min(8, Math.max(1, v || 1)); })(),
+      hasRangedAttack ? (() => { const v = parseInt(pieceData.ranged_capture_actions_per_turn); return v === -1 ? -1 : Math.min(8, Math.max(1, v || 1)); })() : null,
+      // Movement actions: 1-8, never unlimited (see pieceActionsAfter).
+      Math.min(8, Math.max(1, parseInt(pieceData.movement_actions_per_turn) || 1)),
+      parseBooleanField(pieceData.capture_uses_movement_action),
+      parseBooleanField(pieceData.movement_uses_capture_action),
       pieceData.special_scenario_captures || null,
       // Ranged firing over pieces
       parseBooleanField(pieceData.can_fire_over_allies),
