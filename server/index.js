@@ -3897,6 +3897,7 @@ app.post("/api/games/:gameId/duplicate", authenticateToken, async (req, res) => 
     const overrides = { creator_id: userId, is_anonymous_creator: 0, is_draft: 1, draft_saved_step: 1, game_name: newName, created_at: nowStr };
     if (cols.includes('last_played_at')) overrides.last_played_at = null;
     if (cols.includes('initial_state_warning')) overrides.initial_state_warning = null;
+    if (cols.includes('initial_state_rescan_used')) overrides.initial_state_rescan_used = 0;
     // The copy is somebody's new game: whether others may build puzzles on it
     // is theirs to decide, not inherited from the original's creator.
     if (cols.includes('allow_community_puzzles')) overrides.allow_community_puzzles = 0;
@@ -13769,14 +13770,14 @@ app.post("/api/admin/initial-state/scan", authenticateAdmin, async (req, res) =>
     const flaggedItems = [];
     for (const { id } of rows) {
       try {
-        const result = await initialStateValidator.validateGameTypeInitialState(id);
+        // Records the warning (or clears it) and re-arms the creator's rescan.
+        const result = await initialStateValidator.scanAndRecordInitialState(id, { by: 'admin' });
+        if (result && result.error) { errored++; continue; }
         scanned++;
         if (result && result.decided) {
           flagged++;
-          await initialStateValidator.writeInitialStateWarning(id, result.reason || 'Starting position is already in a decided state.');
           flaggedItems.push({ id, reason: result.reason, type: result.type, code: result.code });
         } else {
-          await initialStateValidator.writeInitialStateWarning(id, null);
           cleared++;
         }
       } catch (err) {
@@ -13789,6 +13790,47 @@ app.post("/api/admin/initial-state/scan", authenticateAdmin, async (req, res) =>
   } catch (err) {
     console.error("Error in /api/admin/initial-state/scan:", err);
     res.status(500).send({ message: "Failed to scan initial states", err: err.message });
+  }
+});
+
+/*
+ * The creator's own rescan of their flagged game - once per flag.
+ *
+ * Saving the game already re-checks it; this is for a problem fixed some other
+ * way (a piece edited, a rule the check now understands), or to confirm a fix.
+ * Only while the admin scan has it flagged, and only once until the admin scan
+ * flags it again (scanAndRecordInitialState keeps that count).
+ */
+app.post("/api/games/:gameTypeId/initial-state/rescan", authenticateToken, async (req, res) => {
+  try {
+    const gameTypeId = parseInt(req.params.gameTypeId);
+    if (!gameTypeId) return res.status(400).send({ message: "Invalid game type id" });
+    const [[game]] = await db_pool.query(
+      "SELECT id, creator_id, initial_state_warning, initial_state_rescan_used FROM game_types WHERE id = ?",
+      [gameTypeId]
+    );
+    if (!game) return res.status(404).send({ message: "Game not found" });
+    if (Number(game.creator_id) !== Number(req.user.id)) {
+      return res.status(403).send({ message: "Only the game's creator can re-check its starting position." });
+    }
+    if (!game.initial_state_warning) {
+      return res.status(409).send({ message: "This game is not flagged, so there is nothing to re-check." });
+    }
+    if (game.initial_state_rescan_used) {
+      return res.status(409).send({ message: "You have already re-checked this game. Saving it in the editor checks it again." });
+    }
+    const result = await initialStateValidator.scanAndRecordInitialState(gameTypeId, { by: 'creator' });
+    if (result && result.error) {
+      return res.status(500).send({ message: "The check could not be completed. Please try again later." });
+    }
+    res.json({
+      decided: !!result.decided,
+      initial_state_warning: result.decided ? (result.reason || 'Starting position is already in a decided state.') : null,
+      initial_state_rescan_used: 1,
+    });
+  } catch (err) {
+    console.error("Error in creator initial-state rescan:", err);
+    res.status(500).send({ message: "Failed to re-check the starting position", err: err.message });
   }
 });
 

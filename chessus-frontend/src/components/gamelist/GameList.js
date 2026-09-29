@@ -267,15 +267,17 @@ Delete the game and its puzzles anyway?`)) {
         {isDraft && <div className={styles["draft-ribbon"]}>DRAFT</div>}
         <Link to={isDraft ? `/create/game/edit/${game.id}` : `/games/${game.id}`} className={styles["game-link"]}>
           <div className={styles["game-header"]}>
-            {!isDraft && <div
+            {/* A draft (only its creator sees it here) can be tried against
+                the computer; the lobby opens with that already chosen. */}
+            <div
               className={styles["game-icon"]}
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                navigate(`/play/games?gameTypeId=${game.id}`);
+                navigate(`/play/games?gameTypeId=${game.id}`, isDraft ? { state: { openVsComputer: true } } : undefined);
               }}
-              title="Play this game"
-            >▶</div>}
+              title={isDraft ? "Play your draft against the computer" : "Play this game"}
+            >▶</div>
             <div className={styles["game-title-area"]}>
               <h3 className={styles["game-name"]}>{game.game_name || 'Unnamed Game'}</h3>
               <span className={styles["game-board-info"]}>

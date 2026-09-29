@@ -1,12 +1,13 @@
 import React from "react";
 import styles from "./standard-button.module.scss";
-function StandardButton ({buttonText, onClick, buttonType, disabled, className, children}) {
+function StandardButton ({buttonText, onClick, buttonType, disabled, className, title, children}) {
   return (
     <button 
       className={`${styles["standard-button"]} ${className || ''}`} 
       onClick={onClick} 
       type={buttonType ? buttonType : "button"}
       disabled={disabled}
+      title={title}
     >
       {children || buttonText}
     </button>

@@ -379,9 +379,40 @@ async function writeInitialStateWarning(gameTypeId, warningTextOrNull) {
   }
 }
 
+/*
+ * Scan one game type and record the answer - its warning, or none.
+ *
+ * The one path for both scans: the admin's scan of every published game, and
+ * the creator's single rescan of their own flagged game. Each admin flag
+ * re-arms that rescan (initial_state_rescan_used = 0); the creator's rescan
+ * spends it. A scan that could not be answered (result.error) records
+ * nothing and spends nothing - "could not tell" is not "fixed".
+ *
+ * @param {number} gameTypeId
+ * @param {{ by?: 'admin'|'creator' }} [opts]
+ * @returns {Promise<object>} the evaluateInitialPosition result
+ */
+async function scanAndRecordInitialState(gameTypeId, { by = 'admin' } = {}) {
+  const result = await validateGameTypeInitialState(gameTypeId);
+  if (result && result.error) return result;
+  const decided = !!(result && result.decided);
+  await writeInitialStateWarning(gameTypeId, decided ? (result.reason || 'Starting position is already in a decided state.') : null);
+  try {
+    if (by === 'creator') {
+      await db_pool.query('UPDATE game_types SET initial_state_rescan_used = 1 WHERE id = ?', [gameTypeId]);
+    } else if (decided) {
+      await db_pool.query('UPDATE game_types SET initial_state_rescan_used = 0 WHERE id = ?', [gameTypeId]);
+    }
+  } catch (err) {
+    console.error(`[initial-state] recording the rescan for ${gameTypeId} failed:`, err.message);
+  }
+  return result;
+}
+
 module.exports = {
   loadInitialStateForGameType,
   validateGameTypeInitialState,
   validateGameTypeFromRequestBody,
   writeInitialStateWarning,
+  scanAndRecordInitialState,
 };

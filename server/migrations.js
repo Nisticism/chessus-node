@@ -5041,6 +5041,41 @@ const runMigrations = async () => {
   }
 
   /*
+   * Whether a game's creator has used their one re-check of a starting
+   * position the admin scan flagged. The admin scan sets it back to 0 each
+   * time it flags the game (see scanAndRecordInitialState).
+   */
+  try {
+    if (!(await columnExists('game_types', 'initial_state_rescan_used'))) {
+      await db_pool.query('ALTER TABLE game_types ADD COLUMN initial_state_rescan_used TINYINT(1) NOT NULL DEFAULT 0');
+      console.log('[DB] Added game_types.initial_state_rescan_used');
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding game_types.initial_state_rescan_used:', err.message);
+  }
+
+  /*
+   * initial_state_warning was VARCHAR(300). A warning that names the squares
+   * of a starting line (describeStartingLine) runs past that, and the write
+   * failed - leaving the old text in place while the scan reported the game
+   * flagged. TEXT, once; nothing already stored changes.
+   */
+  try {
+    const [[col]] = await db_pool.query(
+      `SELECT DATA_TYPE AS t FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'game_types' AND COLUMN_NAME = 'initial_state_warning'`
+    );
+    if (col && String(col.t).toLowerCase() === 'varchar') {
+      await db_pool.query('ALTER TABLE game_types MODIFY COLUMN initial_state_warning TEXT DEFAULT NULL');
+      console.log('[DB] Widened game_types.initial_state_warning to TEXT');
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error widening game_types.initial_state_warning:', err.message);
+  }
+
+  /*
    * Each user's own view of a conversation - one row per (user, other user),
    * written only when they archive or delete it.
    *

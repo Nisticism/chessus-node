@@ -699,10 +699,12 @@ const GameWizard = ({ editGameId }) => {
         draft_saved_step: currentStep,
       };
 
+      let savedId = null;
       if (isEditMode && isDraftMode && !isPublishedGame) {
         // Editing an existing draft - update it in place
         await dispatch(updateGame(editGameId, draftData));
         trackEvent('Game', 'SaveDraft', gameData.game_name);
+        savedId = editGameId;
       } else {
         // Creating a new draft (either fresh or copying from a published game)
         const newDraftData = {
@@ -714,6 +716,7 @@ const GameWizard = ({ editGameId }) => {
         trackEvent('Game', isPublishedGame ? 'CopyAsDraft' : 'CreateDraft', gameData.game_name);
         // After creating a new draft, switch to edit mode so future saves update instead of creating new
         if (result?.result?.id) {
+          savedId = result.result.id;
           setIsEditMode(true);
           setIsDraftMode(true);
           setIsPublishedGame(false);
@@ -727,13 +730,25 @@ const GameWizard = ({ editGameId }) => {
       // Show brief success feedback
       setSaveError(isPublishedGame ? 'Draft copy created!' : 'Draft saved!');
       setTimeout(() => setSaveError(null), 2000);
+      return savedId;
     } catch (error) {
       const msg = error?.response?.data?.message || error?.message || 'Failed to save draft.';
       setSaveError(msg);
       console.error("Error saving draft:", error);
+      return null;
     } finally {
       setIsSavingDraft(false);
     }
+  };
+
+  /*
+   * Try the draft against the computer. Saved first, so what is played is what
+   * is on screen; the lobby then opens with the computer chosen (a draft can
+   * only be played by its creator, against the computer).
+   */
+  const handlePlayDraftVsComputer = async () => {
+    const draftId = await handleSaveDraft();
+    if (draftId) navigate(`/play/games?gameTypeId=${draftId}`, { state: { openVsComputer: true } });
   };
 
   const handleDuplicateAsDraft = async () => {
@@ -860,6 +875,14 @@ const GameWizard = ({ editGameId }) => {
               buttonText={isSavingDraft ? "Saving..." : (isPublishedGame ? "📋 Copy as Draft" : "💾 Save as Draft")} 
               onClick={() => guardLeavingStep3(handleSaveDraft)}
               disabled={isSubmitting || isSavingDraft}
+            />
+          )}
+          {currentUser && !isPublishedGame && (
+            <StandardButton
+              buttonText="♟ Play vs Computer"
+              onClick={() => guardLeavingStep3(handlePlayDraftVsComputer)}
+              disabled={isSubmitting || isSavingDraft}
+              title="Save this draft and play it against the computer. Only you can play a draft; publish it to play with other people."
             />
           )}
         </div>

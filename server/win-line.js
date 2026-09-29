@@ -134,8 +134,13 @@ function findRow(owned, rules, boardWidth, boardHeight) {
        * Only start a line where one cannot already be running: if the square
        * BEHIND this one is also ours, this is the middle of a line and the
        * walk from its true start has already covered it.
+       *
+       * Unless the game wants one piece type throughout and the piece behind
+       * is a different type - then the walk from there stopped at once, and a
+       * line of this type starting here would never have been looked at.
        */
-      if (owned.has(`${sy - dy},${sx - dx}`)) continue;
+      const behind = owned.get(`${sy - dy},${sx - dx}`);
+      if (behind && (!rules.samePieceType || Number(behind.piece_id) === Number(startPiece.piece_id))) continue;
 
       const squares = [{ x: sx, y: sy }];
       let last = startPiece;

@@ -411,8 +411,22 @@ const Play = () => {
     }
   }, [botDifficulty, fairyAvailable]);
 
+  // A draft can only be played by its creator, against the computer (the
+  // server refuses anything else) - so selecting one sets that up.
+  useEffect(() => {
+    if (selectedGameType?.is_draft) setVsComputer(true);
+  }, [selectedGameType]);
+
   // Handle incoming challenge navigation from profile pages
   useEffect(() => {
+    if (location.state?.openVsComputer) {
+      // "Play vs computer" on a draft (game list, editor): open the host form
+      // with the computer chosen. Keeps ?gameTypeId - it is the draft.
+      setVsComputer(true);
+      setShowCreateModal(true);
+      navigate(location.pathname + location.search, { replace: true, state: {} });
+      return;
+    }
     if (location.state?.openChallengeFor) {
       const { id, username } = location.state.openChallengeFor;
       setChallengedUserId(id);
@@ -421,7 +435,7 @@ const Play = () => {
       // Clear the navigation state to prevent re-opening modal
       navigate(location.pathname, { replace: true, state: {} });
     }
-  }, [location.state, navigate, location.pathname]);
+  }, [location.state, navigate, location.pathname, location.search]);
 
   // Select a directly linked game type, even if it is older than the current page of results.
   useEffect(() => {
@@ -2252,6 +2266,8 @@ const Play = () => {
                   checked={vsComputer}
                   onChange={(v) => setVsComputer(v)}
                   label="Play vs Computer"
+                  disabled={!!selectedGameType?.is_draft}
+                  hint={selectedGameType?.is_draft ? 'This game is still a draft, so only you can play it - against the computer. Publish it to play it with other people.' : undefined}
                 />
                 {vsComputer && (
                   <div className={styles["difficulty-selector"]}>

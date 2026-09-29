@@ -18,7 +18,7 @@ const { findAnyWinningLine, findWinningLine, describeLineRule } = require('./win
  * preview, so there has to be one place that is the authority.
  */
 const { gravityOf, restingSquare, describeGravity } = require('./board-gravity');
-const { colToFile } = require('./square-label');
+const { colToFile, squareLabel } = require('./square-label');
 // "Opponent chooses the piece type" - see designated-piece.js.
 const designated = require('./designated-piece');
 
@@ -4309,6 +4309,27 @@ function initializeSocket(server) {
           return socket.emit("error", { message: "Game type not found" });
         }
 
+        /*
+         * A draft is its creator's work in progress: they may try it against
+         * the computer (never rated - bot games aren't), and nobody may host it
+         * for people. Without this a draft's id in a link was enough to put it
+         * in the public lobby.
+         */
+        if (gameType.is_draft) {
+          const requesterId = socket.userId ?? hostId;
+          let mayHost = Number(requesterId) === Number(gameType.creator_id);
+          if (!mayHost && requesterId != null) {
+            const [[requester]] = await db_pool.query('SELECT role FROM users WHERE id = ?', [requesterId]);
+            mayHost = ['admin', 'owner'].includes(String(requester?.role || '').toLowerCase());
+          }
+          if (!mayHost) {
+            return socket.emit("error", { message: "This game is still a draft - only its creator can play it." });
+          }
+          if (!vsComputer || challengedUserId) {
+            return socket.emit("error", { message: "A draft can only be played against the computer. Publish it to play it with other people." });
+          }
+        }
+
         // Validate startingMode against game type's configured allowed modes.
         // If the game type explicitly lists allowed modes and the client-provided
         // mode is not in that list, override with the game type's default or the
@@ -5134,6 +5155,11 @@ function initializeSocket(server) {
 
         if (!gameType) {
           return socket.emit("error", { message: "Game type not found" });
+        }
+
+        // Drafts are for their creator only (see createGame) - never a guest's.
+        if (gameType.is_draft) {
+          return socket.emit("error", { message: "This game is still a draft and cannot be played yet." });
         }
 
         // Same starting-position gate as createGame. A guest is no more able to
@@ -23360,6 +23386,37 @@ function evaluateInitialPosition(gameType, initialPieces) {
     }
   }
 
+  // --- 4b. Points already enough to win. The points win is decided after each
+  //          move (the move handler compares getPlayerScore with points_to_win),
+  //          not in checkWinCondition below, so it needs asking here: starting
+  //          points - plus any points for squares already held - that meet the
+  //          target end the game on the first move.
+  if (gameType.points_to_win != null && Number.isFinite(Number(gameType.points_to_win))) {
+    try {
+      const threshold = Number(gameType.points_to_win);
+      const scored = {
+        ...state,
+        captureScores: normalizeCaptureScores(null, gameType.starting_points_p1, gameType.starting_points_p2),
+      };
+      const p1 = getPlayerScore(scored, 1);
+      const p2 = getPlayerScore(scored, 2);
+      if (p1 >= threshold || p2 >= threshold) {
+        const both = p1 >= threshold && p2 >= threshold;
+        return {
+          decided: true,
+          type: both ? 'draw' : 'win',
+          forPlayer: both ? undefined : (p1 >= threshold ? 1 : 2),
+          code: both ? 'points_tie_at_start' : 'points_win_at_start',
+          reason: `Starting points already meet the ${threshold} points needed to win `
+            + `(Player 1 starts on ${p1}, Player 2 on ${p2}), so the game would end on the first move`
+            + `${both ? ' in a draw' : ''}. Lower the starting points (or points held for squares), or raise the target.`,
+        };
+      }
+    } catch (e) {
+      console.warn('[initial-state] points check threw:', e.message);
+    }
+  }
+
   // --- 5. Master win-condition pass (handles instant-loss flags, control
   //         square elimination, insufficient material, etc.).
   try {
@@ -23371,8 +23428,11 @@ function evaluateInitialPosition(gameType, initialPieces) {
           case 'capture': return 'Starting position already satisfies the capture win condition.';
           case 'control': return 'Starting position already satisfies the control-squares win condition.';
           case 'lose_all': return 'Starting position already satisfies the anti-chess win condition.';
-          case 'line': return 'Starting position already contains a winning line of pieces.';
-          case 'connection': return 'Starting position already connects two sides of the board.';
+          case 'line':
+          case 'connection':
+            return describeStartingLine(state) || (result.reason === 'line'
+              ? 'Starting position already contains a winning line of pieces.'
+              : 'Starting position already connects two sides of the board.');
           case 'insufficient_material': return 'Starting position has insufficient material — the game would end in a draw.';
           default: return `Starting position already satisfies a win condition (${result.reason}).`;
         }
@@ -23389,6 +23449,37 @@ function evaluateInitialPosition(gameType, initialPieces) {
   }
 
   return { decided: false };
+}
+
+/*
+ * Which line a starting position already has, in words a creator can act on:
+ * whose, which pieces, which squares, and the rule it satisfies. One line only -
+ * after the creator fixes it, the next scan finds the next one, if any.
+ *
+ * Not a forecast. The engine asks "has anybody got a line?" after every move
+ * (checkWinCondition), so a line that is on the board before the first move
+ * ends the game on that move.
+ */
+function describeStartingLine(state) {
+  const line = findAnyWinningLine(state);
+  if (!line || !Array.isArray(line.squares) || !line.squares.length) return null;
+  const height = Number(state.gameType?.board_height) || 8;
+  const labels = line.squares.map((sq) => squareLabel(sq.x, sq.y, height));
+  const names = new Set(line.squares.map((sq) => {
+    const piece = (state.pieces || []).find((p) => doesPieceOccupySquare(p, sq.x, sq.y));
+    return piece?.piece_name || null;
+  }).filter(Boolean));
+  const whose = `Player ${line.position}'s ${names.size === 1 ? `${[...names][0]} pieces` : 'pieces'}`;
+  const where = labels.length > 12
+    ? `${labels.slice(0, 12).join(', ')} and ${labels.length - 12} more squares`
+    : labels.join(', ');
+  const rule = describeLineRule(state.gameType);
+  const what = line.winType === 'edge_to_edge'
+    ? 'already connect two sides of the board'
+    : `are already ${labels.length} in a row`;
+  return `Starting position already contains a winning line: ${whose} on ${where} ${what}, `
+    + `so the game would be won on the first move. The rule: ${rule ? rule.replace(/\.$/, '') : 'a line wins'}. `
+    + 'Move these pieces apart, or change the line rule (length, directions or "all of one piece type").';
 }
 
 /**
