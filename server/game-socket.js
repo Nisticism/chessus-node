@@ -644,6 +644,24 @@ function announceCorrespondenceDeadline(io, gameState) {
   });
 }
 
+/*
+ * The side the host picked under "Play As" when hosting: 'p1', 'p2' or
+ * 'random'. It decides the seats when the second player sits down -
+ * seatPositions() returns [host, joiner]. Only games against the computer used
+ * to read it; against a person every join flipped a coin, so a host who chose
+ * Player 1 could start as Player 2.
+ */
+function normalizeHostSide(side) {
+  return side === 'p1' || side === 'p2' ? side : 'random';
+}
+
+function seatPositions(gameState) {
+  const side = normalizeHostSide(gameState.hostSide);
+  if (side === 'p1') return [1, 2];
+  if (side === 'p2') return [2, 1];
+  return Math.random() < 0.5 ? [1, 2] : [2, 1];
+}
+
 function buildOtherData(gameState, extraFields = {}) {
   syncCorrespondenceDeadline(gameState);
   const simulSubmittedKeys = Object.keys(gameState.pendingSimulMoves || {});
@@ -678,6 +696,7 @@ function buildOtherData(gameState, extraFields = {}) {
     ...(gameState.materialClockHandicap ? { materialClockHandicap: true } : {}),
     ...(gameState.fogOfWarEnabled != null ? { fogOfWarEnabled: !!gameState.fogOfWarEnabled } : {}),
     ...(gameState.actionsThisTurn ? { actionsThisTurn: gameState.actionsThisTurn } : {}),
+    ...(gameState.hostSide && gameState.hostSide !== 'random' ? { hostSide: gameState.hostSide } : {}),
     ...(gameState.captureScores ? { captureScores: gameState.captureScores } : {}),
     ...(gameState.consecutiveEqualScoreTurns ? { consecutiveEqualScoreTurns: gameState.consecutiveEqualScoreTurns } : {}),
     ...(gameState.totalHalfMoves ? { totalHalfMoves: gameState.totalHalfMoves } : {}),
@@ -4787,7 +4806,7 @@ function initializeSocket(server) {
         const [result] = await db_pool.query(
           `INSERT INTO games (created_at, turn_length, increment, player_count, player_turn, pieces, other_data, game_type_id, status, host_id, allow_spectators, show_piece_helpers, is_challenge, challenged_user_id, is_correspondence, correspondence_days, spectator_visibility, illegal_move_counts)
            VALUES (?, ?, ?, 2, 1, ?, ?, ?, 'waiting', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [currentTime, effectiveTurnLength, increment || 0, piecesData, JSON.stringify({ moves: [], rated, allowPremoves, premoveTimeCost: allowPremoves ? (parseFloat(premoveTimeCost) || 0) : 0, startingMode, materialClockPenalty: !!materialClockPenalty, materialClockHandicap: !!materialClockHandicap, ...(fogOfWarEnabled != null ? { fogOfWarEnabled: !!fogOfWarEnabled } : {}) }), gameTypeId, hostId, allowSpectators ? 1 : 0, showPieceHelpers ? 1 : 0, isChallenge, challengedUserId, isCorrespondence ? 1 : 0, correspondenceDays || null, spectatorVisibility, JSON.stringify({ 1: 0, 2: 0 })]
+          [currentTime, effectiveTurnLength, increment || 0, piecesData, JSON.stringify({ moves: [], rated, allowPremoves, premoveTimeCost: allowPremoves ? (parseFloat(premoveTimeCost) || 0) : 0, startingMode, materialClockPenalty: !!materialClockPenalty, materialClockHandicap: !!materialClockHandicap, ...(fogOfWarEnabled != null ? { fogOfWarEnabled: !!fogOfWarEnabled } : {}), ...(normalizeHostSide(playerSide) !== 'random' ? { hostSide: normalizeHostSide(playerSide) } : {}) }), gameTypeId, hostId, allowSpectators ? 1 : 0, showPieceHelpers ? 1 : 0, isChallenge, challengedUserId, isCorrespondence ? 1 : 0, correspondenceDays || null, spectatorVisibility, JSON.stringify({ 1: 0, 2: 0 })]
         );
 
         const gameId = result.insertId;
@@ -4811,6 +4830,7 @@ function initializeSocket(server) {
           hostId,
           hostUsername,
           players: [{ id: hostId, username: hostUsername, position: null }],
+          hostSide: normalizeHostSide(playerSide), // "Play As" - see seatPositions
           pieces: piecesArray,
           // For randomized games, initialPieces will be set after randomization runs
           // on game start. For fixed-position games set it now from the template.
@@ -5707,8 +5727,8 @@ function initializeSocket(server) {
         );
         const joinerRowId = joinInsertResult.insertId;
 
-        // Assign positions randomly
-        const positions = [1, 2].sort(() => Math.random() - 0.5);
+        // Seat them: the host's "Play As" choice, or a coin flip (seatPositions)
+        const positions = seatPositions(gameState);
         gameState.players[0].position = positions[0];
         const newPlayer = { id: playerId, username: playerUsername, position: positions[1], ...(joinerToken ? { anonToken: joinerToken } : {}) };
         gameState.players.push(newPlayer);
@@ -5900,8 +5920,8 @@ function initializeSocket(server) {
         );
         const openJoinerRowId = openJoinInsertResult.insertId;
 
-        // Assign positions randomly
-        const positions = [1, 2].sort(() => Math.random() - 0.5);
+        // Seat them: the host's "Play As" choice, or a coin flip (seatPositions)
+        const positions = seatPositions(gameState);
         gameState.players[0].position = positions[0];
         const newPlayer = { id: playerId, username: playerUsername, position: positions[1], anonToken: guestToken };
         gameState.players.push(newPlayer);
@@ -6395,6 +6415,7 @@ function initializeSocket(server) {
             spectatorVisibility: game.spectator_visibility || 'all',
             anonCorresPlayers: joinGameOtherData.anonCorresPlayers || null,
             guestName: joinGameOtherData.guestName || null,
+            hostSide: normalizeHostSide(joinGameOtherData.hostSide),
           };
 
           activeGames.set(gameIdStr, gameState);
@@ -6468,9 +6489,10 @@ function initializeSocket(server) {
 
         gameState.players.push({ id: userId, username, position: null });
 
-        // Randomly assign positions (player 1 = white/first, player 2 = black/second)
-        const positions = [1, 2];
-        const shuffled = positions.sort(() => Math.random() - 0.5);
+        // Seat them (player 1 = white/first, player 2 = black/second): the host
+        // - the first player in the game - gets their "Play As" choice, or it
+        // is a coin flip (seatPositions).
+        const shuffled = seatPositions(gameState);
         
         gameState.players.forEach((player, index) => {
           player.position = shuffled[index];
