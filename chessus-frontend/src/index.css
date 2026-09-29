@@ -19,18 +19,13 @@ code {
     monospace;
 }
 
-/* Sitewide responsive page gutter: 50px on desktop, 20px on smaller screens. */
-@media (max-width: 1050px) {
-  :root { --page-gutter: 20px; }
-}
-
 :root {
   /* Base colors */
   color: var(--text-heading);
   background-color: #2a2e38;
   
   --font-family: 'Manrope', sans-serif;
-  --page-gutter: 50px; /* sitewide page side padding; 20px below 1050px (see media query above) */
+  --page-gutter: 50px; /* sitewide page side padding; 20px below 1050px (see the media query after this block) */
 
   /*
    * The dropdown arrow, defined once.
@@ -192,6 +187,13 @@ code {
   --badge-admin-bg: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
   --badge-admin-text: #ffffff;
   
+}
+
+/* Sitewide responsive page gutter: 50px on desktop, 20px on smaller screens.
+   After the :root block on purpose - the same selector, so whichever comes
+   later wins, and above it this never applied: phones had 50px a side. */
+@media (max-width: 1050px) {
+  :root { --page-gutter: 20px; }
 }
 
 /* Gold headings. All header levels use a single gold shade site-wide; the home

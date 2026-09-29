@@ -675,26 +675,31 @@ const Inbox = () => {
                     <span>{conv.username?.[0]?.toUpperCase() || "?"}</span>
                   )}
                 </div>
+                {/* The time sits on the preview line, not beside the name, so
+                    the name has the row's width; one that still does not fit
+                    ends in an ellipsis rather than wrapping a letter or two. */}
                 <div className={styles["conversation-info"]}>
                   <div className={styles["conversation-name"]}>
-                    {conv.username}
+                    <span className={styles["conversation-username"]} title={conv.username}>{conv.username}</span>
                     {conv.unread_count > 0 && (
                       <span className={styles["unread-badge"]}>{conv.unread_count}</span>
                     )}
                   </div>
-                  <div className={styles["conversation-preview"]}>
-                    {conv.last_message_deleted ? (
-                      <em>Message was deleted</em>
-                    ) : (
-                      <>
-                        {conv.last_message?.substring(0, 50)}
-                        {conv.last_message?.length > 50 ? "..." : ""}
-                      </>
-                    )}
+                  <div className={styles["conversation-sub"]}>
+                    <div className={styles["conversation-preview"]}>
+                      {conv.last_message_deleted ? (
+                        <em>Message was deleted</em>
+                      ) : (
+                        <>
+                          {conv.last_message?.substring(0, 50)}
+                          {conv.last_message?.length > 50 ? "..." : ""}
+                        </>
+                      )}
+                    </div>
+                    <div className={styles["conversation-time"]}>
+                      {formatTimeAgo(conv.last_message_time)}
+                    </div>
                   </div>
-                </div>
-                <div className={styles["conversation-time"]}>
-                  {formatTimeAgo(conv.last_message_time)}
                 </div>
                 <div className={styles["conversation-actions"]} onClick={(e) => e.stopPropagation()}>
                   {inArchive ? (

@@ -1,3 +1,5 @@
+@import '../../styles/names';
+
 .forums-hub-container {
   max-width: 1400px;
   margin: 40px auto;
@@ -345,6 +347,16 @@
     color: var(--text-muted);
     vertical-align: middle;
   }
+
+  /* Words stay whole, so each column is at least as wide as its longest word.
+     With the site-wide `anywhere` every column could shrink to a letter, and
+     at tablet widths they all did - "TheDespicableVarian / t", "Discussio /
+     n". The table scrolls inside its wrapper if it ever needs more room. The
+     content preview is free text, clamped to a few lines, and keeps breaking
+     anywhere. */
+  tbody td:not(.forums-link-content) {
+    @include whole-words;
+  }
 }
 
 .forum-row {
@@ -383,8 +395,6 @@
 .subject-cell {
   text-align: left;
   max-width: 400px;
-  word-break: break-word;
-  overflow-wrap: anywhere;
 
   .forums-link {
     text-align: left;
@@ -418,6 +428,9 @@
 }
 
 .forum-title {
+  /* A title can hold a word of any length (a pasted link); past this it may
+     break, rather than widen the column without end. */
+  max-width: 400px;
   font-size: 17px;
   font-weight: 600;
   color: var(--text-heading);
@@ -429,8 +442,8 @@
   font-weight: 500;
   color: var(--accent-primary-text);
   text-align: left;
-  overflow-wrap: anywhere;   /* anywhere, not break-word: only anywhere shrinks the intrinsic min-content width, which is what stops a shrink-to-fit box being widened by one long word. */
-  text-wrap: balance;
+  /* A username is at most 20 characters: the column takes its width. */
+  white-space: nowrap;
 
   &:hover {
     color: var(--text-info);
@@ -476,8 +489,8 @@
   font-size: 15px;
   font-weight: 500;
   color: var(--text-info);
-  word-break: break-word;
-  overflow-wrap: anywhere;
+  /* Wraps between words; only a single word longer than this breaks. */
+  max-width: 180px;
 
   a {
     color: inherit;
@@ -503,6 +516,24 @@
   display: flex;
   justify-content: center;
   margin-top: 30px;
+}
+
+/* Below this the table no longer fits its columns' words, and the content
+   preview - a few clamped lines of the post, one click away - is the column
+   to give up, rather than squeezing names until they split. */
+@media (max-width: 1100px) {
+  .content-th,
+  .forums-link-content {
+    display: none;
+  }
+  /* ...and narrower side padding, so the rest fit without splitting. */
+  .forums-table {
+    thead tr th,
+    tbody td {
+      padding-left: 8px;
+      padding-right: 8px;
+    }
+  }
 }
 
 @media (max-width: 1200px) {

@@ -369,11 +369,16 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 12px;
   font-size: 0.9rem;
   color: var(--text-dim);
 }
 
+/* The label keeps its width and the value beside it wraps instead - a long
+   value used to squeeze "Conditions:" until it broke mid-word. */
 .meta-label {
+  flex-shrink: 0;
+  white-space: nowrap;
   font-weight: 600;
   color: var(--accent-primary-text);
 }

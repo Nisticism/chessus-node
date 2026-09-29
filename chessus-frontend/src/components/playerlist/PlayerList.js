@@ -200,9 +200,16 @@ const PlayerList = () => {
                     user.username.charAt(0).toUpperCase()
                   )}
                 </div>
-                <div style={{ flex: 1 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
                   <h2 className={styles["item-title"]} style={{ margin: 0, display: 'flex', alignItems: 'center', flexWrap: 'wrap' }}>
-                    <Link to={"/profile/" + user.username} style={{color: 'var(--text-white)', textDecoration: 'none'}}>
+                    {/* One line: a name wider than the card ends in an
+                        ellipsis (full name on hover) instead of breaking. */}
+                    <Link
+                      to={"/profile/" + user.username}
+                      className={styles["item-title-name"]}
+                      title={user.username}
+                      style={{color: 'var(--text-white)', textDecoration: 'none'}}
+                    >
                       {user.username}
                     </Link>
                     {getRoleBadge(user.role)}

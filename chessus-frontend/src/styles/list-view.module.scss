@@ -1,4 +1,6 @@
 // Shared styles for list/grid view pages
+@import './names';
+
 .list-container {
   max-width: 1400px;
   margin: 0 auto;
@@ -35,6 +37,11 @@
   transition: transform 0.3s ease, box-shadow 0.3s ease;
   display: flex;
   flex-direction: column;
+  /* A grid column sizes to fit its cards' content unless told otherwise, and a
+     one-line name (item-title-name) is as wide as the whole name - so on a
+     phone the column grew past the screen instead of the name getting its
+     ellipsis. */
+  min-width: 0;
   
   &:hover {
     transform: translateY(-5px);
@@ -58,6 +65,12 @@
   color: var(--text-heading);
   margin-bottom: 10px;
   font-weight: 600;
+}
+
+// A name in a card title: one line, ending in an ellipsis when the card is
+// narrower than the name. See _names.scss.
+.item-title-name {
+  @include one-line;
 }
 
 .item-description {

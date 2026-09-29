@@ -1,3 +1,5 @@
+@import '../../styles/names';
+
 .forums {
   max-width: 1400px;
   margin: 40px auto;
@@ -38,6 +40,14 @@
     border-bottom: 1px solid rgba(var(--panel-card-border-rgb), 0.6);
     color: var(--text-muted);
     vertical-align: middle;
+  }
+
+  /* Words stay whole, so no column shrinks below its longest word and splits
+     a username or a game name; this block scrolls sideways if the table needs
+     the room. The content preview is clamped free text and keeps breaking
+     anywhere. See styles/_names.scss. */
+  td:not(.forums-link-content) {
+    @include whole-words;
   }
 }
 
@@ -286,8 +296,6 @@
 .subject-cell {
   text-align: left;
   max-width: 400px;
-  word-break: break-word;
-  overflow-wrap: anywhere;
 
   .forums-link {
     text-align: left;
@@ -351,10 +359,14 @@
   font-weight: 600;
   color: var(--text-heading);
   text-align: left;
-  overflow-wrap: anywhere;   /* anywhere, not break-word: only anywhere shrinks the intrinsic min-content width, which is what stops a shrink-to-fit box being widened by one long word. */
+  /* A title can hold a word of any length (a pasted link); past this it may
+     break, rather than widen the column without end. */
+  max-width: 400px;
 }
 
 .forums-username {
+  /* A username is at most 20 characters: the column takes its width. */
+  white-space: nowrap;
   font-size: 16px;
   font-weight: 500;
   color: var(--accent-primary-text);
@@ -384,8 +396,8 @@
 .game-name {
   font-size: 15px;
   font-weight: 500;
-  word-break: break-word;
-  overflow-wrap: anywhere;
+  /* Wraps between words; only a single word longer than this breaks. */
+  max-width: 180px;
 }
 
 .game-name-td {
@@ -394,6 +406,24 @@
 
 .no-game {
   color: var(--text-dim);
+}
+
+/* Below this the table no longer fits its columns' words, and the content
+   preview - a few clamped lines of the post, one click away - is the column
+   to give up, rather than squeezing names until they split. */
+@media (max-width: 1100px) {
+  .content-th,
+  .forums-link-content {
+    display: none;
+  }
+  /* ...and narrower side padding, so the rest fit without splitting. */
+  .forums {
+    th,
+    td {
+      padding-left: 8px;
+      padding-right: 8px;
+    }
+  }
 }
 
 @media (max-width: 1200px) {

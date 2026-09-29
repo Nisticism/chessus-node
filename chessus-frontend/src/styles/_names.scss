@@ -1,0 +1,38 @@
+/*
+ * Names - usernames, game names, piece names - and the words around them.
+ *
+ * index.css gives every element `overflow-wrap: anywhere`, so that one long
+ * word can never push a layout wider than a phone. The price is that a box may
+ * shrink to a letter's width, since no word insists on fitting, and then a name
+ * that does not quite fit is split wherever the line ends: "TheDespicableVarian"
+ * with a "t" alone underneath. Tables and flex rows shrink their boxes exactly
+ * like that, so that is where it showed.
+ *
+ * Two ways to show a name instead - pick by how much room it has:
+ */
+
+/*
+ * Whole: a word is never split unless it cannot fit a line on its own. The box
+ * stays at least as wide as its longest word, so a table column or a row gives
+ * the name its width. For places that have the room, or that scroll (the forum
+ * tables sit in an overflow-x: auto wrapper).
+ */
+@mixin whole-words {
+  &,
+  & * {
+    overflow-wrap: break-word;
+  }
+}
+
+/*
+ * One line: a name longer than its box ends in an ellipsis. For fixed-width
+ * rows (a list beside a panel). Give the element the full name as its title,
+ * so it can still be read on hover. Works on a block, or a flex item (min-width
+ * 0 lets it shrink below the name's width).
+ */
+@mixin one-line {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

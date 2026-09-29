@@ -83,13 +83,17 @@
   margin: 0 auto;
   display: flex;
   justify-content: center;
-  gap: 32px;
+  /* On a phone the links wrap between themselves; each stays whole (it used
+     to squeeze them until "Careers" and "Changelog" broke mid-word). */
+  flex-wrap: wrap;
+  gap: 8px 32px;
   padding: 16px 0;
 
   a {
     color: var(--text-gray);
     text-decoration: none;
     font-size: 13px;
+    white-space: nowrap;
 
     &:hover {
       color: var(--button-border);

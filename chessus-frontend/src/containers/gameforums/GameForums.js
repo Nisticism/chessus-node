@@ -158,7 +158,7 @@ const GameForums = () => {
                 <th>Written By</th>
                 <th>Replies</th>
                 <th>Likes</th>
-                <th>Content</th>
+                <th className={styles["content-th"]}>Content</th>
                 <th>Last Comment</th>
               </tr>
             </thead>

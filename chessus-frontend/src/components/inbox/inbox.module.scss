@@ -246,9 +246,29 @@
   display: flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
+}
+
+/* One line: a name too long for the row ends in an ellipsis (full name on
+   hover) instead of breaking a letter or two onto a line of their own. */
+.conversation-username {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The preview, with the time at its end. */
+.conversation-sub {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  margin-top: 2px;
 }
 
 .unread-badge {
+  flex-shrink: 0;
   background: var(--accent-primary, #4a9e5a);
   color: var(--text-heading);
   font-size: 0.7rem;
@@ -260,12 +280,13 @@
 }
 
 .conversation-preview {
+  flex: 1;
+  min-width: 0;
   font-size: 0.8rem;
   color: var(--text-dim, #5a7a63);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  margin-top: 2px;
 }
 
 .conversation-time {
