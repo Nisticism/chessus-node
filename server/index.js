@@ -347,7 +347,7 @@ app.use((req, res, next) => {
 // const path = require('path');
 const db_pool = require("../configs/db");
 const dbHelpers = require("./db-helpers");
-const { checkUsername, validateContent, checkProfessionalName } = require("./content-moderation");
+const { checkUsername, validateContent, checkProfessionalName, checkPiecePatterns } = require("./content-moderation");
 const imageModeration = require("./image-moderation");
 const initialStateValidator = require("./initial-state-validator");
 // "Opponent chooses the piece type" - see designated-piece.js.
@@ -3975,7 +3975,7 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
     }
 
     // Content moderation: Check game name
-    const nameCheck = validateContent(gameData.game_name, { fieldName: 'Game name', maxLength: 100 });
+    const nameCheck = validateContent(gameData.game_name, { fieldName: 'Game name', maxLength: 100, bannedTerms: true });
     if (!nameCheck.isValid) {
       return res.status(400).send({ message: nameCheck.errors[0] });
     }
@@ -3986,7 +3986,7 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
 
     // Content moderation: Check description
     if (gameData.descript) {
-      const descCheck = validateContent(gameData.descript, { fieldName: 'Description', maxLength: 8000, allowLinks: 'whitelist' });
+      const descCheck = validateContent(gameData.descript, { fieldName: 'Description', maxLength: 8000, allowLinks: 'whitelist', bannedTerms: true });
       if (!descCheck.isValid) {
         return res.status(400).send({ message: descCheck.errors[0] });
       }
@@ -3994,7 +3994,7 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
 
     // Content moderation: Check rules
     if (gameData.rules) {
-      const rulesCheck = validateContent(gameData.rules, { fieldName: 'Rules', maxLength: 8000, allowLinks: 'whitelist' });
+      const rulesCheck = validateContent(gameData.rules, { fieldName: 'Rules', maxLength: 8000, allowLinks: 'whitelist', bannedTerms: true });
       if (!rulesCheck.isValid) {
         return res.status(400).send({ message: rulesCheck.errors[0] });
       }
@@ -9031,7 +9031,7 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
     }
 
     // Content moderation: Check game name
-    const nameCheck = validateContent(gameData.game_name, { fieldName: 'Game name', maxLength: 100 });
+    const nameCheck = validateContent(gameData.game_name, { fieldName: 'Game name', maxLength: 100, bannedTerms: true });
     if (!nameCheck.isValid) {
       return res.status(400).send({ message: nameCheck.errors[0] });
     }
@@ -9048,7 +9048,7 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
 
     // Content moderation: Check description
     if (gameData.descript) {
-      const descCheck = validateContent(gameData.descript, { fieldName: 'Description', maxLength: 8000, allowLinks: 'whitelist' });
+      const descCheck = validateContent(gameData.descript, { fieldName: 'Description', maxLength: 8000, allowLinks: 'whitelist', bannedTerms: true });
       if (!descCheck.isValid) {
         return res.status(400).send({ message: descCheck.errors[0] });
       }
@@ -9056,7 +9056,7 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
 
     // Content moderation: Check rules
     if (gameData.rules) {
-      const rulesCheck = validateContent(gameData.rules, { fieldName: 'Rules', maxLength: 8000, allowLinks: 'whitelist' });
+      const rulesCheck = validateContent(gameData.rules, { fieldName: 'Rules', maxLength: 8000, allowLinks: 'whitelist', bannedTerms: true });
       if (!rulesCheck.isValid) {
         return res.status(400).send({ message: rulesCheck.errors[0] });
       }
@@ -9575,10 +9575,16 @@ app.post("/api/pieces/create", authenticateToken, multerWrap(pieceUpload.array('
 
     // Content moderation: Check piece name
     if (pieceData.piece_name) {
-      const nameCheck = validateContent(pieceData.piece_name, { fieldName: 'Piece name', maxLength: 50 });
+      const nameCheck = validateContent(pieceData.piece_name, { fieldName: 'Piece name', maxLength: 50, bannedTerms: true });
       if (!nameCheck.isValid) {
         return res.status(400).send({ message: nameCheck.errors[0] });
       }
+    }
+
+    // Custom squares shaped into a hate symbol (Terms and Conditions, section 10)
+    {
+      const patternError = checkPiecePatterns(pieceData.custom_movement_squares, pieceData.custom_attack_squares);
+      if (patternError) return res.status(400).send({ message: patternError });
     }
 
     // Professional name check: flag piece names containing sensitive terms for review
@@ -9593,7 +9599,7 @@ app.post("/api/pieces/create", authenticateToken, multerWrap(pieceUpload.array('
 
     // Content moderation: Check piece description
     if (pieceData.piece_description) {
-      const descCheck = validateContent(pieceData.piece_description, { fieldName: 'Piece description', maxLength: 1000, allowLinks: 'whitelist' });
+      const descCheck = validateContent(pieceData.piece_description, { fieldName: 'Piece description', maxLength: 1000, allowLinks: 'whitelist', bannedTerms: true });
       if (!descCheck.isValid) {
         return res.status(400).send({ message: descCheck.errors[0] });
       }
@@ -10144,10 +10150,16 @@ app.put("/api/pieces/:pieceId", authenticateToken, multerWrap(pieceUpload.array(
 
     // Content moderation: Check piece name
     if (pieceData.piece_name) {
-      const nameCheck = validateContent(pieceData.piece_name, { fieldName: 'Piece name', maxLength: 50 });
+      const nameCheck = validateContent(pieceData.piece_name, { fieldName: 'Piece name', maxLength: 50, bannedTerms: true });
       if (!nameCheck.isValid) {
         return res.status(400).send({ message: nameCheck.errors[0] });
       }
+    }
+
+    // Custom squares shaped into a hate symbol (Terms and Conditions, section 10)
+    {
+      const patternError = checkPiecePatterns(pieceData.custom_movement_squares, pieceData.custom_attack_squares);
+      if (patternError) return res.status(400).send({ message: patternError });
     }
 
     // Professional name check: flag piece names containing sensitive terms for review (edit path)
@@ -10162,7 +10174,7 @@ app.put("/api/pieces/:pieceId", authenticateToken, multerWrap(pieceUpload.array(
 
     // Content moderation: Check piece description
     if (pieceData.piece_description) {
-      const descCheck = validateContent(pieceData.piece_description, { fieldName: 'Piece description', maxLength: 1000, allowLinks: 'whitelist' });
+      const descCheck = validateContent(pieceData.piece_description, { fieldName: 'Piece description', maxLength: 1000, allowLinks: 'whitelist', bannedTerms: true });
       if (!descCheck.isValid) {
         return res.status(400).send({ message: descCheck.errors[0] });
       }

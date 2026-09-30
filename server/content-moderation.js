@@ -138,7 +138,146 @@ const PROFESSIONAL_NAME_PATTERNS = [
   /\bjihad\b/i,
   /\bterroris(?:t|ts|m)\b/i,
   /\bshari[a']?a\b/i,
+  // Political figures - despots, Nazi leaders, and present-day politicians.
+  // The Terms (section 10) keep political figures out of games and pieces.
+  // Held for review rather than refused: some are ordinary words ("trump").
+  // Hitler himself is refused outright - see checkBannedTerms.
+  /\bstalin\b/i, /\bmussolini\b/i, /\bpol\s*pot\b/i, /\bmao\s*(?:zedong|tse)/i,
+  /\bkim\s*jong/i, /\bidi\s*amin\b/i, /\bsaddam\b/i, /\b[gq]add?af+i\b/i,
+  /\bhimmler\b/i, /\bgoebbels\b/i, /\bg(?:oe|ö|o)ring\b/i, /\bmengele\b/i, /\beichmann\b/i,
+  /\bpinochet\b/i, /\blenin\b/i, /\btrotsky\b/i, /\bguevara\b/i,
+  /\bputin\b/i, /\btrump\b/i, /\bbiden\b/i, /\bobama\b/i, /\bzelensk/i, /\bnetanyahu\b/i,
+  /\bxi\s*jinping\b/i, /\berdo[gğ]an\b/i, /\bkhamenei\b/i, /\badolf\b/i,
+  // Extremist movements
+  /\b(?:third|3rd)\s*reich\b/i, /\bkkk\b/i, /\bku\s*klux/i, /\btaliban\b/i, /\bal[\s-]*qa[e']?da\b/i,
 ];
+
+/*
+ * Terms refused outright in game and piece names and descriptions, and in
+ * usernames - no innocent use, and the reason section 10 of the Terms exists.
+ *
+ * Matched after normalising (see normaliseForEvasion) so the obvious dodges
+ * fail: "Hitlar", "H1tl3r", "H.i.t.l.e.r", "h i t l e r", "hitlerr".
+ */
+const BANNED_TERM_PATTERNS = [
+  { label: 'Hitler', re: /h+[iy]+t+l+[aeiouy]+r+/ },
+  { label: 'swastika', re: /sw[ao]st[iy]ka|hakenkreuz/ },
+  { label: 'Führer', re: /f+u+e?h+r+e+r+/ },
+  { label: 'Sieg Heil', re: /siegheil/ },
+];
+
+/*
+ * Lower-case, accents and look-alike characters to plain letters, and every
+ * non-letter dropped - so spacing and punctuation cannot split a word the
+ * filter is looking for.
+ */
+function normaliseForEvasion(text) {
+  const map = { '0': 'o', '1': 'i', '!': 'i', '|': 'i', '3': 'e', '4': 'a', '@': 'a', '5': 's', '$': 's', '7': 't' };
+  return String(text)
+    .normalize('NFKD').replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[01!|34@5$7]/g, (c) => map[c] || c)
+    .replace(/[^a-z]/g, '');
+}
+
+/*
+ * Does a set of board squares form a swastika - exactly, not merely contain
+ * one? For custom movement / attack squares (offsets {row, col} from the
+ * piece), which the Terms (section 10) forbid shaping into a hate symbol.
+ *
+ * "Exactly" is the point: a piece that covers a wide area contains every shape
+ * there is, so only a pattern whose squares ARE a swastika - its centre
+ * anywhere, optionally included, give or take two stray squares - counts. Upright or turned 45 degrees, either
+ * direction, arms 2 or more long with hooks up to the arm's length. Arms of 1
+ * are the eight squares round the piece, a king, so they do not count.
+ *
+ * @param {Array<{row:number,col:number}>} squares
+ * @returns {boolean}
+ */
+function formsSwastika(squares) {
+  if (!Array.isArray(squares) || squares.length < 12) return false;
+  const cells = new Set(squares.map((s) => `${Number(s.col) || 0},${Number(s.row) || 0}`));
+  const size = cells.size;
+  const coords = [...cells].map((k) => k.split(',').map(Number));
+  const axes = [
+    [[1, 0], [0, 1], [-1, 0], [0, -1]],   // upright
+    [[1, 1], [-1, 1], [-1, -1], [1, -1]], // turned 45 degrees
+  ];
+  // Candidate centres: every square and the piece's own (0,0).
+  const centres = [[0, 0], ...coords];
+  for (const [cx, cy] of centres) {
+    for (const dirs of axes) {
+      for (const turn of [1, -1]) {
+        for (let arm = 2; arm <= 7; arm++) {
+          for (let hook = 1; hook <= arm; hook++) {
+            const shape = new Set();
+            dirs.forEach(([dx, dy], i) => {
+              // the hook turns the same way at every arm - that is the symbol
+              const [hx, hy] = dirs[(i + turn + 4) % 4];
+              for (let k = 1; k <= arm; k++) shape.add(`${cx + dx * k},${cy + dy * k}`);
+              for (let j = 1; j <= hook; j++) shape.add(`${cx + dx * arm + hx * j},${cy + dy * arm + hy * j}`);
+            });
+            // Up to two stray squares still read as the symbol - adding one
+            // should not be enough to get it past.
+            const centreKey = `${cx},${cy}`;
+            const expected = shape.size + (cells.has(centreKey) ? 1 : 0);
+            if (size < expected || size > expected + 2) continue;
+            if ([...shape].every((k) => cells.has(k))) return true;
+          }
+        }
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * A piece's custom movement and attack squares (as saved - JSON or arrays),
+ * checked apart and together. Returns the refusal message, or null.
+ */
+function checkPiecePatterns(movementSquares, attackSquares) {
+  const parse = (v) => {
+    try {
+      const out = typeof v === 'string' ? JSON.parse(v) : v;
+      return Array.isArray(out) ? out : [];
+    } catch (e) {
+      return [];
+    }
+  };
+  const move = parse(movementSquares);
+  const attack = parse(attackSquares);
+  if (formsSwastika(move) || formsSwastika(attack) || formsSwastika([...move, ...attack])) {
+    return 'This piece\'s custom squares form a swastika. Movement and attack patterns shaped into hate '
+      + 'symbols are not allowed (Terms and Conditions, section 10).';
+  }
+  return null;
+}
+
+/**
+ * Terms refused outright (BANNED_TERM_PATTERNS), with evasions.
+ * Returns { isClean: boolean, matches: string[] } - matches are labels.
+ */
+function checkBannedTerms(text) {
+  if (!text || typeof text !== 'string') return { isClean: true, matches: [] };
+  /*
+   * Word by word, not the whole text run together: joined up, ordinary prose
+   * matches ("which it lures" holds "hitlur"). Punctuation inside a word is
+   * dropped ("H.i.t.l.e.r", "Hit-lar"), and a run of single letters is read as
+   * one word ("h i t l e r").
+   */
+  const words = text.split(/\s+/).map(normaliseForEvasion).filter(Boolean);
+  const candidates = [...words];
+  let run = '';
+  for (const w of [...words, '']) {
+    if (w.length === 1) { run += w; continue; }
+    if (run.length > 1) candidates.push(run);
+    run = '';
+  }
+  const matches = BANNED_TERM_PATTERNS
+    .filter(({ re }) => candidates.some((c) => re.test(c)))
+    .map(({ label }) => label);
+  return { isClean: matches.length === 0, matches };
+}
 
 // Additional patterns specifically for usernames (matched as substrings, not just whole words)
 // These are terms that have no innocent use in a username context
@@ -228,6 +367,9 @@ function checkUsername(username) {
       matches.push(term);
     }
   }
+
+  // And the terms refused everywhere, with their evasions ("hitlar", "h1tler")
+  matches.push(...checkBannedTerms(username).matches);
   
   return {
     isClean: matches.length === 0,
@@ -294,7 +436,9 @@ function validateContent(text, options = {}) {
     allowedHosts = DEFAULT_ALLOWED_HOSTS,
     maxLinks = DEFAULT_MAX_LINKS,
     maxLength = null,
-    fieldName = 'Content'
+    fieldName = 'Content',
+    // Games and pieces: also refuse BANNED_TERM_PATTERNS (Terms, section 10)
+    bannedTerms = false,
   } = options;
   const errors = [];
 
@@ -307,6 +451,14 @@ function validateContent(text, options = {}) {
   const offensiveCheck = checkOffensiveContent(text);
   if (!offensiveCheck.isClean) {
     errors.push(`${fieldName} contains inappropriate language. Please revise and try again.`);
+  }
+
+  if (bannedTerms) {
+    const banned = checkBannedTerms(text);
+    if (!banned.isClean) {
+      errors.push(`${fieldName} can't include "${banned.matches[0]}", however it is spelled. `
+        + 'Political figures and extremist symbols are not allowed in games or pieces (Terms and Conditions, section 10).');
+    }
   }
 
   if (allowLinks === false) {
@@ -362,6 +514,9 @@ module.exports = {
   checkForLinks,
   validateContent,
   checkProfessionalName,
+  checkBannedTerms,
+  formsSwastika,
+  checkPiecePatterns,
   extractHost,
   isHostAllowed,
   DEFAULT_ALLOWED_HOSTS,

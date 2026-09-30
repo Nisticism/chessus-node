@@ -6,7 +6,7 @@ const TermsAndConditions = () => {
     <div className={styles.container}>
       <div className={styles.content}>
         <h1 className={styles.title}>Terms and Conditions</h1>
-        <p className={styles.lastUpdated}>Last Updated: May 1, 2026</p>
+        <p className={styles.lastUpdated}>Last Updated: September 30, 2026</p>
         <p className={styles.intro}>
           Welcome to GridGrove. By creating an account or using this platform, you agree to be bound
           by these Terms and Conditions. Please read them carefully before registering or participating
@@ -226,7 +226,54 @@ const TermsAndConditions = () => {
         </section>
 
         <section className={styles.section}>
-          <h2>10. Enforcement and Moderation</h2>
+          <h2>10. Content in Games and Pieces</h2>
+          <p>
+            Games and pieces are shown to the whole community, so everything that goes into them
+            must be fit for a general audience. This covers piece images, names, descriptions and
+            rules, and also what a creation looks like on the board - its movement and attack
+            patterns, its custom squares, its starting position and its board. The following are
+            not allowed:
+          </p>
+          <ul>
+            <li>
+              <strong>Pictures of political figures</strong> - politicians, heads of state, party
+              leaders and the like, and above all dictators, despots and others known for tyranny,
+              war crimes or genocide (for example Adolf Hitler). This applies to photographs,
+              drawings, caricatures and edited images alike.
+            </li>
+            <li>
+              Political content of any kind, including party or campaign material, slogans and
+              propaganda.
+            </li>
+            <li>
+              Hate or extremist symbols - including the swastika, SS runes and other emblems of
+              extremist movements - and anything that glorifies such movements or their leaders.
+            </li>
+            <li>
+              Obscene, sexual or graphically violent images, names or descriptions.
+            </li>
+            <li>
+              <strong>Movement and attack patterns, custom squares, starting positions or board
+              layouts shaped to form an obscene, hateful or political symbol.</strong> For example,
+              a piece whose movement pattern is an unambiguous swastika is prohibited, whatever the
+              piece is called and whatever image it uses.
+            </li>
+            <li>
+              Misspellings, abbreviations, symbols or look-alike characters used to get around these
+              rules or the Platform's automatic filters (for example "Hitlar" for Hitler). These are
+              treated exactly as the original term would be.
+            </li>
+          </ul>
+          <p>
+            Content like this may be held for review or refused automatically when it is saved, and
+            moderators will remove it wherever it is found. Because it is uploaded deliberately,
+            posting it is treated as a serious violation under Section 4 and may lead to an immediate
+            suspension or permanent ban.
+          </p>
+        </section>
+
+        <section className={styles.section}>
+          <h2>11. Enforcement and Moderation</h2>
           <p>
             GridGrove reserves the right to remove content, issue warnings, suspend, or permanently
             ban any account that violates these Terms and Conditions. The severity of enforcement
@@ -240,7 +287,7 @@ const TermsAndConditions = () => {
         </section>
 
         <section className={styles.section}>
-          <h2>11. Changes to These Terms</h2>
+          <h2>12. Changes to These Terms</h2>
           <p>
             GridGrove may update these Terms and Conditions from time to time. When we do, we will
             update the "Last Updated" date at the top of this page. Continued use of the Platform
@@ -249,7 +296,7 @@ const TermsAndConditions = () => {
         </section>
 
         <section className={styles.section}>
-          <h2>12. Limitation of Liability</h2>
+          <h2>13. Limitation of Liability</h2>
           <p>
             GridGrove is provided "as is" without warranties of any kind. We are not liable for
             damages arising from your use of the Platform, including but not limited to loss of data,
@@ -258,7 +305,7 @@ const TermsAndConditions = () => {
         </section>
 
         <section className={styles.section}>
-          <h2>13. Contact</h2>
+          <h2>14. Contact</h2>
           <p>
             If you have questions about these Terms and Conditions or wish to report a violation,
             please use the <a href="/contact" className={styles.link}>Contact</a> page.
