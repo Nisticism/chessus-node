@@ -60,6 +60,7 @@ const {
   getImageUrlForPlayer,
 } = require('./game-socket');
 const { gravityOf, restingSquare } = require('./board-gravity');
+const { squareLabel } = require('./square-label');
 
 const VALIDATION = {
   VALID: 'valid',
@@ -1094,6 +1095,58 @@ async function otherForcedWins(puzzle, gameType, intended) {
   return others;
 }
 
+/*
+ * First moves that win the game outright, by whatever rule this game is won.
+ *
+ * A "Mate in four" whose first move can simply take the King is not a mate in
+ * four (puzzle 52: a hopping piece already lined up on a King in a game won by
+ * capture). The creator's line may be perfectly legal and still not be the
+ * puzzle, because the solver has something quicker. Asked only of multi-move
+ * lines; a one-move puzzle's own enumeration already covers its alternatives.
+ *
+ * Same candidate list as the one-move check, including the creator's own first
+ * move - a line whose FIRST move already ends the game has moves after the end.
+ */
+async function immediateWins(puzzle, gameType, intended) {
+  const side = Number(puzzle.side_to_move);
+  const base = buildGameState(puzzle, gameType);
+  const candidates = [
+    ...(getAllLegalMovesForPlayer(base, side) || []),
+    ...enPassantCandidates(base, side),
+    ...placementCandidates(base, side),
+  ];
+  if (intended && !candidates.some((m) => moveKey(m) === moveKey(intended))) candidates.push(intended);
+
+  const wins = [];
+  const seen = new Set();
+  for (const candidate of candidates) {
+    const key = boardMoveKey(candidate);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    // eslint-disable-next-line no-await-in-loop -- the engine mutates shared structures
+    const { ok, state, ctx } = await applyToFreshState(puzzle, gameType, candidate, { autoPromote: true });
+    if (!ok) continue;
+    const outcome = terminalOutcome(state, other(side), ctx);
+    if (outcome && Number(outcome.winner) === side) wins.push(candidate);
+  }
+  return wins;
+}
+
+/** "Bisasam on d1 takes the King on d8", for telling a creator which move. */
+function describeFirstMove(puzzle, gameType, move) {
+  const base = buildGameState(puzzle, gameType);
+  const height = Number(gameType?.board_height) || 8;
+  const to = move.to ? squareLabel(move.to.x, move.to.y, height) : '?';
+  if (isPlacementPly(move)) return `placing a piece on ${to}`;
+  const piece = base.pieces.find((p) => p.id === move.pieceId);
+  const target = move.to && base.pieces.find((p) => p.id !== move.pieceId && p.x === move.to.x && p.y === move.to.y);
+  const from = move.from ? squareLabel(move.from.x, move.from.y, height) : '?';
+  const name = piece?.piece_name || 'a piece';
+  return target
+    ? `${name} on ${from} takes the ${target.piece_name || 'piece'} on ${to}`
+    : `${name} from ${from} to ${to}`;
+}
+
 async function validatePuzzle(puzzle, gameType) {
   const line = Array.isArray(puzzle.solution_line)
     ? puzzle.solution_line
@@ -1106,6 +1159,29 @@ async function validatePuzzle(puzzle, gameType) {
   }
 
   const isMechanical = MECHANICAL_GOALS.has(puzzle.goal);
+
+  /*
+   * The goal has to be a way this game is actually won.
+   *
+   * The builder only offers those (goalsForGameType), but a generator once
+   * filed every puzzle as "checkmate", capture-only games included - so a
+   * "Mate in four" in a game with no checkmate rule, won instead by taking a
+   * piece. The engine's isCheckmate will still answer for such a game (it
+   * knows what check looks like), which is exactly why this has to be asked
+   * first rather than left to the goal test.
+   */
+  const goalDef = GOAL_DEFS[puzzle.goal];
+  if (isMechanical && gameType && !goalDef.available(gameType)) {
+    const offered = goalsForGameType(gameType).filter((g) => g.mechanical).map((g) => `'${g.label}'`);
+    return {
+      status: VALIDATION.UNSOLVABLE,
+      solutions: [],
+      intendedWorks: false,
+      goalUnavailable: true,
+      detail: `'${goalDef.label}' is not a way to win this game, so it cannot be the goal. `
+        + `This game's goals: ${offered.length > 1 ? `${offered.slice(0, -1).join(', ')} or ${offered[offered.length - 1]}` : offered[0] || 'none the server can check'}.`,
+    };
+  }
 
   /*
    * A multi-move line: check it can actually be played, and say whether the
@@ -1130,6 +1206,22 @@ async function validatePuzzle(puzzle, gameType) {
     played.state.currentTurn = other(side);
     const reached = isMechanical && goalMet(puzzle.goal, played.state, side, played.ctx);
     const moves = Math.ceil(line.length / 2);
+
+    // A win on the very first move makes the rest of the line beside the point.
+    const quicker = await immediateWins(puzzle, gameType, intended);
+    if (quicker.length) {
+      const named = quicker.slice(0, 3).map((m) => describeFirstMove(puzzle, gameType, m));
+      const more = quicker.length > 3 ? ` (and ${quicker.length - 3} more)` : '';
+      return {
+        status: VALIDATION.AMBIGUOUS,
+        solutions: quicker,
+        intendedWorks: true,
+        goalReached: reached,
+        quickerWin: true,
+        detail: `the game can be won on the first move - ${named.join('; ')}${more} - `
+          + `so the ${moves}-move line is not the solution. Change the position so nothing wins at once.`,
+      };
+    }
 
     /*
      * A line whose every reply was FORCED is as checkable as a one-move

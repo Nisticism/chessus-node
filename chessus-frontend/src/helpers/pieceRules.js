@@ -8,6 +8,7 @@
  * The describer works off a raw piece row - the movement columns as the pieces
  * table stores them - and returns one string, clauses joined with semicolons.
  */
+import { joinList } from "./joinList";
 
 const describeMovementRange = (value) => {
   if (value === 99) return "any number of squares";
@@ -150,7 +151,7 @@ const describePieceMovement = (pieceData) => {
       }
       // Exact directional movements still allow hopping
       hopMovementTypes.push('exact directional movement');
-      hopText += ` when using its ${hopMovementTypes.join(' or ')}`;
+      hopText += ` when using its ${joinList(hopMovementTypes)}`;
     }
     movements.push(hopText);
   }

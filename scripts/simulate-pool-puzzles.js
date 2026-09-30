@@ -153,11 +153,22 @@ const JUNCTION_OVERRIDES = [
   'die_on_capture_grants_win', 'attack_radius',
 ];
 
-const TITLE_FOR_MATE = {
-  2: 'Mate in two',
-  3: 'Mate in three',
-  4: 'Mate in four',
-};
+const COUNT_WORDS = { 1: 'one', 2: 'two', 3: 'three', 4: 'four', 5: 'five' };
+
+/*
+ * What the puzzle is, by how the game is actually won.
+ *
+ * The engine's "mate" is whatever ends the game in the variant INI, so a forced
+ * "mate" in a capture-only game is a forced capture - and filing it as
+ * checkmate gave a "Mate in four" in a game with no checkmate rule (puzzle 52).
+ * The goals are tried in this order and the first one the site's own validator
+ * sees the line reach wins; the title follows the goal.
+ */
+const GOAL_CHOICES = [
+  { goal: 'checkmate_in_1', applies: (g) => !!g.mate_condition, title: (n) => `Mate in ${COUNT_WORDS[n] || n}` },
+  { goal: 'capture_target', applies: (g) => !!g.capture_condition, title: (n) => `Capture in ${COUNT_WORDS[n] || n}` },
+  { goal: 'win_in_1', applies: () => true, title: (n) => `Win in ${COUNT_WORDS[n] || n}` },
+];
 
 (async () => {
   const { label, ...conn } = dsn;
@@ -508,27 +519,36 @@ const TITLE_FOR_MATE = {
                     side_to_move: side,
                     setup_move: { from: setupMove.from, to: setupMove.to },
                     game_type_id: game.id,
-                    goal: 'checkmate_in_1',
                     solution_line: line,
                   };
                   /*
                    * The site's own last word: every move legal from the position
                    * the one before it leaves behind. Forcedness came from the
                    * engine, uniqueness from the sweep above, legality from here.
+                   *
+                   * Legal is not enough: the line has to END with the goal met
+                   * by the site's own rules. The engine can believe in a mate the
+                   * site's rules do not have (a piece it models differently), and
+                   * intendedWorks alone let those through as 'valid'. Nor may the
+                   * site's engine find a win on the very first move - the
+                   * uniqueness sweep above asked Fairy-Stockfish, which can model
+                   * a piece differently (a hopper that can already take the King).
                    */
-                  // eslint-disable-next-line no-await-in-loop
-                  const verdict = await validatePuzzle(
-                    { ...candidate, position: JSON.parse(JSON.stringify(attemptPosition)) },
-                    game
-                  );
-                  /*
-                   * Legal is not enough: the line has to END in the site's own
-                   * checkmate. The engine can believe in a mate the site's rules
-                   * do not have (a piece it models differently), and
-                   * intendedWorks alone let those through as 'valid'.
-                   */
-                  if (verdict.intendedWorks && verdict.goalReached) {
+                  let chosen = null;
+                  for (const choice of GOAL_CHOICES) {
+                    if (!choice.applies(game)) continue;
+                    // eslint-disable-next-line no-await-in-loop
+                    const verdict = await validatePuzzle(
+                      { ...candidate, goal: choice.goal, position: JSON.parse(JSON.stringify(attemptPosition)) },
+                      game
+                    );
+                    if (verdict.quickerWin) break;   // no goal fixes a first-move win
+                    if (verdict.intendedWorks && verdict.goalReached) { chosen = choice; break; }
+                  }
+                  if (chosen) {
                     hit = {
+                      goal: chosen.goal,
+                      title: chosen.title(attemptMate),
                       position: candidate.position,
                       side_to_move: side,
                       setup_move: candidate.setup_move,
@@ -536,7 +556,7 @@ const TITLE_FOR_MATE = {
                       mateIn: attemptMate,
                       ply,
                       perturbations: attempt,
-                      detail: `Fairy-Stockfish proved a forced mate in ${attemptMate} and no `
+                      detail: `Fairy-Stockfish proved a forced win in ${attemptMate} and no `
                         + `other first move wins; the site engine confirmed every move is legal.`
                         + (attempt ? ` Position simplified ${attempt} time(s) to make the answer unique.` : ''),
                     };
@@ -625,19 +645,19 @@ const TITLE_FOR_MATE = {
       found.push({
         game_type_id: game.id,
         game_name: game.game_name,
-        title: TITLE_FOR_MATE[hit.mateIn] || `Mate in ${hit.mateIn}`,
+        title: hit.title,
         description: null,
         position: hit.position,
         side_to_move: hit.side_to_move,
         setup_move: hit.setup_move,
-        goal: 'checkmate_in_1',
+        goal: hit.goal,
         goal_description: null,
         solution_line: hit.solution_line,
         solution_depth: Math.ceil(hit.solution_line.length / 2),
         validation_detail: hit.detail,
       });
       builtByDepth[hit.mateIn] = (builtByDepth[hit.mateIn] || 0) + 1;
-      console.log(`  #${String(game.id).padStart(3)} ${name} FOUND  mate in ${hit.mateIn}  ply ${hit.ply}  ${probes} probe(s), ${perturbations} simplification(s)  ${secs}s`);
+      console.log(`  #${String(game.id).padStart(3)} ${name} FOUND  ${hit.title}  ply ${hit.ply}  ${probes} probe(s), ${perturbations} simplification(s)  ${secs}s`);
     } else {
       failed.push({
         id: game.id, name: game.game_name,

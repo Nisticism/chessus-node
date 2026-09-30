@@ -35,6 +35,7 @@ import { designationRuleSentence } from "../../helpers/designationTypes";
 // Describing how a piece moves lives in helpers/pieceRules, shared with the
 // puzzle rules modal. See the note there.
 import { describeMovementRange, describePieceMovement } from "../../helpers/pieceRules";
+import { joinList } from "../../helpers/joinList";
 
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";
 
@@ -2138,14 +2139,18 @@ const GameTypeView = () => {
     if (game.mate_condition) {
       // Determine checkmate target piece name: prefer game-level mate_piece, then fall back to pieces marked ends_game_on_checkmate
       let matePieceName = 'the designated piece';
+      let matePieceCount = 1;
       const matePieceData = game.mate_piece ? pieceDataMap[game.mate_piece] : null;
       if (matePieceData) {
         matePieceName = `**${matePieceData.piece_name}**`;
       } else if (checkmatePieces.length > 0) {
         const uniqueNames = [...new Set(checkmatePieces.map(p => p.pieceData?.piece_name || p.piece_name).filter(Boolean))];
-        matePieceName = uniqueNames.map(n => `**${n}**`).join(' or ');
+        matePieceCount = uniqueNames.length;
+        matePieceName = joinList(uniqueNames.map(n => `**${n}**`), game.mate_condition_requires_all ? 'and' : 'or');
       }
-      winConditions.push(`• **Checkmate**: A player wins by checkmating their opponent's ${matePieceName}. When ${matePieceName} is in check and cannot escape, the game is over.${(game.actions_per_turn || 1) > 1 ? ` In multi-action games, checkmate is evaluated at the end of a turn after all ${game.actions_per_turn} actions are completed. You cannot capture ${matePieceName} directly — it must be checkmated${game.capture_condition ? ' (unless the capture win condition is also enabled)' : ''}.` : ''}${game.mate_condition_requires_all ? `\n   ◦ **Requires ALL**: Every checkmate-flagged piece on a player's side must be simultaneously under lethal attack with no legal escape, AND capturing one such piece does not end the game until none remain. (Promoting to a checkmate-flagged piece adds another piece that must also be checkmated.)` : ''}`);
+      const mateSubject = matePieceCount > 1 ? (game.mate_condition_requires_all ? 'they are all' : 'one of them is') : `${matePieceName} is`;
+      const mateObject = matePieceCount > 1 ? 'these pieces' : matePieceName;
+      winConditions.push(`• **Checkmate**: A player wins by checkmating their opponent's ${matePieceName}. When ${mateSubject} in check and cannot escape, the game is over.${(game.actions_per_turn || 1) > 1 ? ` In multi-action games, checkmate is evaluated at the end of a turn after all ${game.actions_per_turn} actions are completed. You cannot capture ${mateObject} directly — ${matePieceCount > 1 ? 'they' : 'it'} must be checkmated${game.capture_condition ? ' (unless the capture win condition is also enabled)' : ''}.` : ''}${game.mate_condition_requires_all ? `\n   ◦ **Requires ALL**: Every checkmate-flagged piece on a player's side must be simultaneously under lethal attack with no legal escape, AND capturing one such piece does not end the game until none remain. (Promoting to a checkmate-flagged piece adds another piece that must also be checkmated.)` : ''}`);
     }
 
     if (game.capture_condition) {
@@ -2157,7 +2162,7 @@ const GameTypeView = () => {
       if (capPieceData) {
         winConditions.push(`• **Capture**: A player wins by capturing their opponent's **${capPieceData.piece_name}**.${game.capture_condition_requires_all ? `\n   ◦ **Requires ALL**: Every capture-flagged piece on a player's side must be captured before they lose. (Promoting to a capture-flagged piece adds another piece that must also be captured.)` : ''}`);
       } else if (placementCapturePieces.length > 0) {
-        const capNames = placementCapturePieces.map(n => `**${n}**`).join(' or ');
+        const capNames = joinList(placementCapturePieces.map(n => `**${n}**`), game.capture_condition_requires_all ? 'and' : 'or');
         winConditions.push(`• **Capture**: A player wins by capturing their opponent's ${capNames}.${game.capture_condition_requires_all ? `\n   ◦ **Requires ALL**: Every capture-flagged piece on a player's side must be captured before they lose. (Promoting to a capture-flagged piece adds another piece that must also be captured.)` : ''}`);
       } else {
         winConditions.push(`• **Capture**: A player wins by capturing all of their opponent's pieces.`);

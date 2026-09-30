@@ -4,7 +4,8 @@
  * Detects when a game type's brand-new starting position is already in a
  * decided state (one side in checkmate, no legal moves with `no_moves_condition`,
  * stalemate under `stalemate_draw_condition` / `stalemate_win_condition`,
- * capture-condition already satisfied, anti-chess already satisfied, etc.).
+ * capture-condition already satisfied, anti-chess already satisfied, etc.),
+ * or when Player 1 can win with their very first move.
  *
  * Wired into:
  *   - POST /api/games/create   (rejects publish if decided; drafts skipped)
@@ -22,7 +23,20 @@
  */
 
 const db_pool = require("../configs/db");
-const { evaluateInitialPosition } = require("./game-socket");
+const { evaluateInitialPosition, findFirstMoveWin } = require("./game-socket");
+
+/*
+ * The whole starting-position check: decided before anyone moves
+ * (evaluateInitialPosition), or decided by the first move itself - Player 1
+ * able to take the King, say (findFirstMoveWin). Only asked when the first
+ * question comes back clean.
+ */
+async function evaluateStart(gameType, pieces) {
+  const result = evaluateInitialPosition(gameType, pieces);
+  if (result && result.decided) return result;
+  const firstMove = await findFirstMoveWin(gameType, pieces);
+  return firstMove || result;
+}
 
 /**
  * Load and hydrate a game type's starting pieces array in the same shape
@@ -217,7 +231,7 @@ async function validateGameTypeInitialState(gameTypeId) {
   try {
     const { gameType, pieces } = await loadInitialStateForGameType(gameTypeId);
     if (!gameType) return { decided: false };
-    return evaluateInitialPosition(gameType, pieces);
+    return await evaluateStart(gameType, pieces);
   } catch (err) {
     console.error(`[initial-state] validateGameTypeInitialState(${gameTypeId}) failed:`, err);
     return { decided: false, error: err.message };
@@ -354,7 +368,7 @@ async function validateGameTypeFromRequestBody(gameData) {
   };
 
   try {
-    return evaluateInitialPosition(gameType, pieces);
+    return await evaluateStart(gameType, pieces);
   } catch (err) {
     console.error('[initial-state] evaluateInitialPosition (request body) threw:', err.message);
     return { decided: false, error: err.message };

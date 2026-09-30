@@ -227,13 +227,17 @@ const lineMeetsGoal = async (db_pool, p) => {
     // validatePuzzle may mutate what it is handed; the replay below gets its own copy.
     const verdict = await validatePuzzle(JSON.parse(JSON.stringify(puzzle)), rules.game);
     if (!verdict.intendedWorks) return false;
+    // The goal is not how this game is won (a "mate" in a capture-only game), or
+    // the first move already wins and the line is beside the point.
+    if (verdict.goalUnavailable || verdict.quickerWin) return false;
     // A one-move puzzle is valid (or ambiguous) exactly when its move does it.
     if (line.length === 1) return verdict.status === 'valid' || verdict.status === 'ambiguous';
     if (verdict.goalReached) return true;
     /*
-     * Or the line ends the game in the solver's favour by the game's own rule -
-     * a captured or bared king in a game won that way, where "checkmate" is
-     * the builder's nearest label. The same test scripts/audit-puzzle-lines.js
+     * Or the line ends the game in the solver's favour by the game's own rule,
+     * one the goal's own test does not look at. (A "checkmate" label on a game
+     * won by capture used to pass here; it is refused above now, since the
+     * title then promises the wrong puzzle.) The same test scripts/audit-puzzle-lines.js
      * applies. A draw, or a line that simply stops, does not count.
      */
     const played = await playLine(puzzle, rules.game, line);

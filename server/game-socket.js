@@ -23452,6 +23452,93 @@ function evaluateInitialPosition(gameType, initialPieces) {
 }
 
 /*
+ * Can the player who moves first win with that very first move?
+ *
+ * evaluateInitialPosition asks whether the game is over BEFORE anyone moves.
+ * A start where Player 1 can simply take the King (a hopping piece lined up on
+ * it, say) passes that test and is just as broken, so this plays every legal
+ * first move on its own copy of the position and asks the engine's own
+ * checkWinCondition after each one - the same question the live game asks
+ * after every move.
+ *
+ * Async because validateAndApplyMove is, which is also why it is separate from
+ * evaluateInitialPosition (the randomization re-roll loop calls that one
+ * synchronously). Callers: server/initial-state-validator.js.
+ *
+ * Checkmate only counts in one-action games: with several actions a turn,
+ * mate is judged at the end of the turn, not after its first action.
+ *
+ * @returns {Promise<object|null>} a decided result shaped like
+ *          evaluateInitialPosition's, or null when no first move wins.
+ */
+const FIRST_MOVE_SCAN_LIMIT = 600;
+const FIRST_MOVE_SCAN_MS = 4000;
+async function findFirstMoveWin(gameType, initialPieces) {
+  if (!gameType || !Array.isArray(initialPieces) || !initialPieces.length) return null;
+  const mover = 1;
+  const base = buildSyntheticInitialState(gameType, initialPieces, mover);
+  let moves;
+  try {
+    moves = getAllLegalMovesForPlayer(base, mover) || [];
+  } catch (e) {
+    console.warn('[initial-state] first-move scan: move list threw:', e.message);
+    return null;
+  }
+  const moverId = base.players.find(p => p.position === mover)?.id;
+  const multiAction = (Number(gameType.actions_per_turn) || 1) > 1;
+  const height = Number(gameType.board_height) || 8;
+  const started = Date.now();
+
+  for (const move of moves.slice(0, FIRST_MOVE_SCAN_LIMIT)) {
+    if (!move || move.type === 'place' || move.isPlacement || !move.from || !move.to) continue;
+    if (Date.now() - started > FIRST_MOVE_SCAN_MS) break;
+    const state = buildSyntheticInitialState(gameType, initialPieces, mover);
+    const piece = state.pieces.find(p => p.id === move.pieceId);
+    const target = state.pieces.find(p => p.id !== move.pieceId && !p._occupied && doesPieceOccupySquare(p, move.to.x, move.to.y));
+    let applied;
+    try {
+      // eslint-disable-next-line no-await-in-loop -- each move on its own fresh copy, one at a time
+      applied = await validateAndApplyMove(state, move, { skipTurnCheck: true });
+    } catch (e) {
+      continue;
+    }
+    if (!applied || applied.valid === false) continue;
+    const captured = applied.allCaptured?.length ? applied.allCaptured : (applied.captured || null);
+    let result;
+    try {
+      result = checkWinCondition(state, captured);
+    } catch (e) {
+      continue;
+    }
+    if (!result || !result.gameOver || result.winner !== moverId) continue;
+    if (result.reason === 'mate' && multiAction) continue;
+
+    const name = piece?.piece_name || 'a piece';
+    const takenName = (Array.isArray(captured) ? captured[0] : captured)?.piece_name || target?.piece_name;
+    const from = squareLabel(move.from.x, move.from.y, height);
+    const to = squareLabel(move.to.x, move.to.y, height);
+    const action = takenName ? `${name} on ${from} takes the ${takenName} on ${to}` : `${name} moves from ${from} to ${to}`;
+    const rule = {
+      capture: 'the capture win condition',
+      mate: 'checkmate',
+      line: 'the line win condition',
+      connection: 'the connection win condition',
+      control: 'the control-squares win condition',
+      lose_all: 'the anti-chess win condition',
+    }[result.reason] || `a win condition (${result.reason})`;
+    return {
+      decided: true,
+      type: 'win',
+      forPlayer: mover,
+      code: 'first_move_win',
+      reason: `Player ${mover} can win on their very first move: ${action}, which wins by ${rule}. `
+        + 'Rearrange the starting position so the first player cannot win straight away.',
+    };
+  }
+  return null;
+}
+
+/*
  * Which line a starting position already has, in words a creator can act on:
  * whose, which pieces, which squares, and the rule it satisfies. One line only -
  * after the creator fixes it, the next scan finds the next one, if any.
@@ -23607,6 +23694,7 @@ module.exports = {
   getPlayerScore,
   // Initial-state validation
   evaluateInitialPosition,
+  findFirstMoveWin,
   buildSyntheticInitialState,
   hashPiecesPositions,
   // Promotion. Exported so the promotion rules can be tested directly rather
