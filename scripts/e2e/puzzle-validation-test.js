@@ -200,18 +200,21 @@ async function main() {
   );
 
   // --- 8. A multi-move line is played out, ply by ply -----------------------
-  // Black king on a8, white king on a6, white rook on j1. The line is
+  // Black king on a8, white king on c6, white rook on j1. The line is
   // Rj1-j5, Ka8-b8, Rj5-b5+ : white, black, white, so the middle ply belongs to
   // the OTHER side. The engine decides ownership from gameState.currentTurn and
   // never advances it itself, so a validator that forgets to alternate rejects
   // every reply as "Not your piece" - which is exactly what happened.
+  //
+  // The king is on c6, not a6: from a6 it covers a7 and b7, which makes Rj8 mate
+  // in one - and a line with a quicker win is now rejected as not the solution.
   const twoMover = {
     goal: GOALS.WIN_MATERIAL,
     goal_description: 'Cut the king off',
     side_to_move: 1,
     position: [
       at(king, 'bk', 0, 0, 2),
-      at(king, 'wk', 0, 2, 1),
+      at(king, 'wk', 2, 2, 1),
       at(rook, 'wr', 9, 7, 1),
     ],
     solution_line: [

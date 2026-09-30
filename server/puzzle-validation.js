@@ -654,7 +654,7 @@ async function applyPlacementPly(state, ply) {
   return { ok: true, reason: null, promotedTo: null, promotionEligible: null, captured };
 }
 
-async function applyPly(state, ply, { autoPromote = false } = {}) {
+async function applyPly(state, ply, { autoPromote = false, listPromotions = false } = {}) {
   if (isPlacementPly(ply)) return applyPlacementPly(state, ply);
 
   let applied;
@@ -688,11 +688,25 @@ async function applyPly(state, ply, { autoPromote = false } = {}) {
     }
 
     if (pieceId == null) {
+      /*
+       * listPromotions: the search (puzzle-search.js) plays every choice as its
+       * own move, since an under-promotion can be the only win - or the only
+       * defence - and autoPromote's first option would never find it.
+       */
+      let promotionOptions;
+      if (listPromotions) {
+        const options = await getPromotionOptions(state, applied.movingPiece);
+        promotionOptions = (options || []).map(o => ({
+          promotionPieceId: o.id ?? o.piece_id,
+          promotionPlayer: o.player ?? null,
+        })).filter(o => o.promotionPieceId != null);
+      }
       return {
         ok: false,
         reason: 'this move promotes - record which piece it becomes',
         needsPromotionChoice: true,
         promotionEligible: eligible,
+        promotionOptions,
       };
     }
     try {
@@ -1134,7 +1148,13 @@ async function immediateWins(puzzle, gameType, intended) {
 
 /** "Bisasam on d1 takes the King on d8", for telling a creator which move. */
 function describeFirstMove(puzzle, gameType, move) {
-  const base = buildGameState(puzzle, gameType);
+  return describeMoveOn(buildGameState(puzzle, gameType).pieces, gameType, move);
+}
+
+/** The same sentence for a move in any position, given that position's pieces. */
+function describeMoveOn(pieces, gameType, move) {
+  if (move?.pass) return 'passing (they have no legal move)';
+  const base = { pieces };
   const height = Number(gameType?.board_height) || 8;
   const to = move.to ? squareLabel(move.to.x, move.to.y, height) : '?';
   if (isPlacementPly(move)) return `placing a piece on ${to}`;
@@ -1145,6 +1165,80 @@ function describeFirstMove(puzzle, gameType, move) {
   return target
     ? `${name} on ${from} takes the ${target.piece_name || 'piece'} on ${to}`
     : `${name} from ${from} to ${to}`;
+}
+
+/*
+ * The two-move check. Budgeted: validation runs while a creator waits, and a
+ * search that cannot finish in time says nothing rather than something wrong.
+ */
+const SEARCH_BUDGET_MS = 15000;
+
+async function checkTwoMoveLine(puzzle, gameType, intended, reached) {
+  // Required here: puzzle-search requires this file.
+  const { searchWinInTwo } = require('./puzzle-search');
+  const label = GOAL_DEFS[puzzle.goal].label.toLowerCase();
+  const mine = await searchWinInTwo(puzzle, gameType, { aim: puzzle.goal, firstMove: intended, budgetMs: SEARCH_BUDGET_MS });
+  if (!mine.supported || !mine.complete || mine.winsInOne.length) return null;
+
+  if (!mine.winsInTwo.length) {
+    const refutation = mine.refuted[0]?.refutation || null;
+    let said = 'a reply';
+    try {
+      const after = await playLine(puzzle, gameType, [intended]);
+      if (after.ok && refutation) said = describeMoveOn(after.state.pieces, gameType, refutation);
+    } catch (_) { /* the plain wording will do */ }
+    return {
+      status: VALIDATION.UNSOLVABLE,
+      solutions: [],
+      intendedWorks: false,
+      goalReached: reached,
+      refutation,
+      searched: true,
+      detail: `the line is legal, but it is not forced: after your first move the opponent can defend with ${said}, `
+        + `and then no move achieves '${label}'.`,
+    };
+  }
+
+  const all = await searchWinInTwo(puzzle, gameType, { aim: puzzle.goal, budgetMs: SEARCH_BUDGET_MS });
+  if (!all.complete) {
+    return {
+      status: VALIDATION.NOT_CHECKABLE,
+      solutions: [intended],
+      intendedWorks: true,
+      goalReached: true,
+      searched: true,
+      detail: `your first move forces '${label}' against every defence (checked). There was not time to check `
+        + 'whether a different first move also does.',
+    };
+  }
+  const others = all.winsInTwo.filter((w) => boardMoveKey(w.move) !== boardMoveKey(intended)).map((w) => w.move);
+  if (others.length) {
+    return {
+      status: VALIDATION.AMBIGUOUS,
+      solutions: [intended, ...others],
+      intendedWorks: true,
+      goalReached: true,
+      searched: true,
+      detail: `your first move forces '${label}' against every defence, but so ${others.length === 1 ? 'does' : 'do'} `
+        + `${others.slice(0, 3).map((m) => describeFirstMove(puzzle, gameType, m)).join('; ')}`
+        + `${others.length > 3 ? ` and ${others.length - 3} more` : ''}.`,
+    };
+  }
+  return {
+    status: VALIDATION.VALID,
+    solutions: [intended],
+    intendedWorks: true,
+    goalReached: true,
+    searched: true,
+    detail: `checked against every defence: your first move is the only one that forces '${label}' in two.`,
+  };
+}
+
+/** A first move that forces the goal in two, or null (none, or the search could not finish). */
+async function forcedWinInTwo(puzzle, gameType) {
+  const { searchWinInTwo } = require('./puzzle-search');
+  const r = await searchWinInTwo(puzzle, gameType, { aim: puzzle.goal, stopAtFirst: true, budgetMs: SEARCH_BUDGET_MS });
+  return r.supported && r.winsInTwo.length ? r.winsInTwo[0] : null;
 }
 
 async function validatePuzzle(puzzle, gameType) {
@@ -1221,6 +1315,31 @@ async function validatePuzzle(puzzle, gameType) {
         detail: `the game can be won on the first move - ${named.join('; ')}${more} - `
           + `so the ${moves}-move line is not the solution. Change the position so nothing wins at once.`,
       };
+    }
+
+    /*
+     * Searched, not taken on trust: a two-move line is checked against EVERY
+     * defence (puzzle-search.js), and a longer one for a forced win in two that
+     * would make it redundant. null from either means the search could not
+     * finish or does not apply, and the older advice below stands.
+     */
+    if (isMechanical && line.length === 3) {
+      const searched = await checkTwoMoveLine(puzzle, gameType, intended, reached);
+      if (searched) return searched;
+    }
+    if (isMechanical && line.length > 3) {
+      const shorter = await forcedWinInTwo(puzzle, gameType);
+      if (shorter) {
+        return {
+          status: VALIDATION.AMBIGUOUS,
+          solutions: [shorter.move],
+          intendedWorks: true,
+          goalReached: reached,
+          quickerWin: true,
+          detail: `${GOAL_DEFS[puzzle.goal].label.toLowerCase()} can be forced in two moves, starting with `
+            + `${describeFirstMove(puzzle, gameType, shorter.move)} - so the ${moves}-move line is not the solution.`,
+        };
+      }
     }
 
     /*
@@ -1388,6 +1507,7 @@ module.exports = {
   isPlacementPly,
   placementRules,
   placementCandidates,
+  enPassantCandidates,
   // For the veto checks (puzzle-veto.js): does a veto leave the mover a move?
   trulyLegalMoves,
   goalsForGameType,

@@ -13695,8 +13695,16 @@ function wouldMoveLeaveInCheck(gameState, move, playerPosition) {
   const { to, pieceId } = move;
   const pieces = gameState.pieces;
   
-  // Create a deep copy of pieces array for simulation
-  const simulatedPieces = pieces.map(p => ({ ...p }));
+  /*
+   * The simulation's own ARRAY, sharing the piece objects: the check test that
+   * follows only reads pieces, and the only two written to - the mover and a
+   * castling partner - are copied at the moment they move (below). Copying all
+   * of them up front was the single largest cost of legal-move generation: a
+   * piece is ~270 fields, this runs once per candidate move, and once V8 has
+   * seen enough piece shapes the spread takes its slow generic path (measured:
+   * three quarters of a mate-in-two search).
+   */
+  const simulatedPieces = pieces.slice();
   
   // Find the piece being moved in the simulation
   const pieceIndex = simulatedPieces.findIndex(p => p.id === pieceId);
@@ -13785,8 +13793,7 @@ function wouldMoveLeaveInCheck(gameState, move, playerPosition) {
   // Update piece position in simulation
   const movingPieceIndex = simulatedPieces.findIndex(p => p.id === pieceId);
   if (movingPieceIndex !== -1) {
-    simulatedPieces[movingPieceIndex].x = to.x;
-    simulatedPieces[movingPieceIndex].y = to.y;
+    simulatedPieces[movingPieceIndex] = { ...simulatedPieces[movingPieceIndex], x: to.x, y: to.y };
   }
 
   // For castling moves, also update the partner's position to its post-castle square.
@@ -13796,12 +13803,11 @@ function wouldMoveLeaveInCheck(gameState, move, playerPosition) {
   if (move.isCastling && move.castlingWith && move.castlingDirection) {
     const castlingPartnerIndex = simulatedPieces.findIndex(p => p.id === move.castlingWith);
     if (castlingPartnerIndex !== -1) {
-      if (move.castlingDirection === 'left') {
-        simulatedPieces[castlingPartnerIndex].x = to.x + 1;
-      } else {
-        simulatedPieces[castlingPartnerIndex].x = to.x - 1;
-      }
-      simulatedPieces[castlingPartnerIndex].y = to.y;
+      simulatedPieces[castlingPartnerIndex] = {
+        ...simulatedPieces[castlingPartnerIndex],
+        x: move.castlingDirection === 'left' ? to.x + 1 : to.x - 1,
+        y: to.y,
+      };
     }
   }
 
