@@ -4024,11 +4024,11 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
       return res.status(400).send({ message: nameCheck.errors[0] });
     }
 
-    // Pieces arranged into a hate symbol (Terms and Conditions, section 10)
-    if (gameData.pieces_string) {
-      const boardError = checkBoardPatterns(gameData.pieces_string);
-      if (boardError) return res.status(400).send({ message: boardError });
-    }
+    // Pieces arranged into what looks like a hate symbol: saved, but the
+    // creator is warned (Terms and Conditions, section 10) and it is logged
+    // for moderators - a person decides, not the detector.
+    const contentWarning = gameData.pieces_string ? checkBoardPatterns(gameData.pieces_string) : null;
+    if (contentWarning) console.warn(`[content-warning] user ${req.user?.id} saved game "${gameData.game_name}": swastika-shaped starting position`);
 
     // Professional name check: flag games with sensitive terms for moderator review
     const gameEditProfCheck = checkProfessionalName(gameData.game_name);
@@ -4371,7 +4371,8 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
     
     res.json({ 
       message: isDraft ? "Draft saved successfully" : (gameEditNeedsNameReview ? "Game updated! Your game name is under review and will be published once approved." : "Game updated successfully"),
-      game: { id: gameId, ...gameData, is_draft: isDraft, needs_name_review: gameEditNeedsNameReview }
+      game: { id: gameId, ...gameData, is_draft: isDraft, needs_name_review: gameEditNeedsNameReview },
+      content_warning: contentWarning || null,
     });
     _resyncAiRules(gameId);
     /*
@@ -9101,11 +9102,11 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
       return res.status(400).send({ message: nameCheck.errors[0] });
     }
 
-    // Pieces arranged into a hate symbol (Terms and Conditions, section 10)
-    if (gameData.pieces_string) {
-      const boardError = checkBoardPatterns(gameData.pieces_string);
-      if (boardError) return res.status(400).send({ message: boardError });
-    }
+    // Pieces arranged into what looks like a hate symbol: saved, but the
+    // creator is warned (Terms and Conditions, section 10) and it is logged
+    // for moderators - a person decides, not the detector.
+    const contentWarning = gameData.pieces_string ? checkBoardPatterns(gameData.pieces_string) : null;
+    if (contentWarning) console.warn(`[content-warning] user ${req.user?.id} saved game "${gameData.game_name}": swastika-shaped starting position`);
 
     // Professional name check: flag games with sensitive terms for moderator review
     let gameNeedsNameReview = false;
@@ -9482,7 +9483,8 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
         game_name: gameData.game_name,
         is_draft: isDraft,
         needs_name_review: gameNeedsNameReview
-      }
+      },
+      content_warning: contentWarning || null,
     });
     _resyncAiRules(result.insertId);
     // Game just passed initial-state validation, so explicitly clear any
@@ -9652,11 +9654,11 @@ app.post("/api/pieces/create", authenticateToken, multerWrap(pieceUpload.array('
       }
     }
 
-    // Custom squares shaped into a hate symbol (Terms and Conditions, section 10)
-    {
-      const patternError = checkPiecePatterns(pieceData.custom_movement_squares, pieceData.custom_attack_squares);
-      if (patternError) return res.status(400).send({ message: patternError });
-    }
+    // Custom squares shaped into what looks like a hate symbol: saved, but the
+    // creator is warned (Terms and Conditions, section 10) and it is logged
+    // for moderators - a person decides, not the detector.
+    const contentWarning = checkPiecePatterns(pieceData.custom_movement_squares, pieceData.custom_attack_squares);
+    if (contentWarning) console.warn(`[content-warning] user ${req.user?.id} saved piece "${pieceData.piece_name}": swastika-shaped custom squares`);
 
     // Professional name check: flag piece names containing sensitive terms for review
     let pieceNeedsNameReview = false;
@@ -10195,7 +10197,8 @@ app.post("/api/pieces/create", authenticateToken, multerWrap(pieceUpload.array('
         piece_images: imagePaths,
         moderation_status: moderationStatus,
         needs_name_review: pieceNeedsNameReview
-      }
+      },
+      content_warning: contentWarning || null,
     });
     _resyncAiRulesForPiece(pieceId);
 
@@ -10238,11 +10241,11 @@ app.put("/api/pieces/:pieceId", authenticateToken, multerWrap(pieceUpload.array(
       }
     }
 
-    // Custom squares shaped into a hate symbol (Terms and Conditions, section 10)
-    {
-      const patternError = checkPiecePatterns(pieceData.custom_movement_squares, pieceData.custom_attack_squares);
-      if (patternError) return res.status(400).send({ message: patternError });
-    }
+    // Custom squares shaped into what looks like a hate symbol: saved, but the
+    // creator is warned (Terms and Conditions, section 10) and it is logged
+    // for moderators - a person decides, not the detector.
+    const contentWarning = checkPiecePatterns(pieceData.custom_movement_squares, pieceData.custom_attack_squares);
+    if (contentWarning) console.warn(`[content-warning] user ${req.user?.id} saved piece "${pieceData.piece_name}": swastika-shaped custom squares`);
 
     // Professional name check: flag piece names containing sensitive terms for review (edit path)
     let pieceEditNeedsNameReview = false;
@@ -10917,7 +10920,8 @@ app.put("/api/pieces/:pieceId", authenticateToken, multerWrap(pieceUpload.array(
         piece_name: pieceData.piece_name,
         moderation_status: moderationStatus,
         needs_name_review: pieceEditNeedsNameReview
-      }
+      },
+      content_warning: contentWarning || null,
     });
     _resyncAiRulesForPiece(pieceId);
 

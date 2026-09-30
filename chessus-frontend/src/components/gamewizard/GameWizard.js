@@ -646,7 +646,9 @@ const GameWizard = ({ editGameId }) => {
 
       if (isEditMode) {
         // Update existing game
-        await dispatch(updateGame(editGameId, finalGameData));
+        const savedGame = await dispatch(updateGame(editGameId, finalGameData));
+        // Saved, but the server spotted what looks like a hate symbol (Terms, section 10)
+        if (savedGame?.content_warning) window.alert(savedGame.content_warning);
         trackEvent('Game', 'Update', gameData.game_name);
       } else {
         // Create new game
@@ -655,7 +657,8 @@ const GameWizard = ({ editGameId }) => {
           creator_id: currentUser ? currentUser.id : null,
           is_anonymous_creator: !currentUser || gameData.is_anonymous_creator,
         };
-        await dispatch(createGame(newGameData));
+        const createdGame = await dispatch(createGame(newGameData));
+        if (createdGame?.content_warning) window.alert(createdGame.content_warning);
         trackGameCreation(gameData.game_name);
       }
       
@@ -702,7 +705,8 @@ const GameWizard = ({ editGameId }) => {
       let savedId = null;
       if (isEditMode && isDraftMode && !isPublishedGame) {
         // Editing an existing draft - update it in place
-        await dispatch(updateGame(editGameId, draftData));
+        const savedDraft = await dispatch(updateGame(editGameId, draftData));
+        if (savedDraft?.content_warning) window.alert(savedDraft.content_warning);
         trackEvent('Game', 'SaveDraft', gameData.game_name);
         savedId = editGameId;
       } else {
@@ -713,6 +717,7 @@ const GameWizard = ({ editGameId }) => {
           is_anonymous_creator: !currentUser || gameData.is_anonymous_creator,
         };
         const result = await dispatch(createGame(newDraftData));
+        if (result?.content_warning) window.alert(result.content_warning);
         trackEvent('Game', isPublishedGame ? 'CopyAsDraft' : 'CreateDraft', gameData.game_name);
         // After creating a new draft, switch to edit mode so future saves update instead of creating new
         if (result?.result?.id) {

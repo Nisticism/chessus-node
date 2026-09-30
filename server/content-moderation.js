@@ -243,7 +243,8 @@ function formsSwastika(squares) {
 
 /**
  * A piece's custom movement and attack squares (as saved - JSON or arrays),
- * checked apart and together. Returns the refusal message, or null.
+ * checked apart and together. Returns the warning for the creator, or null -
+ * a warning, not a refusal: the creator is told and a moderator decides.
  */
 function checkPiecePatterns(movementSquares, attackSquares) {
   const parse = (v) => {
@@ -257,8 +258,9 @@ function checkPiecePatterns(movementSquares, attackSquares) {
   const move = parse(movementSquares);
   const attack = parse(attackSquares);
   if (formsSwastika(move) || formsSwastika(attack) || formsSwastika([...move, ...attack])) {
-    return 'This piece\'s custom squares form a swastika. Movement and attack patterns shaped into hate '
-      + 'symbols are not allowed (Terms and Conditions, section 10).';
+    return 'Saved - but this piece\'s custom squares look like a swastika. Movement and attack patterns '
+      + 'shaped into hate symbols may be against the Terms and Conditions (section 10), and moderators can '
+      + 'remove the piece. If that is not what you meant, consider changing the pattern.';
   }
   return null;
 }
@@ -267,7 +269,7 @@ function checkPiecePatterns(movementSquares, attackSquares) {
  * A game's starting position (the wizard's pieces_string: an object keyed
  * "y,x", or an array, of placements with x / y and an owner), checked for the
  * same symbol - each player's pieces, and all of them together. Returns the
- * refusal message, or null.
+ * warning for the creator (never a refusal), or null.
  */
 function checkBoardPatterns(piecesString) {
   let placed;
@@ -287,8 +289,9 @@ function checkBoardPatterns(piecesString) {
   }
   const groups = [list, ...owners.values()];
   if (groups.some((g) => formsSwastika(squaresOf(g)))) {
-    return 'The starting position arranges pieces into a swastika. Arranging pieces into hate symbols '
-      + 'is not allowed (Terms and Conditions, section 10).';
+    return 'Saved - but the starting position looks like pieces arranged into a swastika. Arrangements '
+      + 'shaped into hate symbols may be against the Terms and Conditions (section 10), and moderators can '
+      + 'remove the game. If that is not what you meant, consider moving the pieces.';
   }
   return null;
 }

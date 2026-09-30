@@ -783,13 +783,16 @@ const PieceWizard = ({ editPieceId = null }) => {
       const forceCreate = !!opts.forceCreate;
       if (isEditMode && editPieceId && !forceCreate) {
         // Update existing piece
-        await updatePiece(editPieceId, formData);
+        const updated = await updatePiece(editPieceId, formData);
+        // Saved, but the server spotted what looks like a hate symbol (Terms, section 10)
+        if (updated?.content_warning) window.alert(updated.content_warning);
         dispatch(invalidatePieceValueCache(editPieceId));
         trackEvent('Piece', asDraft ? 'SaveDraft' : 'Update', pieceData.piece_name);
         navigate("/create/pieces");
       } else {
         // Create new piece (fresh, draft save, or duplicate of current state)
         const result = await createPiece(formData);
+        if (result?.content_warning) window.alert(result.content_warning);
         trackPieceCreation(pieceData.piece_name);
         if ((asDraft || forceCreate) && result?.result?.id) {
           navigate(`/create/piece/edit/${result.result.id}`);
