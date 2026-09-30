@@ -12,10 +12,10 @@ const DonorBadge = ({ totalDonations, hidden }) => {
   const isGold = amount >= 50;
   const badgeClass = isGold ? styles.goldBadge : styles.silverBadge;
   const badgeTitle = isGold 
-    ? `Gold Supporter - $${amount.toFixed(2)} donated` 
-    : `Silver Supporter - $${amount.toFixed(2)} donated`;
-  const badgeIcon = isGold ? '⭐' : '✦';
-  const badgeText = isGold ? 'Gold Supporter' : 'Silver Supporter';
+    ? `Grove Guardian - $${amount.toFixed(2)} donated` 
+    : `Sapling Supporter - $${amount.toFixed(2)} donated`;
+  const badgeIcon = isGold ? '🌳' : '🌱';
+  const badgeText = isGold ? 'Grove Guardian' : 'Sapling Supporter';
 
   return (
     <div className={`${styles.donorBadge} ${badgeClass}`} title={badgeTitle}>

@@ -3145,7 +3145,7 @@ const puzzleCreateAllowance = async (userId, gameTypeId = null) => {
     return {
       ...base, allowed: false,
       reason: `That is ${PUZZLE_DAILY_CAP} puzzles today, which is the daily limit. `
-        + 'Come back tomorrow, or Gold Supporters build without a daily limit at all.',
+        + 'Come back tomorrow, or Grove Guardians build without a daily limit at all.',
       requiresSupporter: true,
     };
   }
@@ -3153,7 +3153,7 @@ const puzzleCreateAllowance = async (userId, gameTypeId = null) => {
     return {
       ...base, allowed: false,
       reason: `You have built ${PUZZLE_FREE_PER_GAME} puzzles for this game, which is the free limit. `
-        + 'Silver Supporters can build as many as they like, for any game.',
+        + 'Sapling Supporters can build as many as they like, for any game.',
       requiresSupporter: true,
     };
   }
@@ -3228,7 +3228,7 @@ app.post("/api/piece-sounds", authenticateToken, multerWrap(pieceSoundUpload.sin
     if (!(await canUploadPieceSounds(req.user.id))) {
       cleanup();
       return res.status(403).send({
-        message: "Custom piece sounds are a Silver Supporter perk. Support the site to unlock them.",
+        message: "Custom piece sounds are a Sapling Supporter perk. Support the site to unlock them.",
         requiresSupporter: true,
       });
     }
@@ -7635,7 +7635,7 @@ app.post("/api/preferences/colors", authenticateToken, async (req, res) => {
         if ((wantsLight && !allowed(light_square_color, current?.light_square_color)) ||
             (wantsDark && !allowed(dark_square_color, current?.dark_square_color))) {
           return res.status(403).send({
-            message: "Choosing your own square colours is a Silver Supporter perk. Quick Themes are available to everyone.",
+            message: "Choosing your own square colours is a Sapling Supporter perk. Quick Themes are available to everyone.",
             requiresSupporter: true,
           });
         }

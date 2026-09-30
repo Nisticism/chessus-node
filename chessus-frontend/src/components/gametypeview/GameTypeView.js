@@ -3195,7 +3195,7 @@ Delete the game and its puzzles anyway?`)) {
               type="button"
               onClick={() => navigate(`/create/puzzle/${gameId}`)}
               className={styles["play-button"]}
-              title="Everyone can build up to 3 puzzles per game; Silver Supporters are not capped."
+              title="Everyone can build up to 3 puzzles per game; Sapling Supporters are not capped."
             >
               🧩 Build a Puzzle
             </button>
@@ -3272,7 +3272,7 @@ Delete the game and its puzzles anyway?`)) {
                   >
                     🧩 Puzzle Builder
                     {!puzzleBuilderAllowed && (
-                      <InfoTooltip text="Everyone can build up to 3 puzzles per game; Silver Supporters are not capped. Solving puzzles is free for everyone." />
+                      <InfoTooltip text="Everyone can build up to 3 puzzles per game; Sapling Supporters are not capped. Solving puzzles is free for everyone." />
                     )}
                   </button>
                 </div>

@@ -1058,7 +1058,7 @@ const AdminDashboard = () => {
         { headers: authHeader() }
       );
       setAlertType('success');
-      const tier = amount >= 50 ? '⭐ Gold' : amount >= 5 ? '❖ Silver' : 'removed';
+      const tier = amount >= 50 ? '🌳 Grove Guardian' : amount >= 5 ? '🌱 Sapling Supporter' : 'removed';
       setAlertMessage(`Donor badge ${tier} for ${donorUser.username}`);
       setShowAlert(true);
       setShowDonorModal(false);
@@ -1234,9 +1234,9 @@ const AdminDashboard = () => {
               <td style={{ whiteSpace: 'nowrap', fontSize: '0.85em' }}>
                 <div>
                   {Number(user.total_donations) >= 50
-                    ? '⭐ Gold'
+                    ? '🌳 Grove Guardian'
                     : Number(user.total_donations) >= 5
-                      ? '✦ Silver'
+                      ? '🌱 Sapling Supporter'
                       : 'None'}
                   {Number(user.total_donations) > 0 && (
                     <span style={{ color: 'var(--text-dim)' }}> (${Number(user.total_donations).toFixed(2)})</span>
@@ -1307,7 +1307,7 @@ const AdminDashboard = () => {
                     onClick={() => handleDonorClick(user)}
                     title={`Donor: $${user.total_donations || 0} total`}
                   >
-                    {Number(user.total_donations) >= 50 ? '⭐ Gold' : Number(user.total_donations) >= 5 ? '❖ Silver' : 'Badge'}
+                    {Number(user.total_donations) >= 50 ? '🌳 Grove Guardian' : Number(user.total_donations) >= 5 ? '🌱 Sapling' : 'Badge'}
                   </button>
                 </div>
               </td>
@@ -3774,7 +3774,7 @@ const AdminDashboard = () => {
   const renderDonorModal = () => {
     if (!showDonorModal || !donorUser) return null;
     const current = Number(donorUser.total_donations) || 0;
-    const currentTier = current >= 50 ? '⭐ Gold' : current >= 5 ? '✦ Silver' : 'No badge';
+    const currentTier = current >= 50 ? '🌳 Grove Guardian' : current >= 5 ? '🌱 Sapling Supporter' : 'No badge';
     return (
       <div
         className={styles["modal-overlay"]}
@@ -3800,7 +3800,7 @@ const AdminDashboard = () => {
                 placeholder="e.g. 10.00"
               />
               <small style={{ color: 'var(--text-dim)', marginTop: 6, display: 'block' }}>
-                Silver badge: $5–$49.99 &nbsp;·&nbsp; Gold badge: $50+
+                Sapling Supporter: $5–$49.99 &nbsp;·&nbsp; Grove Guardian: $50+
               </small>
             </div>
             <div className={styles["form-field"]} style={{ marginTop: 16 }}>
@@ -4303,10 +4303,10 @@ const AdminDashboard = () => {
                 {[
                   { key: 'game_limit_live', label: 'Live games (free users)', desc: 'Max active/ready live games a free logged-in user may be in at once', defaultVal: 4 },
                   { key: 'game_limit_correspondence', label: 'Correspondence games (free users)', desc: 'Max waiting/active correspondence games a free logged-in user may be in at once', defaultVal: 12 },
-                  { key: 'game_limit_live_silver', label: 'Live games (Silver Supporters)', desc: 'Max active/ready live games a Silver Supporter may be in at once', defaultVal: 10 },
-                  { key: 'game_limit_correspondence_silver', label: 'Correspondence games (Silver Supporters)', desc: 'Max waiting/active correspondence games a Silver Supporter may be in at once', defaultVal: 40 },
-                  { key: 'game_limit_live_gold', label: 'Live games (Gold Supporters)', desc: 'Max active/ready live games a Gold Supporter may be in at once', defaultVal: 10 },
-                  { key: 'game_limit_correspondence_gold', label: 'Correspondence games (Gold Supporters)', desc: 'Max waiting/active correspondence games a Gold Supporter may be in at once', defaultVal: 40 },
+                  { key: 'game_limit_live_silver', label: 'Live games (Sapling Supporters)', desc: 'Max active/ready live games a Sapling Supporter may be in at once', defaultVal: 10 },
+                  { key: 'game_limit_correspondence_silver', label: 'Correspondence games (Sapling Supporters)', desc: 'Max waiting/active correspondence games a Sapling Supporter may be in at once', defaultVal: 40 },
+                  { key: 'game_limit_live_gold', label: 'Live games (Grove Guardians)', desc: 'Max active/ready live games a Grove Guardian may be in at once', defaultVal: 10 },
+                  { key: 'game_limit_correspondence_gold', label: 'Correspondence games (Grove Guardians)', desc: 'Max waiting/active correspondence games a Grove Guardian may be in at once', defaultVal: 40 },
                   { key: 'game_limit_live_admin', label: 'Live games (admins)', desc: 'Max active/ready live games an admin may be in at once. Role wins over donations, so a donating admin uses this.', defaultVal: 10 },
                   { key: 'game_limit_correspondence_admin', label: 'Correspondence games (admins)', desc: 'Max waiting/active correspondence games an admin may be in at once', defaultVal: 40 },
                   { key: 'game_limit_open', label: 'Open matches (logged-in users)', desc: 'Max open (waiting for opponent) matches a logged-in user may have at once. Not tiered.', defaultVal: 8 },

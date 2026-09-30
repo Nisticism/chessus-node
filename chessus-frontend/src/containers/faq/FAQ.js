@@ -187,7 +187,7 @@ const faqData = [
       },
       {
         q: "What are donor badges?",
-        a: "Donor badges are special recognitions displayed on your profile. Silver badges are awarded for donations of $5–$49.99, and Gold badges for donations of $50 or more. You can choose to hide your badge in your account settings if you prefer."
+        a: "Donor badges are special recognitions displayed on your profile. The Sapling Supporter badge is awarded for donations of $5–$49.99, and the Grove Guardian badge for donations of $50 or more. You can choose to hide your badge in your account settings if you prefer."
       },
       {
         q: "How do I report a bug or suggest a feature?",

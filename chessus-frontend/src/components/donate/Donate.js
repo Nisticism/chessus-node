@@ -10,6 +10,7 @@ import cashappQR from "../../assets/cashapp-qr.png";
 import venmoQR from "../../assets/venmo-qr.png";
 import axios from "axios";
 import API_URL from "../../global/global";
+import AmazonPledgeDraft, { AMAZON_PLEDGE_PUBLISHED } from "./AmazonPledgeDraft";
 
 /*
  * What to show before the server has answered.
@@ -566,11 +567,11 @@ const Donate = () => {
 
           <div className={styles.perkTiers}>
             <div className={styles.perkTier}>
-              <h3 className={styles.silverBadge}>✦ Silver Supporter — ${perks.silverMinDonation}+</h3>
+              <h3 className={styles.silverBadge}>🌱 Sapling Supporter — ${perks.silverMinDonation}+</h3>
               <ul className={styles.perkList}>
                 <li>
                   <strong>Build as many puzzles as you like.</strong> Everyone can build
-                  {' '}{perks.freePuzzlesPerGame} puzzles per game; Silver removes that cap,
+                  {' '}{perks.freePuzzlesPerGame} puzzles per game; Sapling Supporters have no such cap,
                   leaving only the {perks.dailyPuzzleCap}-a-day ceiling that keeps scripts
                   off the list. Solving puzzles is free for everyone, always.
                 </li>
@@ -588,17 +589,17 @@ const Donate = () => {
                   and hit sounds.
                 </li>
                 <li>
-                  <strong>The Silver badge</strong> on your profile, which you can hide at
+                  <strong>The Sapling Supporter badge</strong> on your profile, which you can hide at
                   any time.
                 </li>
               </ul>
             </div>
 
             <div className={styles.perkTier}>
-              <h3 className={styles.goldBadge}>⭐ Gold Supporter — ${perks.goldMinDonation}+</h3>
+              <h3 className={styles.goldBadge}>🌳 Grove Guardian — ${perks.goldMinDonation}+</h3>
               <ul className={styles.perkList}>
                 <li>
-                  <strong>Everything Silver Supporters get</strong>, plus:
+                  <strong>Everything Sapling Supporters get</strong>, plus:
                 </li>
                 <li>
                   <strong>No puzzle limit at all.</strong> Not even the
@@ -608,10 +609,10 @@ const Donate = () => {
                 <li>
                   <strong>More games again.</strong> {perks.gameLimits.gold.live} live games and
                   {' '}{perks.gameLimits.gold.correspondence} correspondence — {perks.gameLimits.gold.live - perks.gameLimits.silver.live} and
-                  {' '}{perks.gameLimits.gold.correspondence - perks.gameLimits.silver.correspondence} more than Silver.
+                  {' '}{perks.gameLimits.gold.correspondence - perks.gameLimits.silver.correspondence} more than Sapling Supporters.
                 </li>
                 <li>
-                  <strong>The Gold badge</strong> on your profile in place of the Silver one.
+                  <strong>The Grove Guardian badge</strong> on your profile in place of the Sapling one.
                 </li>
               </ul>
             </div>
@@ -624,6 +625,14 @@ const Donate = () => {
             perk without donating.
           </p>
         </div>
+
+        {/* The 10%-for-the-Amazon pledge: a draft only staff see until it is published. */}
+        {(AMAZON_PLEDGE_PUBLISHED || ['admin', 'owner'].includes(String(currentUser?.role || '').toLowerCase())) && (
+          <>
+            <Divider />
+            <AmazonPledgeDraft />
+          </>
+        )}
 
         <Divider />
 

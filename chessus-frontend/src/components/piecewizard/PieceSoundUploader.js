@@ -81,7 +81,7 @@ const PieceSoundUploader = ({ pieceData, updatePieceData, currentUser }) => {
 
       {!allowed && (
         <p className={styles["field-hint"]} style={{ color: 'var(--gold-header)' }}>
-          ✦ Custom piece sounds are a Silver Supporter perk. Support the site to unlock them.
+          🌱 Custom piece sounds are a Sapling Supporter perk. Support the site to unlock them.
         </p>
       )}
 
