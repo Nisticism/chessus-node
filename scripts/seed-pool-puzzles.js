@@ -156,7 +156,7 @@ process.env.DB_NAME = dsn.database;
 /** Titles, from the goal. Short, and the owner can edit any of them afterwards. */
 const TITLE_FOR_GOAL = {
   checkmate_in_1: 'Mate in one',
-  capture_target: 'Take the key piece',
+  capture_target: 'Capture in one',
   stalemate_them: 'Stalemate in one',
   no_moves_them: 'Leave them stuck',
   lose_all_pieces: 'Lose it all',
