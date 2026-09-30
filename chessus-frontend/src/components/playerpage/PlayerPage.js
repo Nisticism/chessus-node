@@ -510,6 +510,7 @@ const PlayerPage = (props) => {
     try {
       const response = await axios.post(API_URL + 'profile/upload-picture', formData, {
         headers: {
+          ...authHeader(),
           'Content-Type': 'multipart/form-data'
         }
       });

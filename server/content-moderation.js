@@ -203,13 +203,23 @@ function formsSwastika(squares) {
     [[1, 0], [0, 1], [-1, 0], [0, -1]],   // upright
     [[1, 1], [-1, 1], [-1, -1], [1, -1]], // turned 45 degrees
   ];
-  // Candidate centres: every square and the piece's own (0,0).
-  const centres = [[0, 0], ...coords];
+  // Candidate centres: the piece's own (0,0), every square, and - for a
+  // pattern whose centre is an empty square, as on a board - the middle of
+  // its bounding box and its rounded centroid (a stray square or two moves one
+  // but seldom both).
+  const xs = coords.map((c) => c[0]);
+  const ys = coords.map((c) => c[1]);
+  const mid = [Math.round((Math.min(...xs) + Math.max(...xs)) / 2), Math.round((Math.min(...ys) + Math.max(...ys)) / 2)];
+  const mean = [Math.round(xs.reduce((a, b) => a + b, 0) / xs.length), Math.round(ys.reduce((a, b) => a + b, 0) / ys.length)];
+  const centres = [[0, 0], mid, mean, ...coords];
   for (const [cx, cy] of centres) {
     for (const dirs of axes) {
       for (const turn of [1, -1]) {
         for (let arm = 2; arm <= 7; arm++) {
           for (let hook = 1; hook <= arm; hook++) {
+            // A shape of the wrong size cannot match - skip building it
+            // (its centre and up to two strays aside).
+            if (size < 4 * (arm + hook) || size > 4 * (arm + hook) + 3) continue;
             const shape = new Set();
             dirs.forEach(([dx, dy], i) => {
               // the hook turns the same way at every arm - that is the symbol
@@ -249,6 +259,36 @@ function checkPiecePatterns(movementSquares, attackSquares) {
   if (formsSwastika(move) || formsSwastika(attack) || formsSwastika([...move, ...attack])) {
     return 'This piece\'s custom squares form a swastika. Movement and attack patterns shaped into hate '
       + 'symbols are not allowed (Terms and Conditions, section 10).';
+  }
+  return null;
+}
+
+/**
+ * A game's starting position (the wizard's pieces_string: an object keyed
+ * "y,x", or an array, of placements with x / y and an owner), checked for the
+ * same symbol - each player's pieces, and all of them together. Returns the
+ * refusal message, or null.
+ */
+function checkBoardPatterns(piecesString) {
+  let placed;
+  try {
+    placed = typeof piecesString === 'string' ? JSON.parse(piecesString || '{}') : (piecesString || {});
+  } catch (e) {
+    return null;
+  }
+  const list = (Array.isArray(placed) ? placed : Object.values(placed))
+    .filter((p) => p && !p._occupied && Number.isFinite(Number(p.x)) && Number.isFinite(Number(p.y)));
+  const squaresOf = (pieces) => pieces.map((p) => ({ col: Number(p.x), row: Number(p.y) }));
+  const owners = new Map();
+  for (const p of list) {
+    const owner = p.player_id ?? p.player_number ?? p.team ?? 0;
+    if (!owners.has(owner)) owners.set(owner, []);
+    owners.get(owner).push(p);
+  }
+  const groups = [list, ...owners.values()];
+  if (groups.some((g) => formsSwastika(squaresOf(g)))) {
+    return 'The starting position arranges pieces into a swastika. Arranging pieces into hate symbols '
+      + 'is not allowed (Terms and Conditions, section 10).';
   }
   return null;
 }
@@ -517,6 +557,7 @@ module.exports = {
   checkBannedTerms,
   formsSwastika,
   checkPiecePatterns,
+  checkBoardPatterns,
   extractHost,
   isHostAllowed,
   DEFAULT_ALLOWED_HOSTS,

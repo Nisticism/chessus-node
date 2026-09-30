@@ -259,11 +259,23 @@ const TermsAndConditions = () => {
               piece is called and whatever image it uses.
             </li>
             <li>
+              <strong>The arrangement of pieces on the board is held to the same standard.</strong>{" "}
+              A game whose starting position lays pieces out in a swastika - or in any other obscene,
+              hateful or political symbol - is prohibited, as is one that uses custom squares,
+              impassable squares or other board features to draw one. It makes no difference which
+              pieces are used or which player owns them.
+            </li>
+            <li>
               Misspellings, abbreviations, symbols or look-alike characters used to get around these
               rules or the Platform's automatic filters (for example "Hitlar" for Hitler). These are
               treated exactly as the original term would be.
             </li>
           </ul>
+          <p>
+            New accounts can upload their own images (piece artwork, profile pictures and images in
+            messages) one week after joining; images from the image library can be used straight
+            away, and supporters can upload immediately.
+          </p>
           <p>
             Content like this may be held for review or refused automatically when it is saved, and
             moderators will remove it wherever it is found. Because it is uploaded deliberately,

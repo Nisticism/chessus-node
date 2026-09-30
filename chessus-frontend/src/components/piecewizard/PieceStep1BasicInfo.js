@@ -8,6 +8,9 @@ import { pieceImageLibrary } from "../../assets/piece-images";
 import { checkForLinks, checkOffensiveContent, checkProfessionalName } from "../../utils/contentModeration";
 import LinkInsertButton from "../common/LinkInsertButton";
 import PiecesService from "../../services/pieces.service";
+import axios from "axios";
+import API_URL from "../../global/global";
+import authHeader from "../../services/auth-header";
 
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";
 
@@ -47,6 +50,17 @@ const computeImageBrightness = (dataUrl) => {
 
 const PieceStep1BasicInfo = ({ pieceData, updatePieceData, isEditMode = false, existingImages = [], setExistingImages, currentUser }) => {
   const [visibleImageCount, setVisibleImageCount] = useState(2);
+  // New accounts wait a week before uploading their own images (the server's
+  // imageUploadWait) - said here, before anybody builds a piece around one.
+  const [uploadWait, setUploadWait] = useState(null);
+  useEffect(() => {
+    if (!currentUser) return undefined;
+    let live = true;
+    axios.get(`${API_URL}users/me/image-upload-status`, { headers: authHeader() })
+      .then((res) => { if (live) setUploadWait(res.data?.allowed === false ? res.data : null); })
+      .catch(() => {});
+    return () => { live = false; };
+  }, [currentUser]);
   const [showLibraryModal, setShowLibraryModal] = useState(false);
   const [libraryTargetIndex, setLibraryTargetIndex] = useState(0);
   const [libraryTab, setLibraryTab] = useState('builtin'); // 'builtin' | 'community'
@@ -211,6 +225,10 @@ const PieceStep1BasicInfo = ({ pieceData, updatePieceData, isEditMode = false, e
       // Require login to upload custom images
       if (!currentUser) {
         alert('You must be logged in to upload custom images. Please use the image library instead.');
+        return;
+      }
+      if (uploadWait) {
+        alert(uploadWait.message);
         return;
       }
       
@@ -474,6 +492,11 @@ const PieceStep1BasicInfo = ({ pieceData, updatePieceData, isEditMode = false, e
         <p className={styles["upload-community-notice"]}>
           Uploaded images will be available under <strong>Community Images</strong> in the piece image library, and may be used by other players to create their own pieces. By uploading, you confirm that your image does not have a license that would prohibit this use.
         </p>
+        {uploadWait && (
+          <p className={styles["upload-community-notice"]} style={{ color: '#ffd28a' }}>
+            {uploadWait.message}
+          </p>
+        )}
         
         {brightnessWarning && (
           <div className={styles["brightness-warning"]}>

@@ -347,7 +347,7 @@ app.use((req, res, next) => {
 // const path = require('path');
 const db_pool = require("../configs/db");
 const dbHelpers = require("./db-helpers");
-const { checkUsername, validateContent, checkProfessionalName, checkPiecePatterns } = require("./content-moderation");
+const { checkUsername, validateContent, checkProfessionalName, checkPiecePatterns, checkBoardPatterns } = require("./content-moderation");
 const imageModeration = require("./image-moderation");
 const initialStateValidator = require("./initial-state-validator");
 // "Opponent chooses the piece type" - see designated-piece.js.
@@ -2903,6 +2903,50 @@ const hasAdminRole = (role) => {
   return r === 'admin' || r === 'owner';
 };
 
+/*
+ * New accounts wait a week before uploading images of their own - piece
+ * artwork, profile pictures, images in messages. Library images are always
+ * fine. Supporters (any tier) and staff skip the wait.
+ *
+ * It is there to put off throwaway accounts made to upload something
+ * objectionable: a week is long enough that most will not bother, and what
+ * gets through is removed by hand (Terms, sections 10 and 11).
+ *
+ * Returns null when this user may upload, or { allowedFrom: 'October 7' }.
+ */
+const NEW_ACCOUNT_IMAGE_WAIT_DAYS = 7;
+async function imageUploadWait(userId) {
+  if (!userId) return null;
+  const [[u]] = await db_pool.query(
+    `SELECT role, total_donations,
+            created_at > NOW() - INTERVAL ${NEW_ACCOUNT_IMAGE_WAIT_DAYS} DAY AS is_new,
+            DATE_FORMAT(created_at + INTERVAL ${NEW_ACCOUNT_IMAGE_WAIT_DAYS} DAY, '%Y-%m-%d') AS allowed_day
+       FROM users WHERE id = ?`,
+    [userId]
+  );
+  if (!u || !Number(u.is_new)) return null;
+  if (hasAdminRole(u.role) || parseFloat(u.total_donations || 0) >= SILVER_MIN_DONATION) return null;
+  const allowedFrom = new Date(`${u.allowed_day}T12:00:00Z`)
+    .toLocaleDateString('en-US', { month: 'long', day: 'numeric', timeZone: 'UTC' });
+  return { allowedFrom };
+}
+
+const imageUploadWaitMessage = (wait) =>
+  `New accounts can upload their own images one week after joining - you can from ${wait.allowedFrom}. `
+  + 'Until then, images from the image library work as usual. Supporters can upload straight away.';
+
+// May this user upload images of their own yet? (See imageUploadWait.) Lets
+// the piece editor and avatar upload say so up front instead of on save.
+app.get("/api/users/me/image-upload-status", authenticateToken, async (req, res) => {
+  try {
+    const wait = await imageUploadWait(req.user.id);
+    res.json(wait ? { allowed: false, allowedFrom: wait.allowedFrom, message: imageUploadWaitMessage(wait) } : { allowed: true });
+  } catch (err) {
+    console.error("Error checking image upload status:", err);
+    res.json({ allowed: true });
+  }
+});
+
 // Everyone who may use a locked piece without knowing its password.
 const canBypassPiecePassword = (user, pieceRow) => {
   if (!user) return false;
@@ -3978,6 +4022,12 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
     const nameCheck = validateContent(gameData.game_name, { fieldName: 'Game name', maxLength: 100, bannedTerms: true });
     if (!nameCheck.isValid) {
       return res.status(400).send({ message: nameCheck.errors[0] });
+    }
+
+    // Pieces arranged into a hate symbol (Terms and Conditions, section 10)
+    if (gameData.pieces_string) {
+      const boardError = checkBoardPatterns(gameData.pieces_string);
+      if (boardError) return res.status(400).send({ message: boardError });
     }
 
     // Professional name check: flag games with sensitive terms for moderator review
@@ -6339,17 +6389,32 @@ app.post("/api/profile/change-password", authenticateToken, async (req, res) => 
   }
 });
 
-app.post("/api/profile/upload-picture", multerWrap(profilePictureUpload.single('profile_picture'), '2 MB'), async (req, res) => {
+/*
+ * Signed in, and your own picture unless you are staff. This route used to
+ * take anybody's word for user_id - so anyone, signed in or not, could replace
+ * any user's profile picture, and was sent back that user's account row.
+ */
+app.post("/api/profile/upload-picture", authenticateToken, multerWrap(profilePictureUpload.single('profile_picture'), '2 MB'), async (req, res) => {
   try {
-    const userId = req.body.user_id;
+    const userId = req.body.user_id || req.user.id;
     const imageFile = req.file;
 
     if (!imageFile) {
       return res.status(400).send({ message: "Profile picture is required" });
     }
 
-    if (!userId) {
-      return res.status(400).send({ message: "User ID is required" });
+    if (Number(userId) !== Number(req.user.id) && !hasAdminRole(req.user.role)) {
+      try { fs.unlinkSync(path.join(imageFile.destination, imageFile.filename)); } catch (e) {}
+      return res.status(403).send({ message: "You can only change your own profile picture." });
+    }
+
+    // New accounts wait a week to upload their own images (imageUploadWait)
+    {
+      const wait = await imageUploadWait(req.user.id);
+      if (wait) {
+        try { fs.unlinkSync(path.join(imageFile.destination, imageFile.filename)); } catch (e) {}
+        return res.status(403).send({ message: imageUploadWaitMessage(wait), code: 'NEW_ACCOUNT_IMAGE_WAIT' });
+      }
     }
 
     // NSFW scan on profile picture
@@ -9036,6 +9101,12 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
       return res.status(400).send({ message: nameCheck.errors[0] });
     }
 
+    // Pieces arranged into a hate symbol (Terms and Conditions, section 10)
+    if (gameData.pieces_string) {
+      const boardError = checkBoardPatterns(gameData.pieces_string);
+      if (boardError) return res.status(400).send({ message: boardError });
+    }
+
     // Professional name check: flag games with sensitive terms for moderator review
     let gameNeedsNameReview = false;
     let gameNameProfCheck = null;
@@ -9673,6 +9744,17 @@ app.post("/api/pieces/create", authenticateToken, multerWrap(pieceUpload.array('
       return res.status(401).send({ message: "You must be logged in to upload custom images. Please use the image library or sign in." });
     }
 
+    // New accounts wait a week to upload their own images (imageUploadWait)
+    if (creator_id && imageFiles.some((_, i) => !imageSources[i] || imageSources[i] === 'upload')) {
+      const wait = await imageUploadWait(creator_id);
+      if (wait) {
+        for (const file of imageFiles) {
+          try { fs.unlinkSync(path.join(file.destination, file.filename)); } catch (e) {}
+        }
+        return res.status(403).send({ message: imageUploadWaitMessage(wait), code: 'NEW_ACCOUNT_IMAGE_WAIT' });
+      }
+    }
+
     // Run NSFW scan on custom-uploaded images only (library images are pre-approved)
     let moderationStatus = 'approved';
     let scanResults = [];
@@ -10250,6 +10332,18 @@ app.put("/api/pieces/:pieceId", authenticateToken, multerWrap(pieceUpload.array(
         try { fs.unlinkSync(path.join(file.destination, file.filename)); } catch (e) {}
       }
       return res.status(401).send({ message: "You must be logged in to upload custom images. Please use the image library or sign in." });
+    }
+
+    // New accounts wait a week to upload their own images (imageUploadWait).
+    // The uploader, not the piece's creator: staff editing a piece are exempt.
+    if (hasCustomUploads) {
+      const wait = await imageUploadWait(req.user.id);
+      if (wait) {
+        for (const file of imageFiles) {
+          try { fs.unlinkSync(path.join(file.destination, file.filename)); } catch (e) {}
+        }
+        return res.status(403).send({ message: imageUploadWaitMessage(wait), code: 'NEW_ACCOUNT_IMAGE_WAIT' });
+      }
     }
 
     let moderationStatus = existingPiece.moderation_status || 'approved';
@@ -16059,6 +16153,15 @@ app.post(
         return res.status(400).json({ error: "Invalid recipient" });
       }
       if (!req.file) return res.status(400).json({ error: "No image file provided" });
+
+      // New accounts wait a week to upload their own images (imageUploadWait)
+      {
+        const wait = await imageUploadWait(userId);
+        if (wait) {
+          fs.unlink(req.file.path, () => {});
+          return res.status(403).json({ error: imageUploadWaitMessage(wait), code: 'NEW_ACCOUNT_IMAGE_WAIT' });
+        }
+      }
 
       const u1 = Math.min(userId, otherUserId);
       const u2 = Math.max(userId, otherUserId);
