@@ -1664,6 +1664,67 @@ app.put("/api/tournaments/:tournamentId", authenticateToken, async (req, res) =>
   }
 });
 
+/*
+ * What a profile request may see of a user row.
+ *
+ * The row comes from SELECT *, which holds the password hash, the stored
+ * refresh token, reset tokens and linked-account ids. This route used to send
+ * it all back with only the email removed - to anyone, signed in or not - so
+ * every account's hash and live refresh token were one request away.
+ *
+ * Someone else's profile is an ALLOW-list, so a column added later stays
+ * private until somebody decides otherwise. Your own profile is everything
+ * except the secrets (the editor and settings read their own fields from it).
+ *
+ * Bans: everyone learns only THAT an account is banned, which is what lets the
+ * profile page say so. Staff also get the reason, who, when and until when.
+ */
+const PROFILE_PUBLIC_FIELDS = [
+  'id', 'username', 'role', 'admin_level', 'last_active_at', 'created_at', 'timezone', 'lang', 'country', 'bio',
+  'light_square_color', 'dark_square_color', 'elo', 'puzzle_elo', 'puzzles_solved', 'profile_picture',
+  'total_donations', 'hide_donation_badge', 'show_display_name', 'allow_non_friend_dms', 'disable_game_chat',
+  'chat_public_for_spectators', 'show_computer_games_publicly', 'disallow_guest_opponents',
+  'chess_com_username', 'lichess_username', 'twitch_channel', 'discord_username',
+];
+const PROFILE_SECRET_FIELDS = [
+  'password', 'refresh_token', 'password_reset_token', 'password_reset_expires',
+  'google_id', 'lichess_id', 'twitch_id',
+];
+const BAN_FIELDS = ['banned', 'ban_reason', 'banned_at', 'banned_by', 'ban_expires_at'];
+
+async function profileForViewer(user, { isOwnProfile, viewerIsStaff }) {
+  // An expired ban is no ban, whatever the row still says until the next login clears it.
+  const banActive = !!user.banned && !(user.ban_expires_at && new Date(user.ban_expires_at) < new Date());
+  let out;
+  if (isOwnProfile) {
+    out = { ...user };
+    for (const k of [...PROFILE_SECRET_FIELDS, ...BAN_FIELDS]) delete out[k];
+  } else {
+    out = {};
+    for (const k of PROFILE_PUBLIC_FIELDS) if (user[k] !== undefined) out[k] = user[k];
+    // Only show a real name if the user opted in via show_display_name.
+    if (user.show_display_name) {
+      if (user.first_name !== undefined) out.first_name = user.first_name;
+      if (user.last_name !== undefined) out.last_name = user.last_name;
+    }
+  }
+  out.banned = banActive;
+  if (banActive && viewerIsStaff) {
+    let bannedByName = null;
+    if (user.banned_by) {
+      const [[by]] = await db_pool.query('SELECT username FROM users WHERE id = ?', [user.banned_by]).catch(() => [[null]]);
+      bannedByName = by?.username || null;
+    }
+    out.ban = {
+      reason: user.ban_reason || null,
+      banned_at: user.banned_at || null,
+      banned_by: bannedByName,
+      expires_at: user.ban_expires_at || null,
+    };
+  }
+  return out;
+}
+
 app.get("/api/user", optionalAuthenticate, async (req, res) => {
   try {
     const username = req.query.username;
@@ -1689,18 +1750,9 @@ app.get("/api/user", optionalAuthenticate, async (req, res) => {
       user.discord_username = dsc.username;
     }
 
-    // Strip personal information if viewing someone else's profile
-    const isOwnProfile = req.user && req.user.username === username;
-    if (!isOwnProfile) {
-      delete user.email;
-      // Only show name if user has opted in via show_display_name
-      if (!user.show_display_name) {
-        delete user.first_name;
-        delete user.last_name;
-      }
-    }
-    
-    res.json({ result: user, message: "User found" });
+    const isOwnProfile = !!(req.user && req.user.username === username);
+    const viewerIsStaff = !!(req.user && (req.user.role === 'admin' || req.user.role === 'owner'));
+    res.json({ result: await profileForViewer(user, { isOwnProfile, viewerIsStaff }), message: "User found" });
   } catch (err) {
     console.error("Error in /api/user:", err);
     res.status(500).send({ err: err.message });
@@ -6468,7 +6520,7 @@ app.post("/api/profile/upload-picture", authenticateToken, multerWrap(profilePic
     // Fetch and return the updated user
     const updatedUser = await dbHelpers.findUserById(userId);
     if (updatedUser) {
-      delete updatedUser.password; // Don't send password to client
+      for (const k of PROFILE_SECRET_FIELDS) delete updatedUser[k]; // never send hashes or tokens
     }
 
     res.json({ 
@@ -6570,6 +6622,8 @@ app.post("/api/login", async (req, res) => {
     user.refreshToken = refreshToken;
     delete user.password; // Don't send password to client
     delete user.refresh_token; // Don't expose the stored token
+    delete user.password_reset_token;
+    delete user.password_reset_expires;
     delete user.banned; // Don't expose ban status
     delete user.ban_reason;
     delete user.banned_at;
@@ -6720,6 +6774,8 @@ app.post("/api/auth/google", async (req, res) => {
     user.refreshToken = refreshToken;
     delete user.password;
     delete user.refresh_token;
+    delete user.password_reset_token;
+    delete user.password_reset_expires;
     delete user.banned;
     delete user.ban_reason;
     delete user.banned_at;
@@ -6912,6 +6968,8 @@ app.post("/api/auth/lichess", async (req, res) => {
     user.refreshToken = refreshToken;
     delete user.password;
     delete user.refresh_token;
+    delete user.password_reset_token;
+    delete user.password_reset_expires;
     delete user.banned;
     delete user.ban_reason;
     delete user.banned_at;
@@ -7115,6 +7173,8 @@ app.post("/api/auth/twitch", async (req, res) => {
     user.refreshToken = refreshToken;
     delete user.password;
     delete user.refresh_token;
+    delete user.password_reset_token;
+    delete user.password_reset_expires;
     delete user.banned;
     delete user.ban_reason;
     delete user.banned_at;
@@ -14577,7 +14637,7 @@ app.put("/api/admin/users/:userId", authenticateAdmin, async (req, res) => {
       "SELECT * FROM users WHERE id = ?",
       [userId]
     );
-    delete updatedUser.password;
+    for (const k of PROFILE_SECRET_FIELDS) delete updatedUser[k];
 
     res.json({ success: true, user: updatedUser, message: "User updated successfully" });
   } catch (err) {
