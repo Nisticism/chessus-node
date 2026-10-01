@@ -52,6 +52,46 @@ const toEngineFields = (row) => {
 
 export { toEngineFields };
 
+/*
+ * The board stores compact placements; the move engine needs full pieces. This
+ * is the same merge the server does before it validates - piece definition,
+ * plus board position, plus the per-game-type flags that make a piece royal.
+ *
+ * Exported so a caller can build pieces for a position other than the live one
+ * (PuzzleSolver's step-through of a revealed answer) without fetching every
+ * piece definition a second time.
+ */
+export const buildEnginePieces = (placements, pieceDataMap) => {
+  return Object.entries(placements).map(([k, pl]) => {
+    const [y, x] = k.split(',').map(Number);
+    const def = toEngineFields(pieceDataMap[pl.piece_id] || {});
+    const player = Number(pl.player_id ?? pl.team ?? 1);
+    return {
+      ...def,
+      id: pl.id || `${pl.piece_id}_${y}_${x}`,
+      piece_id: pl.piece_id,
+      x, y,
+      player_id: player,
+      team: player,
+      ends_game_on_checkmate: pl.ends_game_on_checkmate ?? def.ends_game_on_checkmate ?? false,
+      ends_game_on_capture: pl.ends_game_on_capture ?? def.ends_game_on_capture ?? false,
+      /*
+       * Castling and first-move state, all of it decided by the server and
+       * carried on the placement. The shared client engine reads exactly these
+       * names: without hasMoved it would offer a double step to a pawn halfway
+       * up the board, and without the resolved partner ids it would never draw
+       * a castling dot at all, because partner KEYS are not partner ids.
+       */
+      hasMoved: !!pl.hasMoved,
+      moveCount: Number(pl.moveCount) || 0,
+      can_castle: pl.can_castle ?? def.can_castle ?? false,
+      castling_distance: pl.castling_distance ?? def.castling_distance ?? null,
+      castling_partner_left_id: pl.castling_partner_left_id ?? null,
+      castling_partner_right_id: pl.castling_partner_right_id ?? null,
+    };
+  });
+};
+
 const usePuzzleEngine = ({ placements, gameType = null, gameTypeId = null, enPassantTarget = null, boardWidth = null, boardHeight = null, apiBase = null }) => {
   const [pieceDataMap, setPieceDataMap] = useState({});
   const [fetchedGameType, setFetchedGameType] = useState(null);
@@ -88,41 +128,7 @@ const usePuzzleEngine = ({ placements, gameType = null, gameTypeId = null, enPas
     return () => { cancelled = true; };
   }, [placements, pieceDataMap, apiBase]);
 
-  /*
-   * The board stores compact placements; the move engine needs full pieces. This
-   * is the same merge the server does before it validates - piece definition,
-   * plus board position, plus the per-game-type flags that make a piece royal.
-   */
-  const enginePieces = useMemo(() => {
-    return Object.entries(placements).map(([k, pl]) => {
-      const [y, x] = k.split(',').map(Number);
-      const def = toEngineFields(pieceDataMap[pl.piece_id] || {});
-      const player = Number(pl.player_id ?? pl.team ?? 1);
-      return {
-        ...def,
-        id: pl.id || `${pl.piece_id}_${y}_${x}`,
-        piece_id: pl.piece_id,
-        x, y,
-        player_id: player,
-        team: player,
-        ends_game_on_checkmate: pl.ends_game_on_checkmate ?? def.ends_game_on_checkmate ?? false,
-        ends_game_on_capture: pl.ends_game_on_capture ?? def.ends_game_on_capture ?? false,
-        /*
-         * Castling and first-move state, all of it decided by the server and
-         * carried on the placement. The shared client engine reads exactly these
-         * names: without hasMoved it would offer a double step to a pawn halfway
-         * up the board, and without the resolved partner ids it would never draw
-         * a castling dot at all, because partner KEYS are not partner ids.
-         */
-        hasMoved: !!pl.hasMoved,
-        moveCount: Number(pl.moveCount) || 0,
-        can_castle: pl.can_castle ?? def.can_castle ?? false,
-        castling_distance: pl.castling_distance ?? def.castling_distance ?? null,
-        castling_partner_left_id: pl.castling_partner_left_id ?? null,
-        castling_partner_right_id: pl.castling_partner_right_id ?? null,
-      };
-    });
-  }, [placements, pieceDataMap]);
+  const enginePieces = useMemo(() => buildEnginePieces(placements, pieceDataMap), [placements, pieceDataMap]);
 
   const specialSquares = useMemo(() => {
     const squares = { range: {}, promotion: {}, control: {}, special: {} };

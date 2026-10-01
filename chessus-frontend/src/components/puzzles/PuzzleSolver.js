@@ -21,7 +21,7 @@ import { solverTrayItems, withPlacers, placesPieces } from "../../helpers/placem
 import { usePuzzleVetoes, VetoPanel, VetoAnswer, ContinueNotice, MoveProgress, MoveHint } from "./PuzzleVetoes";
 import { applyPromotionDefinition, promotionPieceNumber, solvedPliesRemaining, colToFile, doesPieceOccupySquare } from "../../helpers/pieceMovementUtils";
 import { cellSize, coveringKey, clearFootprint, spanStyle, moveTarget, dotAt, movesOf, previewOutlines, moveCovers, tapMovesTo } from "./puzzleFootprint";
-import usePuzzleEngine from "./usePuzzleEngine";
+import usePuzzleEngine, { buildEnginePieces } from "./usePuzzleEngine";
 import styles from "./puzzlesolver.module.scss";
 
 /*
@@ -323,6 +323,12 @@ const PuzzleSolver = () => {
   const [duplicateError, setDuplicateError] = useState(null);
   const [hoveredMoves, setHoveredMoves] = useState([]);
   /*
+   * The position a finished puzzle is inspected on - the board as drawn, which
+   * while stepping through a revealed answer is that step, not the live board.
+   * Set once per render, below reviewPlacements; read by the click handler.
+   */
+  const inspectRef = useRef({ placements: {}, pieces: [] });
+  /*
    * Dragging a piece.
    *
    * Not HTML5 drag-and-drop: the piece images are `pointer-events: none` (so a
@@ -500,7 +506,8 @@ const PuzzleSolver = () => {
     },
   });
 
-  const hoverPiece = useCallback((piece) => {
+  // `pieces`: the position to read - the live board unless inspecting another one.
+  const hoverPiece = useCallback((piece, pieces = enginePieces) => {
     if (!piece || !board) { setHoveredMoves([]); return; }
     // Same arguments a live game's hover uses, so a piece's dots read the same
     // in a puzzle and in a game. forFog is what makes it a THREAT map: the
@@ -508,7 +515,7 @@ const PuzzleSolver = () => {
     // diagonals) are drawn as attacks, where before only a square with an
     // enemy already on it ever showed one.
     setHoveredMoves(movesOf(piece, moveEngine.calculateValidMoves(
-      piece, enginePieces, boardWidth, boardHeight,
+      piece, pieces, boardWidth, boardHeight,
       false,  // skipCheckFilter
       false,  // forPremove
       true,   // forHoverDisplay
@@ -920,7 +927,21 @@ const PuzzleSolver = () => {
   }, [drag, squareAtPoint, playFrom, hoverPiece, enginePieces]);
 
   const handleSquareClick = useCallback((x, y, how = null) => {
-    if (busy || finished || replaying) return;
+    if (busy || replaying) return;
+    /*
+     * Over: a click INSPECTS. It pins a piece's moves - either side's - so a
+     * solver can see how an unfamiliar piece really delivered the mate, and on
+     * a touch screen it is the only way to. Nothing moves once the puzzle ends.
+     */
+    if (finished) {
+      const { placements: cells, pieces } = inspectRef.current;
+      const key = coveringKey(cells, x, y) || keyOf(x, y);
+      const piece = cells[key] ? pieces.find((p) => doesPieceOccupySquare(p, x, y)) : null;
+      if (!piece || selected === key) { setSelected(null); setHoveredMoves([]); return; }
+      setSelected(key);
+      hoverPiece(piece, pieces);
+      return;
+    }
     if (vet.handleClick(x, y)) return;
     // The piece covering the square - any square of a multi-tile piece is it.
     const k = coveringKey(placements, x, y) || keyOf(x, y);
@@ -1056,6 +1077,13 @@ const PuzzleSolver = () => {
       .slice(0, revealStep + 1)
       .reduce((cells, ply) => applyPly(cells, ply), startPlacements);
   }, [revealStep, solution, startPlacements, puzzle]);
+
+  inspectRef.current = reviewPlacements
+    ? { placements: reviewPlacements, pieces: buildEnginePieces(reviewPlacements, pieceDataMap) }
+    : { placements, pieces: enginePieces };
+
+  // A new step of the answer is a new position: drop whatever was being inspected.
+  useEffect(() => { setSelected(null); setHoveredMoves([]); }, [revealStep]);
 
   /*
    * Start the puzzle over.
@@ -1279,8 +1307,10 @@ const PuzzleSolver = () => {
               onSquareLift={(x, y) => setSelected(coveringKey(placements, x, y) || keyOf(x, y))}
               onSquareMouseEnter={(x, y) => {
                 setPointerSq({ x, y });
-                if (!finished && !selected && !drag && !replaying) {
-                  hoverPiece(enginePieces.find((e) => doesPieceOccupySquare(e, x, y)));
+                // Before AND after the puzzle ends, on the position as drawn.
+                if (!selected && !drag && !replaying) {
+                  const { pieces } = inspectRef.current;
+                  hoverPiece(pieces.find((e) => doesPieceOccupySquare(e, x, y)), pieces);
                 }
               }}
               onSquareMouseLeave={() => { setPointerSq(null); if (!selected && !drag) setHoveredMoves([]); }}
