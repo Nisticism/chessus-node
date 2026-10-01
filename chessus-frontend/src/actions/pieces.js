@@ -52,6 +52,8 @@ export const getPieceById = async (pieceId) => {
      */
     const failure = new Error(getErrorMessage(error));
     failure.status = error?.response?.status || null;
+    // Removed because its creator was banned (server/banned-content.js).
+    failure.removed = !!error?.response?.data?.removed;
     return Promise.reject(failure);
   }
 };

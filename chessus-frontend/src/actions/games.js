@@ -54,7 +54,8 @@ export const getGames = (page = 1, limit = 20, sort = 'newest', winCondition = '
 
 export const getGameById = (gameId) => async () => {
   try {
-    const response = await axios.get(API_URL + "games/" + gameId);
+    // Signed in, staff can still open a game whose banned creator's content is hidden.
+    const response = await axios.get(API_URL + "games/" + gameId, { headers: authHeader() });
     return Promise.resolve(response.data);
   } catch (error) {
     return Promise.reject(error);

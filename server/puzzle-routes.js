@@ -68,6 +68,7 @@ const {
 const { renderPuzzle } = require('./puzzle-image');
 const { PLATFORM_ACCOUNT_USERNAME, platformAccountId } = require('./platform-account');
 const { rulesForPuzzle, ensureSnapshot, readLive } = require('./puzzle-snapshot');
+const { isStaffUser, creatorNotHidden, hideFromViewer, REMOVED_MESSAGE } = require('./banned-content');
 const { analyseUniqueness, describeUniqueness } = require('./puzzle-uniqueness');
 /*
  * Hydration lives in its own module because more than one thing needs it - the
@@ -397,7 +398,7 @@ function registerPuzzleRoutes(app, {
    * solution in the payload. A browse response that carried solution_line would
    * spoil every puzzle on it to anyone who opened the network tab.
    */
-  app.get('/api/puzzles', async (req, res) => {
+  app.get('/api/puzzles', optionalAuthenticate, async (req, res) => {
     try {
       const limit = Math.min(60, Math.max(1, parseInt(req.query.limit, 10) || 24));
       const offset = Math.max(0, parseInt(req.query.offset, 10) || 0);
@@ -419,6 +420,9 @@ function registerPuzzleRoutes(app, {
       const order = SORTS[req.query.sort] || SORTS.newest;
 
       const where = ['p.is_draft = 0', "p.moderation_status = 'approved'"];
+      // A banned creator's puzzles, and puzzles on a banned creator's games, are
+      // hidden from everyone but staff (banned-content.js).
+      if (!isStaffUser(req.user)) where.push(creatorNotHidden('p.creator_id'), creatorNotHidden('gt.creator_id'));
       const params = [];
       if (gameTypeId) { where.push('p.game_type_id = ?'); params.push(gameTypeId); }
       if (search) {
@@ -1536,6 +1540,12 @@ function registerPuzzleRoutes(app, {
       const viewer = req.user || null;
       if (puzzle.is_draft && !canEdit(puzzle, viewer)) {
         return res.status(404).send({ message: 'Puzzle not found' });
+      }
+      if (!isStaffUser(viewer)) {
+        const [[gt]] = await db_pool.query('SELECT creator_id FROM game_types WHERE id = ?', [puzzle.game_type_id]);
+        if (await hideFromViewer(db_pool, puzzle.creator_id, viewer) || await hideFromViewer(db_pool, gt?.creator_id, viewer)) {
+          return res.status(404).send({ message: REMOVED_MESSAGE, removed: true });
+        }
       }
 
       const includeSolution = canEdit(puzzle, viewer);
@@ -3185,6 +3195,8 @@ function registerPuzzleRoutes(app, {
 
       const viewer = req.user || null;
       const includeDrafts = !!viewer && (Number(viewer.id) === userId || isStaff(viewer));
+      // A banned creator's puzzles are hidden from everyone but staff (banned-content.js).
+      if (await hideFromViewer(db_pool, userId, viewer)) return res.json({ puzzles: [] });
 
       /*
        * Drafts have never been moderated and are not published, so the

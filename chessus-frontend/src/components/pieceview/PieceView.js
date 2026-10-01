@@ -91,9 +91,11 @@ const PieceView = () => {
          * about - say what happened instead of "something went wrong".
          */
         const status = err?.status ?? err?.response?.status;
-        setError(status === 404 || status === 410
-          ? "This piece no longer exists. It may have been deleted by its creator."
-          : "Failed to load piece");
+        setError(err?.removed
+          ? err.message
+          : status === 404 || status === 410
+            ? "This piece no longer exists. It may have been deleted by its creator."
+            : "Failed to load piece");
         setLoading(false);
       }
     };

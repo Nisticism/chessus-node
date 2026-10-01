@@ -673,7 +673,8 @@ const GameTypeView = () => {
         }
       } catch (err) {
         console.error("Error loading game:", err);
-        setError("Failed to load game");
+        // A banned creator's game says why it is gone.
+        setError(err?.response?.data?.removed ? err.response.data.message : "Failed to load game");
         setLoading(false);
       }
     };

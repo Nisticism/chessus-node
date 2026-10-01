@@ -5105,6 +5105,20 @@ const runMigrations = async () => {
   }
 
   /*
+   * Whether a ban hides what the person created (server/banned-content.js).
+   * Default on: most bans here are about content. Staff can turn it off per ban.
+   */
+  try {
+    if (!(await columnExists('users', 'ban_hides_content'))) {
+      await db_pool.query("ALTER TABLE users ADD COLUMN ban_hides_content TINYINT(1) NOT NULL DEFAULT 1 COMMENT 'While banned, hide their games, pieces, puzzles, picture and bio from everyone but staff'");
+      console.log('[DB] Added users.ban_hides_content');
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding users.ban_hides_content:', err.message);
+  }
+
+  /*
    * Each user's own view of a conversation - one row per (user, other user),
    * written only when they archive or delete it.
    *

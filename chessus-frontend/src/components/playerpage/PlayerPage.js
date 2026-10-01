@@ -262,8 +262,8 @@ const PlayerPage = (props) => {
            * else's unfinished work.
            */
           const [gamesRes, piecesRes, puzzlesRes] = await Promise.all([
-            axios.get(`${API_URL}games?creatorId=${playerPageUser.id}&limit=50${includeDrafts}`),
-            axios.get(`${API_URL}pieces?creatorId=${playerPageUser.id}&limit=50`),
+            axios.get(`${API_URL}games?creatorId=${playerPageUser.id}&limit=50${includeDrafts}`, { headers: authHeader() }),
+            axios.get(`${API_URL}pieces?creatorId=${playerPageUser.id}&limit=50`, { headers: authHeader() }),
             axios.get(`${API_URL}users/${playerPageUser.id}/puzzles`, { headers: authHeader() })
           ]);
           setCreatedGames(gamesRes.data.games || []);

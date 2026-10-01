@@ -52,6 +52,8 @@ const AdminDashboard = () => {
   const [banReason, setBanReason] = useState("");
   const [banExpiration, setBanExpiration] = useState("");
   const [isPermanentBan, setIsPermanentBan] = useState(true);
+  // Hide their games, pieces, puzzles, picture and bio while banned (server/banned-content.js).
+  const [banHidesContent, setBanHidesContent] = useState(true);
 
   // Donor badge states
   const [showDonorModal, setShowDonorModal] = useState(false);
@@ -928,6 +930,7 @@ const AdminDashboard = () => {
     setBanReason("");
     setBanExpiration("");
     setIsPermanentBan(true);
+    setBanHidesContent(true);
     setShowBanModal(true);
   };
 
@@ -944,7 +947,8 @@ const AdminDashboard = () => {
         `${API_URL}admin/users/${banningUser.id}/ban`,
         {
           reason: banReason,
-          expiresAt: isPermanentBan ? null : banExpiration
+          expiresAt: isPermanentBan ? null : banExpiration,
+          hideContent: banHidesContent,
         },
         { headers: authHeader() }
       );
@@ -3740,6 +3744,14 @@ const AdminDashboard = () => {
 
           <div className={styles["form-group"]}>
             <ToggleSwitch checked={isPermanentBan} onChange={(v) => setIsPermanentBan(v)} label="Permanent Ban" />
+          </div>
+
+          <div className={styles["form-group"]}>
+            <ToggleSwitch checked={banHidesContent} onChange={(v) => setBanHidesContent(v)} label="Hide everything they created" />
+            <small style={{ display: 'block', marginTop: 4, opacity: 0.8 }}>
+              Their games, pieces, puzzles, profile picture and bio are hidden from everyone but staff while the ban lasts.
+              Their profile stays up with a "Banned" banner. You can change this later on their profile.
+            </small>
           </div>
 
           {!isPermanentBan && (

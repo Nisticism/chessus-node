@@ -152,6 +152,7 @@ const MAX_LOGIN_ATTEMPTS = 10; // Allow 10 failed attempts before lockout
 const { sendWelcomeEmail, sendDonationEmail, sendContactEmail, sendPasswordResetEmail, sendNotificationSummaryEmail, verifyUnsubscribeToken } = require("./email-service");
 
 // Socket.io game handler
+const { isStaffUser, creatorNotHidden, hideFromViewer, hiddenCreatorIds, REMOVED_MESSAGE } = require('./banned-content');
 const { initializeSocket, activeGames: gsActiveGames, gameTimers: gsGameTimers, disconnectTimeouts: gsDisconnectTimeouts, onlineUsers, reconcileOnlineUsers, getIO, SILVER_MIN_DONATION, GOLD_MIN_DONATION } = require("./game-socket");
 
 //  Express
@@ -1690,7 +1691,7 @@ const PROFILE_SECRET_FIELDS = [
   'password', 'refresh_token', 'password_reset_token', 'password_reset_expires',
   'google_id', 'lichess_id', 'twitch_id',
 ];
-const BAN_FIELDS = ['banned', 'ban_reason', 'banned_at', 'banned_by', 'ban_expires_at'];
+const BAN_FIELDS = ['banned', 'ban_reason', 'banned_at', 'banned_by', 'ban_expires_at', 'ban_hides_content'];
 
 async function profileForViewer(user, { isOwnProfile, viewerIsStaff }) {
   // An expired ban is no ban, whatever the row still says until the next login clears it.
@@ -1709,6 +1710,17 @@ async function profileForViewer(user, { isOwnProfile, viewerIsStaff }) {
     }
   }
   out.banned = banActive;
+  /*
+   * What they made is hidden while the ban lasts unless staff chose otherwise
+   * (banned-content.js) - here that is the picture and the bio. Staff still see
+   * both, to review them.
+   */
+  const contentHidden = banActive && user.ban_hides_content !== 0 && user.ban_hides_content !== false;
+  out.content_hidden = contentHidden;
+  if (contentHidden && !viewerIsStaff && !isOwnProfile) {
+    out.profile_picture = null;
+    out.bio = null;
+  }
   if (banActive && viewerIsStaff) {
     let bannedByName = null;
     if (user.banned_by) {
@@ -1720,6 +1732,7 @@ async function profileForViewer(user, { isOwnProfile, viewerIsStaff }) {
       banned_at: user.banned_at || null,
       banned_by: bannedByName,
       expires_at: user.ban_expires_at || null,
+      hides_content: contentHidden,
     };
   }
   return out;
@@ -2585,7 +2598,7 @@ app.get("/api/match/:gameId", async (req, res) => {
   }
 });
 
-app.get("/api/pieces", async (req, res) => {
+app.get("/api/pieces", optionalAuthenticate, async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 20;
@@ -2608,6 +2621,9 @@ app.get("/api/pieces", async (req, res) => {
     let whereClause = '';
     const whereParams = [];
     const conditions = [];
+
+    // A banned creator's pieces are hidden from everyone but staff (banned-content.js).
+    if (!isStaffUser(req.user)) conditions.push(creatorNotHidden('p.creator_id'));
 
     if (creatorId) {
       conditions.push('p.creator_id = ?');
@@ -2703,9 +2719,14 @@ app.get("/api/pieces", async (req, res) => {
 });
 
 // Get all pieces with full movement/capture data (for sandbox mode)
-app.get("/api/pieces/full", async (req, res) => {
+app.get("/api/pieces/full", optionalAuthenticate, async (req, res) => {
   try {
-    const pieces = await dbHelpers.getAllPiecesWithMovement();
+    let pieces = await dbHelpers.getAllPiecesWithMovement();
+    // A banned creator's pieces are hidden from everyone but staff (banned-content.js).
+    if (!isStaffUser(req.user)) {
+      const hidden = await hiddenCreatorIds(db_pool);
+      if (hidden.size) pieces = pieces.filter((p) => !hidden.has(Number(p.creator_id)));
+    }
     // has_password comes out of MySQL as 0/1. Every other piece endpoint hands
     // back a real boolean (see sanitizePieceRow), and the difference matters in
     // JSX: `{piece.has_password && <lock/>}` renders a stray 0 for the number.
@@ -2736,6 +2757,9 @@ app.get("/api/pieces/community-images", async (req, res) => {
       // (backward-compatible: those pieces remain visible). When the column is set
       // and the first source is 'library', the piece is excluded.
       "(p.image_sources_json IS NULL OR JSON_UNQUOTE(JSON_EXTRACT(p.image_sources_json, '$[0]')) != 'library')",
+      // A banned creator's images are not offered for reuse - to anyone, staff
+      // included: this is where they would spread into new pieces.
+      creatorNotHidden('p.creator_id'),
     ];
     const params = [];
 
@@ -3624,12 +3648,15 @@ app.post("/api/pieces/duplicates", async (req, res) => {
 });
 
 // Get single piece by ID
-app.get("/api/pieces/:pieceId", async (req, res) => {
+app.get("/api/pieces/:pieceId", optionalAuthenticate, async (req, res) => {
   try {
     const { pieceId } = req.params;
     const piece = await dbHelpers.getPieceById(pieceId);
     if (!piece) {
       return res.status(404).send({ message: "Piece not found" });
+    }
+    if (await hideFromViewer(db_pool, piece.creator_id, req.user)) {
+      return res.status(404).send({ message: REMOVED_MESSAGE, removed: true });
     }
     res.json(piece);
   } catch (err) {
@@ -3639,10 +3666,14 @@ app.get("/api/pieces/:pieceId", async (req, res) => {
 });
 
 // Get all game types that use a specific piece
-app.get("/api/pieces/:pieceId/games", async (req, res) => {
+app.get("/api/pieces/:pieceId/games", optionalAuthenticate, async (req, res) => {
   try {
     const { pieceId } = req.params;
-    const games = await dbHelpers.getGameTypesByPieceId(pieceId);
+    let games = await dbHelpers.getGameTypesByPieceId(pieceId);
+    if (!isStaffUser(req.user) && Array.isArray(games)) {
+      const hidden = await hiddenCreatorIds(db_pool);
+      if (hidden.size) games = games.filter((g) => !hidden.has(Number(g.creator_id)));
+    }
     res.json(games);
   } catch (err) {
     console.error("Error in /api/pieces/:pieceId/games:", err);
@@ -3694,8 +3725,9 @@ app.get("/api/games/popular", async (req, res) => {
       LIMIT ?
     `, featuredIds.length > 0 ? [featuredIds, remainingCount] : [remainingCount]);
 
-    // Combine featured + popular
-    const allGames = [...featuredGames, ...popularGames];
+    // Combine featured + popular, without any banned creator's games (banned-content.js).
+    const hiddenCreators = await hiddenCreatorIds(db_pool);
+    const allGames = [...featuredGames, ...popularGames].filter((g) => !hiddenCreators.has(Number(g.creator_id)));
 
     // If still no games, fall back to most recent game types
     if (allGames.length === 0) {
@@ -3764,6 +3796,9 @@ app.get("/api/games", optionalAuthenticate, async (req, res) => {
     if (!creatorId) {
       conditions.push("(gt.name_review_status IS NULL OR gt.name_review_status != 'pending_review')");
     }
+
+    // A banned creator's games are hidden from everyone but staff (banned-content.js).
+    if (!isStaffUser(req.user)) conditions.push(creatorNotHidden('gt.creator_id'));
 
     if (creatorId) {
       conditions.push('gt.creator_id = ?');
@@ -3863,13 +3898,18 @@ app.get("/api/games", optionalAuthenticate, async (req, res) => {
 });
 
 // Get single game by ID
-app.get("/api/games/:gameId", async (req, res) => {
+app.get("/api/games/:gameId", optionalAuthenticate, async (req, res) => {
   try {
     const { gameId } = req.params;
     const game = await dbHelpers.getGameById(gameId);
     
     if (!game) {
       return res.status(404).send({ message: "Game not found" });
+    }
+    // A banned creator's game: removed for everyone but staff. Games already
+    // being played on it carry on - those run over the socket, not this route.
+    if (await hideFromViewer(db_pool, game.creator_id, req.user)) {
+      return res.status(404).send({ message: REMOVED_MESSAGE, removed: true });
     }
     
     // forum_id and upvote_count are independent � run them in parallel
@@ -7403,6 +7443,8 @@ app.post("/api/admin/users/:userId/ban", authenticateToken, async (req, res) => 
   try {
     const { userId } = req.params;
     const { reason, expiresAt } = req.body;
+    // Hide what they created (games, pieces, puzzles, picture, bio) unless staff say otherwise.
+    const hideContent = req.body.hideContent === undefined ? true : !!req.body.hideContent;
     const bannerId = req.user.id;
     const bannerRole = req.user.role;
 
@@ -7435,9 +7477,9 @@ app.post("/api/admin/users/:userId/ban", authenticateToken, async (req, res) => 
     // Ban the user
     await db_pool.query(
       `UPDATE users 
-       SET banned = 1, ban_reason = ?, banned_at = NOW(), banned_by = ?, ban_expires_at = ?
+       SET banned = 1, ban_reason = ?, banned_at = NOW(), banned_by = ?, ban_expires_at = ?, ban_hides_content = ?
        WHERE id = ?`,
-      [reason || 'No reason provided', bannerId, expiresAt || null, userId]
+      [reason || 'No reason provided', bannerId, expiresAt || null, hideContent ? 1 : 0, userId]
     );
 
     // End every session they have: no refresh succeeds after this, and the
@@ -7450,6 +7492,22 @@ app.post("/api/admin/users/:userId/ban", authenticateToken, async (req, res) => 
   } catch (err) {
     console.error("Error banning user:", err);
     res.status(500).send({ message: "Failed to ban user", err: err.message });
+  }
+});
+
+// Change whether a banned user's creations are hidden (admin/owner only).
+app.post("/api/admin/users/:userId/ban-content", authenticateToken, async (req, res) => {
+  try {
+    if (!isStaffUser(req.user)) {
+      return res.status(403).send({ message: "Access denied. Admin or owner role required." });
+    }
+    const hide = !!req.body?.hide;
+    const [r] = await db_pool.query('UPDATE users SET ban_hides_content = ? WHERE id = ? AND banned = 1', [hide ? 1 : 0, req.params.userId]);
+    if (!r.affectedRows) return res.status(404).send({ message: "That user is not banned" });
+    res.json({ message: hide ? "Their games, pieces and puzzles are now hidden." : "Their games, pieces and puzzles are visible again.", hides_content: hide });
+  } catch (err) {
+    console.error("Error changing ban content visibility:", err);
+    res.status(500).send({ message: "Failed to change that" });
   }
 });
 
