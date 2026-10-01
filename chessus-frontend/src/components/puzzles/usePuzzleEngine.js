@@ -1,3 +1,4 @@
+import { readBlockedDotMode } from "../../helpers/blockedDotMode";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import axios from "../../services/axios-interceptor";
 import API_URL from "../../global/global";
@@ -184,7 +185,7 @@ const usePuzzleEngine = ({ placements, gameType = null, gameTypeId = null, enPas
       false,  // forPremove
       true,   // forHoverDisplay
       true    // forFog
-    ) || []);
+    ) || [], moveEngine.calculateBlockedTargets(piece, enginePieces, width, height, { mode: readBlockedDotMode() }));
   }, [moveEngine, enginePieces, width, height]);
 
   // One object per change, not per render, so callers can depend on it.

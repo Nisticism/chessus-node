@@ -47,6 +47,50 @@ export const MOVE_DOT_BACKGROUNDS = {
   castle: 'rgba(var(--gold-rgb, 212, 175, 55), 0.7)',
 };
 
+/*
+ * The "blocked" dot (calculateBlockedTargets): where the piece would go if that
+ * square were free. Same colours as the ordinary dots, but hollow and dashed,
+ * with only a faint fill, so it reads as "could, but not now" - over a piece of
+ * your own, a piece that cannot be captured, an impassable square, or an enemy
+ * on a square the piece can only move to. "both" splits the ring the way the
+ * ordinary dot splits its fill: blue on the left, red on the right.
+ */
+const DOT_MOVE_LINE = 'rgba(33,150,243,0.9)';
+const DOT_CAPTURE_LINE = 'rgba(220,60,60,0.9)';
+const BLOCKED_DOT_BORDERS = {
+  move: DOT_MOVE_LINE,
+  capture: DOT_CAPTURE_LINE,
+  // top right bottom left
+  both: `${DOT_MOVE_LINE} ${DOT_CAPTURE_LINE} ${DOT_CAPTURE_LINE} ${DOT_MOVE_LINE}`,
+};
+const BLOCKED_DOT_FILLS = {
+  move: 'rgba(33,150,243,0.2)',
+  capture: 'rgba(220,60,60,0.2)',
+  both: 'linear-gradient(90deg, rgba(33,150,243,0.2) 0 50%, rgba(220,60,60,0.2) 50% 100%)',
+};
+// What the player can choose for those dots. The setting is per browser
+// (useBlockedDotMode, helpers/blockedDotMode.js).
+export const BLOCKED_DOT_MODES = ['pattern', 'first', 'off'];
+
+export const blockedDotStyle = (type) => ({
+  position: 'absolute',
+  top: '50%',
+  left: '50%',
+  width: '30%',
+  aspectRatio: '1',
+  translate: '-50% -50%',
+  borderRadius: '50%',
+  borderWidth: 'max(2px, 0.1em)',
+  borderStyle: 'dashed',
+  borderColor: BLOCKED_DOT_BORDERS[type] || BLOCKED_DOT_BORDERS.move,
+  background: BLOCKED_DOT_FILLS[type] || BLOCKED_DOT_FILLS.move,
+  boxSizing: 'border-box',
+  // A faint dark edge, so the ring still reads over a white piece.
+  filter: 'drop-shadow(0 0 1px rgba(0,0,0,0.6))',
+  pointerEvents: 'none',
+  zIndex: 6,
+});
+
 /**
  * Pick the dot for one generated move. Moves produced without
  * forHoverDisplay carry no move/attack split, so they fall back to plain
@@ -1204,7 +1248,15 @@ export const createMoveEngine = ({
   // first-move custom squares. Blocking by pieces in the way still applies,
   // because that is physical reach rather than legality. Used by the replay
   // board's default hover view; leave it off for anything that has to be legal.
-  const calculateValidMoves = (piece, pieces, boardWidth, boardHeight, skipCheckFilter = false, forPremove = false, forHoverDisplay = false, forFog = false, permissive = false) => {
+  //
+  // opts.onlySquares / opts.asIfEmpty (Sets of "x,y"), for calculateBlockedTargets:
+  // evaluate only those destinations, each as if nothing stood ON it (the rest
+  // of the board, and so every path to it, unchanged), and return straight
+  // after the per-square pass. One pass answers "would it reach this square if
+  // the square were free?" for every candidate at once.
+  const calculateValidMoves = (piece, pieces, boardWidth, boardHeight, skipCheckFilter = false, forPremove = false, forHoverDisplay = false, forFog = false, permissive = false, opts = null) => {
+    const onlySquares = opts?.onlySquares || null;
+    const asIfEmpty = opts?.asIfEmpty || null;
     // Apply range square bonus
     piece = applyRangeSquareBonus(piece);
 
@@ -1252,6 +1304,12 @@ export const createMoveEngine = ({
       for (let toX = 0; toX < boardWidth; toX++) {
         // Skip current position
         if (toX === piece.x && toY === piece.y) continue;
+        if (onlySquares && !onlySquares.has(`${toX},${toY}`)) continue;
+        const treatEmpty = !!(asIfEmpty && asIfEmpty.has(`${toX},${toY}`));
+        // Paths are searched as if the piece standing ON that square (a single-square one) were gone.
+        const pathPieces = treatEmpty
+          ? pieces.filter((p) => !(p.x === toX && p.y === toY && (p.piece_width || 1) === 1 && (p.piece_height || 1) === 1))
+          : pieces;
 
         // For multi-tile pieces, check the piece would fit on the board
         if (!doesPieceFitOnBoard(toX, toY, pw, ph, boardWidth, boardHeight)) continue;
@@ -1259,7 +1317,9 @@ export const createMoveEngine = ({
         // For multi-tile pieces, scan entire destination footprint for enemies
         let occupyingPiece = null;
         let blockedByInvincible = false;
-        if (pw > 1 || ph > 1) {
+        if (treatEmpty) {
+          // Asked as if the square were free: nothing at the destination counts.
+        } else if (pw > 1 || ph > 1) {
           // Find any enemy (or ally if can_capture_allies) in the destination footprint
           for (let dy = 0; dy < ph && !blockedByInvincible; dy++) {
             for (let dx = 0; dx < pw && !blockedByInvincible; dx++) {
@@ -1426,21 +1486,21 @@ export const createMoveEngine = ({
           pathClear = true;
         } else if (isRatioMove) {
           // Check L-shape paths with hopping abilities
-          pathClear = checkRatioPathClear(piece, toX, toY, pieces);
+          pathClear = checkRatioPathClear(piece, toX, toY, pathPieces);
         } else if (isStepMove) {
-          pathClear = canReachStepByStep(piece, toX, toY, pieces, boardWidth, boardHeight, isCapture);
+          pathClear = canReachStepByStep(piece, toX, toY, pathPieces, boardWidth, boardHeight, isCapture);
         } else if (pw > 1 || ph > 1) {
           // For multi-tile pieces, check path from ALL sub-squares to their destination sub-squares
           pathClear = true;
           for (let sdy = 0; sdy < ph && pathClear; sdy++) {
             for (let sdx = 0; sdx < pw && pathClear; sdx++) {
-              if (!isPathClear(piece.x + sdx, piece.y + sdy, toX + sdx, toY + sdy, pieces, piece, isCapture)) {
+              if (!isPathClear(piece.x + sdx, piece.y + sdy, toX + sdx, toY + sdy, pathPieces, piece, isCapture)) {
                 pathClear = false;
               }
             }
           }
         } else {
-          pathClear = isPathClear(piece.x, piece.y, toX, toY, pieces, piece, isCapture);
+          pathClear = isPathClear(piece.x, piece.y, toX, toY, pathPieces, piece, isCapture);
         }
 
         // For repeating ratio moves, check intermediate landing positions are clear.
@@ -1699,20 +1759,20 @@ export const createMoveEngine = ({
             if (isCustomSquareMove) {
               attackPathClear = true;
             } else if (isRatioMove) {
-              attackPathClear = checkRatioPathClear(piece, toX, toY, pieces);
+              attackPathClear = checkRatioPathClear(piece, toX, toY, pathPieces);
             } else if (isStepMove) {
-              attackPathClear = canReachStepByStep(piece, toX, toY, pieces, boardWidth, boardHeight, true);
+              attackPathClear = canReachStepByStep(piece, toX, toY, pathPieces, boardWidth, boardHeight, true);
             } else if (pw > 1 || ph > 1) {
               attackPathClear = true;
               for (let sdy = 0; sdy < ph && attackPathClear; sdy++) {
                 for (let sdx = 0; sdx < pw && attackPathClear; sdx++) {
-                  if (!isPathClear(piece.x + sdx, piece.y + sdy, toX + sdx, toY + sdy, pieces, piece, true)) {
+                  if (!isPathClear(piece.x + sdx, piece.y + sdy, toX + sdx, toY + sdy, pathPieces, piece, true)) {
                     attackPathClear = false;
                   }
                 }
               }
             } else {
-              attackPathClear = isPathClear(piece.x, piece.y, toX, toY, pieces, piece, true);
+              attackPathClear = isPathClear(piece.x, piece.y, toX, toY, pathPieces, piece, true);
             }
             reachedByAttack = attackPathClear;
           }
@@ -1734,6 +1794,9 @@ export const createMoveEngine = ({
       }
     }
     
+    // A blocked-target query (opts.onlySquares) wants the per-square answers only.
+    if (onlySquares) return moves;
+
     // Check for castling moves
     if (piece.can_castle && !piece.hasMoved) {
       const castleDist = piece.castling_distance || 2;
@@ -1932,7 +1995,134 @@ export const createMoveEngine = ({
     
     return moves;
   };
+
+  /*
+   * Blocked targets: where the piece's pattern reaches but it cannot go now.
+   * Drawn as hollow, dashed dots wherever the board draws no ordinary dot, so a
+   * player can see what stops a piece: their own piece in the way, an
+   * impassable square, an enemy that cannot be captured, an enemy on a square
+   * the piece can only MOVE to, a move that check rules out.
+   *
+   * Two modes (BLOCKED_DOT_MODES; the player picks in settings):
+   *
+   *   'pattern' (default) - every square the piece reaches on an otherwise
+   *     EMPTY board that it cannot reach now: the blockers and everything
+   *     behind them. One extra pass with a single piece on the board, so it
+   *     costs next to nothing on any board.
+   *
+   *   'first' - only the square that actually stops it: where the piece WOULD
+   *     go if that one square were a free, empty square with no constraints.
+   *     Squares behind a blocker (which would need more than one square freed)
+   *     are left alone. Not for multi-tile pieces: they need a whole footprint
+   *     free, so one square says nothing.
+   *
+   * How, in 'first' mode: every square that holds another piece or is
+   * impassable is a candidate. One engine pass (opts.onlySquares/asIfEmpty)
+   * asks each candidate "could the piece land here if nothing stood on it?",
+   * permissively and without the check filter, with the board's own hover
+   * flags. Cost: one pass over the candidate squares only.
+   *
+   * Returns Map "x,y" -> dot type ('move' | 'capture' | 'both'). Boards draw it
+   * only where they draw no ordinary dot.
+   */
+  // Bare patterns for 'pattern' mode, per piece and square (see below). One per
+  // engine, so per board and rule set.
+  const patternCache = new Map();
+  const calculateBlockedTargets = (piece, pieces, boardWidth, boardHeight, { forHoverDisplay = true, forFog = true, mode = 'pattern' } = {}) => {
+    const out = new Map();
+    if (!piece || !Array.isArray(pieces) || mode === 'off') return out;
+    const list = pieces.filter(Boolean);
+    const impassable = new Set(Object.entries(specialSquares?.special || {})
+      .filter(([, c]) => c && c.impassable)
+      .map(([k]) => { const [y, x] = k.split(',').map(Number); return `${x},${y}`; }));
+    /*
+     * Squares that already carry an ordinary dot are NOT taken out here: every
+     * board draws a blocked dot only where it draws no ordinary one. Working
+     * them out again would repeat the board's own full-board move pass - which
+     * was most of the cost on a large board.
+     */
+    const pw = piece.piece_width || 1;
+    const ph = piece.piece_height || 1;
+    const ownSquare = (x, y) => x >= piece.x && x < piece.x + pw && y >= piece.y && y < piece.y + ph;
+    const typeOf = (m) => {
+      const t = getMoveDotType(m);
+      return t === 'both' || t === 'capture' ? t : 'move';
+    };
+
+    if (mode !== 'first') {
+      /*
+       * The piece alone on the board, no rules - its bare pattern. It depends
+       * only on the piece and where it stands, never on the other pieces, so it
+       * is kept: hovering the same piece again (the usual case) costs nothing.
+       */
+      const cacheKey = [piece.piece_id ?? piece.id, piece.player_id ?? piece.team, piece.x, piece.y,
+        piece.hasMoved ? 1 : 0, piece.moveCount || 0, boardWidth, boardHeight, forHoverDisplay ? 1 : 0, forFog ? 1 : 0].join('|');
+      let open = patternCache.get(cacheKey);
+      if (!open) {
+        open = calculateValidMoves(piece, [piece], boardWidth, boardHeight, true, false, forHoverDisplay, forFog, true) || [];
+        if (patternCache.size >= 400) patternCache.clear();
+        patternCache.set(cacheKey, open);
+      }
+      for (const m of open) {
+        if (m.isRangedAttack || ownSquare(m.x, m.y)) continue;
+        const k = `${m.x},${m.y}`;
+        const prev = out.get(k);
+        const next = typeOf(m);
+        out.set(k, prev && prev !== next ? 'both' : next);
+      }
+      return out;
+    }
+
+    // A multi-tile piece needs its whole footprint clear to land, so "if this one
+    // square were free" does not say whether it could - no blocked dots for it.
+    if (pw > 1 || ph > 1) return out;
+
+    // Every square some other piece covers, plus every impassable square.
+    const candidates = new Map(); // "x,y" -> the piece standing there (or null)
+    for (const other of list) {
+      if (other.id === piece.id) continue;
+      const w = other.piece_width || 1;
+      const h = other.piece_height || 1;
+      for (let dy = 0; dy < h; dy++) {
+        for (let dx = 0; dx < w; dx++) {
+          const x = other.x + dx;
+          const y = other.y + dy;
+          if (x >= 0 && y >= 0 && x < boardWidth && y < boardHeight) candidates.set(`${x},${y}`, other);
+        }
+      }
+    }
+    for (const k of impassable) if (!candidates.has(k)) candidates.set(k, null);
+
+    const ask = new Set();
+    for (const k of candidates.keys()) {
+      const [x, y] = k.split(',').map(Number);
+      if (ownSquare(x, y)) continue; // its own square
+      ask.add(k);
+    }
+    if (!ask.size) return out;
+
+    /*
+     * ONE pass for every candidate: the engine checks just these squares, each
+     * as if nothing stood on it, with the rest of the board in place. A piece
+     * earlier on the path still blocks it, so only the square that stops the
+     * piece is ever marked, never one behind it. (Recomputing the whole move set
+     * once per candidate cost seconds on a 48x24 board.)
+     */
+    const reach = calculateValidMoves(piece, list, boardWidth, boardHeight, true, false, forHoverDisplay, forFog, true,
+      { onlySquares: ask, asIfEmpty: ask }) || [];
+    for (const m of reach) {
+      if (m.isRangedAttack) continue;
+      const k = `${m.x},${m.y}`;
+      if (!ask.has(k)) continue;
+      const merged = out.get(k);
+      const next = typeOf(m);
+      out.set(k, merged && merged !== next ? 'both' : next);
+    }
+    return out;
+  };
+
   return {
+    calculateBlockedTargets,
     checkMovement,
     resolveExact,
     checkIfFirstMoveOnlyMove,

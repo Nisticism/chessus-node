@@ -8,6 +8,7 @@ import { hasStaffRole } from "../../helpers/supporterTiers";
 import {
   getMoveDotType,
   MOVE_DOT_BACKGROUNDS,
+  blockedDotStyle,
 } from "../../helpers/moveEngine";
 import useBoardViewport from "../common/useBoardViewport";
 import BoardZoomControls from "../common/BoardZoomControls";
@@ -22,6 +23,7 @@ import { usePuzzleVetoes, VetoPanel, VetoAnswer, ContinueNotice, MoveProgress, M
 import { applyPromotionDefinition, promotionPieceNumber, solvedPliesRemaining, colToFile, doesPieceOccupySquare } from "../../helpers/pieceMovementUtils";
 import { cellSize, coveringKey, clearFootprint, spanStyle, moveTarget, dotAt, movesOf, previewOutlines, moveCovers, tapMovesTo } from "./puzzleFootprint";
 import usePuzzleEngine, { buildEnginePieces } from "./usePuzzleEngine";
+import { readBlockedDotMode } from "../../helpers/blockedDotMode";
 import styles from "./puzzlesolver.module.scss";
 
 /*
@@ -520,7 +522,7 @@ const PuzzleSolver = () => {
       false,  // forPremove
       true,   // forHoverDisplay
       true    // forFog
-    )));
+    ), moveEngine.calculateBlockedTargets(piece, pieces, boardWidth, boardHeight, { mode: readBlockedDotMode() })));
   }, [moveEngine, enginePieces, board, boardWidth, boardHeight]);
 
   /*
@@ -1186,9 +1188,13 @@ const PuzzleSolver = () => {
   };
 
   const renderSquare = (x, y) => {
-    const { k, p, concealed, pieceName } = squareState(x, y);
+    const { k, p, fogged, concealed, pieceName } = squareState(x, y);
     const src = concealed ? null : imageFor(p, pieceDataMap);
     const dot = dotAt(vet.pickDots.length ? vet.pickDots : hoveredMoves, x, y);
+    // Could move here if the square were free - never over fog or a hidden piece,
+    // which it would give away.
+    const blocked = !dot && !fogged && !concealed && !vet.pickDots.length && hoveredMoves.blocked
+      ? hoveredMoves.blocked.get(`${x},${y}`) : null;
     const isDragOrigin = !!drag && drag.fromKey === k;
     // A multi-tile piece is drawn once, from its anchor, over its whole footprint.
     const imgStyle = spanStyle(p, flipped, isDragOrigin ? { opacity: 0 } : null);
@@ -1214,6 +1220,7 @@ const PuzzleSolver = () => {
             style={{ background: MOVE_DOT_BACKGROUNDS[getMoveDotType(dot)] }}
           />
         )}
+        {blocked && <span style={blockedDotStyle(blocked)} />}
       </>
     );
   };

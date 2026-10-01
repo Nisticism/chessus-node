@@ -43,7 +43,9 @@ import {
   replayToMove,
   rangedFromFootprint
 } from "../../helpers/pieceMovementUtils";
-import { createMoveEngine, getMoveDotType, MOVE_DOT_BACKGROUNDS } from "../../helpers/moveEngine";
+import { createMoveEngine, getMoveDotType, MOVE_DOT_BACKGROUNDS, blockedDotStyle } from "../../helpers/moveEngine";
+import { useBlockedDotMode } from "../../helpers/blockedDotMode";
+import BlockedDotModeSelect from "../common/BlockedDotModeSelect";
 import { totalMaterialValue } from "../../utils/pieceValueEstimator";
 import { getFallbackPieceImage } from "../../utils/pieceFallback";
 import { gravityOf, restingSquare } from "../../helpers/boardGravity";
@@ -3843,6 +3845,23 @@ const LiveGame = () => {
     return map;
   }, [selectedPiece, gameState?.pieces, gameState?.gameType, calculateValidMoves]);
 
+  /*
+   * Where the piece showing dots WOULD go if that square were free - its own
+   * pieces, impassable squares, pieces it cannot capture, enemies on squares it
+   * can only move to (moveEngine.calculateBlockedTargets). Drawn as hollow
+   * dashed dots wherever no ordinary dot is drawn.
+   */
+  const [blockedDotMode] = useBlockedDotMode();
+  const blockedTargets = useMemo(() => {
+    const dotPiece = selectedPiece || (gameState?.showPieceHelpers ? hoveredPiece : null);
+    if (!dotPiece || !gameState?.pieces || blockedDotMode === 'off') return null;
+    return moveEngine.calculateBlockedTargets(
+      dotPiece, parsePieces(gameState.pieces),
+      gameState.gameType?.board_width || 8, gameState.gameType?.board_height || 8,
+      { mode: blockedDotMode }
+    );
+  }, [selectedPiece, hoveredPiece, gameState?.pieces, gameState?.showPieceHelpers, gameState?.gameType, moveEngine, blockedDotMode]);
+
   // Why this piece of mine may not be picked up now, if the piece type the
   // opponent chose rules it out. Null when it may.
   const dzBlockFor = useCallback((piece) => {
@@ -6145,6 +6164,9 @@ const LiveGame = () => {
 
         // Whether this square is hidden by fog (used to suppress piece/indicator rendering)
         const isFogged = !!(fogVisibleSquares && !fogVisibleSquares.has(`${gameX},${gameY}`));
+        // Never over fog: it would give away what is standing there.
+        const blockedType = !dotType && !activeIsRanged && !isFogged && blockedTargets
+          ? blockedTargets.get(`${gameX},${gameY}`) : null;
 
         squares.push(
           <div
@@ -6237,6 +6259,8 @@ const LiveGame = () => {
             })()}
             {/* Ranged move indicator — single span, no container, avoids DOM churn */}
             {activeIsRanged && <span className={styles["ranged-icon"]}>{`\uD83D\uDCA5`}</span>}
+            {/* Could move here if the square were free (calculateBlockedTargets). */}
+            {blockedType && <span style={blockedDotStyle(blockedType)} />}
             {/* Drag hover feedback: outline the square currently under the cursor. */}
             {draggedPiece && dragOverSquare && dragOverSquare.x === gameX && dragOverSquare.y === gameY && (
               <span style={{ position: 'absolute', inset: 0, boxShadow: 'inset 0 0 0 3px rgba(255,255,255,0.75)', borderRadius: 2, pointerEvents: 'none', zIndex: 5 }} />
@@ -7430,6 +7454,7 @@ const LiveGame = () => {
               onChange={(v) => setShowMovableIndicators(v)}
               label="Show movable pieces"
             />
+            <BlockedDotModeSelect />
             {hasSpecialSquares && (
               <ToggleSwitch
                 checked={showAllSpecialSquares}
@@ -8136,6 +8161,7 @@ const LiveGame = () => {
             onChange={(v) => setShowMovableIndicators(v)}
             label="Show movable pieces"
           />
+          <BlockedDotModeSelect />
           {hasSpecialSquares && (
             <ToggleSwitch
               checked={showAllSpecialSquares}

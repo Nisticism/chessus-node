@@ -6,7 +6,7 @@ import authHeader from "../../services/auth-header";
 import API_URL from "../../global/global";
 import { isSilverSupporter } from "../../helpers/supporterTiers";
 import useBoardViewport from "../common/useBoardViewport";
-import { MOVE_DOT_BACKGROUNDS, getMoveDotType } from "../../helpers/moveEngine";
+import { MOVE_DOT_BACKGROUNDS, getMoveDotType, blockedDotStyle } from "../../helpers/moveEngine";
 import PlacementTray from "../common/PlacementTray";
 import PromotionChooser from "../common/PromotionChooser";
 import GameRulesModal from "../common/GameRulesModal";
@@ -865,6 +865,8 @@ const PuzzlesPanel = () => {
   const renderSquare = useCallback((x, y) => {
     const pl = bySquare.get(`${y},${x}`);
     const hint = dotAt(hints, x, y);
+    // Could move here if the square were free (moveEngine.calculateBlockedTargets).
+    const blocked = !hint && hints?.blocked ? hints.blocked.get(`${x},${y}`) : null;
     const src = imageFor(pl);
     return (
       <>
@@ -895,6 +897,7 @@ const PuzzlesPanel = () => {
             aria-hidden="true"
           />
         )}
+        {blocked && <span style={blockedDotStyle(blocked)} aria-hidden="true" />}
       </>
     );
   }, [bySquare, hints, drag, flipped]);

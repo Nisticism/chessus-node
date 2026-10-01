@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from "react"
 import axios from "axios";
 import API_URL from "../../global/global";
 import useBoardViewport from "../common/useBoardViewport";
-import { MOVE_DOT_BACKGROUNDS, getMoveDotType } from "../../helpers/moveEngine";
+import { MOVE_DOT_BACKGROUNDS, getMoveDotType, blockedDotStyle } from "../../helpers/moveEngine";
 import PlacementTray from "../common/PlacementTray";
 import PromotionChooser from "../common/PromotionChooser";
 import useSetupMoveReplay from "../common/useSetupMoveReplay";
@@ -1005,6 +1005,8 @@ export default function DiscordActivity() {
   const renderSquare = useCallback((x, y) => {
     const pl = bySquare.get(`${y},${x}`);
     const hint = dotAt(hints, x, y);
+    // Could move here if the square were free (moveEngine.calculateBlockedTargets).
+    const blocked = !hint && hints?.blocked ? hints.blocked.get(`${x},${y}`) : null;
     const src = imageFor(pl);
     return (
       <>
@@ -1033,6 +1035,7 @@ export default function DiscordActivity() {
             aria-hidden="true"
           />
         )}
+        {blocked && <span style={blockedDotStyle(blocked)} aria-hidden="true" />}
       </>
     );
   }, [bySquare, hints, drag, flipped]);

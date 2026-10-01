@@ -7,10 +7,13 @@ import styles from "./matchview.module.scss";
 import API_URL from "../../global/global";
 import { colToFile, rowToRank, formatMoveNotation, replayToMove, doesPieceOccupySquare } from "../../helpers/pieceMovementUtils";
 import { canCreatePuzzles } from "../../helpers/supporterTiers";
+import { readBlockedDotMode } from "../../helpers/blockedDotMode";
+import BlockedDotModeSelect from "../common/BlockedDotModeSelect";
 import {
   createMoveEngine,
   getMoveDotType,
   MOVE_DOT_BACKGROUNDS,
+  blockedDotStyle,
   describeBoardIndicators,
 } from "../../helpers/moveEngine";
 import BoardLegend from "../common/BoardLegend";
@@ -361,6 +364,9 @@ const MatchView = () => {
         );
       });
     }
+    // Where it would go if the square were free (moveEngine.calculateBlockedTargets),
+    // carried with the moves so clearing them clears these too.
+    moves.blocked = moveEngine.calculateBlockedTargets(piece, displayedPieces, boardWidth, boardHeight, { mode: readBlockedDotMode() });
     setHoveredPiece(piece);
     setHoveredMoves(moves);
   };
@@ -450,6 +456,8 @@ const MatchView = () => {
           m => m.isDirectionChange && m.via && m.via.x === x && m.via.y === y && !!m.isCapture
         );
         const dotType = getMoveDotType(hoveredRegularMove);
+        const blockedType = hoveredPiece && !dotType && !hoveredRangedMove && hoveredMoves.blocked
+          ? hoveredMoves.blocked.get(`${x},${y}`) : null;
         const isHoverSource = !!inHoveredFootprint;
 
         squares.push(
@@ -463,6 +471,7 @@ const MatchView = () => {
             }}
           >
             {hoveredRangedMove && <span className={styles["ranged-icon"]}>{'💥'}</span>}
+            {blockedType && <span style={blockedDotStyle(blockedType)} />}
             {arrowAngleDeg !== null && (
               <svg
                 className={styles["last-move-arrow"]}
@@ -869,6 +878,9 @@ const MatchView = () => {
                       </p>
                     </>
                   )}
+                  <div className={styles["legend-toggle-row"]}>
+                    <BlockedDotModeSelect />
+                  </div>
                 </div>
               )}
             </div>

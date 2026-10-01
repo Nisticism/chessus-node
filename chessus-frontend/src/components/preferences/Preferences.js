@@ -5,6 +5,7 @@ import styles from "./preferences.module.scss";
 import Divider from "../Divider/Divider";
 import StandardButton from "../standardbutton/StandardButton";
 import InfoTooltip from "../piecewizard/InfoTooltip";
+import BlockedDotModeSelect from "../common/BlockedDotModeSelect";
 import ToggleSwitch from "../common/ToggleSwitch";
 import axios from "axios";
 import API_URL from "../../global/global";
@@ -655,6 +656,13 @@ const Preferences = () => {
               label="Enable piece shadow"
               tooltip={<InfoTooltip text="Adds a subtle shadow beneath pieces as if lit from the upper right of the board" />}
             />
+          </div>
+
+          {/* Blocked-move dots - kept in this browser and applied at once, on every board. */}
+          <div className={styles["animations-section"]}>
+            <div className={styles["animations-label"]}>Move Dots</div>
+            <BlockedDotModeSelect />
+            <p className={styles["section-description"]}>Saved in this browser straight away, for every board.</p>
           </div>
         </section>
 

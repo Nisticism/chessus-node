@@ -95,9 +95,12 @@ export const dotAt = (moves, x, y) => {
 };
 
 /** `moves` tagged with the piece they belong to, for dotAt. */
-export const movesOf = (piece, moves) => {
+export const movesOf = (piece, moves, blocked = null) => {
   const out = [...(moves || [])];
   out.forPiece = piece || null;
+  // Squares it would reach if they were free (moveEngine.calculateBlockedTargets),
+  // carried with the moves so whatever clears the moves clears these too.
+  out.blocked = blocked || null;
   return out;
 };
 
