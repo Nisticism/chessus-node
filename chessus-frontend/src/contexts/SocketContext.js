@@ -69,6 +69,13 @@ export const SocketProvider = ({ children }) => {
       lastAuthRef.current = null; // Reset so re-auth works on reconnect
     });
 
+    // Banned while signed in: the server has already ended every session, so
+    // sign this tab out too and show the reason on the login page.
+    newSocket.on('accountBanned', () => {
+      localStorage.removeItem('user');
+      window.location.href = '/login';
+    });
+
     newSocket.on('connect_error', (error) => {
       console.error('Socket connection error:', error);
       reconnectAttempts.current += 1;

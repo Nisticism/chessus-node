@@ -6608,15 +6608,8 @@ app.post("/api/login", async (req, res) => {
     const accessToken = generateAccessToken(userPayload);
     const refreshToken = generateRefreshToken(userPayload);
     
-    // Store refresh token and update last_active_at in database
-    try {
-      await db_pool.query(
-        "UPDATE users SET refresh_token = ?, last_active_at = NOW() WHERE id = ?",
-        [refreshToken, user.id]
-      );
-    } catch (dbErr) {
-      console.warn("Could not store refresh token (column may not exist yet):", dbErr.message);
-    }
+    // Store the refresh token (hashed, one row per device) and update last_active_at
+    await storeRefreshToken(user.id, refreshToken);
     
     user.accessToken = accessToken;
     user.refreshToken = refreshToken;
@@ -6765,10 +6758,7 @@ app.post("/api/auth/google", async (req, res) => {
     const accessToken = generateAccessToken(userPayload);
     const refreshToken = generateRefreshToken(userPayload);
 
-    await db_pool.query(
-      "UPDATE users SET refresh_token = ?, last_active_at = NOW() WHERE id = ?",
-      [refreshToken, user.id]
-    );
+    await storeRefreshToken(user.id, refreshToken);
 
     user.accessToken = accessToken;
     user.refreshToken = refreshToken;
@@ -6959,10 +6949,7 @@ app.post("/api/auth/lichess", async (req, res) => {
     const accessToken = generateAccessToken(userPayload);
     const refreshToken = generateRefreshToken(userPayload);
 
-    await db_pool.query(
-      "UPDATE users SET refresh_token = ?, last_active_at = NOW() WHERE id = ?",
-      [refreshToken, user.id]
-    );
+    await storeRefreshToken(user.id, refreshToken);
 
     user.accessToken = accessToken;
     user.refreshToken = refreshToken;
@@ -7164,10 +7151,7 @@ app.post("/api/auth/twitch", async (req, res) => {
     const accessToken = generateAccessToken(userPayload);
     const refreshToken = generateRefreshToken(userPayload);
 
-    await db_pool.query(
-      "UPDATE users SET refresh_token = ?, last_active_at = NOW() WHERE id = ?",
-      [refreshToken, user.id]
-    );
+    await storeRefreshToken(user.id, refreshToken);
 
     user.accessToken = accessToken;
     user.refreshToken = refreshToken;
@@ -7190,13 +7174,8 @@ app.post("/api/auth/twitch", async (req, res) => {
 
 app.post("/api/logout", authenticateToken, async (req, res) => {
   try {
-    const userId = req.user.id;
-    
-    // Clear refresh token from database
-    await db_pool.query(
-      "UPDATE users SET refresh_token = NULL WHERE id = ?",
-      [userId]
-    );
+    // End this device's session; other devices stay signed in.
+    if (req.body?.refreshToken) await revokeRefreshToken(req.body.refreshToken);
     
     res.json({ message: "Logged out successfully" });
   } catch (err) {
@@ -7461,11 +7440,11 @@ app.post("/api/admin/users/:userId/ban", authenticateToken, async (req, res) => 
       [reason || 'No reason provided', bannerId, expiresAt || null, userId]
     );
 
-    // Clear their refresh token to force logout
-    await db_pool.query(
-      "UPDATE users SET refresh_token = NULL WHERE id = ?",
-      [userId]
-    );
+    // End every session they have: no refresh succeeds after this, and the
+    // access-token check (authenticateToken) refuses them from the next request.
+    await revokeAllRefreshTokens(userId);
+    markUserBanned(Number(userId), true);
+    disconnectUserSockets(Number(userId));
 
     res.json({ message: "User banned successfully" });
   } catch (err) {
@@ -7491,6 +7470,7 @@ app.post("/api/admin/users/:userId/unban", authenticateToken, async (req, res) =
       [userId]
     );
 
+    markUserBanned(Number(userId), false);
     res.json({ message: "User unbanned successfully" });
   } catch (err) {
     console.error("Error unbanning user:", err);
@@ -9098,7 +9078,12 @@ app.post('/api/token', async (req, res) => {
         return res.status(403).send({ message: "Invalid refresh token" });
       }
 
-      // Check if user exists and is not banned (but allow multiple devices - don't require exact token match)
+      // The token must be one we issued and have not revoked (one row per device).
+      if (!(await refreshTokenIsLive(refreshToken))) {
+        return res.status(403).send({ message: "Session expired - please sign in again" });
+      }
+
+      // Check if user exists and is not banned
       const [users] = await db_pool.query(
         "SELECT id, username, role, admin_level, banned, ban_expires_at FROM users WHERE id = ?",
         [user.id]
@@ -13538,6 +13523,48 @@ app.delete('/api/announcements/:id', authenticateToken, async (req, res) => {
 
 // ----------------------- Middleware ------------------------------
 
+/*
+ * Who is banned right now, held in memory so every authenticated request can
+ * ask without a query. An access token lives 15 minutes and used to keep
+ * working for all of them after a ban; now the next request is refused.
+ *
+ * The ban and unban routes update it at once (markUserBanned); a re-read each
+ * minute picks up bans that expire and anything changed in the database by hand.
+ */
+let bannedUserIds = new Set();
+async function reloadBannedUsers() {
+  try {
+    const [rows] = await db_pool.query(
+      'SELECT id FROM users WHERE banned = 1 AND (ban_expires_at IS NULL OR ban_expires_at > NOW())');
+    bannedUserIds = new Set(rows.map((r) => Number(r.id)));
+  } catch (err) {
+    console.error('[ban] could not load banned users:', err.message);
+  }
+}
+reloadBannedUsers();
+setInterval(reloadBannedUsers, 60 * 1000).unref();
+
+function markUserBanned(userId, banned) {
+  if (banned) bannedUserIds.add(Number(userId));
+  else bannedUserIds.delete(Number(userId));
+}
+
+/* Tell a banned user's open tabs, then drop their live connection. */
+function disconnectUserSockets(userId) {
+  try {
+    const io = getIO();
+    const { userSockets } = require('./game-socket');
+    const socketId = userSockets?.get(userId) || userSockets?.get(String(userId));
+    const socket = socketId && io?.sockets?.sockets?.get(socketId);
+    if (socket) {
+      socket.emit('accountBanned', { message: 'Your account has been banned.' });
+      socket.disconnect(true);
+    }
+  } catch (err) {
+    console.error('[ban] could not disconnect sockets:', err.message);
+  }
+}
+
 function authenticateToken(req, res, next) {
   const authHeader = req.headers['authorization']
   const token = authHeader && authHeader.split(' ')[1]
@@ -13552,6 +13579,9 @@ function authenticateToken(req, res, next) {
       }
       return res.status(403).send({ message: "Invalid or expired token" });
     }
+    if (bannedUserIds.has(Number(user.id))) {
+      return res.status(403).send({ message: "Your account has been banned.", banned: true });
+    }
     req.user = user
     next()
   })
@@ -13565,7 +13595,8 @@ function optionalAuthenticate(req, res, next) {
     return next(); // No token, continue without user
   }
   jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, user) => {
-    if (!err) {
+    // A banned account browses as a visitor.
+    if (!err && !bannedUserIds.has(Number(user.id))) {
       req.user = user;
     }
     next(); // Continue regardless of token validity
@@ -13711,9 +13742,53 @@ function generateAccessToken(user) {
 }
 
 function generateRefreshToken(user) {
-  // Refresh tokens expire in 30 days (extended from 7 days for better UX)
-  const token = jwt.sign(user, process.env.REFRESH_TOKEN_SECRET, { expiresIn: '30d' });
+  // Refresh tokens expire in 30 days (extended from 7 days for better UX).
+  // jwtid makes every token distinct - two sign-ins in the same second would
+  // otherwise produce the same token, and so the same stored hash.
+  const token = jwt.sign(user, process.env.REFRESH_TOKEN_SECRET, {
+    expiresIn: '30d',
+    jwtid: crypto.randomBytes(12).toString('hex'),
+  });
   return token;
+}
+
+/*
+ * Refresh tokens are stored as SHA-256 hashes, one row per signed-in device
+ * (user_refresh_tokens; see the migration for why). /api/token accepts only a
+ * token with a row, so deleting rows ends sessions for real.
+ */
+const MAX_DEVICE_SESSIONS = 10;
+const hashRefreshToken = (token) => crypto.createHash('sha256').update(String(token)).digest('hex');
+
+async function storeRefreshToken(userId, token) {
+  await db_pool.query(
+    'INSERT IGNORE INTO user_refresh_tokens (user_id, token_hash, last_used_at) VALUES (?, ?, NOW())',
+    [userId, hashRefreshToken(token)]
+  );
+  // Keep the newest few devices; the oldest sign-ins drop off.
+  await db_pool.query(
+    `DELETE FROM user_refresh_tokens WHERE user_id = ? AND id NOT IN (
+       SELECT id FROM (SELECT id FROM user_refresh_tokens WHERE user_id = ? ORDER BY id DESC LIMIT ?) keep)`,
+    [userId, userId, MAX_DEVICE_SESSIONS]
+  );
+  // The old single raw column is no longer read; never leave a usable token in it.
+  await db_pool.query('UPDATE users SET refresh_token = NULL, last_active_at = NOW() WHERE id = ?', [userId]);
+}
+
+async function refreshTokenIsLive(token) {
+  const [[row]] = await db_pool.query(
+    'SELECT id FROM user_refresh_tokens WHERE token_hash = ? LIMIT 1', [hashRefreshToken(token)]);
+  if (row) db_pool.query('UPDATE user_refresh_tokens SET last_used_at = NOW() WHERE id = ?', [row.id]).catch(() => {});
+  return !!row;
+}
+
+async function revokeRefreshToken(token) {
+  await db_pool.query('DELETE FROM user_refresh_tokens WHERE token_hash = ?', [hashRefreshToken(token)]);
+}
+
+async function revokeAllRefreshTokens(userId) {
+  await db_pool.query('DELETE FROM user_refresh_tokens WHERE user_id = ?', [userId]);
+  await db_pool.query('UPDATE users SET refresh_token = NULL WHERE id = ?', [userId]);
 }
 
 // Security: Track failed login attempts

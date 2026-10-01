@@ -120,7 +120,9 @@ const refreshAccessToken = async () => {
 
 const logout = async () => {
   try {
-    const response = await axios.post(API_URL + "logout");
+    // Send this device's refresh token so the server ends exactly this session.
+    const refreshToken = getCurrentUser()?.refreshToken;
+    const response = await axios.post(API_URL + "logout", refreshToken ? { refreshToken } : {});
     localStorage.removeItem("user");
     return response.data;
   } catch (error) {

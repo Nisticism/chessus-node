@@ -1,12 +1,15 @@
 import axios from "axios";
-// import authHeader from "./auth-header";
+import authHeader from "./auth-header";
 
 import API_URL from "../global/global.js";
 
 
 const getUser = async(username) => {
+  // Signed in, the server can tell your own profile and staff apart from a
+  // visitor (staff see ban details; you see your own settings).
   const response = await axios.get(API_URL + "user", {
-    params: { username: username}
+    params: { username: username},
+    headers: authHeader(),
   });
   return response.data;
 };

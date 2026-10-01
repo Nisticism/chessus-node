@@ -23,6 +23,7 @@ import { useSocket } from "../../contexts/SocketContext";
 import DefaultAvatar from "../../assets/pieces/legacy/White-pawn.png";
 import ConfirmDeleteModal from "../common/ConfirmDeleteModal";
 import ImageLightbox from "../common/ImageLightbox";
+import BannedProfile from "./BannedProfile";
 import useSeo from "../../hooks/useSeo";
 // import NotFound from "../notfound/NotFound";
 
@@ -598,6 +599,7 @@ const PlayerPage = (props) => {
       ) : (
           <>
           {realUser ? 
+          <BannedProfile username={username} user={playerPageUser} currentUser={currentUser} onUnbanned={() => dispatch(getUser(username))}>
           <div className={styles["player-page-container"]}>
             <div className={styles["profile-header"]}>
               {currentUser && username === currentUser.username && (
@@ -1207,7 +1209,8 @@ const PlayerPage = (props) => {
               />
             </div>
           </div>
-           : 
+          </BannedProfile>
+           :
            <div className={styles["user-not-found"]}>
               <strong>
                 <header>

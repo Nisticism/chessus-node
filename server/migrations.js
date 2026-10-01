@@ -5076,6 +5076,35 @@ const runMigrations = async () => {
   }
 
   /*
+   * Refresh tokens, one row per signed-in device, stored as a SHA-256 hash.
+   *
+   * users.refresh_token held ONE raw token, and /api/token never compared
+   * against it - any validly signed token worked. Both mattered on 2026-10-01,
+   * when the public profile route was found to have been returning that column:
+   * the raw token was the thing exposed, and nothing could revoke it. A hash is
+   * useless to whoever reads it, and refresh now requires a row, so deleting
+   * rows (log out, ban) really ends a session. Several rows per user keep
+   * several devices signed in.
+   */
+  try {
+    if (!(await tableExists('user_refresh_tokens'))) {
+      await db_pool.query(`CREATE TABLE user_refresh_tokens (
+        id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NOT NULL,
+        token_hash CHAR(64) NOT NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        last_used_at DATETIME NULL,
+        UNIQUE KEY uniq_token_hash (token_hash),
+        KEY idx_user (user_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci`);
+      console.log('[DB] Created user_refresh_tokens');
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error creating user_refresh_tokens:', err.message);
+  }
+
+  /*
    * Each user's own view of a conversation - one row per (user, other user),
    * written only when they archive or delete it.
    *
