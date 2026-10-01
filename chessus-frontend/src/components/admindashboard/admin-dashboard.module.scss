@@ -95,6 +95,15 @@
 }
 
 .data-table {
+  /*
+   * A real table, on phones too. index.css turns every <table> into a
+   * display:block scroller below 768px; this one already sits in a
+   * .table-container that scrolls, and as a block it stopped growing to fit its
+   * columns - it stayed 800px (min-width) while its rows ran on to 1,100px+,
+   * and overflow: hidden below cut them off, so the container could only ever
+   * scroll the first 800px (Users, Games, Drafts, Forums, News, Anonymous Games).
+   */
+  display: table;
   width: 100%;
   min-width: 800px;
   border-collapse: collapse;
