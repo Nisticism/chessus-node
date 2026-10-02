@@ -66,7 +66,9 @@ const BLOCKED_DOT_BORDERS = {
 const BLOCKED_DOT_FILLS = {
   move: 'rgba(33,150,243,0.2)',
   capture: 'rgba(220,60,60,0.2)',
-  both: 'linear-gradient(90deg, rgba(33,150,243,0.2) 0 50%, rgba(220,60,60,0.2) 50% 100%)',
+  // 135deg, not 90deg: the "both" ring is turned -45deg (see blockedDotStyle),
+  // and this has to come out as the same left/right split as the solid dot.
+  both: 'linear-gradient(135deg, rgba(33,150,243,0.2) 0 50%, rgba(220,60,60,0.2) 50% 100%)',
 };
 // What the player can choose for those dots. The setting is per browser
 // (useBlockedDotMode, helpers/blockedDotMode.js).
@@ -83,6 +85,13 @@ export const blockedDotStyle = (type) => ({
   borderWidth: 'max(2px, 0.1em)',
   borderStyle: 'dashed',
   borderColor: BLOCKED_DOT_BORDERS[type] || BLOCKED_DOT_BORDERS.move,
+  /*
+   * Border colours are per SIDE, and on a circle the sides meet at the
+   * diagonals - so "both" (left+top blue, right+bottom red) split diagonally.
+   * Turned -45deg, the seams sit at the top and bottom: blue on the left, red
+   * on the right, matching the solid half-and-half dot.
+   */
+  ...(type === 'both' ? { rotate: '-45deg' } : {}),
   background: BLOCKED_DOT_FILLS[type] || BLOCKED_DOT_FILLS.move,
   boxSizing: 'border-box',
   // A faint dark edge, so the ring still reads over a white piece.
