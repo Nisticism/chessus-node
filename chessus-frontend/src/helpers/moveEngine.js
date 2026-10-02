@@ -49,11 +49,15 @@ export const MOVE_DOT_BACKGROUNDS = {
 
 /*
  * The "blocked" dot (calculateBlockedTargets): where the piece would go if that
- * square were free. Same colours as the ordinary dots, but hollow and dashed,
- * with only a faint fill, so it reads as "could, but not now" - over a piece of
- * your own, a piece that cannot be captured, an impassable square, or an enemy
- * on a square the piece can only move to. "both" splits the ring the way the
+ * square were free. Same colours as the ordinary dots, but a dashed ring with
+ * nothing inside - a filled dot means a move you can make, so it is kept for
+ * those alone - and it reads as "could, but not now": over a piece of your own,
+ * a piece that cannot be captured, an impassable square, or an enemy on a
+ * square the piece can only move to. "both" splits the ring the way the
  * ordinary dot splits its fill: blue on the left, red on the right.
+ *
+ * Its OUTSIDE edge matches the solid dot's: both are 30% of the square across,
+ * and border-box sizing puts the dashes inside that width rather than around it.
  */
 const DOT_MOVE_LINE = 'rgba(33,150,243,0.9)';
 const DOT_CAPTURE_LINE = 'rgba(220,60,60,0.9)';
@@ -62,13 +66,6 @@ const BLOCKED_DOT_BORDERS = {
   capture: DOT_CAPTURE_LINE,
   // top right bottom left
   both: `${DOT_MOVE_LINE} ${DOT_CAPTURE_LINE} ${DOT_CAPTURE_LINE} ${DOT_MOVE_LINE}`,
-};
-const BLOCKED_DOT_FILLS = {
-  move: 'rgba(33,150,243,0.2)',
-  capture: 'rgba(220,60,60,0.2)',
-  // 135deg, not 90deg: the "both" ring is turned -45deg (see blockedDotStyle),
-  // and this has to come out as the same left/right split as the solid dot.
-  both: 'linear-gradient(135deg, rgba(33,150,243,0.2) 0 50%, rgba(220,60,60,0.2) 50% 100%)',
 };
 // What the player can choose for those dots. The setting is per browser
 // (useBlockedDotMode, helpers/blockedDotMode.js).
@@ -92,7 +89,7 @@ export const blockedDotStyle = (type) => ({
    * on the right, matching the solid half-and-half dot.
    */
   ...(type === 'both' ? { rotate: '-45deg' } : {}),
-  background: BLOCKED_DOT_FILLS[type] || BLOCKED_DOT_FILLS.move,
+  background: 'none',
   boxSizing: 'border-box',
   // A faint dark edge, so the ring still reads over a white piece.
   filter: 'drop-shadow(0 0 1px rgba(0,0,0,0.6))',

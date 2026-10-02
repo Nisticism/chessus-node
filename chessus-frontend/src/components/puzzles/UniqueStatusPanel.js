@@ -75,7 +75,7 @@ export default function UniqueStatusPanel({ puzzleId, published, checkResult }) 
 
   let headline;
   if (status === 'verified') headline = <UniqueBadge status="verified" method={info.unique_method} />;
-  else if (status === 'not_unique') headline = <span className={styles["status-warn"]}>More than one solution</span>;
+  else if (status === 'not_unique') headline = <span className={styles["status-warn"]}>No unique solution</span>;
   else headline = <span className={styles["status-dim"]}>Not verified yet</span>;
 
   let explain = info.unique_detail;

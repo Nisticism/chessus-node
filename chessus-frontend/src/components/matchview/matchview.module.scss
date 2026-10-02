@@ -389,14 +389,14 @@
    --move-dot-bg custom property set inline, which avoids creating and
    destroying DOM nodes on every hover. */
 
-/* The dot is sized as a share of the square (25% of its width) rather than a
+/* The dot is sized as a share of the square (30% of its width) rather than a
    fixed pixel size, so it stays proportional from a zoomed-out 16x16 board to a
    zoomed-in 8x8 one. Percentages resolve against the square itself, so this
    costs no JS and no extra layout work per piece on large boards. */
 .board-square.has-move-dot::after {
   content: '';
   position: absolute;
-  width: 25%;
+  width: 30%;
   aspect-ratio: 1;
   border-radius: 50%;
   background: var(--move-dot-bg, rgba(33, 150, 243, 0.55));

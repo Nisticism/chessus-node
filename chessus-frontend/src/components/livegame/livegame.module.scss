@@ -1375,7 +1375,7 @@
   &.has-move-dot::after {
     content: '';
     position: absolute;
-    width: 25%;
+    width: 30%;
     aspect-ratio: 1;
     border-radius: 50%;
     background: var(--move-dot-bg, rgba(33,150,243,0.55));
@@ -1394,7 +1394,7 @@
     inset: unset;
     top: 50%;
     left: 50%;
-    width: 25%;
+    width: 30%;
     height: auto;
     aspect-ratio: 1;
     translate: -50% -50%;
