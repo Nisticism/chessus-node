@@ -8,6 +8,7 @@ import PromotionChooser from "../common/PromotionChooser";
 import useSetupMoveReplay from "../common/useSetupMoveReplay";
 import { solverTrayItems } from "../../helpers/placement";
 import { applyPromotionDefinition, promotionPieceNumber, solvedPliesRemaining } from "../../helpers/pieceMovementUtils";
+import { otherFinishesText } from "../../helpers/puzzleFinishes";
 import PuzzleBoard, { NOTATION_INSET, puzzleFlipped, squareFromPoint } from "../puzzles/PuzzleBoard";
 import { useTapOutside } from "../common/useTouchPieceGestures";
 import useDiscordSdk from "./useDiscordSdk";
@@ -616,13 +617,14 @@ export default function DiscordActivity() {
         // work out - a surrounded group in Go - and is the authority when it does.
         setBoard(data.position
           ? fromServerPosition(data.position)
-          : solvedPliesRemaining(data.solution, found.length, move)
+          : solvedPliesRemaining(data.solution, found.length, move, data.finishedWith || null)
               .reduce((cells, ply) => applyMove(cells, ply), before));
         setFound(moves);
         const tries = attempts + 1;
+        hintCache.current = new Map();
         setVerdict({
           status: 'solved',
-          text: `Solved in ${tries} ${tries === 1 ? 'try' : 'tries'}.`,
+          text: `Solved in ${tries} ${tries === 1 ? 'try' : 'tries'}.${data.otherFinishes ? ` ${otherFinishesText(data.otherFinishes)}` : ''}`,
         });
         setAttempts(tries);
         if (data.discord) setProgress((p) => ({ ...(p || {}), player: { ...(p?.player || {}), ...data.discord } }));
@@ -897,7 +899,8 @@ export default function DiscordActivity() {
       if (data.solved) {
         setFound(moves);
         const tries = attempts + 1;
-        setVerdict({ status: 'solved', text: `Solved in ${tries} ${tries === 1 ? 'try' : 'tries'}.` });
+        hintCache.current = new Map();
+        setVerdict({ status: 'solved', text: `Solved in ${tries} ${tries === 1 ? 'try' : 'tries'}.${data.otherFinishes ? ` ${otherFinishesText(data.otherFinishes)}` : ''}` });
         setAttempts(tries);
         if (data.discord) setProgress((p) => ({ ...(p || {}), player: { ...(p?.player || {}), ...data.discord } }));
       } else if (data.status === 'continue') {
@@ -924,7 +927,19 @@ export default function DiscordActivity() {
   }, [puzzle, busy, finished, trayPick, board, found, attempts, awaitHandshake]);
 
   const clickSquare = useCallback((x, y, how = null) => {
-    if (!puzzle || busy || finished || replaying) return;
+    if (!puzzle || busy || replaying) return;
+    /*
+     * Over: a click INSPECTS - it pins a piece's moves (either side's), and on
+     * a phone it is the only way to see them. Clicking it again, or an empty
+     * square, clears them. Nothing moves once the puzzle is over.
+     */
+    if (finished) {
+      const at = coveringKey(board, x, y);
+      if (!at || picked === at) { setPicked(null); setHints([]); return; }
+      setPicked(at);
+      loadHints(x, y).then(setHints);
+      return;
+    }
     /*
      * A piece held from the tray is put down wherever you click - except on one
      * of your own pieces, which means you want to MOVE that piece. The tray is
@@ -969,11 +984,13 @@ export default function DiscordActivity() {
   }, [puzzle, busy, finished, replaying, board, picked, tryMove, loadHints, trayPick, tryPlace, hints]);
 
   const hoverSquare = useCallback(async (x, y) => {
-    if (!puzzle || finished || picked || drag || replaying) return;
+    // Hover keeps working once the puzzle is over: seeing how a piece really
+    // moves is the point of looking back at a solved position.
+    if (!puzzle || picked || drag || replaying) return;
     if (!coveringKey(board, x, y)) { setHints([]); return; }
     const moves = await loadHints(x, y);
     setHints((prev) => (picked || drag ? prev : moves));
-  }, [puzzle, finished, picked, drag, replaying, board, loadHints]);
+  }, [puzzle, picked, drag, replaying, board, loadHints]);
 
   const unhoverSquare = useCallback(() => {
     if (picked || drag) return;

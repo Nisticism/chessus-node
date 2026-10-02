@@ -1495,6 +1495,10 @@ async function validatePuzzle(puzzle, gameType) {
 
 module.exports = {
   validatePuzzle,
+  // For the solve route: the other moves that would have finished a puzzle too.
+  immediateWins,
+  describeMoveOn,
+  boardMoveKey,
   applyToFreshState,
   applyPly,
   // Exported for the seed generator, which tests a position for a goal directly

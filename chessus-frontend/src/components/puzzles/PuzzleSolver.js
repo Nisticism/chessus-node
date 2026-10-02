@@ -23,6 +23,7 @@ import { usePuzzleVetoes, VetoPanel, VetoAnswer, ContinueNotice, MoveProgress, M
 import { applyPromotionDefinition, promotionPieceNumber, solvedPliesRemaining, colToFile, doesPieceOccupySquare } from "../../helpers/pieceMovementUtils";
 import { cellSize, coveringKey, clearFootprint, spanStyle, moveTarget, dotAt, movesOf, previewOutlines, moveCovers, tapMovesTo } from "./puzzleFootprint";
 import usePuzzleEngine, { buildEnginePieces } from "./usePuzzleEngine";
+import { otherFinishesText } from "../../helpers/puzzleFinishes";
 import { readBlockedDotMode } from "../../helpers/blockedDotMode";
 import styles from "./puzzlesolver.module.scss";
 
@@ -234,6 +235,12 @@ const plyName = (ply, boardHeight) => {
  * its JSX and the rule reports hooks far above it as "called conditionally",
  * falsely, and the build fails.
  */
+// The other moves that would also have finished it (helpers/puzzleFinishes).
+const OtherFinishes = ({ list }) => {
+  const text = otherFinishesText(list);
+  return text ? <div className={styles["other-finishes"]}>{text}</div> : null;
+};
+
 const MoveNotice = ({ outcome, reason }) => {
   if (outcome === 'wrong') {
     return (
@@ -612,7 +619,14 @@ const PuzzleSolver = () => {
         return;
       }
       if (data.solved) {
-        const line = data.solution || attemptLine;
+        /*
+         * Their own final move stands when it was a different winning move
+         * (finishedWith), and the other moves that would also have won travel
+         * with the line for the notice below.
+         */
+        const stored = data.solution || attemptLine;
+        const line = data.finishedWith ? [...stored.slice(0, -1), data.finishedWith] : [...stored];
+        line.otherFinishes = Array.isArray(data.otherFinishes) ? data.otherFinishes : [];
         setPlayedMoves(attemptLine);
         // Everything from here to the end of the line: this move, plus any
         // reply the creator wrote after it. Replayed onto `before` so the
@@ -620,7 +634,7 @@ const PuzzleSolver = () => {
         // replaces the guess rather than stacking on top of it.
         setPlacements(data.position
           ? fromServerPosition(data.position)
-          : solvedPliesRemaining(withPlacers(line, puzzle), playedMoves.length, move)
+          : solvedPliesRemaining(withPlacers(line, puzzle), playedMoves.length, move, data.finishedWith || null)
               .reduce((cells, ply) => applyPly(cells, ply), before));
         setSolution(line);
         setOutcome('solved');
@@ -1410,6 +1424,7 @@ const PuzzleSolver = () => {
               Solved{attempts === 0
                 ? ' first try'
                 : ` after ${attempts} wrong ${attempts === 1 ? 'try' : 'tries'}`}. Nicely done.
+              <OtherFinishes list={solution?.otherFinishes} />
             </div>
           )}
           <ContinueNotice outcome={outcome} vet={vet} styles={styles} />

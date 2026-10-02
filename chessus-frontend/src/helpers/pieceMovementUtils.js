@@ -1271,12 +1271,19 @@ const PROMOTION_PRESERVED_KEYS = new Set([
  *
  * `fallback` covers a line the server did not send back: the move just played
  * is the best guess, and is what the board would have shown anyway.
+ *
+ * `finishedWith` is the solver's own final move when it was a DIFFERENT winning
+ * move from the line's (the server sends it as finishedWith). It replaces the
+ * line's last move, so the board keeps the piece where they put it - redrawing
+ * the stored move made it jump to a square they never chose, which looked like
+ * the engine helping them.
  */
-export const solvedPliesRemaining = (line, movesAlreadyFound, fallback) => (
-  Array.isArray(line) && line.length > movesAlreadyFound * 2
+export const solvedPliesRemaining = (line, movesAlreadyFound, fallback, finishedWith = null) => {
+  const rest = Array.isArray(line) && line.length > movesAlreadyFound * 2
     ? line.slice(movesAlreadyFound * 2)
-    : (fallback ? [fallback] : [])
-);
+    : (fallback ? [fallback] : []);
+  return finishedWith && rest.length ? [...rest.slice(0, -1), finishedWith] : rest;
+};
 
 export const applyPromotionDefinition = (piece, template) => {
   if (!piece || !template) return;

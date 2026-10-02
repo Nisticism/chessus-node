@@ -16,7 +16,7 @@
 const {
   validatePuzzle, moveKey, GOALS, GOAL_DEFS, MECHANICAL_GOALS, VALIDATION,
   goalsForGameType, describeGoal, buildGameState, playLine, applyPly, placementRules,
-  goalMet, terminalOutcome,
+  goalMet, terminalOutcome, immediateWins, describeMoveOn, boardMoveKey,
 } = require('./puzzle-validation');
 
 /*
@@ -2430,6 +2430,49 @@ function registerPuzzleRoutes(app, {
    *   reply                                       the opponent move to play now
    *   extra                                       added to the response as is
    */
+  /*
+   * The OTHER moves that would have finished the puzzle at the step the solver
+   * just finished it - so the page can say "one of N" rather than imply the
+   * move found was the only one. Named in words for the board ("Banshee from
+   * e5 to g6"). Best-effort and capped: an empty list is the safe answer.
+   */
+  async function otherFinishingMoves(puzzle, line, solverMoves, playedFinal) {
+    try {
+      const rules = await loadRulesFor(puzzle);
+      const base = {
+        position: await hydratePosition(rules, safeParse(puzzle.position, [])),
+        placeable_definitions: placeableDefinitions(rules),
+        initial_pieces: await loadStartingRoster(rules),
+        side_to_move: puzzle.side_to_move,
+        setup_move: safeParse(puzzle.setup_move),
+        game_type_id: puzzle.game_type_id,
+      };
+      const prefix = line.slice(0, (solverMoves - 1) * 2);
+      let at = base;
+      if (prefix.length) {
+        const played = await playLine(base, rules.game, prefix);
+        if (!played.ok) return [];
+        at = { ...base, position: played.state.pieces, setup_move: prefix[prefix.length - 1] };
+      }
+      const wins = await immediateWins(at, rules.game, null);
+      const playedKey = playedFinal ? boardMoveKey(playedFinal) : null;
+      const pieces = buildGameState(at, rules.game).pieces;
+      const seen = new Set();
+      const out = [];
+      for (const m of wins) {
+        const k = boardMoveKey(m);
+        if (k === playedKey || seen.has(k)) continue;
+        seen.add(k);
+        out.push(describeMoveOn(pieces, rules.game, m));
+        if (out.length >= 5) break;
+      }
+      return out;
+    } catch (err) {
+      console.warn(`[puzzle] could not list other finishes for ${puzzle.id}: ${err.message}`);
+      return [];
+    }
+  }
+
   async function finishSolve(req, res, puzzle, line, t) {
     const { submitted, revealed, wrong, solved } = t;
     const inProgress = !revealed && !wrong && !solved;
@@ -2687,7 +2730,15 @@ function registerPuzzleRoutes(app, {
      */
     let resultingPosition;
     try {
-      const upTo = solved || revealed ? line : line.slice(0, t.upToPlies);
+      /*
+       * Solved with a DIFFERENT winning final move (an alternative finish):
+       * the board shows the move they played, not the creator's - redrawing
+       * the stored one made the piece jump to a square they never chose, as if
+       * the engine had helped.
+       */
+      const upTo = solved && t.finalMove
+        ? [...line.slice(0, -1), t.finalMove]
+        : (solved || revealed ? line : line.slice(0, t.upToPlies));
       // A promoting ply is recognisable without touching the database, so ask
       // the cheap question before the narrow column read below.
       const promotes = upTo.some(ply => ply && ply.promotionPieceId != null);
@@ -2819,6 +2870,10 @@ function registerPuzzleRoutes(app, {
       reply: inProgress ? (t.reply ?? null) : null,
       // The whole line only once they have it, or have given up on it.
       solution: solved || revealed ? line : undefined,
+      // Their final move when it was a different winning move from the line's.
+      finishedWith: solved && t.finalMove ? t.finalMove : undefined,
+      // Other moves that would have finished it too, in words (otherFinishingMoves).
+      otherFinishes: solved && Array.isArray(t.otherFinishes) && t.otherFinishes.length ? t.otherFinishes : undefined,
       rating: ratingChange,
       ratingNote: ratingChange ? null : (userId ? ratingNote : null),
       // Only present for the Discord activity; the website ignores it.
@@ -3086,12 +3141,19 @@ function registerPuzzleRoutes(app, {
       const wrong = !revealed && matched < submitted.length;
       const solved = !revealed && !wrong && mine.length > 0 && matched === mine.length;
       const score = scoreAttempt(submitted.slice(0, matched), mine, (a, b) => moveKey(a) === moveKey(b));
+      const finalMove = solved ? submitted[submitted.length - 1] : null;
+      const otherFinishes = solved && MECHANICAL_GOALS.has(puzzle.goal)
+        ? await otherFinishingMoves(puzzle, line, mine.length, finalMove)
+        : [];
       return finishSolve(req, res, puzzle, line, {
         submitted, revealed, wrong, solved, score,
         movesPlayed: matched,
         movesTotal: mine.length,
         upToPlies: matched * 2,
         reply: theirs[matched - 1] ?? null,
+        // Only when it differs from the line's own final move.
+        finalMove: altFinish ? finalMove : null,
+        otherFinishes,
       });
     } catch (err) {
       console.error('POST /api/puzzles/:id/solve:', err);

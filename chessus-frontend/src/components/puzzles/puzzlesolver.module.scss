@@ -239,6 +239,8 @@
 }
 
 .notice-ok    { background: rgba(74, 222, 128, 0.12);  border: 1px solid rgba(74, 222, 128, 0.4); }
+/* "Yours was one of N winning final moves" under the solved notice. */
+.other-finishes { margin-top: 6px; font-size: 0.9em; opacity: 0.9; }
 .notice-warn  { background: rgba(255, 170, 0, 0.12);   border: 1px solid rgba(255, 170, 0, 0.4); }
 .notice-error { background: rgba(248, 113, 113, 0.12); border: 1px solid rgba(248, 113, 113, 0.45); }
 .notice-info  { background: rgba(120, 170, 255, 0.12); border: 1px solid rgba(120, 170, 255, 0.4); }

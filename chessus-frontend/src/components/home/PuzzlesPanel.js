@@ -11,6 +11,7 @@ import PlacementTray from "../common/PlacementTray";
 import PromotionChooser from "../common/PromotionChooser";
 import GameRulesModal from "../common/GameRulesModal";
 import { applyPromotionDefinition, promotionPieceNumber, solvedPliesRemaining } from "../../helpers/pieceMovementUtils";
+import { otherFinishesText } from "../../helpers/puzzleFinishes";
 import useSetupMoveReplay from "../common/useSetupMoveReplay";
 import { solverTrayItems } from "../../helpers/placement";
 import PuzzleBoard, { NOTATION_INSET, puzzleFlipped, squareFromPoint } from "../puzzles/PuzzleBoard";
@@ -455,9 +456,10 @@ const PuzzlesPanel = () => {
         // replaces the guess rather than stacking on it.
         setBoard(data.position
           ? fromServerPosition(data.position)
-          : solvedPliesRemaining(data.solution, found.length, move)
+          : solvedPliesRemaining(data.solution, found.length, move, data.finishedWith || null)
               .reduce((cells, ply) => applyMove(cells, ply), before));
-        setVerdict({ status: 'solved', text: 'That is it — solved.' });
+        hintCache.current = new Map();
+        setVerdict({ status: 'solved', text: `That is it — solved.${data.otherFinishes ? ` ${otherFinishesText(data.otherFinishes)}` : ''}` });
       } else if (data.status === 'continue') {
         // Right so far: play the move, then the answer the creator wrote for
         // it, so the board shows the position the next move starts from.
@@ -640,12 +642,14 @@ const PuzzlesPanel = () => {
   const hoverSquare = useCallback(async (x, y) => {
     // A held piece or a drag in progress owns the dots; hover must not fight it.
     // Nor may it describe a board the opponent's move is still arriving on.
-    if (!puzzle || finished || picked || drag || replaying) return;
+    // Hover keeps working once the puzzle is over: seeing how a piece really
+    // moves is the point of looking back at a solved position.
+    if (!puzzle || picked || drag || replaying) return;
     if (!coveringKey(board, x, y)) { setHints([]); return; }
     const moves = await loadHints(x, y);
     // The pointer may have moved on while the request was out.
     setHints((prev) => (picked || drag ? prev : moves));
-  }, [puzzle, finished, picked, drag, replaying, board, loadHints]);
+  }, [puzzle, picked, drag, replaying, board, loadHints]);
 
   const unhoverSquare = useCallback(() => {
     if (picked || drag) return;
@@ -766,7 +770,8 @@ const PuzzlesPanel = () => {
       if (data.position) setBoard(fromServerPosition(data.position));
       if (data.solved) {
         setFound(attemptLine);
-        setVerdict({ status: 'solved', text: 'That is it — solved.' });
+        hintCache.current = new Map();
+        setVerdict({ status: 'solved', text: `That is it — solved.${data.otherFinishes ? ` ${otherFinishesText(data.otherFinishes)}` : ''}` });
       } else if (data.status === 'continue') {
         // Played out in place, the same as a move-based line: keep what has
         // been found and let the next placement continue it.
@@ -793,7 +798,19 @@ const PuzzlesPanel = () => {
   }, [puzzle, busy, finished, trayPick, board, found, startedAt]);
 
   const clickSquare = useCallback((x, y, how = null) => {
-    if (!puzzle || busy || finished || replaying) return;
+    if (!puzzle || busy || replaying) return;
+    /*
+     * Over: a click INSPECTS - it pins a piece's moves (either side's), and on
+     * a phone it is the only way to see them. Clicking it again, or an empty
+     * square, clears them. Nothing moves once the puzzle is over.
+     */
+    if (finished) {
+      const at = coveringKey(board, x, y);
+      if (!at || picked === at) { setPicked(null); setHints([]); return; }
+      setPicked(at);
+      loadHints(x, y).then(setHints);
+      return;
+    }
     /*
      * A piece held from the tray is put down wherever you click - except on one
      * of your own pieces, which means you want to MOVE that piece. The tray is
