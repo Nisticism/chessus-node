@@ -109,11 +109,27 @@ function unsupportedReason(gameType) {
 }
 
 class Budget {
-  constructor({ budgetMs = 30000, maxNodes = Infinity } = {}) {
+  /*
+   * dutyCycle (0-1): the share of wall-clock time the search may spend
+   * computing. Below 1, every ~50ms of work is followed by a pause (breathe),
+   * so a long verification running in a worker leaves the CPU to the site.
+   */
+  constructor({ budgetMs = 30000, maxNodes = Infinity, dutyCycle = 1 } = {}) {
     this.deadline = Date.now() + budgetMs;
     this.maxNodes = maxNodes;
     this.nodes = 0;
     this.exhausted = false;
+    this.dutyCycle = Math.min(1, Math.max(0.05, Number(dutyCycle) || 1));
+    this.sliceStart = Date.now();
+  }
+  async breathe() {
+    if (this.dutyCycle >= 1) return;
+    const worked = Date.now() - this.sliceStart;
+    if (worked < 50) return;
+    const rest = Math.round(worked * (1 - this.dutyCycle) / this.dutyCycle);
+    await new Promise((r) => setTimeout(r, rest));
+    this.deadline += rest; // pauses do not count against the time budget
+    this.sliceStart = Date.now();
   }
   spend() {
     this.nodes++;
@@ -141,6 +157,8 @@ async function playAll(state, player, budget) {
     if (seen.has(key)) continue;
     seen.add(key);
     if (!budget.spend()) return out;
+    // eslint-disable-next-line no-await-in-loop
+    await budget.breathe();
     // eslint-disable-next-line no-await-in-loop
     const played = await playOne(state, player, move, budget);
     out.push(...played);
@@ -214,6 +232,8 @@ async function findWinInOne(state, side, aim, budget, killers) {
     if (seen.has(key)) continue;
     seen.add(key);
     if (!budget.spend()) return null;
+    // eslint-disable-next-line no-await-in-loop
+    await budget.breathe();
     // eslint-disable-next-line no-await-in-loop
     const played = await playOne(state, side, move, budget);
     for (const p of played) {
@@ -454,6 +474,7 @@ async function searchWinInN(puzzle, gameType, opts = {}) {
   const firsts = opts.firstMoves
     ? (await Promise.all(opts.firstMoves.map((m) => playOne(root, side, m, budget)))).flat()
     : await playAll(root, side, budget);
+  result.total = firsts.length; // first moves to examine, for progress reporting
   for (const f of firsts) {
     if (budget.exhausted) break;
     if (achieved(aim, f.state, side, f.ctx)) {
@@ -475,4 +496,85 @@ async function searchWinInN(puzzle, gameType, opts = {}) {
   return result;
 }
 
-module.exports = { searchWinInTwo, searchWinInN, cloneState, unsupportedReason };
+/* ------------------------------------------------- whole-line verification -- */
+
+/*
+ * Check a puzzle's line step by step: at each of the solver's moves, which
+ * moves force the goal within the moves that remain?
+ *
+ *   lineForces  the line's own move is among them at every step - the line
+ *               really is a forced win, whatever the opponent replies.
+ *   sound       exactly ONE such move at every step but the last. The solve
+ *               route accepts only the line's move before the end, so a second
+ *               winner there is a correct answer it would call wrong.
+ *               (Any winning final move is accepted, so the last step may
+ *               have several.)
+ *   unique      exactly one at EVERY step, the last included: one solution,
+ *               full stop. This is what the "verified unique solution" badge
+ *               certifies.
+ *
+ * Each step searches only the position the line actually reaches there (the
+ * replies the puzzle plays), so the cost is dominated by its first step: a
+ * full search `solverMoves` deep. `onProgress({ step, steps, done, total })`
+ * reports first moves examined, for a progress bar.
+ *
+ * @returns {Promise<object>} { complete, supported, reason, lineForces, sound, unique,
+ *                              steps: [{ step, depth, forcing, count, lineIncluded, refuted }], nodes, ms }
+ */
+async function verifyPuzzleLine(puzzle, gameType, line, opts = {}) {
+  const started = Date.now();
+  const aim = opts.aim || puzzle.goal || 'win';
+  const solverMoves = Math.ceil(line.length / 2);
+  const unsupported = unsupportedReason(gameType);
+  const out = { complete: false, supported: !unsupported, reason: unsupported, lineForces: false,
+    sound: false, unique: false, steps: [], nodes: 0, ms: 0, solverMoves };
+  if (unsupported || !line.length) return out;
+  const { playLine } = require('./puzzle-validation');
+  const deadline = Date.now() + (opts.budgetMs || 60000);
+
+  for (let step = 1; step <= solverMoves; step++) {
+    const prefix = line.slice(0, (step - 1) * 2);
+    let at = puzzle;
+    if (prefix.length) {
+      // eslint-disable-next-line no-await-in-loop
+      const played = await playLine(puzzle, gameType, prefix);
+      if (!played.ok) { out.reason = `the line cannot be replayed at move ${step}`; out.ms = Date.now() - started; return out; }
+      at = { ...puzzle, position: played.state.pieces, setup_move: prefix[prefix.length - 1] };
+    }
+    const depth = solverMoves - step + 1;
+    const lineMove = line[(step - 1) * 2];
+    // eslint-disable-next-line no-await-in-loop
+    const r = await searchWinInN(at, gameType, {
+      aim, depth, budgetMs: Math.max(0, deadline - Date.now()), dutyCycle: opts.dutyCycle,
+      onMove: opts.onProgress
+        ? (m, res) => opts.onProgress({ step, steps: solverMoves,
+          done: res.forcing.length + res.refuted.length + res.winsAtOnce.length, total: res.total || null })
+        : null,
+    });
+    out.nodes += r.nodes;
+    if (!r.complete) { out.ms = Date.now() - started; return out; }
+    const forcing = [...r.winsAtOnce, ...r.forcing];
+    /*
+     * Counted by MOVE, not by promotion choice: promoting the same pawn to two
+     * pieces that both win is one move with a choice attached - the
+     * validator's convention (boardMoveKey). Whether the line's own move is
+     * among them is asked exactly, promotion choice included.
+     */
+    const { boardMoveKey } = require('./puzzle-validation');
+    const moves = new Set(forcing.map(boardMoveKey));
+    out.steps.push({
+      step, depth,
+      forcing,
+      count: moves.size,
+      lineIncluded: forcing.some((m) => moveKey(m) === moveKey(lineMove)),
+    });
+  }
+  out.complete = true;
+  out.lineForces = out.steps.every((s) => s.lineIncluded);
+  out.sound = out.lineForces && out.steps.slice(0, -1).every((s) => s.count === 1);
+  out.unique = out.lineForces && out.steps.every((s) => s.count === 1);
+  out.ms = Date.now() - started;
+  return out;
+}
+
+module.exports = { searchWinInTwo, searchWinInN, verifyPuzzleLine, cloneState, unsupportedReason };

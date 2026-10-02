@@ -1241,7 +1241,53 @@ async function forcedWinInTwo(puzzle, gameType) {
   return r.supported && r.winsInTwo.length ? r.winsInTwo[0] : null;
 }
 
-async function validatePuzzle(puzzle, gameType) {
+/*
+ * The three-move check (opts.deepLines): every step of the line searched for
+ * every move that forces the goal in the moves left (puzzle-search.js
+ * verifyPuzzleLine). Seconds to minutes, so it runs only where something has
+ * asked for it - the background verification worker - never inside a request
+ * or the daily scheduler, where it would hold up the whole server.
+ */
+async function checkThreeMoveLine(puzzle, gameType, line, reached, opts) {
+  const { verifyPuzzleLine } = require('./puzzle-search');
+  const label = GOAL_DEFS[puzzle.goal].label.toLowerCase();
+  const r = await verifyPuzzleLine(puzzle, gameType, line, {
+    aim: puzzle.goal, budgetMs: opts.budgetMs || 120000, dutyCycle: opts.dutyCycle, onProgress: opts.onProgress,
+  });
+  if (!r.supported || !r.complete) return null;
+  const pieces = buildGameState(puzzle, gameType).pieces;
+  const broken = r.steps.find((st) => !st.lineIncluded);
+  if (broken) {
+    return {
+      status: VALIDATION.UNSOLVABLE, solutions: [], intendedWorks: false, goalReached: reached, searched: true,
+      verification: r,
+      detail: `the line is legal, but your move ${broken.step} does not force '${label}' in the moves left - `
+        + 'the opponent has a defence the line does not play.',
+    };
+  }
+  const extra = r.steps.slice(0, -1).find((st) => st.count > 1);
+  if (extra) {
+    const others = extra.step === 1
+      ? extra.forcing.filter((m) => boardMoveKey(m) !== boardMoveKey(line[0])).slice(0, 3).map((m) => describeMoveOn(pieces, gameType, m))
+      : [];
+    return {
+      status: VALIDATION.AMBIGUOUS, solutions: extra.step === 1 ? extra.forcing : [line[0]], intendedWorks: true,
+      goalReached: true, searched: true, verification: r,
+      detail: `at your move ${extra.step}, ${extra.count} different moves force '${label}'`
+        + `${others.length ? ` (also ${others.join('; ')})` : ''}. Before the last move only the line's move is accepted, `
+        + 'so a solver who finds another would be told it is wrong.',
+    };
+  }
+  const last = r.steps[r.steps.length - 1];
+  return {
+    status: VALIDATION.VALID, solutions: [line[0]], intendedWorks: true, goalReached: true, searched: true,
+    verification: r, unique: r.unique,
+    detail: `checked against every defence: at each step your move is the only one that forces '${label}'`
+      + (last.count > 1 ? ` (the final move can be played ${last.count} ways, and any of them is accepted).` : '.'),
+  };
+}
+
+async function validatePuzzle(puzzle, gameType, opts = {}) {
   const line = Array.isArray(puzzle.solution_line)
     ? puzzle.solution_line
     : [puzzle.solution_line].filter(Boolean);
@@ -1325,6 +1371,10 @@ async function validatePuzzle(puzzle, gameType) {
      */
     if (isMechanical && line.length === 3) {
       const searched = await checkTwoMoveLine(puzzle, gameType, intended, reached);
+      if (searched) return searched;
+    }
+    if (isMechanical && line.length === 5 && opts.deepLines) {
+      const searched = await checkThreeMoveLine(puzzle, gameType, line, reached, opts);
       if (searched) return searched;
     }
     if (isMechanical && line.length > 3) {

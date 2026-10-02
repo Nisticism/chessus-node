@@ -20,6 +20,7 @@ import { cellSize, coveringKey, clearFootprint, spanStyle, moveTarget, dotAt, mo
 import FootprintOutlines from "../common/FootprintOutlines";
 import { useTapOutside } from "../common/useTouchPieceGestures";
 import styles from "./puzzlebuilder.module.scss";
+import CheckProgress from "./CheckProgress";
 
 /*
  * Puzzle builder.
@@ -1315,21 +1316,49 @@ const PuzzleBuilder = () => {
     if (!id) return;
     setBusy(true);
     try {
-      const { data } = await axios.post(`${API_URL}puzzles/${id}/validate`, {}, { headers: authHeader() });
+      let { data } = await axios.post(`${API_URL}puzzles/${id}/validate`, {}, { headers: authHeader() });
+      /*
+       * A puzzle of several moves is checked in the background against every
+       * defence (it can take a minute or two). Poll it, with a progress bar.
+       */
+      if (data.job) {
+        const jobId = data.job;
+        setCheckResult({
+          tone: 'info',
+          text: 'Checking your puzzle against every move the opponent could make. This can take a minute or two for a three-move puzzle.',
+          progress: { state: 'queued', queuePosition: 1 },
+        });
+        for (;;) {
+          // eslint-disable-next-line no-await-in-loop
+          await new Promise((r) => setTimeout(r, 1000));
+          // eslint-disable-next-line no-await-in-loop
+          const { data: view } = await axios.get(`${API_URL}puzzle-jobs/${jobId}`, { headers: authHeader() });
+          if (view.state === 'done') { data = view.result; break; }
+          if (view.state === 'failed') throw new Error(view.error || 'The check could not finish');
+          setCheckResult((prev) => ({ ...(prev || {}), tone: 'info', progress: view }));
+        }
+      }
       if (data.status === 'valid') {
-        setCheckResult({ tone: 'ok', text: 'Checked: exactly one move mates, and it is yours.' });
+        setCheckResult({
+          tone: 'ok',
+          text: data.searched && data.detail
+            ? `Checked: ${data.detail}`
+            : 'Checked: exactly one move mates, and it is yours.',
+        });
       } else if (data.status === 'ambiguous') {
         setCheckResult({
           tone: 'warn',
-          text: `${data.solutionCount} different moves mate here. That is allowed — solvers may just find a different one. ${data.detail || ''}`,
+          text: data.searched && data.detail
+            ? `Checked, but more than one answer: ${data.detail}`
+            : `${data.solutionCount} different moves mate here. That is allowed — solvers may just find a different one. ${data.detail || ''}`,
         });
       } else if (data.status === 'unsolvable') {
         setCheckResult({ tone: 'error', text: data.detail || 'Your recorded move does not achieve the goal.' });
       } else {
-        setCheckResult({ tone: 'info', text: data.detail || 'Only mate in 1 can be checked automatically. Solvers will let you know how this one plays.' });
+        setCheckResult({ tone: 'info', text: data.detail || 'Puzzles of up to three moves are checked automatically. Solvers will let you know how this one plays.' });
       }
     } catch (err) {
-      setCheckResult({ tone: 'error', text: err?.response?.data?.message || 'Could not check this puzzle' });
+      setCheckResult({ tone: 'error', text: err?.response?.data?.message || err?.message || 'Could not check this puzzle' });
     } finally {
       setBusy(false);
     }
@@ -1887,6 +1916,7 @@ const PuzzleBuilder = () => {
           {checkResult && (
             <div className={`${styles["notice"]} ${styles[`notice-${checkResult.tone}`]}`}>
               {checkResult.text}
+              {checkResult.progress && <CheckProgress view={checkResult.progress} />}
             </div>
           )}
 
@@ -1926,10 +1956,12 @@ const PuzzleBuilder = () => {
             )}
           </div>
           <p className={styles["fine-print"]}>
-            Checking is advice, not a gate — you can publish either way. Only “checkmate in 1”
-            can be checked automatically; everything else is judged by the people solving it.
-            On a longer line the check confirms every move can actually be played, but the
-            replies are the ones you wrote, so whether the opponent could defend better is
+            Checking is advice, not a gate — you can publish either way. For goals the engine
+            can judge (checkmate, capture, winning), puzzles of up to three moves are checked
+            against every move the opponent could make: whether your line is really forced, and
+            whether your move is the only one that works at each step. A three-move check can
+            take a minute or two, and a progress bar shows how long is left. Longer lines are
+            checked for being playable only, so whether the opponent could defend better is
             your call.{' '}
             <strong>How many answers?</strong> goes further: it searches every reply the
             opponent has, so it can tell you whether your line is genuinely forced, whether a

@@ -75,6 +75,7 @@ const { analyseUniqueness, describeUniqueness } = require('./puzzle-uniqueness')
  * routes here and the snapshot backfill - and a second copy of it is exactly
  * the bug this codebase keeps having. See server/puzzle-hydrate.js.
  */
+const { startJob, getJob } = require('./puzzle-jobs');
 const { hydratePosition, toEngineFields, placeableDefinitions } = require('./puzzle-hydrate');
 
 /*
@@ -2239,35 +2240,68 @@ function registerPuzzleRoutes(app, {
         setup_move: safeParse(puzzle.setup_move),
         solution_line: safeParse(puzzle.solution_line, []),
       };
-      const result = await validatePuzzle(hydrated, gameType);
+      /*
+       * What a check concluded, recorded and shaped for the builder. Shared by
+       * the instant path below and the background one (puzzle-jobs.js).
+       */
+      const record = async (result) => {
+        /*
+         * A veto game's vetoes are checked too: every vetoed move is one the
+         * mover could make, none is the move the line then plays, none is over
+         * the per-turn limit, and a pre-emptive veto leaves a move. A problem
+         * there makes the puzzle unsolvable as written, whatever the moves say.
+         */
+        const vetoIssues = await vetoProblems(hydrated, gameType, hydrated.solution_line, vetoConfigOf(gameType));
+        if (vetoIssues.length) {
+          result.status = 'unsolvable';
+          result.detail = [result.detail, ...vetoIssues].filter(Boolean).join(' ');
+        }
+        await db_pool.query(
+          'UPDATE puzzles SET validation_status = ?, validation_detail = ?, validated_at = NOW() WHERE id = ?',
+          [result.status, result.detail || null, puzzle.id]
+        );
+        return {
+          status: result.status,
+          detail: result.detail,
+          solutionCount: (result.solutions || []).length,
+          alternatives: (result.solutions || []).map(moveKey),
+          searched: !!result.searched,
+          blocksPublishing: false,
+        };
+      };
 
       /*
-       * A veto game's vetoes are checked too: every vetoed move is one the
-       * mover could make, none is the move the line then plays, none is over
-       * the per-turn limit, and a pre-emptive veto leaves a move. A problem
-       * there makes the puzzle unsolvable as written, whatever the moves say.
+       * A line of more than one move is searched against every defence, which
+       * takes seconds - so it runs as a background job (worker thread, one at
+       * a time, capped) and the builder polls it with a progress bar. A one-move
+       * puzzle is one enumeration and answers at once.
        */
-      const vetoIssues = await vetoProblems(hydrated, gameType, hydrated.solution_line, vetoConfigOf(gameType));
-      if (vetoIssues.length) {
-        result.status = 'unsolvable';
-        result.detail = [result.detail, ...vetoIssues].filter(Boolean).join(' ');
+      const solverMoves = Math.ceil((hydrated.solution_line || []).length / 2);
+      if (MECHANICAL_GOALS.has(puzzle.goal) && solverMoves >= 2) {
+        const job = startJob({
+          kind: 'validate',
+          owner: req.user.id,
+          workerData: { kind: 'validate', puzzle: hydrated, gameType, opts: { budgetMs: 150000 } },
+          maxMs: 4 * 60 * 1000,
+          onDone: record,
+        });
+        return res.status(202).json({ status: 'checking', job });
       }
-
-      await db_pool.query(
-        'UPDATE puzzles SET validation_status = ?, validation_detail = ?, validated_at = NOW() WHERE id = ?',
-        [result.status, result.detail || null, puzzle.id]
-      );
-      res.json({
-        status: result.status,
-        detail: result.detail,
-        solutionCount: result.solutions.length,
-        alternatives: result.solutions.map(moveKey),
-        blocksPublishing: false,
-      });
+      res.json(await record(await validatePuzzle(hydrated, gameType)));
     } catch (err) {
       console.error('POST /api/puzzles/:id/validate:', err);
       res.status(500).send({ message: 'Failed to validate puzzle' });
     }
+  });
+
+  /* A background check's progress, and its result once done (puzzle-jobs.js). */
+  app.get('/api/puzzle-jobs/:jobId', authenticateToken, (req, res) => {
+    const job = getJob(String(req.params.jobId || ''));
+    if (!job) return res.status(404).send({ message: 'That check has finished and expired, or never existed.' });
+    if (job.owner && Number(job.owner) !== Number(req.user.id) && !isStaff(req.user)) {
+      return res.status(403).send({ message: 'Not your check' });
+    }
+    res.json(job.view);
   });
 
   /*
