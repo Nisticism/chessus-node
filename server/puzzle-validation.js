@@ -1538,13 +1538,16 @@ async function validatePuzzle(puzzle, gameType, opts = {}) {
     };
   }
   if (solutions.length > 1) {
-    const others = solutions.filter((m) => boardMoveKey(m) !== intendedKey).map(boardMoveKey);
+    // Named the way a person reads a board, not as engine keys ("6,0>0,0#183_7_7").
+    const others = solutions.filter((m) => boardMoveKey(m) !== intendedKey)
+      .map((m) => describeMoveOn(base.pieces, gameType, m));
     return {
       status: VALIDATION.AMBIGUOUS,
       solutions,
       intendedWorks: true,
       unique: false,
-      detail: `${solutions.length} moves achieve '${goalLabel}': also ${others.join(', ')}`,
+      detail: `${solutions.length} moves achieve '${goalLabel}': also ${others.slice(0, 4).join('; ')}`
+        + `${others.length > 4 ? ` and ${others.length - 4} more` : ''}.`,
     };
   }
   return { status: VALIDATION.VALID, solutions, intendedWorks: true, unique: true, detail: null };
