@@ -76,7 +76,7 @@ const { analyseUniqueness, describeUniqueness } = require('./puzzle-uniqueness')
  * the bug this codebase keeps having. See server/puzzle-hydrate.js.
  */
 const { startJob, getJob } = require('./puzzle-jobs');
-const { hydratePosition, toEngineFields, placeableDefinitions } = require('./puzzle-hydrate');
+const { hydratePosition, toEngineFields, placeableDefinitions, startingRoster } = require('./puzzle-hydrate');
 
 /*
  * Where uploaded piece art lives. Same rule index.js uses: an explicit
@@ -330,29 +330,8 @@ function registerPuzzleRoutes(app, {
   /** The live rules for a game, for a puzzle that does not exist yet. */
   const loadLiveRules = (gameTypeId) => readLive(db_pool, gameTypeId);
 
-  /**
-   * The game type's OPENING position, hydrated the same way a puzzle position is.
-   *
-   * This is what the engine means by initialPieces, and promotion needs it: the
-   * menu of what a piece may become is built from the piece types the game
-   * started with, so a queen that has already been captured is still an option.
-   * A puzzle position is a handful of pieces and makes a terrible substitute -
-   * a pawn one square from promoting with only kings left would be offered
-   * nothing, and the promotion would be skipped without a word.
-   */
-  const loadStartingRoster = async (rules) => {
-    const gameType = rules?.game;
-    if (!gameType?.pieces_string) return [];
-    const parsed = safeParse(gameType.pieces_string, null);
-    if (!parsed || typeof parsed !== 'object') return [];
-    // pieces_string is keyed "y,x"; the placements carry their own x/y for the
-    // ones that were written with them.
-    const list = Object.entries(parsed).map(([key, v]) => {
-      const [y, x] = String(key).split(',').map(Number);
-      return { ...v, x: v.x ?? x, y: v.y ?? y };
-    });
-    return hydratePosition(rules, list);
-  };
+  // The game's opening position, for promotion menus (puzzle-hydrate.js).
+  const loadStartingRoster = startingRoster;
 
   // ---------------------------------------------------------------- browse --
   // Published puzzles for one game type. Drafts are private to their creator.
@@ -366,7 +345,7 @@ function registerPuzzleRoutes(app, {
                 p.title, p.description, p.goal, p.goal_description, p.side_to_move,
                 p.solution_depth,
                 p.rating, p.rating_sample_count, p.hide_rating,
-                p.attempt_count, p.solve_count, p.published_at, p.validation_status
+                p.attempt_count, p.solve_count, p.published_at, p.validation_status, p.unique_status, p.unique_method
          FROM puzzles p
          LEFT JOIN users u ON u.id = p.creator_id
          WHERE p.game_type_id = ? AND p.is_draft = 0 AND p.moderation_status = 'approved'
@@ -442,7 +421,7 @@ function registerPuzzleRoutes(app, {
                 p.side_to_move, p.solution_depth,
                 p.rating, p.rating_sample_count, p.hide_rating,
                 p.attempt_count, p.solve_count, p.published_at,
-                p.validation_status,
+                p.validation_status, p.unique_status, p.unique_method,
                 /*
                  * The first day it was Puzzle of the Day, if it ever was. A
                  * subquery rather than a join: a puzzle can be scheduled more
@@ -544,7 +523,7 @@ function registerPuzzleRoutes(app, {
       const [rows] = await db_pool.query(
         `SELECT p.id, p.title, p.goal, p.goal_description, p.side_to_move, p.solution_depth,
                 p.is_draft, p.creator_id, u.username AS creator_username,
-                p.attempt_count, p.solve_count, p.updated_at, p.validation_status
+                p.attempt_count, p.solve_count, p.updated_at, p.validation_status, p.unique_status, p.unique_method
          FROM puzzles p
          LEFT JOIN users u ON u.id = p.creator_id
          WHERE p.game_type_id = ?${staff ? '' : ' AND p.creator_id = ?'}
@@ -901,7 +880,7 @@ function registerPuzzleRoutes(app, {
       if (!isStaff(req.user)) return res.status(403).send({ message: 'Admins only' });
       const [rows] = await db_pool.query(
         `SELECT d.puzzle_date, d.puzzle_id, d.game_type_id, d.scheduled_at,
-                p.title, p.goal, p.validation_status, p.rating, p.solution_depth,
+                p.title, p.goal, p.validation_status, p.unique_status, p.rating, p.solution_depth,
                 p.allow_daily, p.is_draft, p.moderation_status,
                 gt.game_name, gt.board_width, gt.board_height,
                 u.username AS creator_username,
@@ -2126,6 +2105,26 @@ function registerPuzzleRoutes(app, {
         set('validation_detail', null);
         set('validated_at', null);
       }
+      /*
+       * And the unique-solution badge, but only on a REAL change to what the
+       * puzzle asks. The builder sends the whole puzzle on every save, and a
+       * badge staff awarded after hours of searching must not vanish because
+       * the creator fixed a typo in the title.
+       */
+      const differs = (incoming, stored) => incoming !== undefined
+        && JSON.stringify(incoming ?? null) !== JSON.stringify(safeParse(stored, stored) ?? null);
+      const puzzleChanged = differs(b.position, puzzle.position)
+        || (b.solution_line !== undefined && differs(sanitizeLine(b.solution_line).line, puzzle.solution_line))
+        || (b.goal !== undefined && b.goal !== puzzle.goal)
+        || (b.side_to_move !== undefined && (b.side_to_move === 2 ? 2 : 1) !== Number(puzzle.side_to_move))
+        || (b.setup_move !== undefined && differs(sanitizeSetup(b.setup_move) || null, puzzle.setup_move));
+      if (puzzleChanged && puzzle.unique_status && puzzle.unique_status !== 'unchecked') {
+        set('unique_status', 'unchecked');
+        set('unique_method', null);
+        set('unique_detail', 'The puzzle changed after it was last checked.');
+        set('unique_checked_at', null);
+        set('unique_checked_by', null);
+      }
       if (!fields.length) return res.json({ puzzle: publicPuzzle(puzzle, { includeSolution: true }) });
 
       values.push(puzzle.id);
@@ -2240,6 +2239,7 @@ function registerPuzzleRoutes(app, {
         setup_move: safeParse(puzzle.setup_move),
         solution_line: safeParse(puzzle.solution_line, []),
       };
+      const solverMoves = Math.ceil((hydrated.solution_line || []).length / 2);
       /*
        * What a check concluded, recorded and shaped for the builder. Shared by
        * the instant path below and the background one (puzzle-jobs.js).
@@ -2260,6 +2260,23 @@ function registerPuzzleRoutes(app, {
           'UPDATE puzzles SET validation_status = ?, validation_detail = ?, validated_at = NOW() WHERE id = ?',
           [result.status, result.detail || null, puzzle.id]
         );
+        /*
+         * The unique-solution badge, when the check settled it: a full search
+         * (up to three moves) or a one-move enumeration answers yes or no.
+         * Anything it could not settle - a longer line, a search that ran out
+         * of time - leaves the badge as it was, staff verdicts included.
+         */
+        let unique = null;
+        if (typeof result.unique === 'boolean' && !vetoIssues.length) {
+          unique = result.unique
+            ? { status: 'verified', detail: 'Exactly one winning move at every step, checked automatically against every defence.' }
+            : { status: 'not_unique', detail: result.detail || 'More than one move wins at some step.' };
+          await db_pool.query(
+            `UPDATE puzzles SET unique_status = ?, unique_method = 'auto', unique_detail = ?,
+               unique_checked_at = NOW(), unique_checked_by = NULL WHERE id = ?`,
+            [unique.status, unique.detail, puzzle.id]
+          );
+        }
         return {
           status: result.status,
           detail: result.detail,
@@ -2267,6 +2284,8 @@ function registerPuzzleRoutes(app, {
           alternatives: (result.solutions || []).map(moveKey),
           searched: !!result.searched,
           blocksPublishing: false,
+          unique,
+          solverMoves,
         };
       };
 
@@ -2276,7 +2295,6 @@ function registerPuzzleRoutes(app, {
        * a time, capped) and the builder polls it with a progress bar. A one-move
        * puzzle is one enumeration and answers at once.
        */
-      const solverMoves = Math.ceil((hydrated.solution_line || []).length / 2);
       if (MECHANICAL_GOALS.has(puzzle.goal) && solverMoves >= 2) {
         const job = startJob({
           kind: 'validate',
@@ -3309,7 +3327,7 @@ function registerPuzzleRoutes(app, {
                 p.side_to_move, p.solution_depth, p.is_draft,
                 p.rating, p.rating_sample_count, p.hide_rating,
                 p.attempt_count, p.solve_count, p.published_at, p.updated_at,
-                p.validation_status,
+                p.validation_status, p.unique_status, p.unique_method,
                 (SELECT MIN(d.puzzle_date) FROM daily_puzzles d
                   WHERE d.puzzle_id = p.id AND d.puzzle_date <= ?) AS featured_on
          FROM puzzles p

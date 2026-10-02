@@ -118,6 +118,8 @@ const addDays = (key, n) => {
  * The join through puzzle_pool is what keeps the rotation from showing four
  * builds of the same chess in a week - see scripts/puzzle-pool-sweep.js.
  */
+const { PLATFORM_ACCOUNT_USERNAME } = require('./platform-account');
+
 const ELIGIBLE_SQL = `
   FROM puzzles p
   JOIN puzzle_pool pool ON pool.game_type_id = p.game_type_id
@@ -127,6 +129,11 @@ const ELIGIBLE_SQL = `
     AND p.moderation_status = 'approved'
     AND p.validation_status = 'valid'
     AND p.allow_daily = 1
+    -- A player's puzzle needs a verified unique solution (one winning move at
+    -- every step). The platform account's own puzzles are exempt: they are
+    -- checked by hand as they are added, and may finish more than one way.
+    AND (p.unique_status = 'verified'
+         OR p.creator_id = (SELECT pa.id FROM users pa WHERE pa.username = '${PLATFORM_ACCOUNT_USERNAME}'))
     AND pool.status IN ('auto_included', 'included')
     AND gt.is_draft = 0
     -- Veto puzzles are played in steps the daily card and the Discord
@@ -154,6 +161,14 @@ const DAILY_REQUIREMENTS = [
     detail: 'Press "Check puzzle" and get a clean result. A puzzle with several '
       + 'answers, or one the server cannot judge, is not used - "find the move" '
       + 'is a poor thing to ask when more than one move works.',
+  },
+  {
+    key: 'unique',
+    label: 'A verified unique solution',
+    detail: 'Exactly one winning move at every step, the last included. Puzzles of up to '
+      + 'three moves are checked for this automatically when you press "Check puzzle"; '
+      + 'longer ones cannot be, but you can ask for a staff verification once the puzzle '
+      + 'is published.',
   },
   {
     key: 'allow_daily',

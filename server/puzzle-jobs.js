@@ -2,29 +2,58 @@
  * Background puzzle checks: a small job queue that runs each check in a worker
  * thread (puzzle-verify-worker.js).
  *
- * Limits, so a long search never costs the rest of the site:
- *   - ONE job at a time; the rest wait their turn, in order.
+ * Two lanes, each running ONE job at a time, so a long staff search never holds
+ * up a creator waiting on a save-time check (or the other way round):
+ *
+ *   interactive  the builder's "Check puzzle" (seconds to a couple of minutes)
+ *   long         staff uniqueness searches from the admin tab, which run for as
+ *                long as they need - hours, for a deep puzzle in a wide game
+ *
+ * Limits, so neither costs the rest of the site:
  *   - Memory: each worker's heap is capped (resourceLimits). A search that
  *     outgrows it is stopped and the job fails, rather than the server.
- *   - CPU: the search runs at a duty cycle (DUTY_CYCLE of wall-clock time),
- *     pausing between slices of work.
- *   - Time: each job has a wall-clock limit, after which the worker is ended.
+ *   - CPU: the search runs at a duty cycle (a share of wall-clock time),
+ *     pausing between slices of work. The long lane runs at a lower one.
+ *   - Time: an interactive job has a wall-clock limit; a long one has whatever
+ *     limit staff chose (none by default) and can be cancelled.
+ *
+ * All of it can be tuned per server with the PUZZLE_* environment variables.
  *
  * Jobs live in memory for JOB_TTL_MS after they finish, long enough for the
- * page that started one to collect the result.
+ * page that started one to collect the result. A long job's result is also
+ * recorded by its onDone (puzzle_verification_runs), so it survives that.
  */
 const path = require('path');
 const crypto = require('crypto');
+const os = require('os');
 const { Worker } = require('worker_threads');
 
-const MAX_CONCURRENT = 1;
-const HEAP_MB = Number(process.env.PUZZLE_WORKER_HEAP_MB) || 384;
-const DUTY_CYCLE = Number(process.env.PUZZLE_WORKER_DUTY_CYCLE) || 0.7;
+const LANES = {
+  interactive: {
+    heapMb: Number(process.env.PUZZLE_WORKER_HEAP_MB) || 384,
+    dutyCycle: Number(process.env.PUZZLE_WORKER_DUTY_CYCLE) || 0.7,
+  },
+  long: {
+    heapMb: Number(process.env.PUZZLE_LONG_HEAP_MB) || 512,
+    dutyCycle: Number(process.env.PUZZLE_LONG_DUTY_CYCLE) || 0.5,
+  },
+};
+const MAX_CONCURRENT = 1; // per lane
 const JOB_TTL_MS = 30 * 60 * 1000;
 
 const jobs = new Map();
-const queue = [];
-let running = 0;
+const lanes = Object.fromEntries(Object.keys(LANES).map((k) => [k, { queue: [], running: 0 }]));
+
+/** The caps in force, for the admin tab to show. */
+function limits() {
+  return {
+    cpus: os.cpus().length,
+    lanes: Object.fromEntries(Object.entries(LANES).map(([k, v]) => [k, {
+      heapMb: v.heapMb, dutyCycle: v.dutyCycle, concurrent: MAX_CONCURRENT,
+      queued: lanes[k].queue.length, running: lanes[k].running,
+    }])),
+  };
+}
 
 function publicView(job) {
   if (!job) return null;
@@ -44,42 +73,61 @@ function publicView(job) {
   return {
     id: job.id,
     kind: job.kind,
+    lane: job.lane,
     state: job.state,
-    queuePosition: job.state === 'queued' ? queue.indexOf(job) + 1 : 0,
+    queuePosition: job.state === 'queued' ? lanes[job.lane].queue.indexOf(job) + 1 : 0,
     progress: job.progress,
     elapsedMs,
     etaMs,
     result: job.state === 'done' ? job.publicResult : undefined,
-    error: job.state === 'failed' ? job.error : undefined,
+    error: job.state === 'failed' || job.state === 'cancelled' ? job.error : undefined,
   };
 }
 
+/*
+ * Exactly once per job. A worker's result arrives as a message, and its exit
+ * event follows while the result is still being recorded (onDone is async) - so
+ * without this guard that exit would finish the job a second time, as a
+ * failure, and count the lane's running total down twice.
+ */
 function finish(job, patch) {
+  if (job.settled) return;
+  job.settled = true;
   Object.assign(job, patch, { finishedAt: Date.now() });
-  running--;
+  lanes[job.lane].running--;
   setTimeout(() => jobs.delete(job.id), JOB_TTL_MS).unref();
-  pump();
+  if (job.onEnd) Promise.resolve().then(() => job.onEnd(job)).catch(() => {});
+  pump(job.lane);
 }
 
 function run(job) {
-  running++;
+  const lane = LANES[job.lane];
+  lanes[job.lane].running++;
   job.state = 'running';
   job.startedAt = Date.now();
+  if (job.onStart) Promise.resolve().then(() => job.onStart(job)).catch(() => {});
   const worker = new Worker(path.join(__dirname, 'puzzle-verify-worker.js'), {
-    workerData: { ...job.workerData, opts: { ...(job.workerData.opts || {}), dutyCycle: DUTY_CYCLE } },
-    resourceLimits: { maxOldGenerationSizeMb: HEAP_MB, maxYoungGenerationSizeMb: 48 },
+    workerData: { ...job.workerData, opts: { ...(job.workerData.opts || {}), dutyCycle: lane.dutyCycle } },
+    resourceLimits: { maxOldGenerationSizeMb: lane.heapMb, maxYoungGenerationSizeMb: 48 },
   });
   job.worker = worker;
-  const limit = setTimeout(() => {
-    worker.terminate();
-    if (job.state === 'running') finish(job, { state: 'failed', error: 'The check ran out of time.' });
-  }, job.maxMs);
+  // setTimeout cannot take Infinity (it would fire at once), so "no limit" sets no timer.
+  const limit = Number.isFinite(job.maxMs)
+    ? setTimeout(() => {
+      worker.terminate();
+      if (job.state === 'running') finish(job, { state: 'failed', error: 'The check ran out of time.' });
+    }, job.maxMs)
+    : null;
+  const stopTimer = () => { if (limit) clearTimeout(limit); };
   worker.on('message', async (msg) => {
     if (msg.type === 'progress') { job.progress = msg.progress; return; }
-    clearTimeout(limit);
+    stopTimer();
+    if (job.state !== 'running' || job.recording) return;
+    if (msg.type === 'error') { finish(job, { state: 'failed', error: msg.message }); worker.terminate(); return; }
+    // From here the job's outcome is this result: the worker's exit, which
+    // terminate() is about to cause, must not be mistaken for a crash.
+    job.recording = true;
     worker.terminate();
-    if (job.state !== 'running') return;
-    if (msg.type === 'error') { finish(job, { state: 'failed', error: msg.message }); return; }
     try {
       job.publicResult = job.onDone ? await job.onDone(msg.result) : msg.result;
       finish(job, { state: 'done' });
@@ -88,37 +136,71 @@ function run(job) {
     }
   });
   worker.on('error', (err) => {
-    clearTimeout(limit);
-    if (job.state === 'running') {
+    stopTimer();
+    if (job.state === 'running' && !job.recording) {
       finish(job, { state: 'failed', error: /memory/i.test(err.message) ? 'The check needed more memory than it is allowed.' : err.message });
     }
   });
   worker.on('exit', (code) => {
-    clearTimeout(limit);
-    if (job.state === 'running') finish(job, { state: 'failed', error: `The check stopped unexpectedly (${code}).` });
+    stopTimer();
+    if (job.state === 'running' && !job.recording) finish(job, { state: 'failed', error: `The check stopped unexpectedly (${code}).` });
   });
 }
 
-function pump() {
-  while (running < MAX_CONCURRENT && queue.length) run(queue.shift());
+function pump(laneName) {
+  const lane = lanes[laneName];
+  while (lane.running < MAX_CONCURRENT && lane.queue.length) run(lane.queue.shift());
 }
 
 /**
- * Queue a check. onDone(result) runs on the main thread when it succeeds (to
- * record the result) and its return value is what pollers receive.
+ * Queue a check.
+ *   onDone(result)  runs on the main thread when it succeeds (to record the
+ *                   result); its return value is what pollers receive
+ *   onStart(job), onEnd(job)  optional, for callers that keep their own record
+ *   maxMs           wall-clock limit; Infinity for none
  */
-function startJob({ kind, workerData, onDone, owner = null, maxMs = 5 * 60 * 1000 }) {
-  const job = { id: crypto.randomBytes(9).toString('hex'), kind, owner, state: 'queued', createdAt: Date.now(),
-    workerData, onDone, maxMs, progress: null };
+function startJob({ kind, workerData, onDone, onStart, onEnd, owner = null, maxMs = 5 * 60 * 1000, lane = 'interactive', meta = null }) {
+  if (!LANES[lane]) throw new Error(`Unknown job lane '${lane}'`);
+  // A timer longer than ~24.8 days overflows and fires at once; past that, "no limit" is the honest reading.
+  if (!(maxMs > 0) || maxMs > 2147483647) maxMs = Infinity;
+  const job = { id: crypto.randomBytes(9).toString('hex'), kind, lane, owner, meta, state: 'queued', createdAt: Date.now(),
+    workerData, onDone, onStart, onEnd, maxMs, progress: null };
   jobs.set(job.id, job);
-  queue.push(job);
-  pump();
+  lanes[lane].queue.push(job);
+  pump(lane);
   return job.id;
 }
 
 function getJob(id) {
   const job = jobs.get(id);
-  return job ? { owner: job.owner, view: publicView(job) } : null;
+  return job ? { owner: job.owner, meta: job.meta, view: publicView(job) } : null;
 }
 
-module.exports = { startJob, getJob };
+/** Stop a job, queued or running. False if it had already finished. */
+function cancelJob(id, reason = 'Cancelled.') {
+  const job = jobs.get(id);
+  if (!job) return false;
+  if (job.state === 'queued') {
+    const q = lanes[job.lane].queue;
+    q.splice(q.indexOf(job), 1);
+    // finish() decrements running, so count it in first: it never started.
+    lanes[job.lane].running++;
+    finish(job, { state: 'cancelled', error: reason });
+    return true;
+  }
+  if (job.state === 'running' && !job.recording) {
+    finish(job, { state: 'cancelled', error: reason });
+    if (job.worker) job.worker.terminate();
+    return true;
+  }
+  return false;
+}
+
+/** Every job not yet finished, for the admin tab. */
+function activeJobs(filter = () => true) {
+  return [...jobs.values()]
+    .filter((j) => (j.state === 'queued' || j.state === 'running') && filter(j))
+    .map((j) => ({ ...publicView(j), meta: j.meta }));
+}
+
+module.exports = { startJob, getJob, cancelJob, activeJobs, limits };

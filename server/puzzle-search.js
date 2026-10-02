@@ -99,13 +99,34 @@ function cloneState(state) {
   return { ...structuredClone(own), ...shared, pieces: (state.pieces || []).map(clonePiece) };
 }
 
-/** Why a game type cannot be searched this way, or null. */
-function unsupportedReason(gameType) {
+/**
+ * Why a game type (or, given one, an aim) cannot be searched this way, or null.
+ *
+ * The search tests the aim straight after each of the solver's own moves.
+ * Losing your last piece is completed by the OPPONENT's move (they take it),
+ * so a search of that goal would find no winner anywhere and report every
+ * line as unforced - wrong, rather than unknown. It is left to the validator's
+ * forced-reply check, and to staff.
+ */
+function unsupportedReason(gameType, aim) {
   const gt = gameType || {};
   if ((Number(gt.actions_per_turn) || 1) > 1) return 'turns of more than one action';
   if (Number(gt.simultaneous_turns) === 1) return 'simultaneous turns';
   if (Number(gt.veto_enabled) === 1) return 'the veto';
+  if (aim === 'lose_all_pieces') return "a goal the opponent's move completes (losing your last piece)";
   return null;
+}
+
+/*
+ * How many positions the win-in-N search remembers before starting afresh.
+ * Each entry is a position key (a few hundred bytes), so the default stays well
+ * inside a worker's heap; a long staff search may raise it with opts.ttMax.
+ * Clearing costs only repeated work, never a wrong answer.
+ */
+const TT_MAX_DEFAULT = 150000;
+function remember(memory, key, value) {
+  if (memory.tt.size >= memory.ttMax) memory.tt.clear();
+  memory.tt.set(key, value);
 }
 
 class Budget {
@@ -114,7 +135,10 @@ class Budget {
    * computing. Below 1, every ~50ms of work is followed by a pause (breathe),
    * so a long verification running in a worker leaves the CPU to the site.
    */
-  constructor({ budgetMs = 30000, maxNodes = Infinity, dutyCycle = 1 } = {}) {
+  constructor({ budgetMs = 30000, maxNodes = Infinity, dutyCycle = 1, onTick = null } = {}) {
+    // onTick(nodes), every 2,000 positions: a heartbeat for long searches,
+    // whose per-first-move progress can be minutes or hours apart.
+    this.onTick = onTick;
     this.deadline = Date.now() + budgetMs;
     this.maxNodes = maxNodes;
     this.nodes = 0;
@@ -133,6 +157,7 @@ class Budget {
   }
   spend() {
     this.nodes++;
+    if (this.onTick && this.nodes % 2000 === 0) this.onTick(this.nodes);
     if (this.nodes > this.maxNodes || Date.now() > this.deadline) this.exhausted = true;
     return !this.exhausted;
   }
@@ -307,7 +332,7 @@ async function forcesAfter(s1, side, aim, budget, memory) {
 async function searchWinInTwo(puzzle, gameType, opts = {}) {
   const started = Date.now();
   const aim = opts.aim || puzzle.goal || 'win';
-  const unsupported = unsupportedReason(gameType);
+  const unsupported = unsupportedReason(gameType, aim);
   const result = {
     supported: !unsupported, reason: unsupported, complete: false, aim,
     winsInOne: [], winsInTwo: [], refuted: [], nodes: 0, ms: 0,
@@ -381,7 +406,7 @@ async function winsWithin(state, side, aim, n, budget, memory) {
   const killers = memory.wins[n] || (memory.wins[n] = new Set());
   if (n === 1) {
     const win = await findWinInOne(state, side, aim, budget, killers);
-    if (!budget.exhausted) memory.tt.set(key, win);
+    if (!budget.exhausted) remember(memory, key, win);
     return win;
   }
   const base = cloneState(state);
@@ -402,7 +427,7 @@ async function winsWithin(state, side, aim, n, budget, memory) {
     for (const p of played) {
       if (achieved(aim, p.state, side, p.ctx)) {
         killers.add(moveKey(p.move));
-        memory.tt.set(key, p.move);
+        remember(memory, key, p.move);
         return p.move;
       }
       // eslint-disable-next-line no-await-in-loop
@@ -410,12 +435,12 @@ async function winsWithin(state, side, aim, n, budget, memory) {
       if (budget.exhausted) return null;
       if (verdict.forces) {
         killers.add(moveKey(p.move));
-        memory.tt.set(key, p.move);
+        remember(memory, key, p.move);
         return p.move;
       }
     }
   }
-  if (!budget.exhausted) memory.tt.set(key, null);
+  if (!budget.exhausted) remember(memory, key, null);
   return null;
 }
 
@@ -463,18 +488,20 @@ async function searchWinInN(puzzle, gameType, opts = {}) {
   const started = Date.now();
   const aim = opts.aim || puzzle.goal || 'win';
   const depth = Math.max(1, Number(opts.depth) || 2);
-  const unsupported = unsupportedReason(gameType);
+  const unsupported = unsupportedReason(gameType, aim);
   const result = { supported: !unsupported, reason: unsupported, complete: false, aim, depth,
     forcing: [], refuted: [], winsAtOnce: [], nodes: 0, ms: 0 };
   if (unsupported) return result;
   const side = Number(puzzle.side_to_move);
-  const budget = new Budget(opts);
-  const memory = { tt: new Map(), wins: {}, refutations: {} };
+  const tick = opts.onMove ? (nodes) => opts.onMove(null, result, nodes) : null;
+  const budget = new Budget({ ...opts, onTick: tick });
+  const memory = { tt: new Map(), ttMax: Number(opts.ttMax) || TT_MAX_DEFAULT, wins: {}, refutations: {} };
   const root = buildGameState(puzzle, gameType);
   const firsts = opts.firstMoves
     ? (await Promise.all(opts.firstMoves.map((m) => playOne(root, side, m, budget)))).flat()
     : await playAll(root, side, budget);
   result.total = firsts.length; // first moves to examine, for progress reporting
+  if (opts.onMove) opts.onMove(null, result, budget.nodes);
   for (const f of firsts) {
     if (budget.exhausted) break;
     if (achieved(aim, f.state, side, f.ctx)) {
@@ -525,7 +552,7 @@ async function verifyPuzzleLine(puzzle, gameType, line, opts = {}) {
   const started = Date.now();
   const aim = opts.aim || puzzle.goal || 'win';
   const solverMoves = Math.ceil(line.length / 2);
-  const unsupported = unsupportedReason(gameType);
+  const unsupported = unsupportedReason(gameType, aim);
   const out = { complete: false, supported: !unsupported, reason: unsupported, lineForces: false,
     sound: false, unique: false, steps: [], nodes: 0, ms: 0, solverMoves };
   if (unsupported || !line.length) return out;
@@ -545,10 +572,11 @@ async function verifyPuzzleLine(puzzle, gameType, line, opts = {}) {
     const lineMove = line[(step - 1) * 2];
     // eslint-disable-next-line no-await-in-loop
     const r = await searchWinInN(at, gameType, {
-      aim, depth, budgetMs: Math.max(0, deadline - Date.now()), dutyCycle: opts.dutyCycle,
+      aim, depth, budgetMs: Math.max(0, deadline - Date.now()), dutyCycle: opts.dutyCycle, ttMax: opts.ttMax,
       onMove: opts.onProgress
-        ? (m, res) => opts.onProgress({ step, steps: solverMoves,
-          done: res.forcing.length + res.refuted.length + res.winsAtOnce.length, total: res.total || null })
+        ? (m, res, nodes) => opts.onProgress({ step, steps: solverMoves,
+          done: res.forcing.length + res.refuted.length + res.winsAtOnce.length, total: res.total || null,
+          nodes: out.nodes + (nodes || 0) })
         : null,
     });
     out.nodes += r.nodes;

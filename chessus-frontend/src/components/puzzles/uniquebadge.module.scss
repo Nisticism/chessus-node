@@ -1,0 +1,95 @@
+// The "verified unique solution" badge, and the builder's panel about it.
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+  color: #0f2a18;
+  background: #7bd88f;
+  cursor: help;
+}
+
+// Just the mark, for tight lists (a profile's puzzle list).
+.mark {
+  margin-left: 6px;
+  color: #7bd88f;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: help;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 6px;
+  font-size: 15px;
+  line-height: 1.5;
+  border: 1px solid rgba(var(--panel-card-border-rgb, 120, 120, 140), 0.6);
+}
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-weight: 600;
+}
+
+.panel-detail {
+  font-size: 0.9rem;
+  color: var(--text-dim, #aab);
+}
+
+.panel-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.note-input {
+  flex: 1 1 220px;
+  min-width: 0;
+  padding: 6px 8px;
+  border-radius: 4px;
+  border: 1px solid rgba(var(--panel-card-border-rgb, 120, 120, 140), 0.8);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 0.9rem;
+}
+
+.btn {
+  padding: 6px 12px;
+  border-radius: 4px;
+  border: 1px solid rgba(120, 170, 255, 0.6);
+  background: rgba(120, 170, 255, 0.15);
+  color: inherit;
+  font: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+
+  &:disabled { opacity: 0.6; cursor: default; }
+}
+
+.link-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--text-dim, #aab);
+  text-decoration: underline;
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.status-ok { color: #7bd88f; }
+.status-warn { color: #ffb84d; }
+.status-dim { color: var(--text-dim, #aab); }

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import { Navigate, useNavigate, useParams, useLocation, Link } from 'react-router-dom';
 import { useSelector, useDispatch } from "react-redux";
 import styles from "./player-page.module.scss";
+import UniqueBadge from "../puzzles/UniqueBadge";
 import { deleteUser, getUser } from "../../actions/auth";
 import { clearPlayerPage } from "../../actions/users";
 import { EDIT_SUCCESS } from "../../actions/types";
@@ -1102,6 +1103,7 @@ const PlayerPage = (props) => {
                               <span className={styles["content-name"]}>
                                 {isDraft && <span className={styles["draft-tag"]}>DRAFT</span>}
                                 {puzzle.title || 'Untitled puzzle'}
+                                <UniqueBadge status={puzzle.unique_status} method={puzzle.unique_method} compact />
                                 {puzzle.featured_on && (
                                   <span className={styles["featured-star"]} title="Has been a Puzzle of the Day">{`★`}</span>
                                 )}

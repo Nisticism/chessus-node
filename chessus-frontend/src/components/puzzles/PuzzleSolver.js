@@ -26,6 +26,7 @@ import usePuzzleEngine, { buildEnginePieces } from "./usePuzzleEngine";
 import { otherFinishesText } from "../../helpers/puzzleFinishes";
 import { readBlockedDotMode } from "../../helpers/blockedDotMode";
 import styles from "./puzzlesolver.module.scss";
+import UniqueBadge from "./UniqueBadge";
 
 /*
  * Puzzle solver.
@@ -1267,6 +1268,7 @@ const PuzzleSolver = () => {
       <p className={styles["subtitle"]}>
         {puzzle.game_name && <>in <Link to={`/games/${puzzle.game_type_id}`}>{puzzle.game_name}</Link></>}
         {puzzle.creator_username && <> · puzzle by {puzzle.creator_username}</>}
+        {' '}<UniqueBadge status={puzzle.unique_status} method={puzzle.unique_method} />
       </p>
 
       <div className={styles["layout"]}>

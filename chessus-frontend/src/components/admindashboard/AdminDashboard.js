@@ -12,6 +12,7 @@ import FairyStockfishPanel from "./FairyStockfishPanel";
 import TrafficPanel from "./TrafficPanel";
 import ChangelogPanel from "./ChangelogPanel";
 import DailyPuzzlePanel from "./DailyPuzzlePanel";
+import PuzzleVerificationPanel from "./PuzzleVerificationPanel";
 import ConfirmDeleteModal from "../common/ConfirmDeleteModal";
 import ToggleSwitch from "../common/ToggleSwitch";
 import NumberInput from "../common/NumberInput";
@@ -298,6 +299,9 @@ const AdminDashboard = () => {
       setLoading(false);
     } else if (activeTab === 'daily-puzzle') {
       // DailyPuzzlePanel manages its own data fetching.
+    } else if (activeTab === 'puzzle-verification') {
+      // PuzzleVerificationPanel manages its own data fetching.
+      setLoading(false);
     } else if (activeTab === 'traffic') {
       // TrafficPanel manages its own data fetching.
       setLoading(false);
@@ -4022,6 +4026,12 @@ const AdminDashboard = () => {
           Puzzle of the Day
         </button>
         <button
+          className={`${styles["tab"]} ${activeTab === "puzzle-verification" ? styles["active"] : ""}`}
+          onClick={() => handleTabChange("puzzle-verification")}
+        >
+          Puzzle Verification
+        </button>
+        <button
           className={`${styles["tab"]} ${activeTab === "ai-analysis-requests" ? styles["active"] : ""}`}
           onClick={() => handleTabChange("ai-analysis-requests")}
         >
@@ -4067,7 +4077,7 @@ const AdminDashboard = () => {
       </div>
 
       <div className={styles["content"]}>
-        {(activeTab !== 'server-stats' && activeTab !== 'ai-training' && activeTab !== 'initial-state' && activeTab !== 'ai-analysis-requests' && activeTab !== 'poll' && activeTab !== 'user-growth' && activeTab !== 'physical-board-requests' && activeTab !== 'feature-todo' && activeTab !== 'fairy-stockfish' && activeTab !== 'daily-puzzle' && activeTab !== 'traffic' && loading) || (activeTab === 'featured' && featuredLoading) || (activeTab === 'settings' && settingsLoading) ? (
+        {(activeTab !== 'server-stats' && activeTab !== 'ai-training' && activeTab !== 'initial-state' && activeTab !== 'ai-analysis-requests' && activeTab !== 'poll' && activeTab !== 'user-growth' && activeTab !== 'physical-board-requests' && activeTab !== 'feature-todo' && activeTab !== 'fairy-stockfish' && activeTab !== 'daily-puzzle' && activeTab !== 'puzzle-verification' && activeTab !== 'traffic' && loading) || (activeTab === 'featured' && featuredLoading) || (activeTab === 'settings' && settingsLoading) ? (
           <div className={styles["loading"]}>Loading...</div>
         ) : (
           <>
@@ -4089,6 +4099,7 @@ const AdminDashboard = () => {
             {activeTab === "ai-training" && <AiTrainingPanel initialAnalysisGameTypeId={aiPanelInitialGameTypeId} />}
             {activeTab === "fairy-stockfish" && <FairyStockfishPanel />}
             {activeTab === "daily-puzzle" && <DailyPuzzlePanel />}
+            {activeTab === "puzzle-verification" && <PuzzleVerificationPanel />}
             {activeTab === "ai-analysis-requests" && renderAiAnalysisRequestsTab()}
             {activeTab === "initial-state" && renderInitialStateTab()}
             {activeTab === "poll" && renderPollTab()}

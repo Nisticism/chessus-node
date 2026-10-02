@@ -860,6 +860,61 @@ tableMigrations.push(
       INDEX idx_link_code_expiry (expires_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
     description: "Create discord_link_codes (the one-time code that joins a Discord id to an account)"
+  },
+  /*
+   * A creator asking for their puzzle to be checked for a unique solution by
+   * hand - the automatic check stops at three moves. One open request per
+   * puzzle; staff resolve it, and the requester is told the outcome.
+   */
+  {
+    table: 'puzzle_verification_requests',
+    sql: `CREATE TABLE IF NOT EXISTS puzzle_verification_requests (
+      id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      puzzle_id INT UNSIGNED NOT NULL,
+      requester_id INT UNSIGNED NULL,
+      note VARCHAR(500) NULL,
+      -- 'open' until staff resolve it as 'verified' or 'not_verified', or the
+      -- requester withdraws it ('withdrawn').
+      status VARCHAR(16) NOT NULL DEFAULT 'open',
+      resolution TEXT NULL,
+      resolved_by INT UNSIGNED NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      resolved_at DATETIME NULL,
+      FOREIGN KEY (puzzle_id) REFERENCES puzzles(id) ON DELETE CASCADE,
+      FOREIGN KEY (requester_id) REFERENCES users(id) ON DELETE SET NULL,
+      FOREIGN KEY (resolved_by) REFERENCES users(id) ON DELETE SET NULL,
+      INDEX idx_pvr_puzzle (puzzle_id, status),
+      INDEX idx_pvr_status (status, created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+    description: "Create puzzle_verification_requests (creators asking staff to verify a unique solution)"
+  },
+  /*
+   * Staff-started uniqueness searches (puzzle-jobs.js, the 'long' lane): one row
+   * per run, so the result outlives the in-memory job and the server restart
+   * that would otherwise lose it. A run still 'queued'/'running' at boot was cut
+   * off by the restart and is marked 'interrupted'.
+   */
+  {
+    table: 'puzzle_verification_runs',
+    sql: `CREATE TABLE IF NOT EXISTS puzzle_verification_runs (
+      id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      puzzle_id INT UNSIGNED NOT NULL,
+      started_by INT UNSIGNED NULL,
+      -- queued | running | done | failed | cancelled | interrupted
+      state VARCHAR(16) NOT NULL DEFAULT 'queued',
+      -- When done: 'unique', 'not_unique' or 'not_forced'.
+      verdict VARCHAR(16) NULL,
+      detail TEXT NULL,
+      -- Per-step counts and timings, for the admin tab.
+      result_json MEDIUMTEXT NULL,
+      max_ms BIGINT NULL,
+      started_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      finished_at DATETIME NULL,
+      FOREIGN KEY (puzzle_id) REFERENCES puzzles(id) ON DELETE CASCADE,
+      FOREIGN KEY (started_by) REFERENCES users(id) ON DELETE SET NULL,
+      INDEX idx_pvrun_puzzle (puzzle_id, started_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+    description: "Create puzzle_verification_runs (staff uniqueness searches and their results)"
   }
 );
 
@@ -1481,7 +1536,24 @@ const migrations = [
    * longer works under the new rules. The puzzle keeps playing under its
    * snapshot; this is what the interface reads to say so.
    */
-  { table: 'puzzles', column: 'rules_diverged_at', sql: "ALTER TABLE puzzles ADD COLUMN rules_diverged_at DATETIME DEFAULT NULL", description: "When the game this puzzle came from changed in a way the puzzle does not survive." }
+  { table: 'puzzles', column: 'rules_diverged_at', sql: "ALTER TABLE puzzles ADD COLUMN rules_diverged_at DATETIME DEFAULT NULL", description: "When the game this puzzle came from changed in a way the puzzle does not survive." },
+
+  /*
+   * The "verified unique solution" badge: exactly one winning move at every
+   * step of the line, the last included, against every defence.
+   *
+   *   unique_status  'unchecked' | 'verified' | 'not_unique'
+   *   unique_method  how it was settled: 'auto' (the save-time check, up to
+   *                  three moves), 'search' (a staff-run search) or 'manual'
+   *                  (awarded or refused by staff by hand)
+   *
+   * Any edit to the position or the line puts it back to 'unchecked'.
+   */
+  { table: 'puzzles', column: 'unique_status', sql: "ALTER TABLE puzzles ADD COLUMN unique_status VARCHAR(16) NOT NULL DEFAULT 'unchecked'", description: "Whether the puzzle has a verified unique solution." },
+  { table: 'puzzles', column: 'unique_method', sql: "ALTER TABLE puzzles ADD COLUMN unique_method VARCHAR(16) DEFAULT NULL", description: "How the unique-solution status was settled: auto, search or manual." },
+  { table: 'puzzles', column: 'unique_detail', sql: "ALTER TABLE puzzles ADD COLUMN unique_detail TEXT DEFAULT NULL", description: "Why a puzzle does or does not have a unique solution." },
+  { table: 'puzzles', column: 'unique_checked_at', sql: "ALTER TABLE puzzles ADD COLUMN unique_checked_at DATETIME DEFAULT NULL", description: "When the unique-solution status was last settled." },
+  { table: 'puzzles', column: 'unique_checked_by', sql: "ALTER TABLE puzzles ADD COLUMN unique_checked_by INT UNSIGNED DEFAULT NULL", description: "The staff member who settled it, for a search or manual verdict." }
 ];
 
 // Ensure physical_board_requests table exists (may have been created after tableMigrations ran)

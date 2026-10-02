@@ -6,6 +6,7 @@ import useSeo from "../../hooks/useSeo";
 import Pagination from "../../components/pagination/Pagination";
 import { formatDateLegacy } from "../../helpers/date-formatter";
 import styles from "./puzzlelist.module.scss";
+import UniqueBadge from "../../components/puzzles/UniqueBadge";
 
 /*
  * Every puzzle on the site, in one place.
@@ -245,6 +246,7 @@ const PuzzleList = () => {
             </div>
 
             <div className={styles["card-foot"]}>
+              <UniqueBadge status={p.unique_status} method={p.unique_method} />
               {p.featured_on && (
                 <span className={styles["featured"]} title="This was a Puzzle of the Day">
                   ★ Puzzle of the Day

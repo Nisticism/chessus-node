@@ -7,6 +7,7 @@ import authHeader from "../../services/auth-header";
 import { getGameById, deleteGame, duplicateGame, toggleUpvote, getUpvoteStatus, runUniquenessCheck } from "../../actions/games";
 import { getPieceById } from "../../actions/pieces";
 import styles from "./gametypeview.module.scss";
+import UniqueBadge from "../puzzles/UniqueBadge";
 import {
   canPieceMoveTo as canPieceMoveToUtil,
   canCaptureOnMoveTo as canCaptureOnMoveToUtil,
@@ -3815,6 +3816,7 @@ Delete the game and its puzzles anyway?`)) {
                 <Link key={pz.id} to={`/games/${gameId}/puzzles/${pz.id}`} className={styles["puzzle-card"]}>
                   <div className={styles["puzzle-card-title"]}>
                     {pz.title || 'Untitled puzzle'}
+                    <UniqueBadge status={pz.unique_status} method={pz.unique_method} compact />
                   </div>
                   <div className={styles["puzzle-card-goal"]}>
                     {pz.goal === 'checkmate_in_1'

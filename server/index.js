@@ -707,6 +707,9 @@ runMigrations().then(async () => {
     console.warn('[daily] Could not top up the puzzle queue:', e.message);
   }
 
+  // A staff uniqueness search still marked live was cut off by this restart.
+  await require('./puzzle-verification-routes').markInterruptedRuns(db_pool);
+
   // After migrations, mark any orphaned AI training jobs as interrupted.
   try {
     const trainingManager = require('./ai/training-manager');
@@ -7786,6 +7789,16 @@ require('./puzzle-routes').registerPuzzleRoutes(app, {
   puzzleCreateAllowance,
   PUZZLE_FREE_PER_GAME,
   PUZZLE_DAILY_CAP,
+  puzzleValidateLimiter,
+});
+
+// The unique-solution badge past what "Check puzzle" can settle: creators'
+// verification requests, and staff searches from the admin tab.
+require('./puzzle-verification-routes').registerPuzzleVerificationRoutes(app, {
+  db_pool,
+  dbHelpers,
+  authenticateToken,
+  hasAdminRole,
   puzzleValidateLimiter,
 });
 

@@ -289,8 +289,32 @@ function placeableDefinitions(rules) {
   return out;
 }
 
+/**
+ * The game type's OPENING position, hydrated the same way a puzzle position is.
+ *
+ * This is what the engine means by initialPieces, and promotion needs it: the
+ * menu of what a piece may become is built from the piece types the game
+ * started with, so a queen that has already been captured is still an option.
+ * A puzzle position is a handful of pieces and makes a terrible substitute -
+ * a pawn one square from promoting with only kings left would be offered
+ * nothing, and the promotion would be skipped without a word.
+ */
+async function startingRoster(rules) {
+  const gameType = rules?.game;
+  if (!gameType?.pieces_string) return [];
+  const parsed = safeParse(gameType.pieces_string, null);
+  if (!parsed || typeof parsed !== 'object') return [];
+  // pieces_string is keyed "y,x"; the placements carry their own x/y for the
+  // ones that were written with them.
+  const list = Object.entries(parsed).map(([key, v]) => {
+    const [y, x] = String(key).split(',').map(Number);
+    return { ...v, x: v.x ?? x, y: v.y ?? y };
+  });
+  return hydratePosition(rules, list);
+}
+
 module.exports = {
-  placeableDefinitions,
+  placeableDefinitions, startingRoster,
   hydratePosition, startingSquareIndex, movedState,
   toEngineFields, ENGINE_FIELD_RENAMES, JUNCTION_OVERRIDES,
 };

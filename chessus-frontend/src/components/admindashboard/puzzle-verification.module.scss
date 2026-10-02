@@ -1,0 +1,109 @@
+// The admin Puzzle Verification tab: the parts the shared admin styles do not cover.
+
+.intro {
+  color: var(--text-muted);
+  line-height: 1.5;
+  max-width: 900px;
+}
+
+.caps {
+  font-size: 0.85rem;
+  color: var(--text-dim, var(--text-muted));
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin: 12px 0;
+}
+
+.search {
+  flex: 1 1 220px;
+  max-width: 340px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid rgba(var(--panel-border-rgb), 0.6);
+  background: rgba(var(--panel-bg-end-rgb), 0.4);
+  color: inherit;
+  font: inherit;
+}
+
+// Cells read left to right here; the shared table centres everything.
+.cell {
+  text-align: left !important;
+  vertical-align: top;
+}
+
+.title-link {
+  color: var(--text-heading);
+  font-weight: 600;
+}
+
+.small {
+  display: block;
+  font-size: 0.82rem;
+  color: var(--text-dim, var(--text-muted));
+  margin-top: 2px;
+  max-width: 360px;
+  overflow-wrap: break-word;
+}
+
+.status-verified { color: #7bd88f; font-weight: 700; }
+.status-not_unique { color: #ffb84d; font-weight: 700; }
+.status-unchecked { color: var(--text-muted); }
+
+.request {
+  border-left: 3px solid #f0b132;
+  padding-left: 8px;
+}
+
+.row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+
+  select, input, textarea {
+    padding: 4px 6px;
+    border-radius: 4px;
+    border: 1px solid rgba(var(--panel-border-rgb), 0.6);
+    background: rgba(var(--panel-bg-end-rgb), 0.6);
+    color: inherit;
+    font: inherit;
+    font-size: 0.85rem;
+  }
+}
+
+.resolve {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+  min-width: 260px;
+
+  textarea { min-height: 60px; resize: vertical; }
+}
+
+.bar {
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(var(--panel-border-rgb), 0.4);
+  overflow: hidden;
+  margin: 4px 0;
+  min-width: 140px;
+}
+
+.bar-fill {
+  height: 100%;
+  background: #78aaff;
+  transition: width 0.4s ease;
+}
+
+.pager {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 12px;
+}

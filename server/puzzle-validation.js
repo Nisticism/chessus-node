@@ -1219,6 +1219,7 @@ async function checkTwoMoveLine(puzzle, gameType, intended, reached) {
       intendedWorks: true,
       goalReached: true,
       searched: true,
+      unique: false,
       detail: `your first move forces '${label}' against every defence, but so ${others.length === 1 ? 'does' : 'do'} `
         + `${others.slice(0, 3).map((m) => describeFirstMove(puzzle, gameType, m)).join('; ')}`
         + `${others.length > 3 ? ` and ${others.length - 3} more` : ''}.`,
@@ -1242,13 +1243,14 @@ async function forcedWinInTwo(puzzle, gameType) {
 }
 
 /*
- * The three-move check (opts.deepLines): every step of the line searched for
+ * The whole-line check (opts.deepLines), for lines of two or three of the
+ * solver's moves: every step of the line searched for
  * every move that forces the goal in the moves left (puzzle-search.js
  * verifyPuzzleLine). Seconds to minutes, so it runs only where something has
  * asked for it - the background verification worker - never inside a request
  * or the daily scheduler, where it would hold up the whole server.
  */
-async function checkThreeMoveLine(puzzle, gameType, line, reached, opts) {
+async function checkWholeLine(puzzle, gameType, line, reached, opts) {
   const { verifyPuzzleLine } = require('./puzzle-search');
   const label = GOAL_DEFS[puzzle.goal].label.toLowerCase();
   const r = await verifyPuzzleLine(puzzle, gameType, line, {
@@ -1260,7 +1262,7 @@ async function checkThreeMoveLine(puzzle, gameType, line, reached, opts) {
   if (broken) {
     return {
       status: VALIDATION.UNSOLVABLE, solutions: [], intendedWorks: false, goalReached: reached, searched: true,
-      verification: r,
+      verification: r, unique: false,
       detail: `the line is legal, but your move ${broken.step} does not force '${label}' in the moves left - `
         + 'the opponent has a defence the line does not play.',
     };
@@ -1272,7 +1274,7 @@ async function checkThreeMoveLine(puzzle, gameType, line, reached, opts) {
       : [];
     return {
       status: VALIDATION.AMBIGUOUS, solutions: extra.step === 1 ? extra.forcing : [line[0]], intendedWorks: true,
-      goalReached: true, searched: true, verification: r,
+      goalReached: true, searched: true, verification: r, unique: false,
       detail: `at your move ${extra.step}, ${extra.count} different moves force '${label}'`
         + `${others.length ? ` (also ${others.join('; ')})` : ''}. Before the last move only the line's move is accepted, `
         + 'so a solver who finds another would be told it is wrong.',
@@ -1358,6 +1360,7 @@ async function validatePuzzle(puzzle, gameType, opts = {}) {
         intendedWorks: true,
         goalReached: reached,
         quickerWin: true,
+        unique: false,
         detail: `the game can be won on the first move - ${named.join('; ')}${more} - `
           + `so the ${moves}-move line is not the solution. Change the position so nothing wins at once.`,
       };
@@ -1369,12 +1372,12 @@ async function validatePuzzle(puzzle, gameType, opts = {}) {
      * would make it redundant. null from either means the search could not
      * finish or does not apply, and the older advice below stands.
      */
-    if (isMechanical && line.length === 3) {
-      const searched = await checkTwoMoveLine(puzzle, gameType, intended, reached);
+    if (isMechanical && (line.length === 3 || line.length === 5) && opts.deepLines) {
+      const searched = await checkWholeLine(puzzle, gameType, line, reached, opts);
       if (searched) return searched;
     }
-    if (isMechanical && line.length === 5 && opts.deepLines) {
-      const searched = await checkThreeMoveLine(puzzle, gameType, line, reached, opts);
+    if (isMechanical && line.length === 3) {
+      const searched = await checkTwoMoveLine(puzzle, gameType, intended, reached);
       if (searched) return searched;
     }
     if (isMechanical && line.length > 3) {
@@ -1386,6 +1389,7 @@ async function validatePuzzle(puzzle, gameType, opts = {}) {
           intendedWorks: true,
           goalReached: reached,
           quickerWin: true,
+          unique: false,
           detail: `${GOAL_DEFS[puzzle.goal].label.toLowerCase()} can be forced in two moves, starting with `
             + `${describeFirstMove(puzzle, gameType, shorter.move)} - so the ${moves}-move line is not the solution.`,
         };
@@ -1419,6 +1423,7 @@ async function validatePuzzle(puzzle, gameType, opts = {}) {
             intendedWorks: true,
             goalReached: true,
             forcedLine: true,
+            unique: true,
             detail: "the opponent's reply is their only legal move, and no other move of yours "
               + 'forces the same result - so this is checked, not merely plausible.',
           };
@@ -1430,6 +1435,7 @@ async function validatePuzzle(puzzle, gameType, opts = {}) {
             intendedWorks: true,
             goalReached: true,
             forcedLine: true,
+            unique: false,
             detail: `${rivals.length + 1} different moves force the same result. That is allowed - `
               + 'solvers may simply find another one.',
           };
@@ -1537,10 +1543,11 @@ async function validatePuzzle(puzzle, gameType, opts = {}) {
       status: VALIDATION.AMBIGUOUS,
       solutions,
       intendedWorks: true,
+      unique: false,
       detail: `${solutions.length} moves achieve '${goalLabel}': also ${others.join(', ')}`,
     };
   }
-  return { status: VALIDATION.VALID, solutions, intendedWorks: true, detail: null };
+  return { status: VALIDATION.VALID, solutions, intendedWorks: true, unique: true, detail: null };
 }
 
 module.exports = {

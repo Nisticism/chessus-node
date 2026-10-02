@@ -21,6 +21,7 @@ import FootprintOutlines from "../common/FootprintOutlines";
 import { useTapOutside } from "../common/useTouchPieceGestures";
 import styles from "./puzzlebuilder.module.scss";
 import CheckProgress from "./CheckProgress";
+import UniqueStatusPanel from "./UniqueStatusPanel";
 
 /*
  * Puzzle builder.
@@ -1920,6 +1921,12 @@ const PuzzleBuilder = () => {
             </div>
           )}
 
+          <UniqueStatusPanel
+            puzzleId={savedId}
+            published={!isDraft}
+            checkResult={checkResult}
+          />
+
           {/*
             * The uniqueness search's answer. Shown separately from the line
             * check because they are different questions, and a creator wants
@@ -1960,9 +1967,11 @@ const PuzzleBuilder = () => {
             can judge (checkmate, capture, winning), puzzles of up to three moves are checked
             against every move the opponent could make: whether your line is really forced, and
             whether your move is the only one that works at each step. A three-move check can
-            take a minute or two, and a progress bar shows how long is left. Longer lines are
-            checked for being playable only, so whether the opponent could defend better is
-            your call.{' '}
+            take a minute or two, and a progress bar shows how long is left. The same check
+            awards the <strong>One solution</strong> badge when exactly one move wins at every
+            step. Longer lines are checked for being playable only — they cannot be verified
+            automatically, but you can request a verification by staff once the puzzle is
+            published.{' '}
             <strong>How many answers?</strong> goes further: it searches every reply the
             opponent has, so it can tell you whether your line is genuinely forced, whether a
             faster one exists, and how many different moves work. A big position may come back
