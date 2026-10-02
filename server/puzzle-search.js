@@ -333,4 +333,146 @@ async function searchWinInTwo(puzzle, gameType, opts = {}) {
   return result;
 }
 
-module.exports = { searchWinInTwo, cloneState, unsupportedReason };
+/* ------------------------------------------------------- win in N -- */
+
+/*
+ * The same question at any depth: does the solver have a move that forces the
+ * aim within N of their own moves, whatever the opponent replies?
+ *
+ *   wins(state, n)   = some move M achieves the aim, or (n > 1 and) after M
+ *                      every reply leaves wins(_, n - 1)
+ *
+ * Exponential, so it is for offline analysis and checking, not a request a
+ * creator waits on: the cost grows by roughly (moves x replies) per extra
+ * move. What keeps it usable: a first move dies at its first refuting reply;
+ * refutations and winning moves found anywhere are tried first everywhere
+ * ("killers", per depth); and a position already proven or refuted at a
+ * depth is remembered (transpositions are common - the same position reached
+ * in a different order).
+ */
+const positionKey = (state) => (state.pieces || [])
+  .map((p) => `${p.id}@${p.x},${p.y}:${p.piece_id}:${p.player_id ?? p.team}:${p.current_hp ?? ''}`)
+  .sort()
+  .join('|');
+
+async function winsWithin(state, side, aim, n, budget, memory) {
+  const key = `${n}#${side}#${positionKey(state)}`;
+  if (memory.tt.has(key)) return memory.tt.get(key);
+  const killers = memory.wins[n] || (memory.wins[n] = new Set());
+  if (n === 1) {
+    const win = await findWinInOne(state, side, aim, budget, killers);
+    if (!budget.exhausted) memory.tt.set(key, win);
+    return win;
+  }
+  const base = cloneState(state);
+  base.currentTurn = side;
+  const candidates = killerFirst([
+    ...(getAllLegalMovesForPlayer(base, side) || []),
+    ...enPassantCandidates(base, side),
+    ...placementCandidates(base, side),
+  ], killers, moveKey);
+  const seen = new Set();
+  for (const move of candidates) {
+    const mk = moveKey(move);
+    if (seen.has(mk)) continue;
+    seen.add(mk);
+    if (!budget.spend()) return null;
+    // eslint-disable-next-line no-await-in-loop
+    const played = await playOne(state, side, move, budget);
+    for (const p of played) {
+      if (achieved(aim, p.state, side, p.ctx)) {
+        killers.add(moveKey(p.move));
+        memory.tt.set(key, p.move);
+        return p.move;
+      }
+      // eslint-disable-next-line no-await-in-loop
+      const verdict = await everyReplyLoses(p.state, side, aim, n - 1, budget, memory);
+      if (budget.exhausted) return null;
+      if (verdict.forces) {
+        killers.add(moveKey(p.move));
+        memory.tt.set(key, p.move);
+        return p.move;
+      }
+    }
+  }
+  if (!budget.exhausted) memory.tt.set(key, null);
+  return null;
+}
+
+/* After the solver's move (reaching s1): does every reply leave wins(_, n)? */
+async function everyReplyLoses(s1, side, aim, n, budget, memory) {
+  const defender = other(side);
+  const refs = memory.refutations[n] || (memory.refutations[n] = new Set());
+  const replies = killerFirst(await playAll(s1, defender, budget), refs, (r) => moveKey(r.move));
+  if (budget.exhausted) return { forces: false };
+  if (!replies.length) {
+    const outcome = terminalOutcome(s1, defender, null);
+    if (outcome) return { forces: Number(outcome.winner) === Number(side) };
+    // No legal reply and no ending: they pass, and it is the solver's move again.
+    const win = await winsWithin(s1, side, aim, n, budget, memory);
+    return { forces: !!win, refutation: win ? null : { pass: true } };
+  }
+  for (const r of replies) {
+    const ended = terminalOutcome(r.state, side, r.ctx);
+    if (ended) {
+      if (Number(ended.winner) === Number(side)) continue;
+      refs.add(moveKey(r.move));
+      return { forces: false, refutation: r.move };
+    }
+    // eslint-disable-next-line no-await-in-loop
+    const win = await winsWithin(r.state, side, aim, n, budget, memory);
+    if (budget.exhausted) return { forces: false };
+    if (!win) {
+      refs.add(moveKey(r.move));
+      return { forces: false, refutation: r.move };
+    }
+  }
+  return { forces: true };
+}
+
+/**
+ * Every first move that forces the aim within `depth` of the solver's moves.
+ *
+ * @param {object} puzzle    the shape validatePuzzle takes
+ * @param {object} gameType  the game_types row
+ * @param {object} opts      { aim, depth, budgetMs, firstMoves? (only these), onMove? (progress callback) }
+ * @returns {Promise<object>} { supported, reason, complete, forcing: [move], refuted: [{ move, refutation }],
+ *                              winsAtOnce: [move], nodes, ms }
+ */
+async function searchWinInN(puzzle, gameType, opts = {}) {
+  const started = Date.now();
+  const aim = opts.aim || puzzle.goal || 'win';
+  const depth = Math.max(1, Number(opts.depth) || 2);
+  const unsupported = unsupportedReason(gameType);
+  const result = { supported: !unsupported, reason: unsupported, complete: false, aim, depth,
+    forcing: [], refuted: [], winsAtOnce: [], nodes: 0, ms: 0 };
+  if (unsupported) return result;
+  const side = Number(puzzle.side_to_move);
+  const budget = new Budget(opts);
+  const memory = { tt: new Map(), wins: {}, refutations: {} };
+  const root = buildGameState(puzzle, gameType);
+  const firsts = opts.firstMoves
+    ? (await Promise.all(opts.firstMoves.map((m) => playOne(root, side, m, budget)))).flat()
+    : await playAll(root, side, budget);
+  for (const f of firsts) {
+    if (budget.exhausted) break;
+    if (achieved(aim, f.state, side, f.ctx)) {
+      result.winsAtOnce.push(f.move);
+    } else if (depth > 1) {
+      // eslint-disable-next-line no-await-in-loop
+      const verdict = await everyReplyLoses(f.state, side, aim, depth - 1, budget, memory);
+      if (budget.exhausted) break;
+      if (verdict.forces) result.forcing.push(f.move);
+      else result.refuted.push({ move: f.move, refutation: verdict.refutation });
+    } else {
+      result.refuted.push({ move: f.move, refutation: null });
+    }
+    if (opts.onMove) opts.onMove(f.move, result, budget.nodes);
+  }
+  result.complete = !budget.exhausted;
+  result.nodes = budget.nodes;
+  result.ms = Date.now() - started;
+  return result;
+}
+
+module.exports = { searchWinInTwo, searchWinInN, cloneState, unsupportedReason };
