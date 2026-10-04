@@ -12,6 +12,7 @@ import FairyStockfishPanel from "./FairyStockfishPanel";
 import TrafficPanel from "./TrafficPanel";
 import ChangelogPanel from "./ChangelogPanel";
 import DailyPuzzlePanel from "./DailyPuzzlePanel";
+import FeaturedGamesPanel from "./FeaturedGamesPanel";
 import PuzzleVerificationPanel from "./PuzzleVerificationPanel";
 import ConfirmDeleteModal from "../common/ConfirmDeleteModal";
 import ToggleSwitch from "../common/ToggleSwitch";
@@ -73,9 +74,6 @@ const AdminDashboard = () => {
   const [promoteLevel, setPromoteLevel] = useState(1);
   
   // Featured games states
-  const [featuredGames, setFeaturedGames] = useState(Array(9).fill(null)); // 9 slots
-  const [availableGames, setAvailableGames] = useState([]);
-  const [featuredLoading, setFeaturedLoading] = useState(false);
 
   // Community stream channels state (user-registered Twitch channels)
   const [adminUserStreams, setAdminUserStreams] = useState([]);
@@ -259,7 +257,8 @@ const AdminDashboard = () => {
 
   useEffect(() => {
     if (activeTab === 'featured') {
-      fetchFeaturedGames();
+      // FeaturedGamesPanel manages its own data fetching.
+      setLoading(false);
     } else if (activeTab === 'anonymous-games') {
       fetchAnonymousGames(1);
     } else if (activeTab === 'private-games') {
@@ -690,64 +689,6 @@ const AdminDashboard = () => {
     }
   };
 
-  const fetchFeaturedGames = async () => {
-    setFeaturedLoading(true);
-    try {
-      const response = await axios.get(
-        `${API_URL}admin/featured-games`,
-        { headers: authHeader() }
-      );
-      const { featured, allGames } = response.data;
-      
-      // Build the 9 slots array
-      const slots = Array(9).fill(null);
-      featured.forEach(game => {
-        if (game.featured_order >= 1 && game.featured_order <= 9) {
-          slots[game.featured_order - 1] = game;
-        }
-      });
-      
-      setFeaturedGames(slots);
-      setAvailableGames(allGames);
-    } catch (error) {
-      console.error("Error fetching featured games:", error);
-      setAlertMessage("Failed to load featured games");
-      setAlertType('error');
-      setShowAlert(true);
-    } finally {
-      setFeaturedLoading(false);
-    }
-  };
-
-  const handleFeaturedGameChange = (slotIndex, gameId) => {
-    const newFeatured = [...featuredGames];
-    if (gameId === '') {
-      newFeatured[slotIndex] = null;
-    } else {
-      const game = availableGames.find(g => g.id === parseInt(gameId));
-      newFeatured[slotIndex] = game || null;
-    }
-    setFeaturedGames(newFeatured);
-  };
-
-  const saveFeaturedGames = async () => {
-    try {
-      const featuredGameIds = featuredGames.map(g => g?.id || null);
-      await axios.put(
-        `${API_URL}admin/featured-games`,
-        { featuredGameIds },
-        { headers: authHeader() }
-      );
-      setAlertMessage("Featured games saved successfully");
-      setAlertType('success');
-      setShowAlert(true);
-    } catch (error) {
-      console.error("Error saving featured games:", error);
-      setAlertMessage("Failed to save featured games");
-      setAlertType('error');
-      setShowAlert(true);
-    }
-  };
 
   const handleTabChange = (tab) => {
     setActiveTab(tab);
@@ -1895,50 +1836,6 @@ const AdminDashboard = () => {
     </div>
   );
 
-  const renderFeaturedTab = () => (
-    <div className={styles["featured-container"]}>
-      <h2 style={{ marginBottom: '20px', color: 'var(--accent-primary)' }}>Featured Games on Homepage</h2>
-      <p style={{ marginBottom: '30px', color: 'var(--text-dim)' }}>
-        Select up to 9 games to feature on the homepage. These games will be displayed in the "Explore the Grove" section above the popular games.
-        Leave a slot empty to fall back to popular games. Slots are shown in a 3&times;3 grid on the home page.
-      </p>
-      
-      <div className={styles["featured-slots"]}>
-        {Array.from({length: 9}, (_, i) => i).map(slotIndex => (
-          <div key={slotIndex} className={styles["featured-slot"]}>
-            <label>Slot {slotIndex + 1}</label>
-            <select
-              value={featuredGames[slotIndex]?.id || ''}
-              onChange={(e) => handleFeaturedGameChange(slotIndex, e.target.value)}
-              className={styles["featured-select"]}
-            >
-              <option value="">-- None (use popular) --</option>
-              {availableGames.map(game => (
-                <option 
-                  key={game.id} 
-                  value={game.id}
-                  disabled={featuredGames.some((fg, i) => i !== slotIndex && fg?.id === game.id)}
-                >
-                  {game.game_name} ({game.board_width}x{game.board_height}) - {game.play_count || 0} plays
-                </option>
-              ))}
-            </select>
-            {featuredGames[slotIndex] && (
-              <div className={styles["featured-preview"]}>
-                <strong>{featuredGames[slotIndex].game_name}</strong>
-                <span>by {featuredGames[slotIndex].creator_name || 'Unknown'}</span>
-                <span>{featuredGames[slotIndex].board_width}x{featuredGames[slotIndex].board_height} board</span>
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
-
-      <div style={{ marginTop: '30px' }}>
-        <StandardButton onClick={saveFeaturedGames} buttonText="Save Featured Games" />
-      </div>
-    </div>
-  );
 
   const fetchAdminUserStreams = async () => {
     setAdminUserStreamsLoading(true);
@@ -4077,7 +3974,7 @@ const AdminDashboard = () => {
       </div>
 
       <div className={styles["content"]}>
-        {(activeTab !== 'server-stats' && activeTab !== 'ai-training' && activeTab !== 'initial-state' && activeTab !== 'ai-analysis-requests' && activeTab !== 'poll' && activeTab !== 'user-growth' && activeTab !== 'physical-board-requests' && activeTab !== 'feature-todo' && activeTab !== 'fairy-stockfish' && activeTab !== 'daily-puzzle' && activeTab !== 'puzzle-verification' && activeTab !== 'traffic' && loading) || (activeTab === 'featured' && featuredLoading) || (activeTab === 'settings' && settingsLoading) ? (
+        {(activeTab !== 'server-stats' && activeTab !== 'ai-training' && activeTab !== 'initial-state' && activeTab !== 'ai-analysis-requests' && activeTab !== 'poll' && activeTab !== 'user-growth' && activeTab !== 'physical-board-requests' && activeTab !== 'feature-todo' && activeTab !== 'fairy-stockfish' && activeTab !== 'daily-puzzle' && activeTab !== 'puzzle-verification' && activeTab !== 'traffic' && loading) || (activeTab === 'settings' && settingsLoading) ? (
           <div className={styles["loading"]}>Loading...</div>
         ) : (
           <>
@@ -4087,7 +3984,7 @@ const AdminDashboard = () => {
             {activeTab === "drafts" && renderDraftsTable()}
             {activeTab === "forums" && renderForumsTable()}
             {activeTab === "news" && renderNewsTable()}
-            {activeTab === "featured" && renderFeaturedTab()}
+            {activeTab === "featured" && <FeaturedGamesPanel />}
             {activeTab === "streams" && renderStreamsTab()}
             {activeTab === "online" && renderOnlinePlayersTab()}
             {activeTab === "anonymous-games" && renderAnonymousGamesTable()}

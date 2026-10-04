@@ -14706,18 +14706,24 @@ app.get("/api/admin/online-players", authenticateAdmin, async (req, res) => {
 // Get all featured games (admin only)
 app.get("/api/admin/featured-games", authenticateAdmin, async (req, res) => {
   try {
-    // Get all games with their featured status
+    /*
+     * EVERY published game type, so any of them can be featured - this used to
+     * stop at the 50 most played, and a game outside them could not be chosen
+     * at all. The admin tab searches the list. Drafts are left out (nobody else
+     * can play one), unless one is already featured.
+     */
     const [allGames] = await db_pool.query(`
       SELECT g.id, g.game_name, g.board_width, g.board_height, g.featured_order,
+             COALESCE(g.is_draft, 0) AS is_draft,
              u.username as creator_name,
-             COUNT(DISTINCT gm.id) as play_count
+             COALESCE(pc.n, 0) as play_count
       FROM game_types g
       LEFT JOIN users u ON g.creator_id = u.id
-      LEFT JOIN games gm ON g.id = gm.game_type_id
-      GROUP BY g.id
+      LEFT JOIN (SELECT game_type_id, COUNT(*) AS n FROM games GROUP BY game_type_id) pc
+        ON pc.game_type_id = g.id
+      WHERE COALESCE(g.is_draft, 0) = 0 OR g.featured_order IS NOT NULL
       ORDER BY CASE WHEN g.featured_order IS NOT NULL THEN 0 ELSE 1 END,
-               g.featured_order ASC, play_count DESC
-      LIMIT 50
+               g.featured_order ASC, play_count DESC, g.game_name ASC
     `);
 
     // Get currently featured games

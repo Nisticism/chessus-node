@@ -742,6 +742,29 @@
   }
 }
 
+.featured-search {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  background: rgba(var(--panel-border-rgb), 0.2);
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  color: var(--text-heading);
+  font-size: 0.95rem;
+
+  &:focus {
+    outline: none;
+    border-color: var(--border-bright);
+  }
+}
+
+.featured-search-count {
+  margin-top: 6px;
+  font-size: 0.8rem;
+  color: var(--text-dim);
+}
+
 .featured-preview {
   margin-top: 15px;
   padding: 12px;
