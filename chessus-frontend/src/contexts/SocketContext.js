@@ -13,6 +13,7 @@ import {
   GET_UNREAD_COUNT_SUCCESS,
   NEW_DIRECT_MESSAGE,
 } from '../actions/types';
+import AuthService from '../services/auth.service';
 
 const SocketContext = createContext(null);
 
@@ -36,6 +37,7 @@ export const SocketProvider = ({ children }) => {
   const lastAuthRef = useRef(null); // Track last auth to prevent duplicate emits
   const dispatchRef = useRef(dispatch);
   const prevUserRef = useRef(user); // Track previous user to detect logout transition
+  const authRetries = useRef(0); // Token refreshes tried since the last successful sign-in
 
   // Keep dispatch ref current
   useEffect(() => {
@@ -56,6 +58,14 @@ export const SocketProvider = ({ children }) => {
       // succeeds, so real-time performance is unaffected for users who support WS.
       transports: ['polling', 'websocket'],
       withCredentials: true,
+      // The server takes the user from this token, checked on every
+      // (re)connect - it is called again for each one, and refreshes a token
+      // that has expired while the tab sat open. No token: a guest.
+      auth: (cb) => {
+        AuthService.getFreshAccessToken()
+          .then((token) => cb(token ? { token } : {}))
+          .catch(() => cb({}));
+      },
     });
 
     newSocket.on('connect', () => {
@@ -74,6 +84,30 @@ export const SocketProvider = ({ children }) => {
     newSocket.on('accountBanned', () => {
       localStorage.removeItem('user');
       window.location.href = '/login';
+    });
+
+    // The server would not take our token (expired by its clock, or signed with
+    // a key it no longer has), so this socket is a guest. Refresh the token and
+    // reconnect: the handshake then signs in before anything else is asked,
+    // and pages re-sync the way they do after any reconnect. Twice at most
+    // until a sign-in sticks, so a token the server never accepts can't loop.
+    newSocket.on('authError', async ({ reason } = {}) => {
+      if (reason === 'banned') {
+        localStorage.removeItem('user');
+        window.location.href = '/login';
+        return;
+      }
+      if (reason !== 'expired' && reason !== 'invalid') return;
+      if (authRetries.current >= 2) return;
+      authRetries.current += 1;
+      const token = await AuthService.getFreshAccessToken({ force: true });
+      if (!token) return;
+      newSocket.disconnect();
+      newSocket.connect();
+    });
+
+    newSocket.on('authenticated', () => {
+      authRetries.current = 0;
     });
 
     newSocket.on('connect_error', (error) => {
@@ -162,9 +196,15 @@ export const SocketProvider = ({ children }) => {
         const authKey = `${user.id}-${socket.id}`;
         if (lastAuthRef.current === authKey) return;
         lastAuthRef.current = authKey;
-        socket.emit('authenticate', {
-          userId: user.id,
-          username: user.username
+        // The server reads only the token. userId/username are for a server
+        // still running the previous release, which read them instead.
+        AuthService.getFreshAccessToken().then((token) => {
+          if (!token || lastAuthRef.current !== authKey) return;
+          socket.emit('authenticate', {
+            token,
+            userId: user.id,
+            username: user.username
+          });
         });
       } else if (wasLoggedIn) {
         // User just logged out — tell the server to clean up this socket

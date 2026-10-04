@@ -22,20 +22,40 @@ const { io } = requireSocketClient();
 
 const URL = process.env.TEST_SERVER_URL || 'http://localhost:3001';
 
+/*
+ * A socket signs in with an access token, the same as the site: the server
+ * ignores any userId a client claims (server/socket-identity.js). Tests mint
+ * their own from the local secret - .env, or the file the server generates
+ * when .env has none.
+ */
+require('dotenv').config({ path: path.join(__dirname, '..', '..', '..', '.env') });
+const jwt = require('jsonwebtoken');
+function accessSecret() {
+  if (process.env.ACCESS_TOKEN_SECRET) return process.env.ACCESS_TOKEN_SECRET;
+  try {
+    return require(path.join(__dirname, '..', '..', '..', 'server', '.jwt-secrets.json')).accessTokenSecret;
+  } catch (_) {
+    throw new Error('no ACCESS_TOKEN_SECRET in .env and no server/.jwt-secrets.json - cannot sign test sockets in');
+  }
+}
+function tokenFor(user, { expiresIn = '15m' } = {}) {
+  return jwt.sign({ id: user.id, username: user.name ?? user.username, role: null, admin_level: null },
+    accessSecret(), { expiresIn });
+}
+
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /**
- * Connect a socket and authenticate it as `user`. Resolves once the server has
- * had a moment to process the auth - there is no ack for it, so a short settle
- * is the honest option.
+ * Connect a socket signed in as `user` (a token in the handshake). Resolves
+ * after a short settle, so the server has finished binding the user.
  */
 function connect(user, { authenticate = true, settleMs = 400 } = {}) {
   return new Promise((resolve, reject) => {
-    const s = io(URL, { transports: ['websocket'], forceNew: true, reconnection: false });
+    const auth = authenticate && user ? { token: tokenFor(user) } : {};
+    const s = io(URL, { transports: ['websocket'], forceNew: true, reconnection: false, auth });
     const to = setTimeout(() => reject(new Error(`connect timeout for ${user?.name || 'anon'}`)), 8000);
     s.on('connect', async () => {
       clearTimeout(to);
-      if (authenticate && user) s.emit('authenticate', { userId: user.id, username: user.name });
       await wait(settleMs);
       resolve(s);
     });
@@ -193,4 +213,4 @@ async function run(suiteName, checks) {
   return failures.length === 0;
 }
 
-module.exports = { URL, wait, connect, once, never, createHumanGame, makeGameActive, resign, run };
+module.exports = { URL, wait, tokenFor, connect, once, never, createHumanGame, makeGameActive, resign, run };

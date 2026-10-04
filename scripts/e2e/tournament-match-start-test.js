@@ -55,7 +55,7 @@ const createGameAsPlayer = (player, gameData) => new Promise((resolve, reject) =
   const timer = setTimeout(done(reject), 15000, new Error('createGame timed out'));
 
   socket.on('connect', () => {
-    socket.emit('authenticate', { userId: player.id, username: player.username });
+    socket.emit('authenticate', { token: token(player.id, player.username) });
     socket.emit('createGame', {
       ...gameData,
       hostId: player.id,

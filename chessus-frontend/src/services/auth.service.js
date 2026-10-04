@@ -118,6 +118,40 @@ const refreshAccessToken = async () => {
   }
 };
 
+// True when a JWT has expired or will within the next minute (or can't be read).
+const tokenExpiresSoon = (token) => {
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    return payload.exp * 1000 < Date.now() + 60000;
+  } catch {
+    return true;
+  }
+};
+
+/*
+ * The current access token, refreshed first if it is about to expire (or
+ * always, with { force: true }). Null when nobody is signed in. Used by the
+ * game socket, which signs in with the token: a tab left open past the
+ * token's 15 minutes must not reconnect as a guest. Concurrent callers share
+ * one refresh.
+ */
+let pendingRefresh = null;
+const getFreshAccessToken = async ({ force = false } = {}) => {
+  let user = null;
+  try { user = getCurrentUser(); } catch { return null; }
+  if (!user || !user.accessToken) return null;
+  if (!force && !tokenExpiresSoon(user.accessToken)) return user.accessToken;
+  if (!user.refreshToken) return user.accessToken;
+  if (!pendingRefresh) {
+    pendingRefresh = refreshAccessToken().finally(() => { pendingRefresh = null; });
+  }
+  try {
+    return (await pendingRefresh) || null;
+  } catch {
+    return null;
+  }
+};
+
 const logout = async () => {
   try {
     // Send this device's refresh token so the server ends exactly this session.
@@ -247,6 +281,7 @@ const AuthService = {
   getCurrentUser,
   deleteUser,
   refreshAccessToken,
+  getFreshAccessToken,
   forgotPassword,
   verifyResetToken,
   resetPassword,

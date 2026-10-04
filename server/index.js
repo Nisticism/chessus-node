@@ -17452,7 +17452,8 @@ app.delete("/api/admin/poll/:id", authenticateAdmin1, async (req, res) => {
 
 // Create HTTP server and initialize Socket.io
 const server = http.createServer(app);
-const io = initializeSocket(server);
+// Sockets sign in with the same access tokens, and refuse banned accounts the same way.
+const io = initializeSocket(server, { isUserBanned: (id) => bannedUserIds.has(Number(id)) });
 
 // Store io instance for use in routes if needed
 app.set('io', io);

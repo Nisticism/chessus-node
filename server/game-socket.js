@@ -22,6 +22,8 @@ const { colToFile, squareLabel } = require('./square-label');
 // "Opponent chooses the piece type" - see designated-piece.js.
 const designated = require('./designated-piece');
 const { freezeRulesForGame, gameTypeForGame, loadFrozenRules, pieceRowsFor, placementFor } = require('./game-rule-freeze');
+// Who a socket is: verified access tokens, and payload ids checked against them.
+const { verifyAccessToken, bindActorFields } = require('./socket-identity');
 
 // Verbose per-move debug logging is gated behind an env var so PM2 isn't
 // hammered with disk I/O during normal play. Set VERBOSE_GAME_LOG=1 to enable.
@@ -82,6 +84,18 @@ function userHasLiveSocket(userId) {
   const set = userSocketIds.get(String(userId));
   return !!set && set.size > 0;
 }
+
+/**
+ * Whether the server bound this anonymous id to this socket - on creating or
+ * joining an anonymous game, or after it proved the game's token. Used by
+ * socket-identity.js to decide which anon ids a payload may name.
+ */
+function socketOwnsAnonId(socket, anonId) {
+  const set = userSocketIds.get(String(anonId));
+  return !!set && set.has(socket.id);
+}
+// Carries the server's verdict on an `authenticate` from the packet guard to its handler.
+const AUTH_RESULT = Symbol('authResult');
 const disconnectTimeouts = new Map(); // Maps userId to disconnect timeout (grace period)
 // Re-entry guard for processBotTurn: prevents overlapping bot-turn executions
 // for the same game when the client repeatedly submits Fairy-Stockfish moves
@@ -4060,7 +4074,7 @@ async function recoverActiveGames() {
 /**
  * Initialize Socket.io with the HTTP server
  */
-function initializeSocket(server) {
+function initializeSocket(server, { isUserBanned } = {}) {
   const { Server } = require("socket.io");
   
   const io = new Server(server, {
@@ -4096,6 +4110,25 @@ function initializeSocket(server) {
 
   // Store io instance for access from other modules
   ioInstance = io;
+
+  // A socket's user comes from the access token in its handshake, so it is
+  // known before the first event arrives (a game page asks for its game before
+  // the client gets round to `authenticate`). A missing, bad or expired token
+  // never refuses the connection - the socket is a guest, and is told why so
+  // the client can refresh and authenticate again (see socket-identity.js).
+  io.use((socket, next) => {
+    const token = socket.handshake?.auth?.token;
+    if (token) {
+      const result = verifyAccessToken(token, { isUserBanned });
+      if (result.user) {
+        socket.userId = result.user.id;
+        socket.username = result.user.username;
+      } else {
+        socket.data.handshakeAuthError = result.error;
+      }
+    }
+    next();
+  });
 
   // Periodically cancel live games that have been waiting for over 24 hours
   // without a player joining. Run once at startup to handle games that were
@@ -4165,51 +4198,120 @@ function initializeSocket(server) {
       }
     });
 
-    // Authenticate user
+    // ---- Who this socket is ----------------------------------------------
+    // The user is set only from a verified access token (the handshake above,
+    // or `authenticate` below), and every payload's userId / hostId is checked
+    // against it before any handler sees it (socket-identity.js).
+    //
+    // This runs per packet, synchronously and in arrival order, before the
+    // handlers (which socket.io runs a tick later). So an `authenticate`
+    // followed at once by a move is checked against the user that
+    // authenticate established, not the one before it.
+    socket.use((packet, next) => {
+      const [event, data] = packet;
+      if (event === 'authenticate') {
+        const prevUserId = socket.userId ?? null;
+        const prevUsername = socket.username ?? null;
+        const result = verifyAccessToken(data?.token, { isUserBanned });
+        if (result.user) {
+          socket.userId = result.user.id;
+          socket.username = result.user.username;
+        }
+        // The handler gets the verdict, not the client's payload. A symbol key
+        // cannot arrive over the wire, so a client cannot supply it.
+        packet[1] = { [AUTH_RESULT]: { ...result, prevUserId, prevUsername } };
+      } else if (event === 'deauthenticate') {
+        packet[1] = { [AUTH_RESULT]: { prevUserId: socket.userId ?? null, prevUsername: socket.username ?? null } };
+        socket.userId = null;
+        socket.username = null;
+      } else if (typeof event === 'string' && !event.startsWith('__test:')) {
+        // (Test hooks name the clock or user they act on, not the sender.)
+        const refused = bindActorFields(socket, data, socketOwnsAnonId);
+        if (refused.length) {
+          console.warn(`[socket-auth] ${event} on socket ${socket.id} (user ${socket.userId ?? 'guest'}) named ${refused.join(', ')} - not this socket's; acting as ${socket.userId ?? 'guest'}`);
+        }
+      }
+      next();
+    });
+
+    // Put a verified user into the online list and socket maps, and call off
+    // anything waiting on them to come back.
+    const bindUser = async (userId, username) => {
+      // Cancel any pending disconnect timeout for this user
+      const existingTimeout = disconnectTimeouts.get(userId);
+      if (existingTimeout) {
+        clearTimeout(existingTimeout);
+        disconnectTimeouts.delete(userId);
+        console.log(`Cancelled disconnect timeout for user ${username} (ID: ${userId}) - reconnected`);
+      }
+
+      // Cancel any active game-disconnect-forfeit timers for this user
+      try {
+        clearAllDisconnectForfeitTimersForUser(io, userId);
+      } catch (err) {
+        console.error('Error clearing disconnect-forfeit timers on auth:', err.message);
+      }
+
+      playerSockets.set(socket.id, { id: userId, username });
+      registerUserSocket(userId, socket.id);
+      onlineUsers.add(userId);
+      console.log(`User ${username} (ID: ${userId}) authenticated on socket ${socket.id}`);
+
+      // Update last_active_at on socket connection
+      db_pool.query("UPDATE users SET last_active_at = NOW() WHERE id = ?", [userId])
+        .catch(err => console.error("Error updating last_active_at on socket auth:", err.message));
+
+      // Push pending unread notification count on connect/reconnect
+      try {
+        const dbHelpers = require("./db-helpers");
+        const unreadCount = await dbHelpers.getUnreadNotificationCount(userId);
+        if (unreadCount > 0) {
+          socket.emit('unreadNotificationCount', { unreadCount });
+        }
+      } catch (err) {
+        console.error("Error pushing unread count on auth:", err.message);
+      }
+
+      // Broadcast updated online users list
+      io.emit("onlineUsers", Array.from(onlineUsers));
+    };
+
+    // Take a user off this socket (logout, or another account signing in on
+    // it). Their other tabs and devices keep them online.
+    const unbindUser = (userId, username) => {
+      if (playerSockets.get(socket.id)?.id === userId) playerSockets.delete(socket.id);
+      if (unregisterUserSocket(userId, socket.id)) onlineUsers.delete(userId);
+      console.log(`User ${username} (ID: ${userId}) left socket ${socket.id}`);
+      io.emit('onlineUsers', Array.from(onlineUsers));
+    };
+
+    // Signed in by the handshake token.
+    if (socket.userId != null) {
+      bindUser(socket.userId, socket.username).catch((err) => console.error('Error binding handshake user:', err));
+    } else if (socket.data.handshakeAuthError) {
+      socket.emit('authError', { reason: socket.data.handshakeAuthError });
+    }
+
+    // Sign in on an open socket: { token }. Sent on login, and on every connect
+    // (harmless when the handshake already did it). A bad or expired token
+    // changes nothing; the client hears 'authError' and refreshes.
     socket.on("authenticate", async (data) => {
       try {
-        const { userId, username } = data;
-        if (userId) {
-          // Cancel any pending disconnect timeout for this user
-          const existingTimeout = disconnectTimeouts.get(userId);
-          if (existingTimeout) {
-            clearTimeout(existingTimeout);
-            disconnectTimeouts.delete(userId);
-            console.log(`Cancelled disconnect timeout for user ${username} (ID: ${userId}) - reconnected`);
-          }
-
-          // Cancel any active game-disconnect-forfeit timers for this user
-          try {
-            clearAllDisconnectForfeitTimersForUser(io, userId);
-          } catch (err) {
-            console.error('Error clearing disconnect-forfeit timers on auth:', err.message);
-          }
-          
-          playerSockets.set(socket.id, { id: userId, username });
-          registerUserSocket(userId, socket.id);
-          onlineUsers.add(userId);
-          socket.userId = userId;
-          socket.username = username;
-          console.log(`User ${username} (ID: ${userId}) authenticated on socket ${socket.id}`);
-          
-          // Update last_active_at on socket connection
-          db_pool.query("UPDATE users SET last_active_at = NOW() WHERE id = ?", [userId])
-            .catch(err => console.error("Error updating last_active_at on socket auth:", err.message));
-          
-          // Push pending unread notification count on connect/reconnect
-          try {
-            const dbHelpers = require("./db-helpers");
-            const unreadCount = await dbHelpers.getUnreadNotificationCount(userId);
-            if (unreadCount > 0) {
-              socket.emit('unreadNotificationCount', { unreadCount });
-            }
-          } catch (err) {
-            console.error("Error pushing unread count on auth:", err.message);
-          }
-
-          // Broadcast updated online users list
-          io.emit("onlineUsers", Array.from(onlineUsers));
+        const result = data?.[AUTH_RESULT];
+        if (!result) return;
+        if (!result.user) {
+          if (result.error === 'invalid') console.warn(`[socket-auth] rejected an invalid token on socket ${socket.id}`);
+          socket.emit('authError', { reason: result.error });
+          return;
         }
+        const { id: userId, username } = result.user;
+        if (result.prevUserId != null && result.prevUserId !== userId) {
+          unbindUser(result.prevUserId, result.prevUsername);
+        }
+        if (playerSockets.get(socket.id)?.id !== userId) {
+          await bindUser(userId, username);
+        }
+        socket.emit('authenticated', { userId, username });
       } catch (error) {
         console.error("Error in authenticate handler:", error);
         socket.emit("error", { message: "Authentication failed" });
@@ -4218,19 +4320,10 @@ function initializeSocket(server) {
 
     // Explicit logout: client cleared its auth state and wants this socket
     // removed from online tracking immediately (without waiting for disconnect).
-    socket.on("deauthenticate", () => {
+    socket.on("deauthenticate", (data) => {
       try {
-        const userId = socket.userId;
-        const username = socket.username;
-        if (userId) {
-          playerSockets.delete(socket.id);
-          userSockets.delete(userId.toString());
-          onlineUsers.delete(userId);
-          socket.userId = null;
-          socket.username = null;
-          console.log(`User ${username} (ID: ${userId}) deauthenticated socket ${socket.id} (logout)`);
-          io.emit('onlineUsers', Array.from(onlineUsers));
-        }
+        const { prevUserId, prevUsername } = data?.[AUTH_RESULT] || {};
+        if (prevUserId != null) unbindUser(prevUserId, prevUsername);
       } catch (err) {
         console.error('Error in deauthenticate handler:', err);
       }
@@ -4305,7 +4398,13 @@ function initializeSocket(server) {
     // Create a new live game
     socket.on("createGame", async (data) => {
       try {
-        const { gameTypeId, timeControl, increment, hostId, hostUsername, allowSpectators = true, spectatorVisibility: rawSpectatorVisibility = 'all', showPieceHelpers = false, rated = true, allowPremoves = true, premoveTimeCost = 0, startingMode: rawStartingMode = 'none', challengedUserId = null, isCorrespondence = false, correspondenceDays = null, vsComputer = false, botDifficulty = 'medium', botStockfishLevel = null, forceStockfishBot = false, materialClockPenalty = false, materialClockHandicap = false, playerSide = 'random', fogOfWarEnabled } = data;
+        // The host is whoever this socket signed in as - never an id in the payload.
+        if (socket.userId == null) {
+          return socket.emit("error", { message: "Sign in to host a game." });
+        }
+        const hostId = socket.userId;
+        const hostUsername = socket.username;
+        const { gameTypeId, timeControl, increment, allowSpectators = true, spectatorVisibility: rawSpectatorVisibility = 'all', showPieceHelpers = false, rated = true, allowPremoves = true, premoveTimeCost = 0, startingMode: rawStartingMode = 'none', challengedUserId = null, isCorrespondence = false, correspondenceDays = null, vsComputer = false, botDifficulty = 'medium', botStockfishLevel = null, forceStockfishBot = false, materialClockPenalty = false, materialClockHandicap = false, playerSide = 'random', fogOfWarEnabled } = data;
         const spectatorVisibility = ['all','player1','player2'].includes(rawSpectatorVisibility) ? rawSpectatorVisibility : 'all';
         
         // Get game type details
@@ -4325,7 +4424,7 @@ function initializeSocket(server) {
          * in the public lobby.
          */
         if (gameType.is_draft) {
-          const requesterId = socket.userId ?? hostId;
+          const requesterId = hostId;
           let mayHost = Number(requesterId) === Number(gameType.creator_id);
           if (!mayHost && requesterId != null) {
             const [[requester]] = await db_pool.query('SELECT role FROM users WHERE id = ?', [requesterId]);
@@ -6116,7 +6215,14 @@ function initializeSocket(server) {
     // Join an existing game
     socket.on("joinGame", async (data) => {
       try {
-        const { gameId, userId, username } = data;
+        // The joiner is whoever this socket signed in as. Guests join through
+        // joinOpenGameAsGuest / joinByInviteCode instead.
+        if (socket.userId == null) {
+          return socket.emit("error", { message: "Sign in to join this game." });
+        }
+        const userId = socket.userId;
+        const username = socket.username;
+        const { gameId } = data;
         const gameIdStr = gameId.toString();
 
         // Get game from memory or database

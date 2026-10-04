@@ -30,6 +30,11 @@ const db_pool = require('../../configs/db');
 
 const BASE = process.env.TEST_SERVER_URL || 'http://localhost:3001';
 
+// Sockets sign in with an access token; the server ignores a claimed userId.
+const jwt = require('jsonwebtoken');
+const token = (id, username) =>
+  jwt.sign({ id, username, role: null, admin_level: null }, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '15m' });
+
 const results = [];
 const check = (name, ok, detail) => {
   results.push({ name, ok: !!ok, detail });
@@ -43,7 +48,7 @@ const connect = (player) => new Promise((resolve, reject) => {
   const timer = setTimeout(() => reject(new Error(`${player.username} could not connect`)), 15000);
   socket.on('connect', () => {
     clearTimeout(timer);
-    socket.emit('authenticate', { userId: player.id, username: player.username });
+    socket.emit('authenticate', { token: token(player.id, player.username) });
     resolve(socket);
   });
   socket.on('connect_error', (err) => {
