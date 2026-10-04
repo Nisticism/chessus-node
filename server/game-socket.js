@@ -94,6 +94,99 @@ function socketOwnsAnonId(socket, anonId) {
   const set = userSocketIds.get(String(anonId));
   return !!set && set.has(socket.id);
 }
+
+/**
+ * The id of the seat this socket plays in this game, or null for a spectator.
+ * A signed-in socket plays its own user's seat; a guest plays an anon seat it
+ * holds (anon_<its socket id>, or a stable id bound to it - socketOwnsAnonId).
+ */
+function seatedPlayerIdForSocket(gameState, socket) {
+  const seat = (gameState?.players || []).find(p => {
+    if (p.id == null || p.isBot) return false;
+    if (socket.userId != null && String(p.id) === String(socket.userId)) return true;
+    return typeof p.id === 'string' && p.id.startsWith('anon_')
+      && (p.id === `anon_${socket.id}` || socketOwnsAnonId(socket, p.id));
+  });
+  return seat ? seat.id : null;
+}
+
+/*
+ * A guest seat's rejoin token (authenticateAnonCorresPlayer) lives on the
+ * player object under a Symbol, not a string key. Whole game states and
+ * player lists go out to every socket in the room - spectators included - and
+ * JSON (so socket.io and res.json) skips Symbol keys, while object spreads
+ * keep them. Under `anonToken` the token went to anyone watching, and with it
+ * the seat.
+ */
+const ANON_TOKEN = Symbol('anonToken');
+// A correspondence game's stored guest seats ({ position: { playerId, token,
+// username } }), held on the game state for the same reason.
+const ANON_CORRES_SEATS = Symbol('anonCorresPlayers');
+
+/**
+ * A guest seat's stable id and token as other_data stored them, so a reload
+ * from the database gives the seat back to the guest who can prove it. A host
+ * still waiting for an opponent has no position yet; createAnonymousGame
+ * stores its seat under 1, so pass 1 for that lone row.
+ */
+function storedAnonSeat(otherData, position) {
+  if (position == null) return null;
+  const entry = otherData?.anonCorresPlayers?.[position] || otherData?.anonLivePlayers?.[position];
+  if (!entry || !entry.playerId) return null;
+  return { playerId: entry.playerId, token: typeof entry.token === 'string' ? entry.token : null };
+}
+
+/*
+ * Give a guest who has come back on a new socket the seat they left - but only
+ * a seat with no token. Guest seats from before stable ids (2026-08-29) were
+ * named anon_<socket id> and stored nothing, so a new socket had no way to
+ * prove one and the first signed-out socket to ask got it. A seat with a token
+ * is reclaimed by proving the token (authenticateAnonCorresPlayer), never by
+ * asking: otherwise any signed-out visitor who opened the game while a guest
+ * was briefly away took that guest's seat and could move or resign for them.
+ *
+ * Only for a signed-out socket that holds no seat here yet; a seat whose
+ * socket is still connected is never taken. Returns the new id, or null.
+ */
+function remapLegacyAnonSeat(io, socket, gameState, gameId) {
+  if (socket.userId != null || gameState.status === 'completed') return null;
+  if (seatedPlayerIdForSocket(gameState, socket) != null) return null;
+  const newAnonId = `anon_${socket.id}`;
+  const seat = gameState.players?.find(p =>
+    !p.isBot && !p[ANON_TOKEN]
+    && !(p.position != null && gameState[ANON_CORRES_SEATS]?.[p.position]?.token)
+    && (p.id === null || (typeof p.id === 'string' && p.id.startsWith('anon_')))
+  );
+  if (!seat) return null;
+  const oldAnonId = seat.id;
+  const oldSocketId = oldAnonId ? userSockets.get(oldAnonId) : null;
+  if (oldSocketId && io.sockets.sockets.has(oldSocketId)) return null;
+
+  if (oldAnonId) userSockets.delete(oldAnonId);
+  userSockets.set(newAnonId, socket.id);
+  seat.id = newAnonId;
+  if (!gameState.hostId || gameState.hostId === oldAnonId) gameState.hostId = newAnonId;
+  // Move the clock and any buffered simul-turns submission to the new id, so the
+  // clock survives and a second submit doesn't make a phantom second player.
+  for (const field of ['playerTimes', 'pendingSimulMoves']) {
+    const map = gameState[field];
+    if (oldAnonId != null && map && Object.prototype.hasOwnProperty.call(map, oldAnonId)) {
+      map[newAnonId] = map[oldAnonId];
+      delete map[oldAnonId];
+    }
+  }
+  if (oldAnonId) {
+    clearDisconnectForfeitTimer(String(gameId), oldAnonId, { broadcast: true, io, reason: 'reconnected' });
+  }
+  console.log(`[getGameState] Remapped legacy anon seat ${oldAnonId} -> ${newAnonId} in game ${gameId}`);
+  // The opponent's player list and clock lookup must follow the new id.
+  io.to(`game-${gameId}`).emit('playerListUpdated', {
+    gameId,
+    players: gameState.players,
+    playerTimes: gameState.playerTimes,
+  });
+  return newAnonId;
+}
 // Carries the server's verdict on an `authenticate` from the packet guard to its handler.
 const AUTH_RESULT = Symbol('authResult');
 const disconnectTimeouts = new Map(); // Maps userId to disconnect timeout (grace period)
@@ -687,7 +780,7 @@ function buildOtherData(gameState, extraFields = {}) {
       p => typeof p.id === 'string' && p.id.startsWith('anon_') && p.position != null
     );
     return live.length > 0
-      ? Object.fromEntries(live.map(p => [p.position, { playerId: p.id, token: p.anonToken || null, username: p.username || null }]))
+      ? Object.fromEntries(live.map(p => [p.position, { playerId: p.id, token: p[ANON_TOKEN] || null, username: p.username || null }]))
       : null;
   })();
   // ── Option A: move history lives in the game_moves table, not other_data ───
@@ -702,7 +795,7 @@ function buildOtherData(gameState, extraFields = {}) {
     rated: gameState.rated,
     allowPremoves: gameState.allowPremoves,
     ...(anonLivePlayers ? { anonLivePlayers } : {}),
-    ...(gameState.anonCorresPlayers ? { anonCorresPlayers: gameState.anonCorresPlayers } : {}),
+    ...(gameState[ANON_CORRES_SEATS] ? { anonCorresPlayers: gameState[ANON_CORRES_SEATS] } : {}),
     ...(gameState.guestName ? { guestName: gameState.guestName } : {}),
     ...(gameState.startingMode ? { startingMode: gameState.startingMode } : {}),
     ...(gameState.premoveTimeCost ? { premoveTimeCost: gameState.premoveTimeCost } : {}),
@@ -3950,18 +4043,15 @@ async function recoverActiveGames() {
            WHERE p.game_id = ?`,
           [game.id]
         );
-        const anonCorresPlayers = otherData?.anonCorresPlayers || null;
-        const anonLivePlayers = otherData?.anonLivePlayers || null;
         const players = playerRows.map(p => {
-          let id = p.user_id;
-          if (!id && anonCorresPlayers && p.player_position != null) {
-            id = anonCorresPlayers[p.player_position]?.playerId || null;
-          }
-          if (!id && anonLivePlayers && p.player_position != null) {
-            id = anonLivePlayers[p.player_position]?.playerId || null;
-          }
-          const _anonTok = (anonLivePlayers && p.player_position != null) ? (anonLivePlayers[p.player_position]?.token || null) : null;
-          return { id, username: p.username || 'Guest', position: p.player_position, timeRemaining: p.time_remaining, ...(_anonTok ? { anonToken: _anonTok } : {}) };
+          const anonSeat = p.user_id ? null : storedAnonSeat(otherData, p.player_position);
+          return {
+            id: p.user_id || anonSeat?.playerId || null,
+            username: p.username || 'Guest',
+            position: p.player_position,
+            timeRemaining: p.time_remaining,
+            ...(anonSeat?.token ? { [ANON_TOKEN]: anonSeat.token } : {}),
+          };
         });
         // Restore playerTimes with elapsed-time deduction from the last move's snapshot
         const playerTimes = {};
@@ -5607,7 +5697,7 @@ function initializeSocket(server, { isUserBanned } = {}) {
           status: 'waiting',
           hostId: tempHostId,
           hostUsername: displayName,
-          players: [{ id: tempHostId, username: displayName, position: null, anonToken: hostToken }],
+          players: [{ id: tempHostId, username: displayName, position: null, [ANON_TOKEN]: hostToken }],
           pieces: piecesArray,
           currentTurn: 1,
           moveHistory: [],
@@ -5630,7 +5720,7 @@ function initializeSocket(server, { isUserBanned } = {}) {
           isCorrespondence: !!isCorrespondence,
           correspondenceDays: correspondenceDays || null,
           inviteCode,
-          anonCorresPlayers: anonCorresPlayers || null,
+          [ANON_CORRES_SEATS]: anonCorresPlayers || null,
         };
 
         activeGames.set(gameId.toString(), gameState);
@@ -5653,7 +5743,7 @@ function initializeSocket(server, { isUserBanned } = {}) {
           const hostPosition = Math.random() < 0.5 ? 1 : 2;
           const botPosition = hostPosition === 1 ? 2 : 1;
           gameState.players = [
-            { id: tempHostId, username: displayName, position: hostPosition, anonToken: hostToken },
+            { id: tempHostId, username: displayName, position: hostPosition, [ANON_TOKEN]: hostToken },
             { id: botInfo.id, username: botInfo.username, position: botPosition, isBot: true }
           ];
           gameState.botPlayer = {
@@ -5871,7 +5961,7 @@ function initializeSocket(server, { isUserBanned } = {}) {
         // Seat them: the host's "Play As" choice, or a coin flip (seatPositions)
         const positions = seatPositions(gameState);
         gameState.players[0].position = positions[0];
-        const newPlayer = { id: playerId, username: playerUsername, position: positions[1], ...(joinerToken ? { anonToken: joinerToken } : {}) };
+        const newPlayer = { id: playerId, username: playerUsername, position: positions[1], ...(joinerToken ? { [ANON_TOKEN]: joinerToken } : {}) };
         gameState.players.push(newPlayer);
 
         // Persist player positions to DB so they survive a server restart.
@@ -5959,7 +6049,7 @@ function initializeSocket(server, { isUserBanned } = {}) {
         // Persist/emit the joiner's stable credentials so they can re-authenticate
         // from a new socket session later. Correspondence creds live in
         // anonCorresPlayers; live creds are already in anonLivePlayers (written by
-        // buildOtherData above via newPlayer.anonToken).
+        // buildOtherData above via newPlayer[ANON_TOKEN]).
         if (joinerToken) {
           try {
             if (gameState.isCorrespondence) {
@@ -5970,7 +6060,7 @@ function initializeSocket(server, { isUserBanned } = {}) {
               od.anonCorresPlayers = od.anonCorresPlayers || {};
               od.anonCorresPlayers[newPlayer.position] = { playerId, token: joinerToken, username: displayName };
               await db_pool.query('UPDATE games SET other_data = ? WHERE id = ?', [JSON.stringify(od), gameId]);
-              gameState.anonCorresPlayers = od.anonCorresPlayers;
+              gameState[ANON_CORRES_SEATS] = od.anonCorresPlayers;
             }
             // Send credentials directly to the joiner's socket
             socket.emit('anonCorresCredentials', {
@@ -6064,7 +6154,7 @@ function initializeSocket(server, { isUserBanned } = {}) {
         // Seat them: the host's "Play As" choice, or a coin flip (seatPositions)
         const positions = seatPositions(gameState);
         gameState.players[0].position = positions[0];
-        const newPlayer = { id: playerId, username: playerUsername, position: positions[1], anonToken: guestToken };
+        const newPlayer = { id: playerId, username: playerUsername, position: positions[1], [ANON_TOKEN]: guestToken };
         gameState.players.push(newPlayer);
 
         // Persist player positions to DB so they survive a server restart.
@@ -6301,6 +6391,8 @@ function initializeSocket(server, { isUserBanned } = {}) {
           let joinGameOtherData = {};
           try { joinGameOtherData = JSON.parse(game.other_data || '{}'); } catch (_) {}
           const hostDisplayName = hostPlayer?.username || joinGameOtherData.guestName || 'Guest';
+          // A guest host keeps its stable id and token (stored under seat 1 while waiting).
+          const joinGameAnonHost = hostPlayer && !hostPlayer.user_id ? storedAnonSeat(joinGameOtherData, 1) : null;
 
           // Parse and enrich pieces with movement and capture data
           let pieces = JSON.parse(game.pieces || "[]");
@@ -6519,9 +6611,14 @@ function initializeSocket(server, { isUserBanned } = {}) {
             timeControl: game.turn_length,
             increment: game.increment || 0,
             status: game.status,
-            hostId: game.host_id,
+            hostId: game.host_id || joinGameAnonHost?.playerId || null,
             hostUsername: hostDisplayName,
-            players: [{ id: hostPlayer?.user_id || null, username: hostDisplayName, position: null }],
+            players: [{
+              id: hostPlayer?.user_id || joinGameAnonHost?.playerId || null,
+              username: hostDisplayName,
+              position: null,
+              ...(joinGameAnonHost?.token ? { [ANON_TOKEN]: joinGameAnonHost.token } : {}),
+            }],
             pieces: pieces,
             initialPieces: null,
             currentTurn: 1,
@@ -6556,7 +6653,7 @@ function initializeSocket(server, { isUserBanned } = {}) {
             illegalMoveLabel: gameType?.illegal_move_label || null,
             illegalMoveCounts: { 1: 0, 2: 0 },
             spectatorVisibility: game.spectator_visibility || 'all',
-            anonCorresPlayers: joinGameOtherData.anonCorresPlayers || null,
+            [ANON_CORRES_SEATS]: joinGameOtherData.anonCorresPlayers || null,
             guestName: joinGameOtherData.guestName || null,
             hostSide: normalizeHostSide(joinGameOtherData.hostSide),
           };
@@ -11106,14 +11203,14 @@ function initializeSocket(server, { isUserBanned } = {}) {
         const gameIdStr = String(gameId);
         const gameState = activeGames.get(gameIdStr);
         if (!gameState) return;
-        // Resolve requesterId for both registered and anonymous (guest) players.
-        const requesterId = socket.userId ||
-          [...userSockets.entries()].find(([pid, sid]) => sid === socket.id)?.[0];
-        if (!requesterId) return;
+        // Only a player in this game - not a spectator, not someone from another
+        // game - may stop or restart the clock on their opponent's forfeit.
+        const requesterId = seatedPlayerIdForSocket(gameState, socket);
+        if (requesterId == null) return;
         // Find any disconnect timer for this game whose target is NOT the requester
         for (const [key, entry] of gameDisconnectTimers) {
           if (entry.gameId !== gameIdStr) continue;
-          if (entry.userId === requesterId) continue;
+          if (String(entry.userId) === String(requesterId)) continue;
           if (entry.paused) return;
           // Don't pause while still in the silent grace period — the banner
           // hasn't been shown yet, so the pause control isn't visible anyway.
@@ -11141,13 +11238,13 @@ function initializeSocket(server, { isUserBanned } = {}) {
         const gameIdStr = String(gameId);
         const gameState = activeGames.get(gameIdStr);
         if (!gameState) return;
-        // Resolve requesterId for both registered and anonymous (guest) players.
-        const requesterId = socket.userId ||
-          [...userSockets.entries()].find(([pid, sid]) => sid === socket.id)?.[0];
-        if (!requesterId) return;
+        // Only a player in this game - not a spectator, not someone from another
+        // game - may stop or restart the clock on their opponent's forfeit.
+        const requesterId = seatedPlayerIdForSocket(gameState, socket);
+        if (requesterId == null) return;
         for (const [key, entry] of gameDisconnectTimers) {
           if (entry.gameId !== gameIdStr) continue;
-          if (entry.userId === requesterId) continue;
+          if (String(entry.userId) === String(requesterId)) continue;
           if (!entry.paused) return;
           // Resume from where it was paused, not from the full original duration.
           const resumeMs = entry.remainingMs;
@@ -11188,63 +11285,15 @@ function initializeSocket(server, { isUserBanned } = {}) {
 
       if (gameState) {
         socket.join(`game-${gameId}`);
-        // Remap stale anonymous slot so reconnecting anon host/player can reclaim it.
-        // Works for waiting, ready, and active games — the dead-socket check prevents
-        // any live socket from being displaced. Skipped when this socket already
-        // claimed a stable anon slot via token re-auth (authenticateAnonCorresPlayer),
-        // so a stable anon_<rand> id is never clobbered back to anon_<socket.id>.
-        if (!userId && !socket.userId && gameState.status !== 'completed'
-            && !gameState.players?.some(p => typeof p.id === 'string' && p.id.startsWith('anon_') && userSockets.get(p.id) === socket.id)) {
-          const newAnonId = `anon_${socket.id}`;
-          const anonIdx = gameState.players?.findIndex(p =>
-            p.id !== newAnonId && (
-              (typeof p.id === 'string' && p.id.startsWith('anon_')) || p.id === null
-            )
-          );
-          if (anonIdx >= 0) {
-            const oldAnonId = gameState.players[anonIdx].id;
-            const oldSocketId = oldAnonId ? userSockets.get(oldAnonId) : null;
-            const isOldSocketAlive = !!(oldSocketId && io.sockets.sockets.has(oldSocketId));
-            if (!isOldSocketAlive) {
-              if (oldAnonId) userSockets.delete(oldAnonId);
-              userSockets.set(newAnonId, socket.id);
-              gameState.players[anonIdx].id = newAnonId;
-              if (!gameState.hostId || gameState.hostId === oldAnonId) gameState.hostId = newAnonId;
-              // Remap playerTimes key so the clock survives reconnect
-              if (oldAnonId != null && gameState.playerTimes && Object.prototype.hasOwnProperty.call(gameState.playerTimes, oldAnonId)) {
-                gameState.playerTimes[newAnonId] = gameState.playerTimes[oldAnonId];
-                delete gameState.playerTimes[oldAnonId];
-              }
-              // Remap pendingSimulMoves key so the buffered submission isn't orphaned
-              // and a second submit after reconnect doesn't create a phantom second player.
-              if (oldAnonId != null && gameState.pendingSimulMoves && Object.prototype.hasOwnProperty.call(gameState.pendingSimulMoves, oldAnonId)) {
-                gameState.pendingSimulMoves[newAnonId] = gameState.pendingSimulMoves[oldAnonId];
-                delete gameState.pendingSimulMoves[oldAnonId];
-              }
-              // Cancel any pending disconnect-forfeit timer for the old ID
-              if (oldAnonId) {
-                clearDisconnectForfeitTimer(String(gameId), oldAnonId, { broadcast: true, io, reason: 'reconnected' });
-              }
-              console.log(`[getGameState] Remapped anon slot ${oldAnonId} -> ${newAnonId} in game ${gameId}`);
-              // Notify everyone else in the room so their gameState.players and
-              // playerTimes stay consistent with the new anon ID.  Without this,
-              // the opponent's clock lookup uses the stale ID and shows infinity.
-              io.to(`game-${gameId}`).emit('playerListUpdated', {
-                gameId,
-                players: gameState.players,
-                playerTimes: gameState.playerTimes,
-              });
-            }
-          }
-          // Cancel any disconnect timer for an anon player still mapped to THIS
-          // socket — covers same-socket re-entry (leaveGame then navigate back)
-          // where isOldSocketAlive was true and the remap block was skipped.
-          const sameSocketAnonId = gameState.players?.find(
-            p => typeof p.id === 'string' && p.id.startsWith('anon_') &&
-              userSockets.get(p.id) === socket.id
-          )?.id;
-          if (sameSocketAnonId) {
-            clearDisconnectForfeitTimer(String(gameId), sameSocketAnonId, { broadcast: true, io, reason: 'reconnected' });
+        // A guest from before stable ids gets its seat back by asking (see
+        // remapLegacyAnonSeat); a guest with a token proves it instead.
+        if (!userId) {
+          remapLegacyAnonSeat(io, socket, gameState, gameId);
+          // A guest back on the same socket (leaveGame, then back to the page)
+          // stops its own seat's disconnect timer.
+          const ownSeatId = seatedPlayerIdForSocket(gameState, socket);
+          if (ownSeatId) {
+            clearDisconnectForfeitTimer(String(gameId), ownSeatId, { broadcast: true, io, reason: 'reconnected' });
           }
         }
         const hasPointsCond = gameState.gameType?.points_to_win != null ||
@@ -11305,29 +11354,26 @@ function initializeSocket(server, { isUserBanned } = {}) {
               ? (typeof game.other_data === 'string' ? JSON.parse(game.other_data) : game.other_data)
               : {};
           } catch (_) {}
-          const anonCorresPlayers = otherDataParsed?.anonCorresPlayers || null;
-          const anonLivePlayers = otherDataParsed?.anonLivePlayers || null;
-
           const players = playerRows.map(p => {
-            let id = p.user_id;
-            // For anonymous correspondence players, restore the stable playerId
-            if (!id && anonCorresPlayers && p.player_position != null) {
-              id = anonCorresPlayers[p.player_position]?.playerId || null;
-            }
-            // For anonymous live players, restore the stable playerId
-            if (!id && anonLivePlayers && p.player_position != null) {
-              id = anonLivePlayers[p.player_position]?.playerId || null;
-            }
+            // A guest's stable id and token. A host still waiting alone has no
+            // position yet; its seat is stored under 1.
+            const anonSeat = p.user_id ? null
+              : storedAnonSeat(otherDataParsed, p.player_position ?? (playerRows.length === 1 ? 1 : null));
             const username = p.username
               || otherDataParsed?.guestName
               || `Guest`;
             return {
-              id,
+              id: p.user_id || anonSeat?.playerId || null,
               username,
               position: p.player_position,
-              timeRemaining: p.time_remaining
+              timeRemaining: p.time_remaining,
+              ...(anonSeat?.token ? { [ANON_TOKEN]: anonSeat.token } : {}),
             };
           });
+          // A guest host has no host_id row value. When it is the game's only
+          // guest seat (still waiting, or playing a signed-in user), it is the host.
+          const anonSeatIds = players.filter(p => typeof p.id === 'string' && p.id.startsWith('anon_')).map(p => p.id);
+          const reloadHostId = game.host_id ?? (anonSeatIds.length === 1 ? anonSeatIds[0] : null);
 
           // Parse pieces from game first, then fall back to game type
           let pieces = [];
@@ -11677,8 +11723,8 @@ function initializeSocket(server, { isUserBanned } = {}) {
             timeControl: game.turn_length,
             increment: game.increment || 0,
             status: game.status,
-            hostId: game.host_id,
-            hostUsername: players.find(p => p.id === game.host_id)?.username || 'Unknown',
+            hostId: reloadHostId,
+            hostUsername: players.find(p => p.id === reloadHostId)?.username || 'Unknown',
             players: players,
             pieces: pieces,
             initialPieces: gmInitialPieces,
@@ -11736,7 +11782,7 @@ function initializeSocket(server, { isUserBanned } = {}) {
             winReason: otherData?.reason || null,
             eloChanges: otherData?.eloChanges || null,
             initialPositionEval: otherData?.initialPositionEval || null,
-            anonCorresPlayers: otherData?.anonCorresPlayers || null,
+            [ANON_CORRES_SEATS]: otherData?.anonCorresPlayers || null,
             guestName: otherData?.guestName || null,
             repositionPhase: otherData?.repositionPhase || null,
             // Restore pending draw offer and simul-turns moves that were persisted
@@ -11853,38 +11899,8 @@ function initializeSocket(server, { isUserBanned } = {}) {
           }
           
           socket.join(`game-${gameId}`);
-          // Remap stale anonymous slot (same logic as in-memory path above).
-          // Skipped when this socket already claimed a stable anon slot via token re-auth.
-          if (!userId && !socket.userId && gameState.status !== 'completed'
-              && !gameState.players?.some(p => typeof p.id === 'string' && p.id.startsWith('anon_') && userSockets.get(p.id) === socket.id)) {
-            const newAnonId = `anon_${socket.id}`;
-            const anonIdx = gameState.players?.findIndex(p =>
-              p.id !== newAnonId && (
-                (typeof p.id === 'string' && p.id.startsWith('anon_')) || p.id === null
-              )
-            );
-            if (anonIdx >= 0) {
-              const oldAnonId = gameState.players[anonIdx].id;
-              const oldSocketId = oldAnonId ? userSockets.get(oldAnonId) : null;
-              const isOldSocketAlive = !!(oldSocketId && io.sockets.sockets.has(oldSocketId));
-              if (!isOldSocketAlive) {
-                if (oldAnonId) userSockets.delete(oldAnonId);
-                userSockets.set(newAnonId, socket.id);
-                gameState.players[anonIdx].id = newAnonId;
-                if (!gameState.hostId || gameState.hostId === oldAnonId) gameState.hostId = newAnonId;
-                // Remap playerTimes key so the clock survives reconnect
-                if (oldAnonId != null && gameState.playerTimes && Object.prototype.hasOwnProperty.call(gameState.playerTimes, oldAnonId)) {
-                  gameState.playerTimes[newAnonId] = gameState.playerTimes[oldAnonId];
-                  delete gameState.playerTimes[oldAnonId];
-                }
-                // Cancel any pending disconnect-forfeit timer for the old ID
-                if (oldAnonId) {
-                  clearDisconnectForfeitTimer(gameIdStr, oldAnonId, { broadcast: true, io, reason: 'reconnected' });
-                }
-                console.log(`[getGameState] Remapped anon slot ${oldAnonId} -> ${newAnonId} in game ${gameId}`);
-              }
-            }
-          }
+          // A guest from before stable ids gets its seat back by asking.
+          if (!userId) remapLegacyAnonSeat(io, socket, gameState, gameId);
           const hasPointsCondDb = gameState.gameType?.points_to_win != null ||
             gameState.gameType?.draw_equal_points_at_turn != null ||
             gameState.gameType?.draw_equal_points_consecutive != null;
