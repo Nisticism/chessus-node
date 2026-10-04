@@ -49,6 +49,7 @@ export default function UniqueStatusPanel({ puzzleId, published, checkResult }) 
   useEffect(() => { load(); }, [load, refreshKey]);
 
   const send = async (method) => {
+    if (method === 'delete' && !window.confirm('Withdraw your verification request?')) return;
     setBusy(true);
     setMessage(null);
     try {

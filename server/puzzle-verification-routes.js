@@ -21,7 +21,14 @@
 const { startJob, getJob, cancelJob, activeJobs, limits } = require('./puzzle-jobs');
 const { rulesForPuzzle } = require('./puzzle-snapshot');
 const { hydratePosition, placeableDefinitions, startingRoster } = require('./puzzle-hydrate');
-const { MECHANICAL_GOALS, GOAL_DEFS } = require('./puzzle-validation');
+const { MECHANICAL_GOALS, GOAL_DEFS, lineWinsGame } = require('./puzzle-validation');
+
+/*
+ * Goals a search can judge: the engine-scored ones (bar losing your last piece,
+ * which the opponent's move completes), and "find this exact move" when the
+ * line wins the game - that one is searched against the game's own win.
+ */
+const searchableGoal = (goal) => (MECHANICAL_GOALS.has(goal) && goal !== 'lose_all_pieces') || goal === 'specific_move';
 
 const UNIQUE_STATUSES = new Set(['unchecked', 'verified', 'not_unique']);
 const MAX_NOTE = 500;
@@ -108,7 +115,7 @@ function registerPuzzleVerificationRoutes(app, { db_pool, dbHelpers, authenticat
         unique_status: puzzle.unique_status, unique_method: puzzle.unique_method,
         unique_detail: puzzle.unique_detail, unique_checked_at: puzzle.unique_checked_at,
         solverMoves: solverMovesOf(puzzle),
-        autoCheckable: MECHANICAL_GOALS.has(puzzle.goal) && solverMovesOf(puzzle) <= 3,
+        autoCheckable: searchableGoal(puzzle.goal) && solverMovesOf(puzzle) <= 3,
         request: request || null,
       });
     } catch (err) {
@@ -169,6 +176,17 @@ function registerPuzzleVerificationRoutes(app, { db_pool, dbHelpers, authenticat
         "UPDATE puzzle_verification_requests SET status = 'withdrawn', resolved_at = NOW() WHERE puzzle_id = ? AND status = 'open'",
         [puzzle.id]
       );
+      /*
+       * The owner was told about the request; say on that same notification
+       * that it was withdrawn, or the tab it links to looks like it lost it.
+       */
+      if (r.affectedRows) {
+        await db_pool.query(
+          `UPDATE notifications SET title = CONCAT(title, ' (withdrawn)')
+           WHERE related_id = ? AND title LIKE 'Verification requested:%' AND title NOT LIKE '%(withdrawn)'`,
+          [puzzle.id]
+        ).catch(() => {});
+      }
       res.json({ message: r.affectedRows ? 'Request withdrawn.' : 'There was no open request.' });
     } catch (err) {
       console.error('DELETE /api/puzzles/:id/verification-request:', err);
@@ -250,8 +268,8 @@ function registerPuzzleVerificationRoutes(app, { db_pool, dbHelpers, authenticat
         puzzles: rows.map(({ solution_line: line, ...r }) => ({
           ...r,
           solverMoves: Math.ceil((safeParse(line, []) || []).length / 2),
-          autoCheckable: MECHANICAL_GOALS.has(r.goal) && Math.ceil((safeParse(line, []) || []).length / 2) <= 3,
-          searchable: MECHANICAL_GOALS.has(r.goal) && r.goal !== 'lose_all_pieces',
+          autoCheckable: searchableGoal(r.goal) && Math.ceil((safeParse(line, []) || []).length / 2) <= 3,
+          searchable: searchableGoal(r.goal),
           goal_label: GOAL_DEFS[r.goal]?.label || r.goal,
           live: liveByPuzzle.get(r.id) || null,
         })),
@@ -286,7 +304,7 @@ function registerPuzzleVerificationRoutes(app, { db_pool, dbHelpers, authenticat
       if (!isStaff(req.user)) return res.status(403).send({ message: 'Admins only' });
       const puzzle = await loadPuzzle(parseInt(req.params.id, 10));
       if (!puzzle) return res.status(404).send({ message: 'Puzzle not found' });
-      if (!MECHANICAL_GOALS.has(puzzle.goal) || puzzle.goal === 'lose_all_pieces') {
+      if (!searchableGoal(puzzle.goal)) {
         return res.status(400).send({ message: `The search cannot judge the goal '${GOAL_DEFS[puzzle.goal]?.label || puzzle.goal}'. Award or refuse the badge by hand instead.` });
       }
       if (liveRunFor(puzzle.id)) return res.status(409).send({ message: 'This puzzle is already being searched.' });
@@ -301,6 +319,14 @@ function registerPuzzleVerificationRoutes(app, { db_pool, dbHelpers, authenticat
         setup_move: safeParse(puzzle.setup_move),
         solution_line: safeParse(puzzle.solution_line, []),
       };
+      // "Find this exact move" is searched against the game's own win - so its line has to win the game.
+      let aim = puzzle.goal;
+      if (puzzle.goal === 'specific_move') {
+        if (!(await lineWinsGame(hydrated, rules.game, hydrated.solution_line))) {
+          return res.status(400).send({ message: 'This puzzle\'s line does not end by winning the game, so there is nothing for the search to check it against. Award or refuse the badge by hand instead.' });
+        }
+        aim = 'win_in_1';
+      }
       const hours = Number(req.body?.maxHours);
       const maxMs = Number.isFinite(hours) && hours > 0 ? Math.round(hours * 3600 * 1000) : Infinity;
       const startedPrint = fingerprint(puzzle);
@@ -320,7 +346,7 @@ function registerPuzzleVerificationRoutes(app, { db_pool, dbHelpers, authenticat
         maxMs,
         workerData: {
           kind: 'verify', puzzle: hydrated, gameType: rules.game,
-          opts: { budgetMs: Infinity, ttMax: Number(process.env.PUZZLE_LONG_TT_MAX) || 400000 },
+          opts: { aim, budgetMs: Infinity, ttMax: Number(process.env.PUZZLE_LONG_TT_MAX) || 400000 },
         },
         onStart: () => db_pool.query("UPDATE puzzle_verification_runs SET state = 'running' WHERE id = ?", [runId]),
         onDone: async (result) => {

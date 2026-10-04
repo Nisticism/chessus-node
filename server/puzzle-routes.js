@@ -2295,7 +2295,8 @@ function registerPuzzleRoutes(app, {
        * a time, capped) and the builder polls it with a progress bar. A one-move
        * puzzle is one enumeration and answers at once.
        */
-      if (MECHANICAL_GOALS.has(puzzle.goal) && solverMoves >= 2) {
+      // "Find this exact move" too: a line that wins the game is checked as a win.
+      if ((MECHANICAL_GOALS.has(puzzle.goal) || puzzle.goal === 'specific_move') && solverMoves >= 2) {
         const job = startJob({
           kind: 'validate',
           owner: req.user.id,

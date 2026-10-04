@@ -28,13 +28,14 @@ async function verify(puzzle, gameType, opts, onProgress) {
   const { playLine, describeMoveOn, buildGameState, boardMoveKey, GOAL_DEFS } = require('./puzzle-validation');
   const line = Array.isArray(puzzle.solution_line) ? puzzle.solution_line : [];
   const r = await verifyPuzzleLine(puzzle, gameType, line, {
-    aim: puzzle.goal,
+    // A "find this exact move" puzzle arrives with aim 'win_in_1' (the game's own win).
+    aim: opts.aim || puzzle.goal,
     budgetMs: Number.isFinite(opts.budgetMs) && opts.budgetMs > 0 ? opts.budgetMs : Infinity,
     dutyCycle: opts.dutyCycle,
     ttMax: opts.ttMax,
     onProgress,
   });
-  const label = (GOAL_DEFS[puzzle.goal]?.label || puzzle.goal || 'the goal').toLowerCase();
+  const label = (GOAL_DEFS[opts.aim || puzzle.goal]?.label || puzzle.goal || 'the goal').toLowerCase();
   const steps = [];
   for (const st of r.steps) {
     const prefix = line.slice(0, (st.step - 1) * 2);

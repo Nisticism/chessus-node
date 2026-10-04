@@ -1267,7 +1267,14 @@ async function checkWholeLine(puzzle, gameType, line, reached, opts) {
         + 'the opponent has a defence the line does not play.',
     };
   }
-  const extra = r.steps.slice(0, -1).find((st) => st.count > 1);
+  /*
+   * A puzzle that accepts only the creator's own line (require_exact_line, or a
+   * "find this exact move" puzzle checked as a win) tells a solver who finds a
+   * different winning LAST move that they are wrong - so there, the last step
+   * has to be unique as well.
+   */
+  const exact = !!puzzle.require_exact_line;
+  const extra = (exact ? r.steps : r.steps.slice(0, -1)).find((st) => st.count > 1);
   if (extra) {
     const others = extra.step === 1
       ? extra.forcing.filter((m) => boardMoveKey(m) !== boardMoveKey(line[0])).slice(0, 3).map((m) => describeMoveOn(pieces, gameType, m))
@@ -1276,7 +1283,8 @@ async function checkWholeLine(puzzle, gameType, line, reached, opts) {
       status: VALIDATION.AMBIGUOUS, solutions: extra.step === 1 ? extra.forcing : [line[0]], intendedWorks: true,
       goalReached: true, searched: true, verification: r, unique: false,
       detail: `at your move ${extra.step}, ${extra.count} different moves force '${label}'`
-        + `${others.length ? ` (also ${others.join('; ')})` : ''}. Before the last move only the line's move is accepted, `
+        + `${others.length ? ` (also ${others.join('; ')})` : ''}. `
+        + (exact ? 'This puzzle accepts only your exact line, ' : 'Before the last move only the line\'s move is accepted, ')
         + 'so a solver who finds another would be told it is wrong.',
     };
   }
@@ -1285,7 +1293,35 @@ async function checkWholeLine(puzzle, gameType, line, reached, opts) {
     status: VALIDATION.VALID, solutions: [line[0]], intendedWorks: true, goalReached: true, searched: true,
     verification: r, unique: r.unique,
     detail: `checked against every defence: at each step your move is the only one that forces '${label}'`
-      + (last.count > 1 ? ` (the final move can be played ${last.count} ways, and any of them is accepted).` : '.'),
+      + (last.count > 1 && !exact ? ` (the final move can be played ${last.count} ways, and any of them is accepted).` : '.'),
+  };
+}
+
+/** The line ends with the solver having won the game. */
+async function lineWinsGame(puzzle, gameType, line) {
+  if (!line.length) return false;
+  const played = await playLine(puzzle, gameType, line);
+  if (!played.ok) return false;
+  const side = Number(puzzle.side_to_move);
+  played.state.currentTurn = other(side);
+  const outcome = terminalOutcome(played.state, other(side), played.ctx);
+  return !!(outcome && Number(outcome.winner) === side);
+}
+
+/*
+ * A "find this exact move" puzzle whose line wins the game, validated as a win
+ * puzzle that accepts only its own line. null when the line does not win (the
+ * creator's call, as before).
+ */
+async function checkExactLineAsWin(puzzle, gameType, line, opts) {
+  if (!(await lineWinsGame(puzzle, gameType, line))) return null;
+  const result = await validatePuzzle(
+    { ...puzzle, goal: 'win_in_1', require_exact_line: 1 }, gameType, { ...opts, asWin: true }
+  );
+  return {
+    ...result,
+    checkedAs: 'win_in_1',
+    detail: `Your line wins the game, so it was checked as a win: ${result.detail || (result.status === VALIDATION.VALID ? 'exactly one move wins, and it is yours.' : '')}`,
   };
 }
 
@@ -1301,6 +1337,19 @@ async function validatePuzzle(puzzle, gameType, opts = {}) {
   }
 
   const isMechanical = MECHANICAL_GOALS.has(puzzle.goal);
+
+  /*
+   * "Find this exact move" is the creator's call - unless the line WINS THE
+   * GAME. Then there is something to check it against: the game's own win.
+   * Connect-four puzzles are the case that asked for this ("Connect four in
+   * four", in a game won by making a line). Checked exactly as a win would be,
+   * except that the solve route accepts only the creator's own line here, so
+   * the last move has to be the only winner too.
+   */
+  if (!isMechanical && puzzle.goal === 'specific_move' && !opts.asWin) {
+    const asWin = await checkExactLineAsWin(puzzle, gameType, line, opts);
+    if (asWin) return asWin;
+  }
 
   /*
    * The goal has to be a way this game is actually won.
@@ -1555,6 +1604,8 @@ async function validatePuzzle(puzzle, gameType, opts = {}) {
 
 module.exports = {
   validatePuzzle,
+  // For the staff search: does a "find this exact move" line win the game?
+  lineWinsGame,
   // For the solve route: the other moves that would have finished a puzzle too.
   immediateWins,
   describeMoveOn,
