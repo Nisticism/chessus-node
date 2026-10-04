@@ -31,12 +31,122 @@ const countSquares = (v) => {
   return p && typeof p === 'object' ? Object.keys(p).length : 0;
 };
 
+/*
+ * The pieces a side loses the game by losing, per player, from the game's own
+ * placements (game_type_pieces) or, for a game with none, its starting layout.
+ * `flag` is 'ends_game_on_checkmate' or 'ends_game_on_capture'.
+ *
+ * Returns { 1: [{ name, count }], 2: [...] }, names in the order first met.
+ */
+function keyPiecesBySide(gt, placements, pieces, flag) {
+  const nameOf = new Map((pieces || []).map((p) => [Number(p.id), p.piece_name]));
+  let rows = (placements || []).map((r) => ({
+    piece_id: r.piece_id, player: Number(r.player_number ?? r.player_id ?? 1), flagged: T(r[flag]),
+    name: r.piece_name,
+  }));
+  if (!rows.length) {
+    const layout = parse(gt.pieces_string);
+    if (layout && typeof layout === 'object') {
+      rows = Object.values(layout).map((v) => ({
+        piece_id: v?.piece_id, player: Number(v?.player_id ?? v?.team ?? v?.player_number ?? 1),
+        flagged: T(v?.[flag]), name: v?.piece_name,
+      }));
+    }
+  }
+  const out = {};
+  for (const r of rows) {
+    if (!r.flagged) continue;
+    const name = nameOf.get(Number(r.piece_id)) || r.name || 'a marked piece';
+    const side = out[r.player] || (out[r.player] = []);
+    const have = side.find((x) => x.name === name);
+    if (have) have.count += 1; else side.push({ name, count: 1 });
+  }
+  return out;
+}
+
+/** "Rook ×2, Knight ×2, Bishop ×2 and King" */
+function listPieces(list, joiner = 'and') {
+  const parts = list.map((p) => (p.count > 1 ? `${p.name} ×${p.count}` : p.name));
+  if (parts.length <= 1) return parts[0] || '';
+  return `${parts.slice(0, -1).join(', ')} ${joiner} ${parts[parts.length - 1]}`;
+}
+
+const total = (list) => list.reduce((n, p) => n + p.count, 0);
+
+/*
+ * One sentence naming the key pieces: once when both armies have the same
+ * ones, per player when they do not.
+ */
+function describeKeyPieces(bySide, requiresAll, { what, verbOne, verbAll, verbAny }) {
+  const sides = Object.keys(bySide).sort();
+  if (!sides.length) return null;
+  const sig = (list) => JSON.stringify(list);
+  const same = sides.length === 1 || sides.every((k) => sig(bySide[k]) === sig(bySide[sides[0]]));
+  const phrase = (list) => {
+    if (total(list) === 1) return `${verbOne} ${list[0].name}`;
+    return requiresAll
+      ? `${verbAll}: ${listPieces(list, 'and')}`
+      : `${verbAny}: ${listPieces(list, 'or')}. Any one is enough`;
+  };
+  if (same) return `${what} ${phrase(bySide[sides[0]])}.`;
+  // Armies with different key pieces: name each side's, then the one rule.
+  const several = sides.some((k) => total(bySide[k]) > 1);
+  return `${what} your opponent’s key ${several ? 'pieces' : 'piece'} — `
+    + sides.map((k) => `Player ${k}’s: ${listPieces(bySide[k], requiresAll ? 'and' : 'or')}`).join('; ')
+    + (several ? (requiresAll ? '. Every one of them has to go.' : '. Any one is enough.') : '.');
+}
+
 /**
  * @param {object} gameType - a row from `game_types`
+ * @param {object} [extra] - { placements, pieces } (a rule snapshot, or readLive),
+ *   so the key pieces can be named. Without them the win lines stay generic.
  * @returns {{ groups: Array<{ title: string, items: Array<{ label: string, detail: string }> }> }}
  */
-function summariseRules(gameType) {
+function summariseRules(gameType, extra = {}) {
   const gt = gameType || {};
+  /*
+   * Key pieces, named. "Capture the key piece" told a solver nothing in a game
+   * whose key pieces are both rooks, both knights, both bishops and the king
+   * (Game With Bisasam). And the engine ends the game on these flags whether or
+   * not the win-condition switch is on, so flagged pieces get their line even
+   * then.
+   */
+  const mateKeys = keyPiecesBySide(gt, extra.placements, extra.pieces, 'ends_game_on_checkmate');
+  const captureKeys = keyPiecesBySide(gt, extra.placements, extra.pieces, 'ends_game_on_capture');
+  const hasMateKeys = Object.keys(mateKeys).length > 0;
+  const hasCaptureKeys = Object.keys(captureKeys).length > 0;
+  const keyWords = {
+    verbOne: 'your opponent’s',
+    verbAll: 'every one of your opponent’s key pieces',
+    verbAny: 'any one of your opponent’s key pieces',
+  };
+  let mateDetail;
+  if (hasMateKeys) {
+    // Capturing a checkmate key piece ends the game too (checkGameEnd).
+    mateDetail = describeKeyPieces(mateKeys, T(gt.mate_condition_requires_all), { what: 'Win by checkmating', ...keyWords })
+      + (T(gt.mate_condition_requires_all) ? ' Capturing them counts too, once none are left.' : ' Capturing it wins as well.');
+  } else {
+    mateDetail = T(gt.mate_condition_requires_all)
+      ? 'Win by checkmating your opponent. Every one of their key pieces must be mated.'
+      : 'Win by checkmating your opponent.';
+  }
+  let captureDetail;
+  if (hasCaptureKeys) {
+    captureDetail = describeKeyPieces(captureKeys, T(gt.capture_condition_requires_all), { what: 'Win by capturing', ...keyWords })
+      + ' No checkmate needed.';
+  } else {
+    captureDetail = T(gt.capture_condition_requires_all)
+      ? 'Win by capturing every one of your opponent’s key pieces.'
+      : 'Win by capturing your opponent’s key piece — no checkmate needed.';
+  }
+  const manyCaptureKeys = Object.values(captureKeys).some((list) => total(list) > 1);
+  // Survival defaults to ON (the wizard's toggle reads "!== false").
+  const survives = gt.promotion_condition_requires_survival == null || T(gt.promotion_condition_requires_survival);
+  const promotionTerms = [
+    T(gt.promotion_condition_requires_empty) && 'onto an empty square',
+    T(gt.promotion_condition_requires_no_capture) && 'with a move that captures nothing',
+    survives && 'and the piece has to survive the move',
+  ].filter(Boolean);
   const groups = [];
   const push = (title, items) => {
     const kept = items.filter(Boolean);
@@ -46,14 +156,11 @@ function summariseRules(gameType) {
 
   // ---- how the game is won -------------------------------------------------
   push('How the game is won', [
-    item(T(gt.mate_condition), 'Checkmate',
-      T(gt.mate_condition_requires_all)
-        ? 'Win by checkmating your opponent. Every one of their key pieces must be mated.'
-        : 'Win by checkmating your opponent.'),
-    item(T(gt.capture_condition), 'Capture the key piece',
-      T(gt.capture_condition_requires_all)
-        ? 'Win by capturing every one of your opponent’s key pieces.'
-        : 'Win by capturing your opponent’s key piece — no checkmate needed.'),
+    item(T(gt.mate_condition) || hasMateKeys, 'Checkmate', mateDetail),
+    item(T(gt.capture_condition) || hasCaptureKeys,
+      !manyCaptureKeys ? 'Capture the key piece'
+        : (T(gt.capture_condition_requires_all) ? 'Capture every key piece' : 'Capture a key piece'),
+      captureDetail),
     item(T(gt.lose_all_pieces_condition), 'Lose everything to win',
       'This game is inverted: the first player with no pieces left wins.'),
     item(T(gt.stalemate_win_condition), 'Stalemate wins',
@@ -61,7 +168,7 @@ function summariseRules(gameType) {
     item(T(gt.no_moves_condition), 'No legal moves loses',
       'A player with no legal move loses, whether or not they are in check.'),
     item(T(gt.promotion_condition), 'Promotion wins',
-      'Getting a piece to a promotion square wins the game outright.'),
+      `Getting a piece to a promotion square wins the game outright${promotionTerms.length ? ` — ${promotionTerms.join(', ')}` : ''}.`),
     item(T(gt.squares_condition), 'Control squares',
       `Hold the marked control squares${I(gt.squares_count) ? ` for ${I(gt.squares_count)} turns` : ''} to win.`),
     item(T(gt.piece_count_condition), 'Most pieces wins',
@@ -87,8 +194,9 @@ function summariseRules(gameType) {
       `Win by taking your opponent’s material below the set threshold${gt.value_title ? ` (${gt.value_title})` : ''}.`),
     item(T(gt.hill_condition), 'King of the hill',
       `Hold the hill square for ${I(gt.hill_turns) || 'the required number of'} turns to win.`),
-    item(T(gt.optional_condition), 'Custom condition',
-      'This game has a custom win condition set by its creator — see the game page.'),
+    item(I(gt.illegal_move_limit) > 0, 'Too many illegal moves loses',
+      `A player who tries ${I(gt.illegal_move_limit)} illegal ${I(gt.illegal_move_limit) === 1 ? 'move' : 'moves'} loses the game`
+      + `${gt.illegal_move_label ? ` (counted as “${gt.illegal_move_label}”)` : ''}.`),
   ]);
 
   // ---- rules that change what a legal move is ------------------------------

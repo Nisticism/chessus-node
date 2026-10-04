@@ -1599,7 +1599,7 @@ function registerPuzzleRoutes(app, {
         out.fog_of_war = !!gameType.fog_of_war;
         out.permanent_fog_reveal = !!gameType.permanent_fog_reveal;
         out.hide_enemy_pieces = !!gameType.hide_enemy_pieces;
-        out.rules = summariseRules(gameType);
+        out.rules = summariseRules(gameType, rules);
         /*
          * What a solver may PUT DOWN, when the answer is a placement rather
          * than a move. Sent for the same reason the pieces are: a solver of a
@@ -1677,16 +1677,16 @@ function registerPuzzleRoutes(app, {
 
   app.get('/api/game-types/:gameTypeId/puzzle-goals', async (req, res) => {
     try {
-      const [[gameType]] = await db_pool.query(
-        'SELECT * FROM game_types WHERE id = ? LIMIT 1', [parseInt(req.params.gameTypeId, 10)]
-      );
+      // Placements and pieces as well as the row, so the rules can name the key pieces.
+      const live = await readLive(db_pool, parseInt(req.params.gameTypeId, 10));
+      const gameType = live?.game;
       if (!gameType) return res.status(404).send({ message: 'Game type not found' });
       res.json({
         goals: goalsForGameType(gameType).map(g => ({
           ...g,
           help: GOAL_DEFS[g.value].describe(gameType, {}),
         })),
-        rules: summariseRules(gameType),
+        rules: summariseRules(gameType, live),
         fog_of_war: !!gameType.fog_of_war,
         hide_enemy_pieces: !!gameType.hide_enemy_pieces,
       });
