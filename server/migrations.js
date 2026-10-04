@@ -915,6 +915,26 @@ tableMigrations.push(
       INDEX idx_pvrun_puzzle (puzzle_id, started_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
     description: "Create puzzle_verification_runs (staff uniqueness searches and their results)"
+  },
+  /*
+   * The rules each game is played under, frozen when it is created
+   * (server/game-rule-freeze.js): the game type row, the piece definitions and
+   * the placements, stored once per distinct content. Editing a game type then
+   * changes only the games that start afterwards.
+   */
+  {
+    table: 'game_rule_snapshots',
+    sql: `CREATE TABLE IF NOT EXISTS game_rule_snapshots (
+      hash CHAR(32) NOT NULL PRIMARY KEY,
+      -- Informational: the payload is self-contained, and the game type may
+      -- since have changed or gone.
+      game_type_id INT UNSIGNED NULL,
+      -- { game, pieces, placements }, exactly as read when the game was created.
+      payload MEDIUMTEXT NOT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_game_rule_snapshot_type (game_type_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+    description: "Create game_rule_snapshots (the rules a game was created under)"
   }
 );
 
@@ -1553,7 +1573,17 @@ const migrations = [
   { table: 'puzzles', column: 'unique_method', sql: "ALTER TABLE puzzles ADD COLUMN unique_method VARCHAR(16) DEFAULT NULL", description: "How the unique-solution status was settled: auto, search or manual." },
   { table: 'puzzles', column: 'unique_detail', sql: "ALTER TABLE puzzles ADD COLUMN unique_detail TEXT DEFAULT NULL", description: "Why a puzzle does or does not have a unique solution." },
   { table: 'puzzles', column: 'unique_checked_at', sql: "ALTER TABLE puzzles ADD COLUMN unique_checked_at DATETIME DEFAULT NULL", description: "When the unique-solution status was last settled." },
-  { table: 'puzzles', column: 'unique_checked_by', sql: "ALTER TABLE puzzles ADD COLUMN unique_checked_by INT UNSIGNED DEFAULT NULL", description: "The staff member who settled it, for a search or manual verdict." }
+  { table: 'puzzles', column: 'unique_checked_by', sql: "ALTER TABLE puzzles ADD COLUMN unique_checked_by INT UNSIGNED DEFAULT NULL", description: "The staff member who settled it, for a search or manual verdict." },
+
+  /*
+   * Which frozen rule set a game is played under (game_rule_snapshots), and the
+   * board size it started with - copied here so lists of games draw each board
+   * at its own size without opening the snapshot. NULL for games created before
+   * this existed: they read the live game type, as every game used to.
+   */
+  { table: 'games', column: 'rule_snapshot', sql: "ALTER TABLE games ADD COLUMN rule_snapshot CHAR(32) DEFAULT NULL", description: "The frozen rules this game is played under." },
+  { table: 'games', column: 'board_width', sql: "ALTER TABLE games ADD COLUMN board_width INT DEFAULT NULL", description: "The board width this game started with." },
+  { table: 'games', column: 'board_height', sql: "ALTER TABLE games ADD COLUMN board_height INT DEFAULT NULL", description: "The board height this game started with." }
 ];
 
 // Ensure physical_board_requests table exists (may have been created after tableMigrations ran)
@@ -4975,6 +5005,43 @@ const runMigrations = async () => {
     );
   } catch (err) {
     console.error('Error cleaning up available_for_moves:', err.message);
+  }
+
+  /*
+   * Freeze the rules of every game still being played (or waiting to start)
+   * that has no frozen copy yet - the games that existed before rules were
+   * frozen at creation. Their rules are taken as they stand NOW: a game already
+   * hurt by an earlier edit is not repaired by this, but no later edit can reach
+   * it. Once, through the ledger. One snapshot per game type, shared.
+   */
+  try {
+    await runOnceDataMigration(
+      'freeze-rules-of-games-in-progress',
+      'Freeze the game rules of games in progress that predate per-game rule snapshots',
+      async () => {
+        const { freezeGameType } = require('./game-rule-freeze');
+        const [types] = await db_pool.query(
+          `SELECT DISTINCT game_type_id FROM games
+           WHERE status IN ('active', 'ready', 'waiting') AND rule_snapshot IS NULL AND game_type_id IS NOT NULL`
+        );
+        let n = 0;
+        for (const { game_type_id: typeId } of types) {
+          // eslint-disable-next-line no-await-in-loop
+          const frozen = await freezeGameType(db_pool, typeId);
+          if (!frozen) continue;
+          // eslint-disable-next-line no-await-in-loop
+          const [r] = await db_pool.query(
+            `UPDATE games SET rule_snapshot = ?, board_width = ?, board_height = ?
+             WHERE game_type_id = ? AND status IN ('active', 'ready', 'waiting') AND rule_snapshot IS NULL`,
+            [frozen.hash, frozen.boardWidth, frozen.boardHeight, typeId]
+          );
+          n += r.affectedRows;
+        }
+        return n;
+      }
+    );
+  } catch (err) {
+    console.error('Error freezing the rules of games in progress:', err.message);
   }
 
   // disable_promotion: per-placement flag to prevent a promotable piece from

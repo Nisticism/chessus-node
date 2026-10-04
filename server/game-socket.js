@@ -21,6 +21,7 @@ const { gravityOf, restingSquare, describeGravity } = require('./board-gravity')
 const { colToFile, squareLabel } = require('./square-label');
 // "Opponent chooses the piece type" - see designated-piece.js.
 const designated = require('./designated-piece');
+const { freezeRulesForGame, gameTypeForGame, loadFrozenRules, pieceRowsFor, placementFor } = require('./game-rule-freeze');
 
 // Verbose per-move debug logging is gated behind an env var so PM2 isn't
 // hammered with disk I/O during normal play. Set VERBOSE_GAME_LOG=1 to enable.
@@ -1487,12 +1488,13 @@ function isPlaceableEligibleFor(entry, position) {
  * never generated for placed pieces. Must run on BOTH the create-game and
  * resume-game paths, otherwise placement after a server restart yields dead pieces.
  */
-async function enrichPlaceablePieces(otherGameData) {
+async function enrichPlaceablePieces(otherGameData, frozenRules = null) {
   if (!otherGameData || !otherGameData.place_pieces_action || !Array.isArray(otherGameData.placeable_pieces)) return;
   const pieceIds = otherGameData.placeable_pieces.map(pp => pp.piece_id).filter(id => id != null);
   if (pieceIds.length === 0) return;
   try {
-    const [pieceRows] = await db_pool.query('SELECT * FROM pieces WHERE id IN (?)', [pieceIds]);
+    // A resumed game's frozen definitions (game-rule-freeze.js), else the pieces table.
+    const pieceRows = await pieceRowsFor(db_pool, frozenRules, pieceIds);
     for (const pp of otherGameData.placeable_pieces) {
       const fullData = pieceRows.find(r => r.id === pp.piece_id);
       if (!fullData) continue;
@@ -3905,7 +3907,7 @@ async function recoverActiveGames() {
       `SELECT g.id, g.status, g.turn_length, g.increment, g.player_turn,
               g.pieces, g.other_data, g.host_id, g.game_type_id,
               g.start_time, g.allow_spectators, g.show_piece_helpers,
-              g.is_correspondence, g.correspondence_days,
+              g.is_correspondence, g.correspondence_days, g.rule_snapshot,
               gt.mate_condition, gt.starting_points_p1, gt.starting_points_p2,
               gt.other_game_data AS gt_other_game_data, gt.simultaneous_turns
        FROM games g
@@ -3969,22 +3971,29 @@ async function recoverActiveGames() {
         }
         // Build lightweight game state
         const gm = await loadGameMoves(game.id, otherData);
+        // The rule columns as the game was created with, when it has a frozen
+        // copy; the live join otherwise (game-rule-freeze.js).
+        const frozenGt = game.rule_snapshot ? (await loadFrozenRules(db_pool, game.rule_snapshot))?.game : null;
+        const rulesRow = frozenGt
+          ? { ...frozenGt, gt_other_game_data: typeof frozenGt.other_game_data === 'string' ? frozenGt.other_game_data : JSON.stringify(frozenGt.other_game_data || {}) }
+          : game;
         const gameState = {
           id: game.id,
           gameTypeId: game.game_type_id,
+          ruleSnapshot: game.rule_snapshot || null,
           gameType: {
             id: game.game_type_id,
-            mate_condition: game.mate_condition,
-            starting_points_p1: game.starting_points_p1,
-            starting_points_p2: game.starting_points_p2,
-            simultaneous_turns: game.simultaneous_turns,
+            mate_condition: rulesRow.mate_condition,
+            starting_points_p1: rulesRow.starting_points_p1,
+            starting_points_p2: rulesRow.starting_points_p2,
+            simultaneous_turns: rulesRow.simultaneous_turns,
           },
           // Only the opponent-chooses-the-piece-type flag, and the choice in
           // force: enough for the timer to charge the chooser while a choice
           // is due. Nothing else here reads otherGameData.
           otherGameData: (() => {
             try {
-              const god = JSON.parse(game.gt_other_game_data || '{}') || {};
+              const god = JSON.parse(rulesRow.gt_other_game_data || '{}') || {};
               return god.designate_piece_type === true ? { designate_piece_type: true } : {};
             } catch (_) { return {}; }
           })(),
@@ -4831,6 +4840,9 @@ function initializeSocket(server) {
         );
 
         const gameId = result.insertId;
+        // The rules this game is played under, from now until it ends - a later
+        // edit to the game type does not reach it (game-rule-freeze.js).
+        const ruleSnapshot = await freezeRulesForGame(db_pool, gameId, gameTypeId);
 
         // Create player entry for host
         await db_pool.query(
@@ -4844,6 +4856,7 @@ function initializeSocket(server) {
           id: gameId,
           gameTypeId,
           gameType: gameType,
+          ruleSnapshot,
           otherGameData,
           timeControl,
           increment: increment || 0,
@@ -5471,6 +5484,8 @@ function initializeSocket(server) {
         );
 
         const gameId = result.insertId;
+        // Frozen rules, as for every game (game-rule-freeze.js).
+        const ruleSnapshot = await freezeRulesForGame(db_pool, gameId, gameTypeId);
 
         // Create player entry with no user_id
         await db_pool.query(
@@ -5487,6 +5502,7 @@ function initializeSocket(server) {
           id: gameId,
           gameTypeId,
           gameType: gameType,
+          ruleSnapshot,
           timeControl: isCorrespondence ? null : (timeControl || null),
           increment: isCorrespondence ? 0 : (increment || 0),
           status: 'waiting',
@@ -6164,11 +6180,8 @@ function initializeSocket(server) {
             return socket.emit("error", { message: "This is a private challenge. Only the challenged player can join." });
           }
 
-          // Get game type
-          const [[gameType]] = await db_pool.query(
-            "SELECT * FROM game_types WHERE id = ?",
-            [game.game_type_id]
-          );
+          // The game type as this game was created with (game-rule-freeze.js).
+          const { gameType, rules: frozenRules } = await gameTypeForGame(db_pool, game);
 
           // Get host info - LEFT JOIN so anonymous hosts (user_id = NULL) are included
           const [[hostPlayer]] = await db_pool.query(
@@ -6194,10 +6207,7 @@ function initializeSocket(server) {
           });
           
           if (pieceIdsToLoad.size > 0) {
-            const [pieceRows] = await db_pool.query(
-              `SELECT * FROM pieces WHERE id IN (?)`,
-              [Array.from(pieceIdsToLoad)]
-            );
+            const pieceRows = await pieceRowsFor(db_pool, frozenRules, Array.from(pieceIdsToLoad));
             const pieceDataMap = {};
             pieceRows.forEach(p => { pieceDataMap[p.id] = p; });
             
@@ -6393,10 +6403,11 @@ function initializeSocket(server) {
             id: gameId,
             gameTypeId: game.game_type_id,
             gameType: gameType,
+            ruleSnapshot: game.rule_snapshot || null,
             otherGameData: await (async () => {
               let ogd = {};
               try { ogd = gameType?.other_game_data ? (typeof gameType.other_game_data === 'string' ? JSON.parse(gameType.other_game_data) : gameType.other_game_data) : {}; } catch { ogd = {}; }
-              await enrichPlaceablePieces(ogd);
+              await enrichPlaceablePieces(ogd, frozenRules);
               return ogd;
             })(),
             timeControl: game.turn_length,
@@ -11163,11 +11174,14 @@ function initializeSocket(server) {
             return socket.emit("error", { message: "Game not found" });
           }
 
-          // Get game type
-          const [[gameType]] = await db_pool.query(
-            "SELECT * FROM game_types WHERE id = ?",
-            [game.game_type_id]
-          );
+          /*
+           * The game type as this game was CREATED with - not as it stands now.
+           * Reading the live row here is how an edit reached games already in
+           * progress: Strange Shogi lost a board row mid-game and one side's
+           * back rank with it (game-rule-freeze.js). Older games with no frozen
+           * copy still read the live row.
+           */
+          const { gameType, rules: frozenRules } = await gameTypeForGame(db_pool, game);
 
           // Get players with their usernames.
           // LEFT JOIN so anonymous players (user_id = NULL) are also included.
@@ -11232,13 +11246,18 @@ function initializeSocket(server) {
             
             // Fall back to game type pieces from junction table if still empty
             if (pieces.length === 0 && gameType?.id) {
-              const [junctionPieces] = await db_pool.query(
-                `SELECT gtp.*, gtp.ends_game_on_checkmate, gtp.ends_game_on_capture, p.piece_name, p.image_location
-                 FROM game_type_pieces gtp
-                 INNER JOIN pieces p ON gtp.piece_id = p.id
-                 WHERE gtp.game_type_id = ?`,
-                [gameType.id]
-              );
+              const [junctionPieces] = frozenRules
+                ? [(frozenRules.placements || []).map((gtp) => {
+                  const def = frozenRules.pieceById.get(Number(gtp.piece_id)) || {};
+                  return { ...gtp, piece_name: def.piece_name, image_location: def.image_location };
+                })]
+                : await db_pool.query(
+                  `SELECT gtp.*, gtp.ends_game_on_checkmate, gtp.ends_game_on_capture, p.piece_name, p.image_location
+                   FROM game_type_pieces gtp
+                   INNER JOIN pieces p ON gtp.piece_id = p.id
+                   WHERE gtp.game_type_id = ?`,
+                  [gameType.id]
+                );
               
               pieces = junctionPieces.map(piece => ({
                 ...piece,
@@ -11265,10 +11284,9 @@ function initializeSocket(server) {
             });
             
             if (pieceIdsToLoad.size > 0) {
-              const [pieceRows] = await db_pool.query(
-                `SELECT * FROM pieces WHERE id IN (?)`,
-                [Array.from(pieceIdsToLoad)]
-              );
+              // Frozen definitions first - a piece edited since the game began
+              // keeps the moves it started with.
+              const pieceRows = await pieceRowsFor(db_pool, frozenRules, Array.from(pieceIdsToLoad));
               const pieceDataMap = {};
               pieceRows.forEach(p => { pieceDataMap[p.id] = p; });
               
@@ -11542,12 +11560,13 @@ function initializeSocket(server) {
 
           // Enrich placeable_pieces so pieces deployed after a server restart get
           // correct movement/capture/hop rules (mirrors the create-game path).
-          await enrichPlaceablePieces(otherGameData);
+          await enrichPlaceablePieces(otherGameData, frozenRules);
 
           gameState = {
             id: game.id,
             gameTypeId: game.game_type_id,
             gameType: gameType,
+            ruleSnapshot: game.rule_snapshot || null,
             otherGameData,
             timeControl: game.turn_length,
             increment: game.increment || 0,
@@ -12527,7 +12546,7 @@ async function getOpenLiveGames() {
                 g.allow_spectators, g.show_piece_helpers, g.is_correspondence,
                 g.correspondence_days, g.is_anonymous, g.invite_code,
                 g.chat_is_public, g.illegal_move_counts, g.spectator_visibility,
-                gt.game_name, gt.board_width, gt.board_height,
+                gt.game_name, COALESCE(g.board_width, gt.board_width) AS board_width, COALESCE(g.board_height, gt.board_height) AS board_height,
                 COALESCE(u.username, JSON_UNQUOTE(JSON_EXTRACT(g.other_data, '$.guestName')), 'Guest') as host_username,
                 CAST(JSON_EXTRACT(g.other_data, '$.rated') AS SIGNED) as rated
          FROM games g
@@ -12566,7 +12585,7 @@ async function getPrivateGames(userId) {
               g.allow_spectators, g.show_piece_helpers, g.is_correspondence,
               g.correspondence_days, g.is_anonymous, g.invite_code,
               g.chat_is_public, g.illegal_move_counts, g.spectator_visibility,
-              gt.game_name, gt.board_width, gt.board_height,
+              gt.game_name, COALESCE(g.board_width, gt.board_width) AS board_width, COALESCE(g.board_height, gt.board_height) AS board_height,
               u.username as host_username,
               cu.username as challenged_username,
               CAST(JSON_EXTRACT(g.other_data, '$.rated') AS SIGNED) as rated
@@ -12607,7 +12626,7 @@ async function getOngoingGames() {
                 JSON_EXTRACT(g.other_data, '$.anonLivePlayers') as anon_live_players_json,
                 JSON_EXTRACT(g.other_data, '$.anonCorresPlayers') as anon_corres_players_json,
                 JSON_EXTRACT(g.other_data, '$.simulSubmittedPlayerIds') as simul_submitted_json,
-                gt.game_name, gt.board_width, gt.board_height, gt.simultaneous_turns,
+                gt.game_name, COALESCE(g.board_width, gt.board_width) AS board_width, COALESCE(g.board_height, gt.board_height) AS board_height, gt.simultaneous_turns,
                 GROUP_CONCAT(COALESCE(u.username, 'Guest') ORDER BY p.player_position SEPARATOR ' vs ') as player_names,
                 GROUP_CONCAT(p.user_id ORDER BY p.player_position) as player_ids,
                 g.move_count,
@@ -12701,7 +12720,7 @@ async function getMyBotGames(userId) {
               g.allow_spectators, g.show_piece_helpers,
               g.is_correspondence, g.correspondence_days, g.other_data, g.player_turn,
               CAST(JSON_EXTRACT(g.other_data, '$.rated') AS SIGNED) as rated,
-              gt.game_name, gt.board_width, gt.board_height,
+              gt.game_name, COALESCE(g.board_width, gt.board_width) AS board_width, COALESCE(g.board_height, gt.board_height) AS board_height,
               GROUP_CONCAT(u.username ORDER BY p.player_position SEPARATOR ' vs ') as player_names,
               GROUP_CONCAT(p.user_id ORDER BY p.player_position) as player_ids,
               g.move_count
@@ -15282,10 +15301,10 @@ async function applyPromotionToPiece(gameState, pieceId, promoteToPieceId, promo
     : originalOwner;
   const isNeutralTarget = targetPlayer === 0;
 
-  const [[fullPieceData]] = await db_pool.query(
-    `SELECT * FROM pieces WHERE id = ?`,
-    [promoteToPieceId]
-  );
+  // The piece as this game knows it - its frozen definition, so a piece edited
+  // mid-game promotes into what it was when the game began (game-rule-freeze.js).
+  const frozenRules = await loadFrozenRules(db_pool, gameState.ruleSnapshot);
+  const [fullPieceData] = await pieceRowsFor(db_pool, frozenRules, [promoteToPieceId]);
   if (!fullPieceData) return null;
 
   // Look up per-game junction overrides for this target piece.
@@ -15294,17 +15313,7 @@ async function applyPromotionToPiece(gameState, pieceId, promoteToPieceId, promo
   let junctionOverrides = null;
   try {
     if (gameState.gameTypeId) {
-      const playerNum = targetPlayer;
-      const [junctionRows] = await db_pool.query(
-        `SELECT * FROM game_type_pieces
-         WHERE game_type_id = ? AND piece_id = ?
-         ORDER BY (player_number = ?) DESC
-         LIMIT 1`,
-        [gameState.gameTypeId, promoteToPieceId, playerNum]
-      );
-      if (junctionRows && junctionRows.length > 0) {
-        junctionOverrides = junctionRows[0];
-      }
+      junctionOverrides = await placementFor(db_pool, frozenRules, gameState.gameTypeId, promoteToPieceId, targetPlayer);
     }
   } catch (e) {
     console.error('applyPromotionToPiece: failed to load junction overrides:', e);
@@ -15719,10 +15728,7 @@ async function getPromotionOptions(gameState, promotingPiece) {
       let flags = ruleFlagsByPieceId.get(parseInt(pieceId));
       if (!flags) {
         try {
-          const [[pieceRow]] = await db_pool.query(
-            `SELECT has_checkmate_rule, has_lose_on_capture_rule FROM pieces WHERE id = ?`,
-            [pieceId]
-          );
+          const [pieceRow] = await pieceRowsFor(db_pool, await loadFrozenRules(db_pool, gameState.ruleSnapshot), [pieceId]);
           flags = {
             checkmate: !!(pieceRow && pieceRow.has_checkmate_rule),
             capture: !!(pieceRow && pieceRow.has_lose_on_capture_rule)
@@ -15750,10 +15756,8 @@ async function getPromotionOptions(gameState, promotingPiece) {
         eligiblePieces.push({ ...existingPiece, promotion_target_player: targetPlayer });
       } else {
         try {
-          const [[pieceData]] = await db_pool.query(
-            `SELECT * FROM pieces WHERE id = ?`,
-            [pieceId]
-          );
+          // Frozen definition when the game has one (game-rule-freeze.js).
+          const [pieceData] = await pieceRowsFor(db_pool, await loadFrozenRules(db_pool, gameState.ruleSnapshot), [pieceId]);
           if (pieceData) {
             eligiblePieces.push({
               ...pieceData,

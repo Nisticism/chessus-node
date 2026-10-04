@@ -1867,8 +1867,8 @@ app.get("/api/users/:userId/match-history", async (req, res) => {
         g.turn_length,
         g.increment,
         gt.game_name as game_type_name,
-        gt.board_width,
-        gt.board_height,
+        COALESCE(g.board_width, gt.board_width) AS board_width,
+        COALESCE(g.board_height, gt.board_height) AS board_height,
         p1.user_id as player1_id,
         p1.player_position as player1_position,
         u1.username as player1_username,
@@ -2001,8 +2001,8 @@ app.get("/api/users/:userId/ongoing-games", async (req, res) => {
         g.other_data,
         g.player_turn,
         gt.game_name as game_type_name,
-        gt.board_width,
-        gt.board_height,
+        COALESCE(g.board_width, gt.board_width) AS board_width,
+        COALESCE(g.board_height, gt.board_height) AS board_height,
         gt.simultaneous_turns,
         p1.user_id as player1_id,
         u1.username as player1_username,
@@ -2477,8 +2477,8 @@ app.get("/api/match/:gameId", async (req, res) => {
       SELECT 
         g.*,
         gt.game_name as game_type_name,
-        gt.board_width,
-        gt.board_height,
+        COALESCE(g.board_width, gt.board_width) AS board_width,
+        COALESCE(g.board_height, gt.board_height) AS board_height,
         gt.descript as game_description
       FROM games g
       LEFT JOIN game_types gt ON g.game_type_id = gt.id
@@ -2520,10 +2520,16 @@ app.get("/api/match/:gameId", async (req, res) => {
     // Option A: read move history from game_moves (falls back to other_data).
     const { loadGameMoves } = require('./game-socket');
     const gm = await loadGameMoves(game.id, otherData);
+    // The game type as this game was played under, when it has a frozen copy
+    // (game-rule-freeze.js) - so a replay is not redrawn with later edits.
+    const frozenRules = game.rule_snapshot
+      ? await require('./game-rule-freeze').loadFrozenRules(db_pool, game.rule_snapshot)
+      : null;
 
     res.json({
       id: game.id,
       createdAt: game.created_at,
+      frozenGameType: frozenRules?.game || null,
       startTime: game.start_time,
       endTime: game.end_time,
       status: game.status,

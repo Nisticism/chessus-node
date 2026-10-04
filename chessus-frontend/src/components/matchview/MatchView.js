@@ -102,15 +102,18 @@ const MatchView = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [reviewMoveIndex, match?.moveHistory]);
 
-  // Load the full game type once the match tells us which one it is.
+  // Load the full game type once the match tells us which one it is - the copy
+  // frozen when the game was created, when it has one, so later edits to the
+  // game type do not redraw a game already played.
   useEffect(() => {
-    if (!match?.gameTypeId) return;
+    if (match?.frozenGameType) { setGameType(match.frozenGameType); return undefined; }
+    if (!match?.gameTypeId) return undefined;
     let cancelled = false;
     axios.get(`${API_URL}games/${match.gameTypeId}`)
       .then(res => { if (!cancelled) setGameType(res.data); })
       .catch(() => { /* movement helpers are optional — board still renders */ });
     return () => { cancelled = true; };
-  }, [match?.gameTypeId]);
+  }, [match?.gameTypeId, match?.frozenGameType]);
 
   // Special squares drive range boosts, restriction zones and custom-square
   // rules. Parsed the same way LiveGame parses them off the game state.
