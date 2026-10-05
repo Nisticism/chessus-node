@@ -2,6 +2,7 @@ import React, { useRef, useState, useEffect, useCallback } from "react";
 import styles from "./piecewizard.module.scss";
 import PieceBoardPreview from "./PieceBoardPreview";
 import InfoTooltip from "./InfoTooltip";
+import BetzaEntry from "./BetzaEntry";
 import NumberInput from "../common/NumberInput";
 import ToggleSwitch from "../common/ToggleSwitch";
 import { pieceImageLibrary } from "../../assets/piece-images";
@@ -476,6 +477,9 @@ const PieceStep1BasicInfo = ({ pieceData, updatePieceData, isEditMode = false, e
           Optional category to organize your pieces
         </p>
       </div>
+
+      {/* For experienced designers: a Betza code fills in Movement and Attack. */}
+      <BetzaEntry pieceData={pieceData} updatePieceData={updatePieceData} />
 
       <div className={styles["form-group"]}>
         <ToggleSwitch
