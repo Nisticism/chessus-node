@@ -491,10 +491,10 @@ const Preferences = () => {
           {!canCustomizeColors && (
             <div className={styles["supporter-locked-note"]}>
               <span className={styles["supporter-locked-title"]}>
-                🌱 Choosing your own square colours is a Sapling Supporter perk
+                🌱 Choosing your own square colors is a Sapling Supporter perk
               </span>
               <span className={styles["supporter-locked-body"]}>
-                Every Quick Theme above is yours to use. To mix your own colours,
+                Every Quick Theme above is yours to use. To mix your own colors,
                 <Link to="/donate"> support the site</Link>.
               </span>
             </div>

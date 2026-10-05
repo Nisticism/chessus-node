@@ -611,7 +611,7 @@ const Step2WinConditions = ({ gameData, updateGameData }) => {
           <div className={styles["form-group"]} style={{ marginBottom: '0.75rem' }}>
             <label className={styles["form-label"]} style={{ fontSize: '0.85rem' }}>
               Place vs move conflict{' '}
-              <InfoTooltip text="If you place a piece on a square the opponent moves onto in the same round: Cancel both (default) — both actions are discarded; Allow placement — the placement happens and the move is cancelled instead." />
+              <InfoTooltip text="If you place a piece on a square the opponent moves onto in the same round: Cancel both (default) — both actions are discarded; Allow placement — the placement happens and the move is canceled instead." />
             </label>
             <select
               className={styles["form-input-small"]}
@@ -902,7 +902,7 @@ const Step2WinConditions = ({ gameData, updateGameData }) => {
             label={
               <span className={styles["condition-toggle-title"]}>
                 Count diagonals as adjacent
-                <InfoTooltip text="By default only the four orthogonal neighbours (up/down/left/right) count when deciding whether a piece is surrounded and where its empty 'liberties' are. Enable this to also count the four diagonals. Standard Go uses orthogonal adjacency only." />
+                <InfoTooltip text="By default only the four orthogonal neighbors (up/down/left/right) count when deciding whether a piece is surrounded and where its empty 'liberties' are. Enable this to also count the four diagonals. Standard Go uses orthogonal adjacency only." />
               </span>
             }
           />

@@ -419,7 +419,7 @@ const Tournaments = () => {
     resetMessages();
     try {
       await updateTournamentPlaceholder({ tournamentId, updates: { status: 'cancelled' } });
-      setSuccessMessage("Tournament cancelled.");
+      setSuccessMessage("Tournament canceled.");
       await loadTournaments();
     } catch (error) {
       setErrorMessage(getTournamentError(error, "Unable to cancel this tournament."));

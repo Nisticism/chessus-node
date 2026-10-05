@@ -114,7 +114,7 @@ const Step3BoardPlayers = ({ gameData, updateGameData }) => {
           label={
             <span className={styles["form-label"]} style={{ margin: 0 }}>
               Play on line intersections (Go-style board)
-              <InfoTooltip text="Display only — does not change the rules. Instead of a checkerboard of coloured squares, the board is drawn as a wood-coloured grid of lines and pieces appear to sit on the line intersections, like a Go board. Each square in your board becomes one intersection. Useful for Go-style games built with the Surround Capture mechanic." />
+              <InfoTooltip text="Display only — does not change the rules. Instead of a checkerboard of colored squares, the board is drawn as a wood-colored grid of lines and pieces appear to sit on the line intersections, like a Go board. Each square in your board becomes one intersection. Useful for Go-style games built with the Surround Capture mechanic." />
             </span>
           }
         />

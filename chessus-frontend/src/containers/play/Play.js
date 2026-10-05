@@ -1801,7 +1801,7 @@ const Play = () => {
               <SectionSortMenu value={sectionSort.liveGames} onChange={(v) => setSort('liveGames', v)} />
             </h2>
             <p className={styles["section-note"]}>
-              While we grow our player base, consider hosting a <strong>Correspondence game</strong> instead of Live {'\u2014'} unless you know both you and your opponent can start and finish the game in one sitting. Live games where both players have joined but haven't made a move will be automatically cancelled after 24 hours.
+              While we grow our player base, consider hosting a <strong>Correspondence game</strong> instead of Live {'\u2014'} unless you know both you and your opponent can start and finish the game in one sitting. Live games where both players have joined but haven't made a move will be automatically canceled after 24 hours.
             </p>
 
             {!liveGamesCollapsed && (

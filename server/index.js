@@ -2369,7 +2369,7 @@ app.delete("/api/users/:userId/friend-requests/:requestId", authenticateToken, a
       [requestId]
     );
     
-    res.json({ message: "Friend request cancelled" });
+    res.json({ message: "Friend request canceled" });
   } catch (err) {
     console.error("Error in /api/users/:userId/friend-requests/:requestId DELETE:", err);
     res.status(500).send({ err: err.message });
@@ -7742,7 +7742,7 @@ app.post("/api/preferences/colors", authenticateToken, async (req, res) => {
         if ((wantsLight && !allowed(light_square_color, current?.light_square_color)) ||
             (wantsDark && !allowed(dark_square_color, current?.dark_square_color))) {
           return res.status(403).send({
-            message: "Choosing your own square colours is a Sapling Supporter perk. Quick Themes are available to everyone.",
+            message: "Choosing your own square colors is a Sapling Supporter perk. Quick Themes are available to everyone.",
             requiresSupporter: true,
           });
         }

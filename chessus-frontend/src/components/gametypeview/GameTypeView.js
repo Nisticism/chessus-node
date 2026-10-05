@@ -2445,7 +2445,7 @@ A placed piece falls towards ${fallsTo} instead of staying on the square it was 
 
     // Surround (enclosure) capture — Go-style capture
     if (otherData.surround_capture) {
-      let sc = `**Surround Capture**\nA single-tile piece — or a connected group of them — is captured and removed the moment it has no adjacent empty space left (it is fully enclosed by the board edge, blocked squares, and other pieces). This is the capture method used by the game Go, where a stone is captured once its last adjacent empty point (its "liberty") is taken. Adjacency counts the four orthogonal neighbours${otherData.surround_capture_diagonal ? ' **plus diagonals**' : ' (orthogonal only)'}. In this version only single-tile, non-royal pieces can be surround-captured; royal and multi-tile pieces act as walls, and neutral pieces block for both sides.`;
+      let sc = `**Surround Capture**\nA single-tile piece — or a connected group of them — is captured and removed the moment it has no adjacent empty space left (it is fully enclosed by the board edge, blocked squares, and other pieces). This is the capture method used by the game Go, where a stone is captured once its last adjacent empty point (its "liberty") is taken. Adjacency counts the four orthogonal neighbors${otherData.surround_capture_diagonal ? ' **plus diagonals**' : ' (orthogonal only)'}. In this version only single-tile, non-royal pieces can be surround-captured; royal and multi-tile pieces act as walls, and neutral pieces block for both sides.`;
       if (otherData.forbid_self_capture) {
         sc += `\n\n**No self-capture:** A player may not place a piece where it would immediately be surrounded (its own group would have no adjacent empty space) unless the placement captures at least one enemy piece — this is Go's "no suicide" rule.`;
       }
@@ -3895,8 +3895,8 @@ Delete the game and its puzzles anyway?`)) {
               <li style={{ textAlign: 'left' }}>
                 <strong>Place vs move conflict:</strong>{' '}
                 {game.simul_turns_place_conflict === 'allow'
-                  ? 'If a placement and a move target the same square, the placement happens and the move is cancelled.'
-                  : 'If a placement and a move target the same square, both actions are cancelled.'}
+                  ? 'If a placement and a move target the same square, the placement happens and the move is canceled.'
+                  : 'If a placement and a move target the same square, both actions are canceled.'}
               </li>
               <li style={{ textAlign: 'left' }}>
                 <strong>Free move after capture / promotion:</strong>{' '}

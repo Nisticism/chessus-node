@@ -299,7 +299,7 @@ const Donate = () => {
         },
         onCancel: () => {
           setIsProcessing(false);
-          alert('Payment cancelled');
+          alert('Payment canceled');
         },
         onError: (err) => {
           console.error('PayPal error:', err);
@@ -581,7 +581,7 @@ const Donate = () => {
                   {' '}{perks.gameLimits.free.correspondence}.
                 </li>
                 <li>
-                  <strong>Your own board colours.</strong> Pick the light and dark squares
+                  <strong>Your own board colors.</strong> Pick the light and dark squares
                   yourself instead of choosing from the built-in themes.
                 </li>
                 <li>

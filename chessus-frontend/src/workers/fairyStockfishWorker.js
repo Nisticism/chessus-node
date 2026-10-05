@@ -229,7 +229,7 @@ async function handleBestmove(msg) {
   } = msg;
   try {
     if (!engine) await handleInit({});
-    if (!engine) throw new Error('Engine not initialised');
+    if (!engine) throw new Error('Engine not initialized');
 
     if (skillLevel != null && skillLevel !== currentSkillLevel) {
       currentSkillLevel = Math.max(0, Math.min(20, Math.floor(skillLevel)));

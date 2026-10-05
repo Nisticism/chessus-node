@@ -1925,7 +1925,7 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId, piecePasswo
 
         return (
           <div className={styles["global-hp-ad-section"]} style={{ marginTop: '20px' }}>
-            <h3>Placeable Pieces <InfoTooltip text="Select which pieces can be placed onto empty squares during gameplay. Players will spend an action to place one of these pieces on their turn. When you add a piece you choose who may deploy it: a specific player, All Players (each deploys it in their own colour), or Neutral. With limited reserves on, each player's reserve is capped at the number of squares on the board." /></h3>
+            <h3>Placeable Pieces <InfoTooltip text="Select which pieces can be placed onto empty squares during gameplay. Players will spend an action to place one of these pieces on their turn. When you add a piece you choose who may deploy it: a specific player, All Players (each deploys it in their own color), or Neutral. With limited reserves on, each player's reserve is capped at the number of squares on the board." /></h3>
             <p className={styles["field-hint"]} style={{ marginBottom: '12px' }}>
               Choose piece types that players can place during gameplay. These are separate from starting board positions.
               {finiteReserve && ` Set how many of each piece every player starts with in their reserve (max ${boardSquares} — the number of squares on this board). Once a player runs out of a piece, they can no longer deploy it.`}

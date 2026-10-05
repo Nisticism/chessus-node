@@ -1132,7 +1132,7 @@ const PieceView = () => {
                 {(pieceToDisplay.step_by_step_movement_value || 0) < 0
                   ? ' counting only horizontal and vertical steps (Manhattan distance — diagonals excluded)'
                   : (pieceToDisplay.step_by_step_movement_no_orthogonal
-                    ? ' counting only diagonal steps (orthogonal steps excluded), which keeps it on squares of one colour'
+                    ? ' counting only diagonal steps (orthogonal steps excluded), which keeps it on squares of one color'
                     : ' in any direction including diagonals (Chebyshev distance)')}, changing direction within a single move
               </div>
             </div>

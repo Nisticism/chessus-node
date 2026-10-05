@@ -2731,14 +2731,14 @@ const LiveGame = () => {
       const cancelledOpp = (cancellations || []).find(c => !currentUser?.id || parseInt(c.playerId) !== parseInt(currentUser.id));
       let msg = null;
       if (cancelledMine && cancelledOpp) {
-        msg = `Both moves cancelled (${cancelledMine.reason === 'same_square' ? 'same destination' : cancelledMine.reason}).`;
+        msg = `Both moves canceled (${cancelledMine.reason === 'same_square' ? 'same destination' : cancelledMine.reason}).`;
         if (cancellationDrawThreshold > 0) {
           msg += ` Cancellations: ${cancellationCount}/${cancellationDrawThreshold}.`;
         }
       } else if (cancelledMine) {
-        msg = `Your move was cancelled (${cancelledMine.reason}).`;
+        msg = `Your move was canceled (${cancelledMine.reason}).`;
       } else if (cancelledOpp) {
-        msg = `Opponent's move was cancelled (${cancelledOpp.reason}).`;
+        msg = `Opponent's move was canceled (${cancelledOpp.reason}).`;
       } else if (moves && moves.length > 0) {
         // Quiet round — no notice needed.
       }
@@ -6804,7 +6804,7 @@ const LiveGame = () => {
       <div className={styles["live-game-container"]}>
         <div className={styles["error-container"]}>
           <h2>Game Not Found</h2>
-          <p>This game doesn't exist or has been cancelled.</p>
+          <p>This game doesn't exist or has been canceled.</p>
           <Link to="/play/games" className={`${styles.btn} ${styles["btn-primary"]}`}>
             Back to Lobby
           </Link>

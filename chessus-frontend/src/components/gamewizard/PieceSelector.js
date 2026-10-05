@@ -651,7 +651,7 @@ const PieceSelector = ({
                   checked={isAllPlayers}
                   onChange={() => { setIsAllPlayers(true); setIsNeutral(false); }}
                 />
-                <span>All Players <InfoTooltip text="Either player may deploy this piece, and it is placed as that player's own piece (in their colour). Choose this instead of adding the same piece type once per player." /></span>
+                <span>All Players <InfoTooltip text="Either player may deploy this piece, and it is placed as that player's own piece (in their color). Choose this instead of adding the same piece type once per player." /></span>
               </label>
             )}
             <label className={styles["player-radio-label"]}>

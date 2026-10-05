@@ -413,7 +413,7 @@ const PlayerPage = (props) => {
     try {
       await dispatch(cancelFriendRequest(currentUser.id, friendshipStatus.requestId));
       setFriendshipStatus({ status: 'none', areFriends: false });
-      setBannerMessage(`Friend request to ${playerPageUser.username} cancelled`);
+      setBannerMessage(`Friend request to ${playerPageUser.username} canceled`);
       setBannerType("success");
       setShowBanner(true);
     } catch (error) {
