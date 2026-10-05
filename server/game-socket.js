@@ -162,6 +162,21 @@ function shouldFogFilter(gameState, viewerPos) {
   return true;
 }
 
+/*
+ * A finished game stays in activeGames for a while, so anything that can end
+ * or change one - a resign, a draw acceptance, a move that mates - must refuse
+ * once it is over. Without this a second resign re-ran the whole ending: the
+ * recorded winner could flip and Elo was applied again.
+ *
+ * The check and the handler's own `status = 'completed'` happen before any
+ * await, so two resigns arriving together cannot both get through.
+ */
+function refuseIfGameOver(socket, gameState) {
+  if (gameState?.status !== 'completed') return false;
+  socket.emit("error", { message: "This game is already over" });
+  return true;
+}
+
 /**
  * Return a new pieces array with enemy pieces stripped out for the viewer.
  */
@@ -6950,6 +6965,7 @@ function initializeSocket(server, { isUserBanned } = {}) {
         const { gameId, userId, vetoes } = data;
         const gameState = activeGames.get(String(gameId));
         if (!gameState) return socket.emit("error", { message: "Game not found" });
+        if (refuseIfGameOver(socket, gameState)) return;
         const cfg = getVetoConfig(gameState);
         if (!cfg) return socket.emit("error", { message: "Veto is not enabled for this game" });
 
@@ -7138,6 +7154,7 @@ function initializeSocket(server, { isUserBanned } = {}) {
         if (!gameState) {
           return socket.emit("error", { message: "Game not found" });
         }
+        if (refuseIfGameOver(socket, gameState)) return;
 
         // SIMULTANEOUS TURNS — divert to the secret-submit/buffered resolver
         // before any of the standard turn-order / chain-capture / promotion
@@ -10111,6 +10128,7 @@ function initializeSocket(server, { isUserBanned } = {}) {
         const gameIdStr = String(gameId);
         const gameState = activeGames.get(gameIdStr);
         if (!gameState) return socket.emit("error", { message: "Game not found" });
+        if (refuseIfGameOver(socket, gameState)) return;
         await handleSimulPromotionChoice(io, socket, gameState, gameId, userId, pieceId, promoteToPieceId, promoteToPlayerId);
       } catch (err) {
         console.error("simulPromotionChoice error:", err);
@@ -10128,6 +10146,7 @@ function initializeSocket(server, { isUserBanned } = {}) {
         if (!gameState) {
           return socket.emit("error", { message: "Game not found" });
         }
+        if (refuseIfGameOver(socket, gameState)) return;
 
         const resigningPlayer = gameState.players.find(p => p.id === userId);
         if (!resigningPlayer) {
@@ -10277,6 +10296,7 @@ function initializeSocket(server, { isUserBanned } = {}) {
         if (!gameState) {
           return socket.emit("error", { message: "Game not found" });
         }
+        if (refuseIfGameOver(socket, gameState)) return;
 
         // Check if there's a pending promotion for this user
         if (!gameState.pendingPromotion || gameState.pendingPromotion.userId !== userId) {
@@ -10697,6 +10717,7 @@ function initializeSocket(server, { isUserBanned } = {}) {
         const gameIdStr = String(gameId);
         const gameState = activeGames.get(gameIdStr);
         if (!gameState) return socket.emit("error", { message: "Game not found" });
+        if (refuseIfGameOver(socket, gameState)) return;
 
         const phase = gameState.repositionPhase;
         if (!phase || !phase.active) return socket.emit("error", { message: "Not in reposition phase" });
@@ -10925,6 +10946,7 @@ function initializeSocket(server, { isUserBanned } = {}) {
         const gameIdStr = String(gameId);
         const gameState = activeGames.get(gameIdStr);
         if (!gameState) return socket.emit("error", { message: "Game not found" });
+        if (refuseIfGameOver(socket, gameState)) return;
         if (!designated.isDesignationGame(gameState) || !designated.needsChoice(gameState)) return;
         const chooser = gameState.players.find(p => p.position === designated.chooserPos(gameState));
         if (!chooser || String(chooser.id) !== String(userId)) {
@@ -12003,6 +12025,8 @@ function initializeSocket(server, { isUserBanned } = {}) {
           socket.emit("error", { message: "Game not found" });
           return;
         }
+        // An offer can outlive the game (a resign or a flag does not clear it).
+        if (refuseIfGameOver(socket, gameState)) return;
 
         if (!gameState.pendingDrawOffer) {
           socket.emit("error", { message: "No draw offer pending" });
@@ -22822,6 +22846,12 @@ async function cancelExpiredCorrespondenceGames() {
       for (const row of expiredGames) {
         const gameId = row.id;
         const gameIdStr = gameId.toString();
+        // The row can still read 'active' while the live game has already
+        // ended (a resign writes the row only after its Elo update). Claim the
+        // live game before any await, so a resign can't land in between either.
+        const inMemory = activeGames.get(gameIdStr);
+        if (inMemory?.status === 'completed') continue;
+        if (inMemory) inMemory.status = 'completed';
         try {
           const [playerRows] = await db_pool.query(
             'SELECT user_id, player_position FROM players WHERE game_id = ?', [gameId]
@@ -22845,9 +22875,7 @@ async function cancelExpiredCorrespondenceGames() {
             [endTime, winnerId, finalOtherData, gameId]
           );
 
-          const inMemory = activeGames.get(gameIdStr);
           if (inMemory) {
-            inMemory.status = 'completed';
             inMemory.winner = winnerId;
             inMemory.winReason = 'timeout';
           }
