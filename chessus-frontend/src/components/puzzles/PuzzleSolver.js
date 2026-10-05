@@ -22,7 +22,7 @@ import { solverTrayItems, withPlacers, placesPieces } from "../../helpers/placem
 import { usePuzzleVetoes, VetoPanel, VetoAnswer, ContinueNotice, MoveProgress, MoveHint } from "./PuzzleVetoes";
 import { ReviewControls, PlayAgainButton } from "./PuzzleReview";
 import { applyPromotionDefinition, promotionPieceNumber, solvedPliesRemaining, colToFile, doesPieceOccupySquare } from "../../helpers/pieceMovementUtils";
-import { cellSize, coveringKey, clearFootprint, spanStyle, moveTarget, dotAt, movesOf, previewOutlines, moveCovers, tapMovesTo } from "./puzzleFootprint";
+import { cellSize, coveringKey, clearFootprint, spanStyle, moveTarget, dotAt, movesOf, previewOutlines, moveCovers, tapMovesTo, placementLanding } from "./puzzleFootprint";
 import usePuzzleEngine, { buildEnginePieces } from "./usePuzzleEngine";
 import { otherFinishesText } from "../../helpers/puzzleFinishes";
 import { readBlockedDotMode } from "../../helpers/blockedDotMode";
@@ -969,17 +969,22 @@ const PuzzleSolver = () => {
      * the turn rather than two. Whether the square is legal is the server's
      * call, exactly as it is for a move.
      */
-    if (trayPick && here && Number(here.player_id) === Number(puzzle?.side_to_move)) {
+    // On a gravity board a click on a disc is a drop into its column instead.
+    const gravityBoard = !!puzzle?.board_gravity && puzzle.board_gravity !== 'off';
+    if (trayPick && here && Number(here.player_id) === Number(puzzle?.side_to_move) && !gravityBoard) {
       setTrayPick(null);
       setSelected(k);
       return;
     }
     if (trayPick) {
+      // Where it lands: the foot of the column on a gravity board, as the engine drops it.
+      const to = placementLanding(puzzle, placements, x, y, boardWidth, boardHeight);
+      if (!to) return;
       setTrayPick(null);
       submit({
         type: 'place',
         placePieceId: Number(trayPick.template.piece_id),
-        to: { x, y },
+        to,
         // Carried for the optimistic draw only; the server stores three fields
         // and sends back the real position for these games.
         placedBy: trayPick.player || Number(puzzle?.side_to_move) || 1,
@@ -1010,7 +1015,7 @@ const PuzzleSolver = () => {
       return;
     }
     playFrom(selected, x, y);
-  }, [busy, finished, replaying, selected, placements, puzzle, playFrom, trayPick, submit, enginePieces, hoverPiece, vet, hoveredMoves]);
+  }, [busy, finished, replaying, selected, placements, puzzle, playFrom, trayPick, submit, enginePieces, hoverPiece, vet, hoveredMoves, boardWidth, boardHeight]);
 
   const sendFeedback = async () => {
     setFeedbackNotice(null);

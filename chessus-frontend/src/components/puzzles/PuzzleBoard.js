@@ -24,12 +24,19 @@ export const NOTATION_INSET = 18;
  * under them. Player 2 sees it turned round, both axes mirrored, exactly as a
  * live game flips for player 2 and as the image posted to Discord already did.
  *
+ * Except on a gravity board (Connect Four), which has a real top and bottom
+ * that are the same for both players: turned round, player 2 would watch their
+ * discs fall upward. A live game keeps it the right way up too (shouldFlipBoard
+ * in LiveGame.js). `game` is anything carrying board_gravity; a puzzle object
+ * carries its own.
+ *
  * The one rule, so every board that draws a puzzle agrees with it.
  */
-export const puzzleFlipped = (puzzleOrSide) => {
-  const side = puzzleOrSide && typeof puzzleOrSide === 'object'
-    ? puzzleOrSide.side_to_move
-    : puzzleOrSide;
+export const puzzleFlipped = (puzzleOrSide, game = null) => {
+  const isObject = puzzleOrSide && typeof puzzleOrSide === 'object';
+  const side = isObject ? puzzleOrSide.side_to_move : puzzleOrSide;
+  const gravity = (game || (isObject ? puzzleOrSide : null))?.board_gravity;
+  if (gravity && gravity !== 'off') return false;
   return Number(side) === 2;
 };
 

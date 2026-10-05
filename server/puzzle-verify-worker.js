@@ -25,8 +25,10 @@ const { parentPort, workerData } = require('worker_threads');
  */
 async function verify(puzzle, gameType, opts, onProgress) {
   const { verifyPuzzleLine } = require('./puzzle-search');
-  const { playLine, describeMoveOn, buildGameState, boardMoveKey, GOAL_DEFS } = require('./puzzle-validation');
-  const line = Array.isArray(puzzle.solution_line) ? puzzle.solution_line : [];
+  const { playLine, describeMoveOn, buildGameState, boardMoveKey, GOAL_DEFS, settleLine } = require('./puzzle-validation');
+  // Placements named by where they land, as the search finds them (settleLine).
+  const line = await settleLine(puzzle, gameType, Array.isArray(puzzle.solution_line) ? puzzle.solution_line : []);
+  puzzle = { ...puzzle, solution_line: line };
   const r = await verifyPuzzleLine(puzzle, gameType, line, {
     // A "find this exact move" puzzle arrives with aim 'win_in_1' (the game's own win).
     aim: opts.aim || puzzle.goal,

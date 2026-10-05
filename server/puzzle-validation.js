@@ -682,7 +682,9 @@ async function applyPlacementPly(state, ply) {
   state.movesWithoutCapture = 0;
   state.moveHistory.push({ type: 'place', to: { x, y }, position: player });
 
-  return { ok: true, reason: null, promotedTo: null, promotionEligible: null, captured };
+  // `landed`: where the piece came to rest - not the square in the ply, on a
+  // gravity board (settleLine).
+  return { ok: true, reason: null, promotedTo: null, promotionEligible: null, captured, landed: { x, y } };
 }
 
 async function applyPly(state, ply, { autoPromote = false, listPromotions = false } = {}) {
@@ -808,6 +810,54 @@ async function playLine(puzzle, gameType, line) {
     last = res;
   }
   return { ok: true, state, plyIndex: -1, reason: null, ctx: last };
+}
+
+/*
+ * The line with every placement naming the square its piece LANDS on.
+ *
+ * On a gravity board (Connect Four) a ply's square is only where the piece was
+ * dropped; the engine lets it fall to the foot of the column. Lines used to be
+ * stored as dropped, and everything that compares moves by their squares -
+ * the solve route, the uniqueness count, the search - then disagreed with the
+ * engine that plays them: puzzle 119's three drops in one column were
+ * recorded at rows 2, 1 and 5, landed at rows 5, 2 and 1, and its "winning"
+ * line won nothing. Settled, a ply means one thing everywhere, and settling a
+ * settled line changes nothing.
+ *
+ * Unchanged when the game has no gravity or the line places nothing. A ply
+ * the engine refuses ends the settling there, the rest left as written, so
+ * the check that follows still reports the bad move where it is.
+ */
+async function settleLine(puzzle, gameType, line) {
+  if (!gravityOf(gameType) || !Array.isArray(line) || !line.some(isPlacementPly)) return line;
+  const state = buildGameState(puzzle, gameType);
+  const them = other(puzzle.side_to_move);
+  const out = [];
+  for (let i = 0; i < line.length; i++) {
+    state.currentTurn = i % 2 === 0 ? puzzle.side_to_move : them;
+    // eslint-disable-next-line no-await-in-loop -- each ply lands on the board the last one left.
+    const res = await applyPly(state, line[i]);
+    if (!res.ok) return out.concat(line.slice(i));
+    out.push(isPlacementPly(line[i]) && res.landed ? { ...line[i], to: { ...res.landed } } : line[i]);
+  }
+  return out;
+}
+
+/*
+ * Whether two placements are the same DROP on a gravity board: the same piece
+ * into the same column (the same row, when pieces fall sideways). Asked only
+ * of two plies made on the same position - an answer against the line's move
+ * at that step - and there the column alone decides where the piece lands. So
+ * a solver who clicks the top of the right column has found the move, whatever
+ * square the line happens to name.
+ */
+function sameDrop(gameType, a, b) {
+  const gravity = gravityOf(gameType);
+  if (!gravity || !isPlacementPly(a) || !isPlacementPly(b)) return false;
+  if (String(a.placePieceId ?? '') !== String(b.placePieceId ?? '')) return false;
+  return gravity.dx === 0
+    ? Number(a.to?.x) === Number(b.to?.x)
+    : Number(a.to?.y) === Number(b.to?.y);
 }
 
 /**
@@ -1427,6 +1477,12 @@ async function validatePuzzle(puzzle, gameType, opts = {}) {
     return { status: VALIDATION.UNSOLVABLE, solutions: [], intendedWorks: false, detail: 'no intended solution recorded' };
   }
 
+  // Judged by where its pieces land, as the engine plays it (settleLine).
+  if (!opts.settled && gravityOf(gameType)) {
+    const settled = await settleLine(puzzle, gameType, line);
+    return validatePuzzle({ ...puzzle, solution_line: settled }, gameType, { ...opts, settled: true });
+  }
+
   const isMechanical = MECHANICAL_GOALS.has(puzzle.goal);
 
   // Only the opponent's reply can stalemate you, so the line has to include it.
@@ -1718,6 +1774,9 @@ module.exports = {
   lineGoalLabel,
   // For the staff search: does a "find this exact move" line win the game?
   lineWinsGame,
+  // A line's placements named by where they land on a gravity board.
+  settleLine,
+  sameDrop,
   // ... and, when it is not forced, which defense the line misses.
   describeNotForced,
   // For the solve route: the other moves that would have finished a puzzle too.

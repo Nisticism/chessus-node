@@ -16,7 +16,8 @@ import BoardZoomControls from "../common/BoardZoomControls";
 import boardVp from "../common/boardViewport.module.scss";
 import { BoardCoordinates, NOTATION_INSET, puzzleFlipped } from "./PuzzleBoard";
 import { useBuilderVetoes, BuilderVetoPanel, PlyVetoNote, SetupVetoNote } from "./BuilderVetoes";
-import { cellSize, coveringKey, clearFootprint, spanStyle, moveTarget, dotAt, movesOf, anchorsOnly, withSizes, previewOutlines } from "./puzzleFootprint";
+import { cellSize, coveringKey, clearFootprint, spanStyle, moveTarget, dotAt, movesOf, anchorsOnly, withSizes, previewOutlines, placementLanding, floatingKeys, settleCells } from "./puzzleFootprint";
+import { gravityOf } from "../../helpers/boardGravity";
 import FootprintOutlines from "../common/FootprintOutlines";
 import { useTapOutside } from "../common/useTouchPieceGestures";
 import styles from "./puzzlebuilder.module.scss";
@@ -60,6 +61,28 @@ const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";
  * down, move a piece while arranging, record a solution move, or mark where
  * the opponent's last move came from. Null when nothing multi-tile is held.
  */
+/*
+ * A gravity board's starting position with pieces hanging over an empty square
+ * - one a game that only drops its pieces never reaches. Says so, and offers to
+ * let them fall. Renders nothing otherwise.
+ *
+ * Its own component because PuzzleBuilder sits at the rules-of-hooks lint
+ * limit: one more branch in its body reads as hooks "called conditionally".
+ */
+const FloatingPiecesNotice = ({ game, placements, boardWidth, boardHeight, setPlacements }) => {
+  const floating = floatingKeys(game, placements, boardWidth, boardHeight);
+  if (!floating.length) return null;
+  return (
+    <div className={`${styles["notice"]} ${styles["notice-warn"]}`}>
+      {floating.length === 1 ? '1 piece is' : `${floating.length} pieces are`} hanging over an empty square.
+      A piece put down in this game falls as far as it can, so unless it got there by moving, this position cannot come up in a game.{' '}
+      <button type="button" className={styles["link-btn"]} onClick={() => setPlacements((prev) => settleCells(game, prev, boardWidth, boardHeight))}>
+        Let them fall
+      </button>
+    </div>
+  );
+};
+
 const builderOutline = ({ mode, trayPick, selected, cells, pointerSq, hints, setupGrab, defs, boardWidth, boardHeight }) => {
   if (!pointerSq) return null;
   const box = (x, y, size) => (
@@ -571,9 +594,18 @@ const PuzzleBuilder = () => {
    * from the position the previous one left behind - which is the only way to
    * record a line by hand without keeping the whole thing in your head.
    */
-  const solutionBoard = useMemo(() => {
+  /*
+   * Alongside it, the line as it is SAVED: every placement naming the square
+   * its piece lands on. On a gravity board (Connect Four) a disc dropped
+   * anywhere in a column falls to the foot of it, as the engine drops it, so a
+   * line recorded - or saved before this - as the squares the creator clicked
+   * is put right here rather than stored saying something the game never does.
+   */
+  const solutionPlay = useMemo(() => {
     const next = { ...placements };
+    const line = [];
     solutionLine.forEach((ply, plyIndex) => {
+      line.push(ply);
       /*
        * A placement ply puts a NEW piece on the board rather than moving one,
        * so the preview adds it where a move would relocate. Skipping it here
@@ -595,13 +627,15 @@ const PuzzleBuilder = () => {
         const template = trayItems.find(
           (t) => Number(t.template.piece_id) === Number(ply.placePieceId)
         )?.template;
-        next[keyOf(ply.to.x, ply.to.y)] = {
+        const at = placementLanding(game, next, ply.to.x, ply.to.y, boardWidth, boardHeight) || ply.to;
+        if (at.x !== ply.to.x || at.y !== ply.to.y) line[line.length - 1] = { ...ply, to: { x: at.x, y: at.y } };
+        next[keyOf(at.x, at.y)] = {
           piece_id: Number(ply.placePieceId),
           player_id: placer,
           piece_name: template?.name || template?.piece_name || null,
           image_location: template?.image_location || null,
-          x: ply.to.x,
-          y: ply.to.y,
+          x: at.x,
+          y: at.y,
         };
         return;
       }
@@ -673,8 +707,10 @@ const PuzzleBuilder = () => {
         }
       }
     });
-    return next;
-  }, [placements, solutionLine, trayItems, sideToMove]);
+    return { board: next, line };
+  }, [placements, solutionLine, trayItems, sideToMove, game, boardWidth, boardHeight]);
+  const solutionBoard = solutionPlay.board;
+  const savedLine = solutionPlay.line;
 
   // Which side plays the next ply, and whose move number it is.
   const nextPlyIndex = solutionLine.length;
@@ -951,20 +987,19 @@ const PuzzleBuilder = () => {
     if (veto.handleClick(x, y)) return;
     // Arranging edits the starting position; recording plays forward from it.
     const cells = mode === 'solution' ? solutionBoard : placements;
-    // The piece covering the square (any square of a multi-tile piece is it);
-    // `dest` is the square itself, where a piece put down lands its anchor.
+    // The piece covering the square (any square of a multi-tile piece is it).
     const k = coveringKey(cells, x, y) || keyOf(x, y);
-    const dest = keyOf(x, y);
     const here = cells[k];
-    // Putting a piece down: its whole footprint must fit, and it replaces
-    // whatever it lands on. Null when it would hang off the board.
-    const putDown = (prev, piece, skipKey = null) => {
+    // Putting a piece down - its anchor on the clicked square unless `at` says
+    // otherwise: its whole footprint must fit, and it replaces whatever it
+    // lands on. Null when it would hang off the board.
+    const putDown = (prev, piece, skipKey = null, at = { x, y }) => {
       const { w, h } = cellSize(piece);
-      if (x + w > boardWidth || y + h > boardHeight) return null;
+      if (at.x + w > boardWidth || at.y + h > boardHeight) return null;
       const next = { ...prev };
       if (skipKey) delete next[skipKey];
-      clearFootprint(next, x, y, w, h);
-      next[dest] = piece;
+      clearFootprint(next, at.x, at.y, w, h);
+      next[keyOf(at.x, at.y)] = piece;
       return next;
     };
     const doesNotFit = () => setCheckResult({ tone: 'warn', text: 'That piece does not fit there - it would hang off the board.' });
@@ -1051,7 +1086,14 @@ const PuzzleBuilder = () => {
           image_location: trayPick.template.image_location || null,
           ...(trayPick.template.is_neutral ? { is_neutral: true } : {}),
         } }, { [trayPick.template.piece_id]: def }).p;
-        const next = putDown(placements, piece);
+        /*
+         * On a gravity board a disc put on an empty square falls, as it would
+         * in the game - a Connect Four position cannot have one hanging in the
+         * air. Put on a disc, it replaces it where it is: still the way to
+         * change a square's colour.
+         */
+        const at = here ? { x, y } : (placementLanding(game, placements, x, y, boardWidth, boardHeight) || { x, y });
+        const next = putDown(placements, piece, null, at);
         if (!next) { doesNotFit(); return; }
         setPlacements(next);
         setSelected(null);
@@ -1091,7 +1133,9 @@ const PuzzleBuilder = () => {
      * placement game could never contain an ordinary move - puzzle 93 was
      * recorded as sixteen placements for exactly that reason.
      */
-    if (mode === 'solution' && trayPick && here && Number(here.player_id) === nextSide) {
+    // Not on a gravity board, where a click anywhere in a column - discs
+    // included - is a drop into it, as in a live game.
+    if (mode === 'solution' && trayPick && here && Number(here.player_id) === nextSide && !gravityOf(game)) {
       setTrayPick(null);
       setSelected(k);
       setCheckResult(null);
@@ -1109,10 +1153,16 @@ const PuzzleBuilder = () => {
         });
         return;
       }
+      // Recorded where it LANDS - the foot of the column on a gravity board.
+      const to = placementLanding(game, solutionBoard, x, y, boardWidth, boardHeight);
+      if (!to) {
+        setCheckResult({ tone: 'warn', text: 'That column is full.' });
+        return;
+      }
       recordPly({
         type: 'place',
         placePieceId: Number(trayPick.template.piece_id),
-        to: { x, y },
+        to,
       });
       setSelected(null);
       // Let go after one placement: the next ply is the other side's, and may
@@ -1151,7 +1201,7 @@ const PuzzleBuilder = () => {
     });
     setSelected(null);
     setCheckResult(null);
-  }, [mode, selected, trayPick, placements, solutionBoard, nextSide, lineFull, sideToMove, recordPly, veto, hints, pieceDataMap, boardWidth, boardHeight, setupGrab]);
+  }, [mode, selected, trayPick, placements, solutionBoard, nextSide, lineFull, sideToMove, recordPly, veto, hints, pieceDataMap, boardWidth, boardHeight, setupGrab, game]);
 
   /*
    * Whether each step has been done, and what follows it.
@@ -1215,7 +1265,7 @@ const PuzzleBuilder = () => {
     hide_rating: hideRating,
     allow_daily: allowDaily,
     require_exact_line: requireExactLine,
-    solution_line: solutionLine,
+    solution_line: savedLine,
   });
 
   /*
@@ -1465,7 +1515,7 @@ const PuzzleBuilder = () => {
   if (error) return <div className={styles["builder-page"]}><p>{error}</p></div>;
 
   const boardCells = veto.setupBoard || (mode === 'solution' ? solutionBoard : placements);
-  const lastPly = mode === 'solution' ? solutionLine[solutionLine.length - 1] : null;
+  const lastPly = mode === 'solution' ? savedLine[savedLine.length - 1] : null;
 
   /*
    * The board as the solver will see it: from the side that moves. It follows
@@ -1473,7 +1523,7 @@ const PuzzleBuilder = () => {
    * be saved looking one way and be solved looking the other - the creator
    * builds the exact view every solver gets. See puzzleFlipped.
    */
-  const flipped = puzzleFlipped(sideToMove);
+  const flipped = puzzleFlipped(sideToMove, game);
   const squares = [];
   for (let row = 0; row < boardHeight; row++) {
     for (let col = 0; col < boardWidth; col++) {
@@ -1608,7 +1658,10 @@ const PuzzleBuilder = () => {
               ? `Play your move ${nextMoveNumber}: click the Player ${nextSide} piece, then where it goes.`
               : `Now play the reply you expect from Player ${nextSide} — the board carries on from there. Leave it here if your move ${Math.ceil(nextPlyIndex / 2)} is the whole answer.`))}
       </p>
-
+      <FloatingPiecesNotice
+        game={game} placements={placements} boardWidth={boardWidth} boardHeight={boardHeight}
+        setPlacements={setPlacements}
+      />
 
       <div className={styles["layout"]}>
         {/* The column fills its grid track and is CAPPED by the computed size,
@@ -1864,7 +1917,7 @@ const PuzzleBuilder = () => {
             <div className={styles["solution-readout"]}>
               <strong>Solution:</strong>{' '}
               <ol className={styles["ply-list"]}>
-                {solutionLine.map((ply, i) => (
+                {savedLine.map((ply, i) => (
                     <li
                       key={i}
                       className={i % 2 === 0 ? styles["ply-yours"] : styles["ply-theirs"]}

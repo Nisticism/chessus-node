@@ -16,7 +16,7 @@ import useSetupMoveReplay from "../common/useSetupMoveReplay";
 import { solverTrayItems } from "../../helpers/placement";
 import PuzzleBoard, { NOTATION_INSET, puzzleFlipped, squareFromPoint } from "../puzzles/PuzzleBoard";
 import { useTapOutside } from "../common/useTouchPieceGestures";
-import { cellSize, coveringKey, clearFootprint, spanStyle, moveTarget, dotAt, movesOf, previewOutlines, tapMovesTo } from "../puzzles/puzzleFootprint";
+import { cellSize, coveringKey, clearFootprint, spanStyle, moveTarget, dotAt, movesOf, previewOutlines, tapMovesTo, placementLanding } from "../puzzles/puzzleFootprint";
 import usePuzzleEngine from "../puzzles/usePuzzleEngine";
 import styles from "./puzzlespanel.module.scss";
 
@@ -726,8 +726,13 @@ const PuzzlesPanel = () => {
    * from the server, because a placement's captures (a surrounded group in Go)
    * are not something this card can work out.
    */
-  const tryPlace = useCallback(async (x, y) => {
+  const tryPlace = useCallback(async (clickX, clickY) => {
     if (!puzzle || busy || finished || !trayPick) return;
+    // Where it lands: the foot of the column on a gravity board (Connect Four),
+    // as the engine drops it. Nothing happens on a full column.
+    const at = placementLanding(puzzle, board, clickX, clickY, boardWidth, boardHeight);
+    if (!at) return;
+    const { x, y } = at;
     setBusy(true);
     setLastTry({ x, y });
     const move = {
@@ -795,7 +800,7 @@ const PuzzlesPanel = () => {
       setBusy(false);
       setTrayPick(null);
     }
-  }, [puzzle, busy, finished, trayPick, board, found, startedAt]);
+  }, [puzzle, busy, finished, trayPick, board, found, startedAt, boardWidth, boardHeight]);
 
   const clickSquare = useCallback((x, y, how = null) => {
     if (!puzzle || busy || replaying) return;
@@ -819,7 +824,9 @@ const PuzzlesPanel = () => {
      */
     if (trayPick) {
       const mineHere = board?.[coveringKey(board, x, y)];
-      if (!mineHere || Number(mineHere.player_id) !== Number(puzzle.side_to_move)) { tryPlace(x, y); return; }
+      // On a gravity board any click in a column is a drop into it.
+      const dropsAnywhere = !!puzzle.board_gravity && puzzle.board_gravity !== 'off';
+      if (!mineHere || Number(mineHere.player_id) !== Number(puzzle.side_to_move) || dropsAnywhere) { tryPlace(x, y); return; }
       setTrayPick(null);
     }
     // The piece covering the square - any square of a multi-tile piece is it.

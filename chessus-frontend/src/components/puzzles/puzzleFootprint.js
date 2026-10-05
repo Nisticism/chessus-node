@@ -14,6 +14,7 @@
  * square when it can.
  */
 import { isMultiTile, moveCoveringSquare, moveForDrop, movesCoveringSquare } from "../../helpers/multiTileTargets";
+import { gravityOf, restingSquare } from "../../helpers/boardGravity";
 
 /** A cell's footprint size; placements carry it for multi-tile pieces. */
 export const cellSize = (cell) => ({
@@ -33,6 +34,68 @@ export const coveringKey = (cells, x, y) => {
     if (x >= ax && x < ax + w && y >= ay && y < ay + h) return key;
   }
   return null;
+};
+
+/**
+ * Where a piece put down on (x, y) comes to rest: (x, y) itself, unless the
+ * game has gravity (Connect Four), when it falls to the foot of the column -
+ * the same walk the server makes (helpers/boardGravity.js). null when the
+ * column is full. `game` is anything carrying board_gravity.
+ *
+ * Every puzzle board that places a piece asks this first. They used to put it
+ * where it was clicked, so a line was recorded with discs hanging in mid-air
+ * that the server then dropped somewhere else (puzzle 119).
+ */
+export const placementLanding = (game, cells, x, y, boardWidth, boardHeight) => {
+  const gravity = gravityOf(game);
+  if (!gravity) return { x, y };
+  return restingSquare(gravity, { x, y }, boardWidth, boardHeight, (gx, gy) => !!coveringKey(cells, gx, gy));
+};
+
+/**
+ * The pieces a gravity board shows hanging over an empty square - which a game
+ * that only ever drops them can never reach. Anchor keys, for the builder to
+ * warn about. Empty without gravity.
+ */
+export const floatingKeys = (game, cells, boardWidth, boardHeight) => {
+  const gravity = gravityOf(game);
+  if (!gravity || !cells) return [];
+  const out = [];
+  for (const [key, cell] of Object.entries(cells)) {
+    const [y, x] = key.split(',').map(Number);
+    const { w, h } = cellSize(cell);
+    // The squares just past the footprint, in the direction it would fall.
+    const below = [];
+    if (gravity.dy) for (let fx = 0; fx < w; fx++) below.push([x + fx, gravity.dy > 0 ? y + h : y - 1]);
+    else for (let fy = 0; fy < h; fy++) below.push([gravity.dx > 0 ? x + w : x - 1, y + fy]);
+    const onBoard = ([bx, by]) => bx >= 0 && by >= 0 && bx < boardWidth && by < boardHeight;
+    if (below.every(onBoard) && below.every(([bx, by]) => !coveringKey(cells, bx, by))) out.push(key);
+  }
+  return out;
+};
+
+/**
+ * Let every hanging piece fall, nearest the floor first, so a stack comes down
+ * in one piece. A fresh map; the input is not touched.
+ */
+export const settleCells = (game, cells, boardWidth, boardHeight) => {
+  const gravity = gravityOf(game);
+  if (!gravity || !cells) return cells;
+  const along = ([key]) => {
+    const [y, x] = key.split(',').map(Number);
+    return gravity.dy ? y * gravity.dy : x * gravity.dx;
+  };
+  const next = {};
+  for (const [key, cell] of Object.entries(cells).sort((a, b) => along(b) - along(a))) {
+    const [y, x] = key.split(',').map(Number);
+    const size = cellSize(cell);
+    const landed = restingSquare(gravity, { x, y }, boardWidth, boardHeight,
+      (gx, gy) => !!coveringKey(next, gx, gy), size) || { x, y };
+    // Only the pieces nearer the floor are down yet, so this lands on top of
+    // them - never higher than the piece already was.
+    next[`${landed.y},${landed.x}`] = { ...cell, x: landed.x, y: landed.y };
+  }
+  return next;
 };
 
 /**

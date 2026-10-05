@@ -284,6 +284,8 @@ function createDailyPuzzle({ db_pool }) {
               p.rule_snapshot, p.updated_at,
               u.username AS creator_username,
               gt.game_name, gt.board_width, gt.board_height,
+              -- Which way a dropped piece falls (Connect Four), or 'off'.
+              gt.board_gravity,
               -- What the game lets a player put down. The home board needs it
               -- to offer a placement when the answer is one rather than a move.
               gt.other_game_data

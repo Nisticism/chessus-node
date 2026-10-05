@@ -16,7 +16,7 @@
 const {
   validatePuzzle, moveKey, GOALS, GOAL_DEFS, MECHANICAL_GOALS, VALIDATION,
   goalsForGameType, describeGoal, buildGameState, playLine, applyPly, placementRules,
-  goalMet, terminalOutcome, immediateWins, describeMoveOn, boardMoveKey,
+  goalMet, terminalOutcome, immediateWins, describeMoveOn, boardMoveKey, sameDrop,
 } = require('./puzzle-validation');
 
 /*
@@ -756,6 +756,8 @@ function registerPuzzleRoutes(app, {
         game_name: row.game_name,
         board_width: row.board_width,
         board_height: row.board_height,
+        // A dropped piece falls this way, and the board is never turned round.
+        board_gravity: row.board_gravity || 'off',
         position,
         title: row.title,
         description: row.description,
@@ -1597,6 +1599,12 @@ function registerPuzzleRoutes(app, {
         out.game_name = gameType.game_name;
         // Fog is a rule of the game, so a puzzle in a fog game is played in fog.
         out.fog_of_war = !!gameType.fog_of_war;
+        /*
+         * Which way a placed piece falls (Connect Four), so the board can drop
+         * it where the engine will - and keep a gravity board the right way up
+         * for a player-2 solver, as a live game does (puzzleFlipped).
+         */
+        out.board_gravity = gameType.board_gravity || 'off';
         out.permanent_fog_reveal = !!gameType.permanent_fog_reveal;
         out.hide_enemy_pieces = !!gameType.hide_enemy_pieces;
         out.rules = summariseRules(gameType, rules);
@@ -2514,7 +2522,7 @@ function registerPuzzleRoutes(app, {
       const out = [];
       for (const m of wins) {
         const k = boardMoveKey(m);
-        if (k === playedKey || seen.has(k)) continue;
+        if (k === playedKey || seen.has(k) || sameDrop(rules.game, m, playedFinal)) continue;
         seen.add(k);
         out.push(describeMoveOn(pieces, rules.game, m));
         if (out.length >= 5) break;
@@ -3075,9 +3083,16 @@ function registerPuzzleRoutes(app, {
        * newest move, which keeps this endpoint stateless - a reload mid-puzzle
        * picks up exactly where it left off.
        */
+      /*
+       * The same move, or - on a gravity board - the same drop: a disc put in
+       * the right column is the right answer wherever in it the click was,
+       * and lines saved before placements were settled name the square the
+       * creator clicked rather than the one the disc landed on (sameDrop).
+       */
+      const sameMove = (a, b) => moveKey(a) === moveKey(b) || sameDrop(solveRules?.game, a, b);
       let matched = 0;
       while (matched < submitted.length && matched < mine.length
-             && moveKey(submitted[matched]) === moveKey(mine[matched])) matched++;
+             && sameMove(submitted[matched], mine[matched])) matched++;
 
       /*
        * A DIFFERENT move that finishes the puzzle counts.
@@ -3193,7 +3208,7 @@ function registerPuzzleRoutes(app, {
 
       const wrong = !revealed && matched < submitted.length;
       const solved = !revealed && !wrong && mine.length > 0 && matched === mine.length;
-      const score = scoreAttempt(submitted.slice(0, matched), mine, (a, b) => moveKey(a) === moveKey(b));
+      const score = scoreAttempt(submitted.slice(0, matched), mine, sameMove);
       const finalMove = solved ? submitted[submitted.length - 1] : null;
       const otherFinishes = solved && MECHANICAL_GOALS.has(puzzle.goal)
         ? await otherFinishingMoves(puzzle, line, mine.length, finalMove)
