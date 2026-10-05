@@ -22,7 +22,7 @@
  * be under the live-game cap (8), so a previous crashed run can block this one -
  * the suite resigns what it creates, but a hard kill will leave games behind.
  */
-const { wait, connect, once, never, createHumanGame, makeGameActive, resign, run } = require('./lib/harness');
+const { wait, connect, once, never, createHumanGame, makeGameActive, run } = require('./lib/harness');
 
 const GAME_TYPE_ID = parseInt(process.env.TEST_GAME_TYPE_ID || '18', 10); // Capablanca 10x8
 const P1 = { id: parseInt(process.env.TEST_P1_ID || '40', 10), name: process.env.TEST_P1_NAME || 'Nisticism' };
@@ -37,6 +37,37 @@ const ask = (sock, event, payload, ms = 5000) =>
     const to = setTimeout(() => reject(new Error(`no ack for ${event} - is the backend running with ENABLE_TEST_HOOKS=1?`)), ms);
     sock.emit(event, payload, (res) => { clearTimeout(to); resolve(res); });
   });
+
+// Every game the suite starts, so the run can prove it left none behind.
+const createdGames = [];
+
+/** The game's status as the server holds it, or null once it has let go of it. */
+async function liveStatus(sock, gameId) {
+  const state = await ask(sock, '__test:inspect', { gameId });
+  return state.ok ? state.status : null;
+}
+
+/*
+ * Resign a game from a socket of its own. Most checks close the host's socket
+ * on purpose, and the client does not reconnect, so a resign sent on it never
+ * left - each such check left a live game behind, and four of them fill a
+ * non-supporter's live-game cap and break whichever check comes next with a
+ * baffling 'timeout waiting for playerJoined'. A fresh socket is not in the
+ * game's room and so hears no gameOver; poll the server until the game ends.
+ */
+async function endGame(gameId) {
+  const s = await connect(P1, { settleMs: 100 });
+  try {
+    s.emit('resign', { gameId, userId: P1.id });
+    for (let i = 0; i < 20; i++) {
+      const status = await liveStatus(s, gameId);
+      if (status === null || status === 'completed') return;
+      await wait(100);
+    }
+  } finally {
+    s.close();
+  }
+}
 
 /**
  * Stand up a fresh ACTIVE game with both players connected.
@@ -54,7 +85,8 @@ async function setupGame(ctx, { timeControl = 10 } = {}) {
   const game = await createHumanGame({
     hostSock: a, joinSock: b, host: P1, joiner: P2, gameTypeId: GAME_TYPE_ID, timeControl,
   });
-  ctx.onCleanup(() => resign(a, game.gameId, P1.id));
+  createdGames.push(game.gameId);
+  ctx.onCleanup(() => endGame(game.gameId));
 
   await makeGameActive(game);
   const state = await ask(a, '__test:inspect', { gameId: game.gameId });
@@ -203,4 +235,29 @@ const checks = [
   },
 ];
 
-run('Disconnect / forfeit e2e', checks).then((ok) => process.exit(ok ? 0 : 1));
+/** Fail the run if any game it started is still going. */
+async function checkNothingLeftOpen() {
+  if (!createdGames.length) return true;
+  const s = await connect(P1, { settleMs: 100 });
+  try {
+    const open = [];
+    for (const gameId of createdGames) {
+      const status = await liveStatus(s, gameId);
+      if (status !== null && status !== 'completed') open.push(`${gameId} (${status})`);
+    }
+    if (open.length) {
+      console.log(`\nFAIL  left games open: ${open.join(', ')}`);
+      console.log('      they count against the live-game cap and will break later runs');
+      return false;
+    }
+    console.log(`\nok    all ${createdGames.length} games this run started have ended`);
+    return true;
+  } finally {
+    s.close();
+  }
+}
+
+run('Disconnect / forfeit e2e', checks)
+  .then(async (ok) => (await checkNothingLeftOpen()) && ok)
+  .then((ok) => process.exit(ok ? 0 : 1))
+  .catch((err) => { console.error(err); process.exit(1); });
