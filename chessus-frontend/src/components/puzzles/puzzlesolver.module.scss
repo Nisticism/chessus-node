@@ -104,33 +104,45 @@
     user-drag: none;
   }
 
-  /* The move that led into the position, shown so the solver knows what just
-     happened - the same cue chess sites give before a puzzle starts. */
-  &.setup    { box-shadow: inset 0 0 0 3px rgba(120, 170, 255, 0.55); }
-  &.selected { box-shadow: inset 0 0 0 3px rgba(var(--gold-rgb, 212, 175, 55), 0.95); }
-  &.wrong    { box-shadow: inset 0 0 0 3px rgba(248, 113, 113, 0.9); }
-  &.sol-from { box-shadow: inset 0 0 0 3px rgba(80, 170, 255, 0.9); }
-  &.sol-to   { box-shadow: inset 0 0 0 3px rgba(80, 220, 130, 0.9); }
-
-  /* Vetoes (PuzzleVetoes.js). A banned move is struck through with a red
-     cross on its destination; the move the opponent is showing is amber; a
-     move the solver has picked to veto is red, its piece outlined. */
-  &.veto-banned-from { box-shadow: inset 0 0 0 3px rgba(248, 113, 113, 0.55); }
-  &.veto-banned-to {
-    box-shadow: inset 0 0 0 3px rgba(248, 113, 113, 0.9);
-    background-image:
-      linear-gradient(45deg, transparent 46%, rgba(248, 113, 113, 0.85) 46%, rgba(248, 113, 113, 0.85) 54%, transparent 54%),
-      linear-gradient(-45deg, transparent 46%, rgba(248, 113, 113, 0.85) 46%, rgba(248, 113, 113, 0.85) 54%, transparent 54%);
-  }
-  &.veto-proposal-from { box-shadow: inset 0 0 0 3px rgba(251, 191, 36, 0.6); }
-  &.veto-proposal-to   { box-shadow: inset 0 0 0 4px rgba(251, 191, 36, 0.95); }
-  &.veto-picking       { box-shadow: inset 0 0 0 3px rgba(248, 113, 113, 0.7); }
-  &.veto-picked-from   { box-shadow: inset 0 0 0 3px rgba(248, 113, 113, 0.5); }
-  &.veto-picked-to {
-    box-shadow: inset 0 0 0 4px rgba(248, 113, 113, 0.95);
-    background-color: rgba(248, 113, 113, 0.25);
-  }
 }
+
+/*
+ * Square marks. Top level, not nested under .square: the board is drawn by
+ * PuzzleBoard, whose squares carry ITS .square class, so a rule written as
+ * `.square.veto-banned-to` here never matched anything - none of these marks
+ * showed. The doubled class keeps them above the board's own square style.
+ */
+/* The move that led into the position, shown so the solver knows what just
+   happened - the same cue chess sites give before a puzzle starts. */
+.setup.setup    { box-shadow: inset 0 0 0 3px rgba(120, 170, 255, 0.55); }
+.selected.selected { box-shadow: inset 0 0 0 3px rgba(var(--gold-rgb, 212, 175, 55), 0.95); }
+.wrong.wrong    { box-shadow: inset 0 0 0 3px rgba(248, 113, 113, 0.9); }
+.sol-from.sol-from { box-shadow: inset 0 0 0 3px rgba(80, 170, 255, 0.9); }
+.sol-to.sol-to   { box-shadow: inset 0 0 0 3px rgba(80, 220, 130, 0.9); }
+
+/* Vetoes (PuzzleVetoes.js). A banned move is struck through with a red
+   cross on its destination; the move the opponent is showing is blue; a
+   move the solver has picked to veto is red, its piece outlined. */
+.veto-banned-from.veto-banned-from { box-shadow: inset 0 0 0 3px rgba(248, 113, 113, 0.55); }
+.veto-banned-to.veto-banned-to {
+  box-shadow: inset 0 0 0 3px rgba(248, 113, 113, 0.9);
+  background-image:
+    linear-gradient(45deg, transparent 46%, rgba(248, 113, 113, 0.85) 46%, rgba(248, 113, 113, 0.85) 54%, transparent 54%),
+    linear-gradient(-45deg, transparent 46%, rgba(248, 113, 113, 0.85) 46%, rgba(248, 113, 113, 0.85) 54%, transparent 54%);
+}
+// The move the opponent wants to play, before you decide on a veto - the
+// same blue a live game uses for it: a tint where it comes from, a tint and
+// a ring where it goes. The wide inset shadow is the tint (a background would
+// lose to the square's own color).
+.veto-proposal-from.veto-proposal-from { box-shadow: inset 0 0 0 200px rgba(80, 140, 255, 0.22); }
+.veto-proposal-to.veto-proposal-to   { box-shadow: inset 0 0 0 3px rgba(80, 140, 255, 0.9), inset 0 0 0 200px rgba(80, 140, 255, 0.30); }
+.veto-picking.veto-picking       { box-shadow: inset 0 0 0 3px rgba(248, 113, 113, 0.7); }
+.veto-picked-from.veto-picked-from   { box-shadow: inset 0 0 0 3px rgba(248, 113, 113, 0.5); }
+.veto-picked-to.veto-picked-to {
+  box-shadow: inset 0 0 0 4px rgba(248, 113, 113, 0.95);
+  background-color: rgba(248, 113, 113, 0.25);
+}
+
 
 .veto-panel p { margin: 6px 0; }
 .veto-progress { opacity: 0.75; font-size: 0.9em; }
@@ -567,4 +579,19 @@
      button ran the full width of the panel for no reason. */
   align-self: flex-start;
   margin: 8px 0;
+}
+
+// Stepping through a finished puzzle, under the board.
+.review-below {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.review-caption {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--text-dim);
+  text-align: center;
 }

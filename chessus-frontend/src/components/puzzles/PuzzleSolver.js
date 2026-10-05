@@ -20,6 +20,7 @@ import GameRulesModal from "../common/GameRulesModal";
 import useSetupMoveReplay from "../common/useSetupMoveReplay";
 import { solverTrayItems, withPlacers, placesPieces } from "../../helpers/placement";
 import { usePuzzleVetoes, VetoPanel, VetoAnswer, ContinueNotice, MoveProgress, MoveHint } from "./PuzzleVetoes";
+import { ReviewControls, PlayAgainButton } from "./PuzzleReview";
 import { applyPromotionDefinition, promotionPieceNumber, solvedPliesRemaining, colToFile, doesPieceOccupySquare } from "../../helpers/pieceMovementUtils";
 import { cellSize, coveringKey, clearFootprint, spanStyle, moveTarget, dotAt, movesOf, previewOutlines, moveCovers, tapMovesTo } from "./puzzleFootprint";
 import usePuzzleEngine, { buildEnginePieces } from "./usePuzzleEngine";
@@ -1066,7 +1067,7 @@ const PuzzleSolver = () => {
    * the cursor.
    */
   useEffect(() => {
-    if (outcome !== 'revealed' || !revealPlyCount) return undefined;
+    if ((outcome !== 'revealed' && outcome !== 'solved') || !revealPlyCount) return undefined;
     const onKey = (e) => {
       const el = document.activeElement;
       if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return;
@@ -1089,11 +1090,18 @@ const PuzzleSolver = () => {
   const reviewPlacements = useMemo(() => {
     const plies = Array.isArray(solution) ? withPlacers(solution, puzzle).filter(Boolean) : [];
     if (revealStep == null || !plies.length) return null;
-    if (revealStep < 0) return startPlacements;
+    /*
+     * A reactive veto puzzle is handed over BEFORE the opponent's opening move
+     * (the solver decides on it first), and the line starts after it - so the
+     * review starts from the opening as it was actually played.
+     */
+    const openingMove = vet.opening?.move ? withPlacers([vet.opening.move], puzzle)[0] : null;
+    const start = openingMove ? applyPly(startPlacements, openingMove) : startPlacements;
+    if (revealStep < 0) return start;
     return plies
       .slice(0, revealStep + 1)
-      .reduce((cells, ply) => applyPly(cells, ply), startPlacements);
-  }, [revealStep, solution, startPlacements, puzzle]);
+      .reduce((cells, ply) => applyPly(cells, ply), start);
+  }, [revealStep, solution, startPlacements, puzzle, vet.opening]);
 
   inspectRef.current = reviewPlacements
     ? { placements: reviewPlacements, pieces: buildEnginePieces(reviewPlacements, pieceDataMap) }
@@ -1192,7 +1200,7 @@ const PuzzleSolver = () => {
       sol && moveCovers(sol, reviewPlacements || shown, 'from', x, y) ? styles["sol-from"] : '',
       sol && moveCovers(sol, reviewPlacements || shown, 'to', x, y) ? styles["sol-to"] : '',
       mine && !finished ? styles["grabbable"] : '',
-      ...(finished ? [] : vet.squareMarks(x, y).map((m) => styles[m])),
+      ...(finished ? vet.reviewMarks(solution, revealStep, x, y) : vet.squareMarks(x, y)).map((m) => styles[m]),
     ].filter(Boolean).join(' ');
   };
 
@@ -1278,33 +1286,6 @@ const PuzzleSolver = () => {
             * words as the match review, because it is the same act and anyone
             * who has stepped through one of their own games already knows it.
             */}
-          {solutionPlies.length > 0 && outcome === 'revealed' && (
-            <>
-              <h3 className={styles["board-title"]}>{reviewLabel}</h3>
-              <div className={styles["review-controls"]}>
-                <button
-                  onClick={() => setRevealStep(-1)}
-                  disabled={revealStep === -1}
-                  title="Starting position"
-                >⏮</button>
-                <button
-                  onClick={stepBack}
-                  disabled={revealStep === -1}
-                  title="Previous move (left arrow)"
-                >◀</button>
-                <button
-                  onClick={stepForward}
-                  disabled={revealStep == null}
-                  title="Next move (right arrow)"
-                >▶</button>
-                <button
-                  onClick={() => setRevealStep(null)}
-                  disabled={revealStep == null}
-                  title="Final position"
-                >⏭ Final</button>
-              </div>
-            </>
-          )}
           <div style={{ ...vp.frameStyle, justifyContent: 'flex-start' }}>
             <PuzzleBoard
               vp={vp}
@@ -1343,6 +1324,19 @@ const PuzzleSolver = () => {
             />
             <BoardZoomControls {...vp.controlProps} />
           </div>
+          {/* Stepping back through the line once the puzzle is finished - solved
+              or revealed - under the board, as in the match review. */}
+          <ReviewControls
+            show={finished && solutionPlies.length > 0}
+            label={reviewLabel}
+            step={revealStep}
+            caption={vet.reviewCaption(solution, revealStep)}
+            onFirst={() => setRevealStep(-1)}
+            onBack={stepBack}
+            onForward={stepForward}
+            onLast={() => setRevealStep(null)}
+            styles={styles}
+          />
           {/* In a game where the answer is a placement there is no piece on the
               board to pick up first, so the tray IS the first half of the
               gesture. */}
@@ -1483,11 +1477,7 @@ const PuzzleSolver = () => {
               * The rating was already settled by the reveal and is not settled
               * twice - said out loud rather than discovered afterwards.
               */}
-            {outcome === 'revealed' && (
-              <button className={styles["btn"]} onClick={playAgain} disabled={busy}>
-                Play this puzzle
-              </button>
-            )}
+            <PlayAgainButton outcome={outcome} onClick={playAgain} busy={busy} styles={styles} />
             <button className={styles["btn-secondary"]} onClick={() => navigate(`/games/${puzzle.game_type_id}`)}>
               More puzzles
             </button>

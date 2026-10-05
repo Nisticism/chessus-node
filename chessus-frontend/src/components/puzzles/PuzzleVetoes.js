@@ -243,9 +243,62 @@ export function usePuzzleVetoes({ puzzle, puzzleId, startedAt, moveEngine, engin
     return marks;
   }, [cfg, expect, next, picks, pickFrom]);
 
+  /*
+   * Reviewing a finished line: the vetoes that belong to the move AFTER the
+   * position on show - the bot's bans on your coming move, the moves you veto
+   * before their reply, and (reactive) the reply they show you, marked the way
+   * a live game marks it. `step` is the review's: -1 the start, n after ply n,
+   * null the final position (nothing comes next).
+   */
+  const reviewFor = useCallback((solution, step) => {
+    if (!cfg || !Array.isArray(solution) || step == null) return null;
+    const n = step + 1;
+    const ply = solution[n];
+    if (!ply) return null;
+    const yours = n % 2 === 0;
+    const reactive = cfg.style === 'reactive';
+    return { ply, yours, reactive, vetoes: Array.isArray(ply.vetoes) ? ply.vetoes : [] };
+  }, [cfg]);
+
+  const reviewMarks = useCallback((solution, step, x, y) => {
+    const r = reviewFor(solution, step);
+    if (!r) return [];
+    const at = (s) => s && Number(s.x) === x && Number(s.y) === y;
+    const marks = [];
+    // Yours: what the bot bans (pre-emptive) or would veto (reactive). Theirs: what you veto.
+    const kind = r.yours ? 'veto-banned' : 'veto-picked';
+    for (const v of r.vetoes) {
+      if (at(v.to)) marks.push(`${kind}-to`);
+      else if (at(v.from)) marks.push(`${kind}-from`);
+    }
+    // A reactive reply is shown before it is played: the move they want.
+    if (r.reactive && !r.yours && r.ply.to) {
+      if (at(r.ply.to)) marks.push('veto-proposal-to');
+      else if (at(r.ply.from)) marks.push('veto-proposal-from');
+    }
+    return marks;
+  }, [reviewFor]);
+
+  const reviewCaption = useCallback((solution, step) => {
+    const r = reviewFor(solution, step);
+    if (!r) return null;
+    const names = r.vetoes.map((m) => vetoName(m, boardHeight)).join(', ');
+    if (r.yours) {
+      if (!r.vetoes.length) return null;
+      return r.reactive
+        ? `Next, your move: the bot would veto ${names} - marked in red.`
+        : `Next, your move: the bot has vetoed ${names} - marked in red.`;
+    }
+    const want = r.reactive && r.ply.to ? `they want to play ${vetoName(r.ply, boardHeight)} (in blue)` : null;
+    if (!r.vetoes.length) return want ? `Next, their reply: ${want} - you let it be played.` : null;
+    return `Next, their reply: ${want ? `${want}; ` : ''}you veto ${names} - marked in red.`;
+  }, [reviewFor, boardHeight]);
+
   return {
     active: !!cfg,
     cfg,
+    reviewMarks,
+    reviewCaption,
     placesPieces: !!placesPieces,
     opening,
     expect,
