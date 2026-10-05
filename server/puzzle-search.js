@@ -99,22 +99,32 @@ function cloneState(state) {
   return { ...structuredClone(own), ...shared, pieces: (state.pieces || []).map(clonePiece) };
 }
 
-/**
- * Why a game type (or, given one, an aim) cannot be searched this way, or null.
- *
- * The search tests the aim straight after each of the solver's own moves.
- * Losing your last piece is completed by the OPPONENT's move (they take it),
- * so a search of that goal would find no winner anywhere and report every
- * line as unforced - wrong, rather than unknown. It is left to the validator's
- * forced-reply check, and to staff.
+/*
+ * Aims the OPPONENT's move completes. Losing your last piece is the case: you
+ * offer it, and they take it (in antichess, because they must). For these the
+ * solver's "move" runs through the reply - the search tests the aim after the
+ * opponent's answer as well as after the solver's own move, and the last step
+ * of a line looks one reply further rather than stopping at the solver's move.
  */
-function unsupportedReason(gameType, aim) {
+const REPLY_COMPLETED_AIMS = new Set(['lose_all_pieces']);
+
+/** Why a game type cannot be searched this way, or null. */
+function unsupportedReason(gameType, aim) { // eslint-disable-line no-unused-vars
   const gt = gameType || {};
   if ((Number(gt.actions_per_turn) || 1) > 1) return 'turns of more than one action';
   if (Number(gt.simultaneous_turns) === 1) return 'simultaneous turns';
   if (Number(gt.veto_enabled) === 1) return 'the veto';
-  if (aim === 'lose_all_pieces') return "a goal the opponent's move completes (losing your last piece)";
   return null;
+}
+
+/* The solver's own pieces are all gone: the lose-all aim, tested without touching the state. */
+function noPiecesLeft(state, side) {
+  return !(state.pieces || []).some((p) => Number(p.team ?? p.player_id ?? p.player_number) === Number(side));
+}
+
+/* After the OPPONENT's reply: has a reply-completed aim been met? */
+function achievedAfterReply(aim, state, side) {
+  return aim === 'lose_all_pieces' && noPiecesLeft(state, side);
 }
 
 /*
@@ -338,6 +348,11 @@ async function searchWinInTwo(puzzle, gameType, opts = {}) {
     winsInOne: [], winsInTwo: [], refuted: [], nodes: 0, ms: 0,
   };
   if (unsupported) return result;
+  // Its second move is judged straight after the solver's move, so an aim the
+  // reply completes is beyond it. searchWinInN (below) handles those.
+  if (REPLY_COMPLETED_AIMS.has(aim)) {
+    return { ...result, supported: false, reason: "a goal the opponent's move completes - use the whole-line search" };
+  }
   if (aim !== 'win' && !MECHANICAL_GOALS.has(aim)) {
     return { ...result, supported: false, reason: `'${aim}' is not a goal the engine can judge` };
   }
@@ -404,7 +419,9 @@ async function winsWithin(state, side, aim, n, budget, memory) {
   const key = `${n}#${side}#${positionKey(state)}`;
   if (memory.tt.has(key)) return memory.tt.get(key);
   const killers = memory.wins[n] || (memory.wins[n] = new Set());
-  if (n === 1) {
+  // The last move: one ply deep - unless the reply completes the aim, when the
+  // replies are the last thing to look at (everyReplyLoses with n = 0).
+  if (n === 1 && !REPLY_COMPLETED_AIMS.has(aim)) {
     const win = await findWinInOne(state, side, aim, budget, killers);
     if (!budget.exhausted) remember(memory, key, win);
     return win;
@@ -444,7 +461,10 @@ async function winsWithin(state, side, aim, n, budget, memory) {
   return null;
 }
 
-/* After the solver's move (reaching s1): does every reply leave wins(_, n)? */
+/*
+ * After the solver's move (reaching s1): does every reply leave wins(_, n)?
+ * n = 0 (only for an aim the reply completes): every reply has to complete it.
+ */
 async function everyReplyLoses(s1, side, aim, n, budget, memory) {
   const defender = other(side);
   const refs = memory.refutations[n] || (memory.refutations[n] = new Set());
@@ -454,6 +474,7 @@ async function everyReplyLoses(s1, side, aim, n, budget, memory) {
     const outcome = terminalOutcome(s1, defender, null);
     if (outcome) return { forces: Number(outcome.winner) === Number(side) };
     // No legal reply and no ending: they pass, and it is the solver's move again.
+    if (n === 0) return { forces: false, refutation: { pass: true } };
     const win = await winsWithin(s1, side, aim, n, budget, memory);
     return { forces: !!win, refutation: win ? null : { pass: true } };
   }
@@ -461,6 +482,12 @@ async function everyReplyLoses(s1, side, aim, n, budget, memory) {
     const ended = terminalOutcome(r.state, side, r.ctx);
     if (ended) {
       if (Number(ended.winner) === Number(side)) continue;
+      refs.add(moveKey(r.move));
+      return { forces: false, refutation: r.move };
+    }
+    // The reply completed the aim (it took the solver's last piece): done.
+    if (achievedAfterReply(aim, r.state, side)) continue;
+    if (n === 0) {
       refs.add(moveKey(r.move));
       return { forces: false, refutation: r.move };
     }
@@ -506,7 +533,7 @@ async function searchWinInN(puzzle, gameType, opts = {}) {
     if (budget.exhausted) break;
     if (achieved(aim, f.state, side, f.ctx)) {
       result.winsAtOnce.push(f.move);
-    } else if (depth > 1) {
+    } else if (depth > 1 || REPLY_COMPLETED_AIMS.has(aim)) {
       // eslint-disable-next-line no-await-in-loop
       const verdict = await everyReplyLoses(f.state, side, aim, depth - 1, budget, memory);
       if (budget.exhausted) break;
@@ -605,4 +632,6 @@ async function verifyPuzzleLine(puzzle, gameType, line, opts = {}) {
   return out;
 }
 
-module.exports = { searchWinInTwo, searchWinInN, verifyPuzzleLine, cloneState, unsupportedReason };
+module.exports = {
+  searchWinInTwo, searchWinInN, verifyPuzzleLine, cloneState, unsupportedReason, REPLY_COMPLETED_AIMS,
+};

@@ -1273,7 +1273,9 @@ async function checkWholeLine(puzzle, gameType, line, reached, opts) {
    * different winning LAST move that they are wrong - so there, the last step
    * has to be unique as well.
    */
-  const exact = !!puzzle.require_exact_line;
+  // A lose-all line is finished by the opponent's reply, so the solve route
+  // cannot recognise a different last move as finishing it either.
+  const exact = !!puzzle.require_exact_line || puzzle.goal === 'lose_all_pieces';
   const extra = (exact ? r.steps : r.steps.slice(0, -1)).find((st) => st.count > 1);
   if (extra) {
     const others = extra.step === 1
@@ -1421,7 +1423,15 @@ async function validatePuzzle(puzzle, gameType, opts = {}) {
      * would make it redundant. null from either means the search could not
      * finish or does not apply, and the older advice below stands.
      */
-    if (isMechanical && (line.length === 3 || line.length === 5) && opts.deepLines) {
+    /*
+     * Up to three of the solver's moves. A line normally ends on the solver's
+     * move (3 or 5 plies); a lose-all line ends on the opponent's capture of
+     * the last piece (2, 4 or 6), and the search looks through that reply.
+     */
+    const solverMoveCount = Math.ceil(line.length / 2);
+    const replyCompleted = puzzle.goal === 'lose_all_pieces';
+    if (isMechanical && opts.deepLines && line.length >= 3 && solverMoveCount <= 3
+        && (line.length % 2 === 1 || replyCompleted)) {
       const searched = await checkWholeLine(puzzle, gameType, line, reached, opts);
       if (searched) return searched;
     }

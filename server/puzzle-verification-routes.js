@@ -24,11 +24,11 @@ const { hydratePosition, placeableDefinitions, startingRoster } = require('./puz
 const { MECHANICAL_GOALS, GOAL_DEFS, lineWinsGame } = require('./puzzle-validation');
 
 /*
- * Goals a search can judge: the engine-scored ones (bar losing your last piece,
- * which the opponent's move completes), and "find this exact move" when the
- * line wins the game - that one is searched against the game's own win.
+ * Goals a search can judge: the engine-scored ones (losing your last piece
+ * included - the search looks through the reply that takes it), and "find this
+ * exact move" when the line wins the game, searched against the game's own win.
  */
-const searchableGoal = (goal) => (MECHANICAL_GOALS.has(goal) && goal !== 'lose_all_pieces') || goal === 'specific_move';
+const searchableGoal = (goal) => MECHANICAL_GOALS.has(goal) || goal === 'specific_move';
 
 const UNIQUE_STATUSES = new Set(['unchecked', 'verified', 'not_unique']);
 const MAX_NOTE = 500;
