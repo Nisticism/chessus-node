@@ -5655,6 +5655,25 @@ const runMigrations = async () => {
     console.error('Error widening puzzles.goal:', err.message);
   }
 
+  // get_stalemated: the goal for games where being stalemated wins. Keyed off
+  // whether the enum already has it, so it runs once.
+  try {
+    const [[col]] = await db_pool.query("SHOW COLUMNS FROM puzzles LIKE 'goal'");
+    if (col && String(col.Type).startsWith('enum') && !String(col.Type).includes('get_stalemated')) {
+      await runMigration(
+        `ALTER TABLE puzzles MODIFY COLUMN goal ENUM(
+           'checkmate_in_1','capture_target','stalemate_them','no_moves_them',
+           'lose_all_pieces','get_stalemated','promote_a_piece','control_square','reach_points',
+           'win_in_1','win_material','specific_move','custom'
+         ) NOT NULL DEFAULT 'checkmate_in_1'`,
+        'Add the get_stalemated puzzle goal'
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding get_stalemated to puzzles.goal:', err.message);
+  }
+
   /*
    * The GridGrove account, which owns the seeded daily-pool puzzles.
    *

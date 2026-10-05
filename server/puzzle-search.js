@@ -106,7 +106,7 @@ function cloneState(state) {
  * opponent's answer as well as after the solver's own move, and the last step
  * of a line looks one reply further rather than stopping at the solver's move.
  */
-const REPLY_COMPLETED_AIMS = new Set(['lose_all_pieces']);
+const { REPLY_COMPLETED_GOALS: REPLY_COMPLETED_AIMS } = require('./puzzle-validation');
 
 /** Why a game type cannot be searched this way, or null. */
 function unsupportedReason(gameType, aim) { // eslint-disable-line no-unused-vars

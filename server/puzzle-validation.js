@@ -147,6 +147,28 @@ const GOAL_DEFS = {
       (getAllLegalMovesForPlayer(state, other(side)) || []).length === 0,
   },
 
+  /*
+   * Being stalemated WINS in this game (Antichess and its relatives), so the
+   * goal is to be the one left without a move - which only the opponent's
+   * reply can do: after your own move it is their turn, not yours. So it is
+   * judged on the position their reply leaves (a reply-completed goal, below),
+   * and never on a move of the solver's own: a solver who happens to have no
+   * moves while it is the opponent's turn has not been stalemated.
+   */
+  get_stalemated: {
+    label: 'Get yourself stalemated',
+    describe: () => 'In this game the player left with no legal move, and not in check, wins. '
+      + 'Find the moves that leave your opponent no choice but to stalemate you.',
+    available: (gt) => !!gt.stalemate_win_condition,
+    mechanical: true,
+    achieved: (state, side, ctx) => {
+      const mover = ctx?.movingPiece;
+      if (mover && Number(mover.team ?? mover.player_id) === Number(side)) return false;
+      if (checkForCheck(state, side).inCheck) return false;
+      return (getAllLegalMovesForPlayer(state, side) || []).length === 0;
+    },
+  },
+
   lose_all_pieces: {
     label: 'Lose your last piece',
     describe: () => 'This game is won by losing everything. Find the move that gets you there.',
@@ -245,6 +267,15 @@ const GOAL_DEFS = {
 };
 
 const GOALS = Object.fromEntries(Object.keys(GOAL_DEFS).map(k => [k.toUpperCase(), k]));
+/*
+ * Goals the OPPONENT's move completes: they take your last piece, or their reply
+ * leaves you stalemated. A line for one ends on that reply, the search looks
+ * through it (puzzle-search.js), and the last solver move has to be the only
+ * one that works - the solve route cannot credit a different finishing move
+ * when the finish is the opponent's.
+ */
+const REPLY_COMPLETED_GOALS = new Set(['lose_all_pieces', 'get_stalemated']);
+
 const MECHANICAL_GOALS = new Set(
   Object.entries(GOAL_DEFS).filter(([, d]) => d.mechanical).map(([k]) => k)
 );
@@ -1275,7 +1306,7 @@ async function checkWholeLine(puzzle, gameType, line, reached, opts) {
    */
   // A lose-all line is finished by the opponent's reply, so the solve route
   // cannot recognise a different last move as finishing it either.
-  const exact = !!puzzle.require_exact_line || puzzle.goal === 'lose_all_pieces';
+  const exact = !!puzzle.require_exact_line || REPLY_COMPLETED_GOALS.has(puzzle.goal);
   const extra = (exact ? r.steps : r.steps.slice(0, -1)).find((st) => st.count > 1);
   if (extra) {
     const others = extra.step === 1
@@ -1339,6 +1370,14 @@ async function validatePuzzle(puzzle, gameType, opts = {}) {
   }
 
   const isMechanical = MECHANICAL_GOALS.has(puzzle.goal);
+
+  // Only the opponent's reply can stalemate you, so the line has to include it.
+  if (puzzle.goal === 'get_stalemated' && line.length % 2 === 1) {
+    return {
+      status: VALIDATION.UNSOLVABLE, solutions: [], intendedWorks: false,
+      detail: 'you can only be stalemated by the opponent\'s reply - record their reply after your last move too.',
+    };
+  }
 
   /*
    * "Find this exact move" is the creator's call - unless the line WINS THE
@@ -1429,8 +1468,12 @@ async function validatePuzzle(puzzle, gameType, opts = {}) {
      * the last piece (2, 4 or 6), and the search looks through that reply.
      */
     const solverMoveCount = Math.ceil(line.length / 2);
-    const replyCompleted = puzzle.goal === 'lose_all_pieces';
-    if (isMechanical && opts.deepLines && line.length >= 3 && solverMoveCount <= 3
+    const replyCompleted = REPLY_COMPLETED_GOALS.has(puzzle.goal);
+    // A ONE-move reply-completed line (2 plies) is cheap to search - every move,
+    // every reply - so it is searched right away, not only in the background.
+    const oneMoveReplyCompleted = replyCompleted && line.length === 2;
+    if (isMechanical && (opts.deepLines || oneMoveReplyCompleted)
+        && (line.length >= 3 || oneMoveReplyCompleted) && solverMoveCount <= 3
         && (line.length % 2 === 1 || replyCompleted)) {
       const searched = await checkWholeLine(puzzle, gameType, line, reached, opts);
       if (searched) return searched;
@@ -1640,5 +1683,6 @@ module.exports = {
   GOALS,
   GOAL_DEFS,
   MECHANICAL_GOALS,
+  REPLY_COMPLETED_GOALS,
   VALIDATION,
 };
