@@ -2269,7 +2269,7 @@ function registerPuzzleRoutes(app, {
         let unique = null;
         if (typeof result.unique === 'boolean' && !vetoIssues.length) {
           unique = result.unique
-            ? { status: 'verified', detail: 'Exactly one winning move at every step, checked automatically against every defence.' }
+            ? { status: 'verified', detail: 'Exactly one winning move at every step, checked automatically against every defense.' }
             : { status: 'not_unique', detail: result.detail || 'More than one move wins at some step.' };
           await db_pool.query(
             `UPDATE puzzles SET unique_status = ?, unique_method = 'auto', unique_detail = ?,

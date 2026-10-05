@@ -9,7 +9,7 @@ import { formatDateLegacy } from "../../helpers/date-formatter";
 const API_URL = (process.env.REACT_APP_API_URL || "http://localhost:3001") + "/api/";
 
 const ABOUT = 'The “One solution” badge means exactly one winning move at every step, the last '
-  + 'included, checked against every defence. Puzzles of up to three moves are checked for it '
+  + 'included, checked against every defense. Puzzles of up to three moves are checked for it '
   + 'automatically when you press “Check puzzle”. Puzzles longer than three moves cannot be '
   + 'verified automatically, but GridGrove staff can award the badge by hand: once the puzzle is '
   + 'published, you can request a verification here. Puzzles by players need the badge to be '

@@ -75,7 +75,13 @@ export default function PuzzleVerificationPanel() {
   const [notice, setNotice] = useState(null);
   const [busy, setBusy] = useState(false);
   const [limitFor, setLimitFor] = useState({});
-  const [resolving, setResolving] = useState(null); // { requestId, outcome, reason }
+  /*
+   * The one place a verdict is given: { puzzleId, requestId (null when nobody
+   * asked), outcome, reason }. Award, Not unique and Resolve request all open
+   * it; with a request open it resolves it (setting the badge and telling the
+   * requester), without one it only sets the badge. No pop-ups.
+   */
+  const [resolving, setResolving] = useState(null);
   const liveCount = useRef(0);
 
   const load = useCallback(async (opts = {}) => {
@@ -137,28 +143,29 @@ export default function PuzzleVerificationPanel() {
   );
   const cancelRun = (p) => {
     if (!window.confirm(`Stop the search of #${p.id}? Its progress is lost.`)) return;
-    act(() => axios.post(`${API_URL}admin/puzzle-verification-runs/${p.live.meta.runId}/cancel`, {}, { headers: authHeader() }), 'Cancelled');
+    act(() => axios.post(`${API_URL}admin/puzzle-verification-runs/${p.live.meta.runId}/cancel`, {}, { headers: authHeader() }), 'Canceled');
   };
-  const setManual = (p, status) => {
-    const prompt = status === 'verified'
-      ? `Award the One solution badge to #${p.id}? Optional note (shown with the badge's detail):`
-      : status === 'not_unique'
-        ? `Mark #${p.id} as having more than one solution. Why?`
-        : `Clear #${p.id}'s verdict back to "not verified"?`;
-    const detail = status === 'unchecked' ? (window.confirm(prompt) ? '' : null) : window.prompt(prompt, '');
-    if (detail === null) return;
-    act(() => axios.post(`${API_URL}admin/puzzles/${p.id}/unique`, { status, detail }, { headers: authHeader() }), 'Saved');
+  const clearVerdict = (p) => act(
+    () => axios.post(`${API_URL}admin/puzzles/${p.id}/unique`, { status: 'unchecked', detail: '' }, { headers: authHeader() }),
+    'Cleared'
+  );
+  // Open the verdict form, on the outcome the clicked button stands for (or the
+  // one the puzzle's current status suggests).
+  const startResolve = (p, preset) => {
+    const outcome = preset
+      || (p.unique_status === 'verified' ? 'verified' : p.unique_status === 'not_unique' ? 'not_unique' : (p.request_id ? 'not_verified' : 'not_unique'));
+    const reason = outcome === 'verified' ? '' : (p.unique_detail || p.run_detail || '');
+    setResolving({ requestId: p.request_id || null, puzzleId: p.id, outcome, reason });
   };
-  const startResolve = (p) => {
-    const outcome = p.unique_status === 'verified' ? 'verified' : p.unique_status === 'not_unique' ? 'not_unique' : 'not_verified';
-    const reason = p.unique_status === 'verified' ? '' : (p.unique_detail || p.run_detail || '');
-    setResolving({ requestId: p.request_id, puzzleId: p.id, outcome, reason });
+  const sendResolve = () => {
+    const { requestId, puzzleId, outcome, reason } = resolving;
+    // A request: resolve it (badge + the requester's notification). None: just the badge.
+    const call = requestId
+      ? () => axios.post(`${API_URL}admin/puzzle-verification-requests/${requestId}/resolve`, { outcome, reason }, { headers: authHeader() })
+      : () => axios.post(`${API_URL}admin/puzzles/${puzzleId}/unique`,
+        { status: outcome === 'verified' ? 'verified' : 'not_unique', detail: reason }, { headers: authHeader() });
+    return act(call, requestId ? 'Resolved' : 'Saved').then((ok) => { if (ok) setResolving(null); });
   };
-  const sendResolve = () => act(
-    () => axios.post(`${API_URL}admin/puzzle-verification-requests/${resolving.requestId}/resolve`,
-      { outcome: resolving.outcome, reason: resolving.reason }, { headers: authHeader() }),
-    'Resolved'
-  ).then((ok) => { if (ok) setResolving(null); });
 
   if (error) return <div><p>{error}</p></div>;
   if (!data) return <div><p>Loading…</p></div>;
@@ -176,7 +183,7 @@ export default function PuzzleVerificationPanel() {
       <h2>Puzzle Verification</h2>
       <p className={styles["intro"]}>
         The <strong>One solution</strong> badge means exactly one winning move at every step of a
-        puzzle, the last included, against every defence. “Check puzzle” settles it automatically
+        puzzle, the last included, against every defense. “Check puzzle” settles it automatically
         for puzzles of up to three moves. For longer ones, run a search here — it runs for as long
         as it needs — or award the badge by hand. Players’ puzzles need the badge to be picked as
         Puzzle of the Day; GridGrove’s own are exempt.
@@ -279,20 +286,24 @@ export default function PuzzleVerificationPanel() {
                       ) : <span className={styles["small"]}>The search cannot judge this goal.</span>}
                     </div>
                     <div className={styles["row-actions"]} style={{ marginTop: 6 }}>
-                      {p.unique_status !== 'verified' && (
-                        <button className={admin["edit-btn"]} disabled={busy} onClick={() => setManual(p, 'verified')}>Award</button>
-                      )}
-                      {p.unique_status !== 'not_unique' && (
-                        <button className={admin["edit-btn"]} disabled={busy} onClick={() => setManual(p, 'not_unique')}>Not unique</button>
+                      {resolving?.puzzleId !== p.id && (
+                        <>
+                          {p.unique_status !== 'verified' && (
+                            <button className={admin["edit-btn"]} disabled={busy} onClick={() => startResolve(p, 'verified')}>Award</button>
+                          )}
+                          {p.unique_status !== 'not_unique' && (
+                            <button className={admin["edit-btn"]} disabled={busy} onClick={() => startResolve(p, 'not_unique')}>Not unique</button>
+                          )}
+                          {p.request_id && (
+                            <button className={admin["save-btn"]} disabled={busy} onClick={() => startResolve(p)}>Resolve request</button>
+                          )}
+                        </>
                       )}
                       {p.unique_status !== 'unchecked' && (
-                        <button className={admin["cancel-btn"]} disabled={busy} onClick={() => setManual(p, 'unchecked')}>Clear</button>
-                      )}
-                      {p.request_id && resolving?.requestId !== p.request_id && (
-                        <button className={admin["save-btn"]} disabled={busy} onClick={() => startResolve(p)}>Resolve request</button>
+                        <button className={admin["cancel-btn"]} disabled={busy} onClick={() => clearVerdict(p)}>Clear</button>
                       )}
                     </div>
-                    {resolving?.requestId === p.request_id && p.request_id && (
+                    {resolving?.puzzleId === p.id && (
                       <div className={styles["resolve"]}>
                         <select
                           value={resolving.outcome}
@@ -301,16 +312,21 @@ export default function PuzzleVerificationPanel() {
                         >
                           <option value="verified">Verified — award the badge</option>
                           <option value="not_unique">Not verified — more than one solution</option>
-                          <option value="not_verified">Not verified — another reason</option>
+                          <option value="not_optimal">Not verified — one or more moves were not optimal</option>
+                          {resolving.requestId && <option value="not_verified">Not verified — another reason</option>}
                         </select>
                         <textarea
                           value={resolving.reason}
                           maxLength={1000}
-                          placeholder={resolving.outcome === 'verified' ? 'Optional note for the creator' : 'Reason, sent to the creator'}
+                          placeholder={resolving.outcome === 'verified'
+                            ? (resolving.requestId ? 'Optional note for the creator' : 'Optional note, shown with the badge')
+                            : (resolving.requestId ? 'Reason, sent to the creator' : 'Reason, shown with the verdict')}
                           onChange={(e) => setResolving({ ...resolving, reason: e.target.value })}
                         />
                         <div className={styles["row-actions"]}>
-                          <button className={admin["save-btn"]} disabled={busy} onClick={sendResolve}>Send to {p.requester_username || 'requester'}</button>
+                          <button className={admin["save-btn"]} disabled={busy} onClick={sendResolve}>
+                            {resolving.requestId ? `Send to ${p.requester_username || 'requester'}` : 'Save verdict'}
+                          </button>
                           <button className={admin["cancel-btn"]} disabled={busy} onClick={() => setResolving(null)}>Cancel</button>
                         </div>
                       </div>

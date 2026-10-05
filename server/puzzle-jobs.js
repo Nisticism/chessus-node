@@ -177,7 +177,7 @@ function getJob(id) {
 }
 
 /** Stop a job, queued or running. False if it had already finished. */
-function cancelJob(id, reason = 'Cancelled.') {
+function cancelJob(id, reason = 'Canceled.') {
   const job = jobs.get(id);
   if (!job) return false;
   if (job.state === 'queued') {

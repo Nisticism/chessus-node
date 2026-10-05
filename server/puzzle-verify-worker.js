@@ -35,7 +35,8 @@ async function verify(puzzle, gameType, opts, onProgress) {
     ttMax: opts.ttMax,
     onProgress,
   });
-  const label = (GOAL_DEFS[opts.aim || puzzle.goal]?.label || puzzle.goal || 'the goal').toLowerCase();
+  const { lineGoalLabel } = require('./puzzle-validation');
+  const label = lineGoalLabel(opts.aim || puzzle.goal);
   const steps = [];
   for (const st of r.steps) {
     const prefix = line.slice(0, (st.step - 1) * 2);
@@ -64,18 +65,21 @@ async function verify(puzzle, gameType, opts, onProgress) {
     detail = r.reason ? `The search stopped: ${r.reason}.` : 'The search stopped before it finished.';
   } else if (!r.lineForces) {
     const broken = steps.find((s) => !s.lineIncluded);
+    const brokenStep = r.steps.find((s) => s.step === broken.step);
     verdict = 'not_forced';
-    detail = `The line is not forced: at move ${broken.step} the opponent has a defence the line does not play, `
-      + `so the line's move does not force '${label}' in the moves left.`;
+    const { describeNotForced } = require('./puzzle-validation');
+    const why = await describeNotForced(puzzle, gameType, line, broken.step, label, brokenStep?.forcing || [],
+      { aim: opts.aim || puzzle.goal, budgetMs: 5 * 60000, dutyCycle: opts.dutyCycle });
+    detail = `The line is not forced: ${why}`;
   } else if (!r.unique) {
     const extra = steps.find((s) => s.count > 1);
     verdict = 'not_unique';
-    detail = `More than one solution: at move ${extra.step}, ${extra.count} different moves force '${label}'`
+    detail = `More than one solution: at move ${extra.step}, ${extra.count} different moves force ${label}`
       + (extra.moves.length ? ` (${extra.moves.join('; ')}${extra.count > extra.moves.length ? ', ...' : ''})` : '')
       + '.';
   } else {
     verdict = 'unique';
-    detail = `One solution: at every one of the ${r.solverMoves} moves, exactly one move forces '${label}' against every defence.`;
+    detail = `One solution: at every one of the ${r.solverMoves} moves, exactly one move forces ${label} against every defense.`;
   }
   return {
     verdict, detail, complete: r.complete, supported: r.supported,

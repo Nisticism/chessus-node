@@ -24,7 +24,7 @@ const CheckProgress = ({ view }) => {
   } else if (!p) {
     line = "Starting the search…";
   } else {
-    line = `Checking move ${p.step} of ${p.steps} against every defence`
+    line = `Checking move ${p.step} of ${p.steps} against every defense`
       + (view.etaMs != null ? ` — about ${fmt(view.etaMs)} left` : " — estimating time…");
   }
   return (

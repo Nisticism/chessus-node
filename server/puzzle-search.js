@@ -632,6 +632,72 @@ async function verifyPuzzleLine(puzzle, gameType, line, opts = {}) {
   return out;
 }
 
+/*
+ * The defenses against one move of a line: at solver move `step`, after the
+ * line's own move, which replies leave the aim no longer forceable in the moves
+ * left? For telling a creator exactly what their line misses.
+ *
+ * Every reply is tried (so `total` is the real count), but only the first `max`
+ * are kept. `incomplete` when the budget ran out part-way - what was found is
+ * still a real defense, just maybe not the only one. `notAMove` when the line's
+ * move cannot be played; `lastMoveMisses` when it is the last move and simply
+ * does not reach the aim (there is no defense to name - nothing was threatened).
+ *
+ * @returns {Promise<object|null>} { defenses: [move], total, complete, before, after, lineMove }
+ */
+async function defensesAgainst(puzzle, gameType, line, step, opts = {}) {
+  const aim = opts.aim || puzzle.goal || 'win';
+  const max = Number(opts.max) || 3;
+  const solverMoves = Math.ceil(line.length / 2);
+  const depth = solverMoves - step + 1;
+  const lineMove = line[(step - 1) * 2];
+  if (!lineMove) return null;
+  const { playLine } = require('./puzzle-validation');
+  const prefix = line.slice(0, (step - 1) * 2);
+  let at = puzzle;
+  if (prefix.length) {
+    const played = await playLine(puzzle, gameType, prefix);
+    if (!played.ok) return null;
+    at = { ...puzzle, position: played.state.pieces, setup_move: prefix[prefix.length - 1] };
+  }
+  const side = Number(puzzle.side_to_move);
+  const budget = new Budget({ budgetMs: opts.budgetMs || 60000, dutyCycle: opts.dutyCycle });
+  const memory = { tt: new Map(), ttMax: Number(opts.ttMax) || TT_MAX_DEFAULT, wins: {}, refutations: {} };
+  const root = buildGameState(at, gameType);
+  const out = { defenses: [], total: 0, complete: false, before: root.pieces, after: null, lineMove };
+  const [first] = await playOne(root, side, lineMove, budget);
+  if (!first) return { ...out, notAMove: true };
+  out.after = first.state.pieces;
+  if (depth === 1 && !REPLY_COMPLETED_AIMS.has(aim)) return { ...out, complete: true, lastMoveMisses: true };
+  const replies = await playAll(first.state, other(side), budget);
+  if (!replies.length) {
+    const ended = terminalOutcome(first.state, other(side), null);
+    if (!ended || Number(ended.winner) !== side) { out.total = 1; out.defenses.push({ pass: true }); }
+    out.complete = true;
+    return out;
+  }
+  for (const r of replies) {
+    if (budget.exhausted) return out;
+    const ended = terminalOutcome(r.state, side, r.ctx);
+    let escapes;
+    if (ended) escapes = Number(ended.winner) !== side;
+    else if (achievedAfterReply(aim, r.state, side)) escapes = false;
+    else if (depth - 1 === 0) escapes = true;
+    else {
+      // eslint-disable-next-line no-await-in-loop
+      const win = await winsWithin(r.state, side, aim, depth - 1, budget, memory);
+      if (budget.exhausted) return out;
+      escapes = !win;
+    }
+    if (escapes) {
+      out.total += 1;
+      if (out.defenses.length < max) out.defenses.push(r.move);
+    }
+  }
+  out.complete = true;
+  return out;
+}
+
 module.exports = {
-  searchWinInTwo, searchWinInN, verifyPuzzleLine, cloneState, unsupportedReason, REPLY_COMPLETED_AIMS,
+  searchWinInTwo, searchWinInN, verifyPuzzleLine, defensesAgainst, cloneState, unsupportedReason, REPLY_COMPLETED_AIMS,
 };

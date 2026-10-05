@@ -390,14 +390,14 @@ function registerPuzzleVerificationRoutes(app, { db_pool, dbHelpers, authenticat
       if (!isStaff(req.user)) return res.status(403).send({ message: 'Admins only' });
       const runId = parseInt(req.params.runId, 10);
       const job = activeJobs((j) => j.kind === 'verify' && j.meta?.runId === runId)[0];
-      if (!job || !cancelJob(job.id, `Cancelled by ${req.user.username || 'staff'}.`)) {
+      if (!job || !cancelJob(job.id, `Canceled by ${req.user.username || 'staff'}.`)) {
         // Not in memory: a run cut off by a restart, still marked live. Close it.
         await db_pool.query(
           "UPDATE puzzle_verification_runs SET state = 'cancelled', finished_at = NOW() WHERE id = ? AND state IN ('queued','running')",
           [runId]
         );
       }
-      res.json({ message: 'Search cancelled.' });
+      res.json({ message: 'Search canceled.' });
     } catch (err) {
       console.error('POST /api/admin/puzzle-verification-runs/:runId/cancel:', err);
       res.status(500).send({ message: 'Could not cancel the search' });
@@ -447,6 +447,9 @@ function registerPuzzleVerificationRoutes(app, { db_pool, dbHelpers, authenticat
    *   outcome 'verified'     award the badge (keeping a search's verdict as the
    *                          method if one already set it) and say so
    *   outcome 'not_unique'   refuse it - more than one solution
+   *   outcome 'not_optimal'  refuse it - one or more of the line's moves are
+   *                          not the best available (the usual finding for a
+   *                          puzzle the engine cannot judge)
    *   outcome 'not_verified' close it without changing the badge (could not be
    *                          settled, not eligible, ...); the reason says why
    */
@@ -457,8 +460,8 @@ function registerPuzzleVerificationRoutes(app, { db_pool, dbHelpers, authenticat
       if (!request) return res.status(404).send({ message: 'No such request' });
       if (request.status !== 'open') return res.status(409).send({ message: 'That request is already closed.' });
       const outcome = String(req.body?.outcome || '');
-      if (!['verified', 'not_unique', 'not_verified'].includes(outcome)) {
-        return res.status(400).send({ message: 'outcome must be verified, not_unique or not_verified' });
+      if (!['verified', 'not_unique', 'not_optimal', 'not_verified'].includes(outcome)) {
+        return res.status(400).send({ message: 'outcome must be verified, not_unique, not_optimal or not_verified' });
       }
       const reason = String(req.body?.reason || '').trim().slice(0, MAX_REASON);
       if (outcome !== 'verified' && !reason) return res.status(400).send({ message: 'Give the requester a reason.' });
@@ -471,6 +474,10 @@ function registerPuzzleVerificationRoutes(app, { db_pool, dbHelpers, authenticat
         }
       } else if (outcome === 'not_unique') {
         await setUnique(puzzle.id, { status: 'not_unique', method: puzzle.unique_method === 'search' && puzzle.unique_status === 'not_unique' ? 'search' : 'manual', detail: reason, by: req.user.id });
+      } else if (outcome === 'not_optimal') {
+        // A move that is not the best available means the line is not THE
+        // solution - the badge is refused, with the reason that says so.
+        await setUnique(puzzle.id, { status: 'not_unique', method: 'manual', detail: reason, by: req.user.id });
       }
       await db_pool.query(
         `UPDATE puzzle_verification_requests SET status = ?, resolution = ?, resolved_by = ?, resolved_at = NOW() WHERE id = ?`,

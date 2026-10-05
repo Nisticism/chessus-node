@@ -235,7 +235,7 @@ const GOAL_DEFS = {
 
   win_in_1: {
     label: 'Win on the spot',
-    describe: () => 'Find the move that ends the game in your favour.',
+    describe: () => 'Find the move that ends the game in your favor.',
     // The catch-all for games whose win condition has no goal of its own.
     available: () => true,
     mechanical: true,
@@ -1177,6 +1177,63 @@ async function immediateWins(puzzle, gameType, intended) {
   return wins;
 }
 
+/*
+ * What a line misses, in words: "at your move 2, after Rook a1 to a8, the
+ * opponent can defend with King g8 to h7 or King g8 to f7, and then ..."
+ *
+ * All the defenses when there are three or fewer; otherwise one, with how many
+ * more there are. Also names a move that DOES force it there, when one does -
+ * the fix, usually. `others` is that step's forcing moves (verifyPuzzleLine).
+ */
+async function describeNotForced(puzzle, gameType, line, step, label, others = [], opts = {}) {
+  const { defensesAgainst } = require('./puzzle-search');
+  let found = null;
+  try {
+    found = await defensesAgainst(puzzle, gameType, line, step, { aim: opts.aim || puzzle.goal, budgetMs: opts.budgetMs || 60000, dutyCycle: opts.dutyCycle, max: 3 });
+  } catch (_) { found = null; }
+  const lineMoveText = found?.before ? describeMoveOn(found.before, gameType, line[(step - 1) * 2]) : null;
+  let sentence;
+  if (!found || found.notAMove) {
+    sentence = `your move ${step} does not force ${label} in the moves left - the opponent has a defense the line does not play.`;
+  } else if (found.lastMoveMisses) {
+    sentence = `your last move${lineMoveText ? ` (${lineMoveText})` : ''} does not achieve ${label}.`;
+  } else if (!found.defenses.length) {
+    sentence = `your move ${step}${lineMoveText ? ` (${lineMoveText})` : ''} does not force ${label} in the moves left, `
+      + 'but the search ran out of time before it could name the defense.';
+  } else {
+    const named = found.defenses.map((d) => describeMoveOn(found.after, gameType, d));
+    const list = named.length === 1 ? named[0]
+      : `${named.slice(0, -1).join(', ')} or ${named[named.length - 1]}`;
+    let which;
+    if (found.complete && found.total <= 3) {
+      which = found.total === 1 ? `the opponent can defend with ${list}` : `the opponent has ${found.total} defenses: ${list}`;
+    } else if (found.complete) {
+      which = `the opponent can defend with ${named[0]} (one of ${found.total} defenses)`;
+    } else {
+      which = `the opponent can defend with ${list} (and maybe more - the search ran out of time)`;
+    }
+    sentence = `at your move ${step}, after ${lineMoveText || 'the line\'s move'}, ${which} - and then ${label} can no longer be forced in the moves left.`;
+  }
+  const fixes = (others || []).filter((m) => moveKey(m) !== moveKey(line[(step - 1) * 2]));
+  if (fixes.length && found?.before) {
+    const shown = fixes.slice(0, 3).map((m) => describeMoveOn(found.before, gameType, m));
+    sentence += fixes.length === 1
+      ? ` A different move there does force it: ${shown[0]}.`
+      : ` ${fixes.length} other moves there do force it: ${shown.join('; ')}${fixes.length > 3 ? ', ...' : ''}.`;
+  }
+  return sentence;
+}
+
+/*
+ * A goal named inside a sentence about a whole line: "forces 'checkmate'",
+ * and "forces the win" rather than "forces 'win on the spot'", which reads
+ * wrongly about a line several moves long.
+ */
+function lineGoalLabel(goal) {
+  if (goal === 'win_in_1') return 'the win';
+  return `'${(GOAL_DEFS[goal]?.label || goal || 'the goal').toLowerCase()}'`;
+}
+
 /** "Bisasam on d1 takes the King on d8", for telling a creator which move. */
 function describeFirstMove(puzzle, gameType, move) {
   return describeMoveOn(buildGameState(puzzle, gameType).pieces, gameType, move);
@@ -1207,7 +1264,7 @@ const SEARCH_BUDGET_MS = 15000;
 async function checkTwoMoveLine(puzzle, gameType, intended, reached) {
   // Required here: puzzle-search requires this file.
   const { searchWinInTwo } = require('./puzzle-search');
-  const label = GOAL_DEFS[puzzle.goal].label.toLowerCase();
+  const label = lineGoalLabel(puzzle.goal);
   const mine = await searchWinInTwo(puzzle, gameType, { aim: puzzle.goal, firstMove: intended, budgetMs: SEARCH_BUDGET_MS });
   if (!mine.supported || !mine.complete || mine.winsInOne.length) return null;
 
@@ -1226,7 +1283,7 @@ async function checkTwoMoveLine(puzzle, gameType, intended, reached) {
       refutation,
       searched: true,
       detail: `the line is legal, but it is not forced: after your first move the opponent can defend with ${said}, `
-        + `and then no move achieves '${label}'.`,
+        + `and then no move achieves ${label}.`,
     };
   }
 
@@ -1238,7 +1295,7 @@ async function checkTwoMoveLine(puzzle, gameType, intended, reached) {
       intendedWorks: true,
       goalReached: true,
       searched: true,
-      detail: `your first move forces '${label}' against every defence (checked). There was not time to check `
+      detail: `your first move forces ${label} against every defense (checked). There was not time to check `
         + 'whether a different first move also does.',
     };
   }
@@ -1251,7 +1308,7 @@ async function checkTwoMoveLine(puzzle, gameType, intended, reached) {
       goalReached: true,
       searched: true,
       unique: false,
-      detail: `your first move forces '${label}' against every defence, but so ${others.length === 1 ? 'does' : 'do'} `
+      detail: `your first move forces ${label} against every defense, but so ${others.length === 1 ? 'does' : 'do'} `
         + `${others.slice(0, 3).map((m) => describeFirstMove(puzzle, gameType, m)).join('; ')}`
         + `${others.length > 3 ? ` and ${others.length - 3} more` : ''}.`,
     };
@@ -1262,7 +1319,7 @@ async function checkTwoMoveLine(puzzle, gameType, intended, reached) {
     intendedWorks: true,
     goalReached: true,
     searched: true,
-    detail: `checked against every defence: your first move is the only one that forces '${label}' in two.`,
+    detail: `checked against every defense: your first move is the only one that forces ${label} in two.`,
   };
 }
 
@@ -1283,7 +1340,7 @@ async function forcedWinInTwo(puzzle, gameType) {
  */
 async function checkWholeLine(puzzle, gameType, line, reached, opts) {
   const { verifyPuzzleLine } = require('./puzzle-search');
-  const label = GOAL_DEFS[puzzle.goal].label.toLowerCase();
+  const label = lineGoalLabel(puzzle.goal);
   const r = await verifyPuzzleLine(puzzle, gameType, line, {
     aim: puzzle.goal, budgetMs: opts.budgetMs || 120000, dutyCycle: opts.dutyCycle, onProgress: opts.onProgress,
   });
@@ -1291,11 +1348,12 @@ async function checkWholeLine(puzzle, gameType, line, reached, opts) {
   const pieces = buildGameState(puzzle, gameType).pieces;
   const broken = r.steps.find((st) => !st.lineIncluded);
   if (broken) {
+    const why = await describeNotForced(puzzle, gameType, line, broken.step, label, broken.forcing,
+      { budgetMs: Math.min(60000, opts.budgetMs || 60000), dutyCycle: opts.dutyCycle });
     return {
       status: VALIDATION.UNSOLVABLE, solutions: [], intendedWorks: false, goalReached: reached, searched: true,
       verification: r, unique: false,
-      detail: `the line is legal, but your move ${broken.step} does not force '${label}' in the moves left - `
-        + 'the opponent has a defence the line does not play.',
+      detail: `the line is legal, but it is not forced: ${why}`,
     };
   }
   /*
@@ -1315,7 +1373,7 @@ async function checkWholeLine(puzzle, gameType, line, reached, opts) {
     return {
       status: VALIDATION.AMBIGUOUS, solutions: extra.step === 1 ? extra.forcing : [line[0]], intendedWorks: true,
       goalReached: true, searched: true, verification: r, unique: false,
-      detail: `at your move ${extra.step}, ${extra.count} different moves force '${label}'`
+      detail: `at your move ${extra.step}, ${extra.count} different moves force ${label}`
         + `${others.length ? ` (also ${others.join('; ')})` : ''}. `
         + (exact ? 'This puzzle accepts only your exact line, ' : 'Before the last move only the line\'s move is accepted, ')
         + 'so a solver who finds another would be told it is wrong.',
@@ -1325,7 +1383,7 @@ async function checkWholeLine(puzzle, gameType, line, reached, opts) {
   return {
     status: VALIDATION.VALID, solutions: [line[0]], intendedWorks: true, goalReached: true, searched: true,
     verification: r, unique: r.unique,
-    detail: `checked against every defence: at each step your move is the only one that forces '${label}'`
+    detail: `checked against every defense: at each step your move is the only one that forces ${label}`
       + (last.count > 1 && !exact ? ` (the final move can be played ${last.count} ways, and any of them is accepted).` : '.'),
   };
 }
@@ -1657,8 +1715,11 @@ async function validatePuzzle(puzzle, gameType, opts = {}) {
 
 module.exports = {
   validatePuzzle,
+  lineGoalLabel,
   // For the staff search: does a "find this exact move" line win the game?
   lineWinsGame,
+  // ... and, when it is not forced, which defense the line misses.
+  describeNotForced,
   // For the solve route: the other moves that would have finished a puzzle too.
   immediateWins,
   describeMoveOn,

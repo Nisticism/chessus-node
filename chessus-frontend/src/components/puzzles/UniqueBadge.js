@@ -13,7 +13,7 @@ export function uniqueBadgeTitle(method) {
     ? 'Verified by GridGrove staff.'
     : method === 'search'
       ? 'Verified by a full search, run by GridGrove staff.'
-      : 'Checked automatically against every defence.';
+      : 'Checked automatically against every defense.';
   return `Verified unique solution: exactly one winning move at every step. ${how}`;
 }
 
