@@ -1228,6 +1228,63 @@ async function immediateWins(puzzle, gameType, intended) {
 }
 
 /*
+ * Every move that wins the game at once, with EACH PROMOTION CHOICE its own
+ * move: [{ move, promotedName }]. immediateWins asks "which moves win" and
+ * counts a promotion once, played with the game's first offered piece; this
+ * is for naming the other winning moves to a solver, where "the pawn to g8"
+ * is two answers when both the rook and the queen mate - and the one not
+ * played has to be named by the piece it becomes.
+ */
+async function immediateWinsByChoice(puzzle, gameType) {
+  const side = Number(puzzle.side_to_move);
+  const base = buildGameState(puzzle, gameType);
+  const candidates = [
+    ...(getAllLegalMovesForPlayer(base, side) || []),
+    ...enPassantCandidates(base, side),
+    ...placementCandidates(base, side),
+  ];
+  const wins = [];
+  const seen = new Set();
+  const tryMove = async (move) => {
+    const { ok, state, ctx } = await applyToFreshState(puzzle, gameType, move, {});
+    if (!ok) return;
+    const outcome = terminalOutcome(state, other(side), ctx);
+    if (!(outcome && Number(outcome.winner) === side)) return;
+    wins.push({ move, promotedName: ctx.promotedTo ? (ctx.movingPiece?.piece_name || null) : null });
+  };
+  for (const candidate of candidates) {
+    const key = boardMoveKey(candidate);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    // eslint-disable-next-line no-await-in-loop -- the engine mutates shared structures
+    const first = await applyToFreshState(puzzle, gameType, candidate, { listPromotions: true });
+    if (first.ctx?.needsPromotionChoice) {
+      for (const choice of first.ctx.promotionOptions || []) {
+        // eslint-disable-next-line no-await-in-loop
+        await tryMove({ ...candidate, ...choice });
+      }
+    } else if (first.ok) {
+      const outcome = terminalOutcome(first.state, other(side), first.ctx);
+      if (outcome && Number(outcome.winner) === side) wins.push({ move: candidate, promotedName: null });
+    }
+  }
+  return wins;
+}
+
+/*
+ * The same answer? The same board move, promoting (if it does) to the same
+ * piece. A line records its promotion as an instance-style id ("690_0_0") and
+ * the engine offers numeric ones ("690"), so the piece is compared by number.
+ */
+const promotionNumber = (move) => {
+  const id = move?.promotionPieceId;
+  if (id === undefined || id === null || id === '') return null;
+  const n = parseInt(String(id), 10);
+  return Number.isFinite(n) ? n : String(id);
+};
+const sameFinish = (a, b) => !!a && !!b && boardMoveKey(a) === boardMoveKey(b) && promotionNumber(a) === promotionNumber(b);
+
+/*
  * What a line misses, in words: "at your move 2, after Rook a1 to a8, the
  * opponent can defend with King g8 to h7 or King g8 to f7, and then ..."
  *
@@ -1819,6 +1876,9 @@ module.exports = {
   lineGoalLabel,
   // For the staff search: does a "find this exact move" line win the game?
   lineWinsGame,
+  // For the solve route: the other winning moves, each promotion choice its own.
+  immediateWinsByChoice,
+  sameFinish,
   // The line-quality findings, as words and as sides (puzzle-line-quality.js).
   describeFindings,
   notOptimalSides,

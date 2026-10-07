@@ -16,7 +16,8 @@
 const {
   validatePuzzle, moveKey, GOALS, GOAL_DEFS, MECHANICAL_GOALS, VALIDATION,
   goalsForGameType, describeGoal, buildGameState, playLine, applyPly, placementRules,
-  goalMet, terminalOutcome, immediateWins, describeMoveOn, boardMoveKey, sameDrop,
+  goalMet, terminalOutcome, describeMoveOn, boardMoveKey, sameDrop,
+  immediateWinsByChoice, sameFinish,
 } = require('./puzzle-validation');
 
 /*
@@ -2517,16 +2518,24 @@ function registerPuzzleRoutes(app, {
         if (!played.ok) return [];
         at = { ...base, position: played.state.pieces, setup_move: prefix[prefix.length - 1] };
       }
-      const wins = await immediateWins(at, rules.game, null);
-      const playedKey = playedFinal ? boardMoveKey(playedFinal) : null;
+      /*
+       * Each promotion choice is its own answer: with a pawn on g7, promoting
+       * to a rook and to a queen are two winning moves, and the one not played
+       * is named by the piece it becomes. They used to be one move here, so the
+       * other promotion was never mentioned.
+       */
+      const wins = await immediateWinsByChoice(at, rules.game);
       const pieces = buildGameState(at, rules.game).pieces;
       const seen = new Set();
       const out = [];
-      for (const m of wins) {
-        const k = boardMoveKey(m);
-        if (k === playedKey || seen.has(k) || sameDrop(rules.game, m, playedFinal)) continue;
-        seen.add(k);
-        out.push(describeMoveOn(pieces, rules.game, m));
+      const article = (name) => (/^[aeiou]/i.test(name) ? 'an' : 'a');
+      for (const { move: m, promotedName } of wins) {
+        if (sameFinish(m, playedFinal) || sameDrop(rules.game, m, playedFinal)) continue;
+        const words = describeMoveOn(pieces, rules.game, m)
+          + (promotedName ? `, promoting to ${article(promotedName)} ${promotedName}` : '');
+        if (seen.has(words)) continue;
+        seen.add(words);
+        out.push(words);
         if (out.length >= 5) break;
       }
       return out;
