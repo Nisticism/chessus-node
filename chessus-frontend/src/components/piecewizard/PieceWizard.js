@@ -108,6 +108,7 @@ const PieceWizard = ({ editPieceId = null }) => {
     ratio_path_order: null,
     ratio_path_blocking: null,
     ratio_path_corner_blocks: null,
+    max_repeating_movement: null,
     
     // Step 3: Attack/Capture Configuration
     repeating_capture: false,
@@ -125,6 +126,7 @@ const PieceWizard = ({ editPieceId = null }) => {
     ratio_path_order_attack: null,
     ratio_path_blocking_attack: null,
     ratio_path_corner_blocks_attack: null,
+    max_repeating_capture: null,
     can_capture_enemy_via_range: false,
     can_capture_enemy_on_move: true,
     can_capture_ally_via_range: false,
@@ -378,6 +380,7 @@ const PieceWizard = ({ editPieceId = null }) => {
             ratio_path_order: piece.ratio_path_order || null,
             ratio_path_blocking: piece.ratio_path_blocking || null,
             ratio_path_corner_blocks: piece.ratio_path_corner_blocks ?? null,
+            max_repeating_movement: piece.max_repeating_movement != null ? parseInt(piece.max_repeating_movement) || null : null,
             
             // Attack/Capture fields
             repeating_capture: !!piece.repeating_capture,
@@ -393,6 +396,7 @@ const PieceWizard = ({ editPieceId = null }) => {
             ratio_path_order_attack: piece.ratio_path_order_attack || null,
             ratio_path_blocking_attack: piece.ratio_path_blocking_attack || null,
             ratio_path_corner_blocks_attack: piece.ratio_path_corner_blocks_attack ?? null,
+            max_repeating_capture: piece.max_repeating_capture != null ? parseInt(piece.max_repeating_capture) || null : null,
             can_capture_enemy_via_range: hasAnyRangedAttack,
             can_capture_ally_via_range: !!piece.can_capture_ally_via_range,
             can_capture_enemy_on_move: !!piece.can_capture_enemy_on_move,

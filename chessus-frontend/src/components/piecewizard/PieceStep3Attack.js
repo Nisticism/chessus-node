@@ -8,6 +8,7 @@ import FairyStockfishInfoNote from "../common/FairyStockfishInfoNote";
 import ToggleSwitch from "../common/ToggleSwitch";
 import HopCountControls from "./HopCountControls";
 import LPathControls from "./LPathControls";
+import RepeatLimitControl from "./RepeatLimitControl";
 import { movementToAttackUpdates } from "../../helpers/pieceMovementAttackCopy";
 import { PIECE_WIZARD_TEXT } from "../../global/global";
 
@@ -735,6 +736,7 @@ const PieceStep3Attack = ({ pieceData, updatePieceData }) => {
                   label="Repeating exact capture"
                   tooltip={<InfoTooltip text="When enabled with exact captures, the piece can repeat its exact capture distance pattern infinitely along that direction, landing on every Nth square. For example, a piece with Exact 2 capture could capture on squares 2, 4, 6, 8, etc." />}
                 />
+                <RepeatLimitControl pieceData={pieceData} handleChange={handleChange} attack />
               </div>
             )}
 

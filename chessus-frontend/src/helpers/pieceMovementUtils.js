@@ -120,6 +120,22 @@ export const parseSpecialScenarioCaptures = (data) => {
   }
 };
 
+/*
+ * How many times a repeating exact distance may repeat: a dabbaba rider
+ * limited to three jumps (Betza DD3) lands on 2, 4 and 6 and no further.
+ * max_repeating_movement / max_repeating_capture, 1-8; unset = no limit, the
+ * rule repeating exact moves always had. A piece that captures like it moves
+ * captures under its movement limit. A MIRROR of server/hop-rule.js.
+ */
+export const repeatCap = (piece, attack) => {
+  const n = (v) => (Number(v) > 0 ? Math.min(8, Math.floor(Number(v))) : null);
+  const own = n(piece?.[attack ? 'max_repeating_capture' : 'max_repeating_movement']);
+  if (own != null) return own;
+  const likeMovement = piece?.attacks_like_movement === 1 || piece?.attacks_like_movement === true;
+  if (attack && likeMovement) return n(piece?.max_repeating_movement) ?? Infinity;
+  return Infinity;
+};
+
 /**
  * Check if a value allows movement at a given distance
  * @param {number} value - Movement value (99 = infinite, negative = exact, positive = up to)
@@ -128,12 +144,12 @@ export const parseSpecialScenarioCaptures = (data) => {
  * @param {boolean} repeating - Whether the movement repeats at multiples of the exact distance
  * @returns {boolean}
  */
-export const checkMovement = (value, distance, isExact = false, repeating = false) => {
+export const checkMovement = (value, distance, isExact = false, repeating = false, cap = Infinity) => {
   if (value === 99) return true; // Infinite movement
   if (value === 0 || value === null || value === undefined) return false;
   if (isExact) {
     const exact = Math.abs(value);
-    if (repeating) return distance > 0 && distance % exact === 0;
+    if (repeating) return distance > 0 && distance % exact === 0 && distance <= exact * cap;
     return distance === exact;
   }
   if (value > 0) return distance <= value; // Up to that distance
@@ -295,7 +311,7 @@ export const canPieceMoveTo = (fromRow, fromCol, toRow, toCol, pieceData, player
     const isExact = !!pieceData[exactKey];
     const repeating = !!(pieceData.repeating_movement && isExact);
 
-    if (checkMovement(movementValue, distance, isExact, repeating)) {
+    if (checkMovement(movementValue, distance, isExact, repeating, repeatCap(pieceData, false))) {
       const isFirstMoveOnly = isDirectionalMovementFirstMoveOnly(pieceData, direction);
       return { allowed: true, isFirstMoveOnly };
     }
@@ -455,7 +471,7 @@ export const canCaptureOnMoveTo = (fromRow, fromCol, toRow, toCol, pieceData, pl
     const isExact = !!pieceData[exactField];
     const repeating = !!(pieceData.repeating_capture && isExact);
 
-    if (checkMovement(captureValue, distance, isExact, repeating)) {
+    if (checkMovement(captureValue, distance, isExact, repeating, repeatCap(pieceData, true))) {
       const isFirstMoveOnly = isDirectionalCaptureFirstMoveOnly(pieceData, direction);
       return { allowed: true, isFirstMoveOnly };
     }

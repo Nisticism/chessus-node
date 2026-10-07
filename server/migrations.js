@@ -1396,6 +1396,13 @@ const migrations = [
   { table: 'pieces', column: 'ratio_path_blocking_attack', sql: "ALTER TABLE pieces ADD COLUMN ratio_path_blocking_attack VARCHAR(8) DEFAULT NULL", description: "Which legs of an L-capture block: 'both', 'long' or 'short'." },
   { table: 'pieces', column: 'ratio_path_corner_blocks', sql: "ALTER TABLE pieces ADD COLUMN ratio_path_corner_blocks TINYINT(1) DEFAULT NULL", description: "Whether the corner square of an L-move blocks it (NULL = yes)." },
   { table: 'pieces', column: 'ratio_path_corner_blocks_attack', sql: "ALTER TABLE pieces ADD COLUMN ratio_path_corner_blocks_attack TINYINT(1) DEFAULT NULL", description: "Whether the corner square of an L-capture blocks it (NULL = yes)." },
+  /*
+   * How many times a repeating exact distance may repeat (2026-10-07): Betza
+   * DD3 lands on 2, 4 and 6. 1-8; NULL = no limit, as before. repeatCap in
+   * server/hop-rule.js.
+   */
+  { table: 'pieces', column: 'max_repeating_movement', sql: "ALTER TABLE pieces ADD COLUMN max_repeating_movement TINYINT DEFAULT NULL", description: "A repeating exact move repeats at most this many times (1-8)." },
+  { table: 'pieces', column: 'max_repeating_capture', sql: "ALTER TABLE pieces ADD COLUMN max_repeating_capture TINYINT DEFAULT NULL", description: "A repeating exact capture repeats at most this many times (1-8)." },
   { table: 'pieces', column: 'hop_landing_distance_attack', sql: "ALTER TABLE pieces ADD COLUMN hop_landing_distance_attack TINYINT DEFAULT NULL", description: "After hopping, a straight-line capture lands at most this many squares past the last piece hopped (1-8)." },
   // --- Direction Change (Movement) ---
   { table: 'pieces', column: 'directional_movement_change', sql: "ALTER TABLE pieces ADD COLUMN directional_movement_change TINYINT(1) DEFAULT 0", description: "Master toggle: when 1, piece can change direction mid-move (second leg after first directional leg)." },

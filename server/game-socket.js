@@ -3,7 +3,7 @@
  * Manages real-time multiplayer game functionality
  */
 
-const { straightHopRule, straightHopsBetween, hopRuleAllows, lPathRule, lRouteClear } = require('./hop-rule');
+const { straightHopRule, straightHopsBetween, hopRuleAllows, lPathRule, lRouteClear, repeatCap } = require('./hop-rule');
 const db_pool = require("../configs/db");
 const crypto = require('crypto');
 const path = require('path');
@@ -4846,6 +4846,8 @@ function initializeSocket(server, { isUserBanned } = {}) {
               ratio_path_blocking_attack: fullPieceData.ratio_path_blocking_attack,
               ratio_path_corner_blocks: fullPieceData.ratio_path_corner_blocks,
               ratio_path_corner_blocks_attack: fullPieceData.ratio_path_corner_blocks_attack,
+              max_repeating_movement: fullPieceData.max_repeating_movement,
+              max_repeating_capture: fullPieceData.max_repeating_capture,
               hop_stop_at_occupied_attack: fullPieceData.hop_stop_at_occupied_attack,
               // Capture data
               can_capture_enemy_on_move: fullPieceData.can_capture_enemy_on_move,
@@ -5533,6 +5535,8 @@ function initializeSocket(server, { isUserBanned } = {}) {
               ratio_path_blocking_attack: fullPieceData.ratio_path_blocking_attack,
               ratio_path_corner_blocks: fullPieceData.ratio_path_corner_blocks,
               ratio_path_corner_blocks_attack: fullPieceData.ratio_path_corner_blocks_attack,
+              max_repeating_movement: fullPieceData.max_repeating_movement,
+              max_repeating_capture: fullPieceData.max_repeating_capture,
               hop_stop_at_occupied_attack: fullPieceData.hop_stop_at_occupied_attack,
               can_capture_enemy_on_move: fullPieceData.can_capture_enemy_on_move,
               attacks_like_movement: fullPieceData.attacks_like_movement,
@@ -11538,6 +11542,8 @@ function initializeSocket(server, { isUserBanned } = {}) {
                     ratio_path_blocking_attack: fullPieceData.ratio_path_blocking_attack,
                     ratio_path_corner_blocks: fullPieceData.ratio_path_corner_blocks,
                     ratio_path_corner_blocks_attack: fullPieceData.ratio_path_corner_blocks_attack,
+                    max_repeating_movement: fullPieceData.max_repeating_movement,
+                    max_repeating_capture: fullPieceData.max_repeating_capture,
                     hop_stop_at_occupied_attack: fullPieceData.hop_stop_at_occupied_attack,
                     // Capture data
                     can_capture_enemy_on_move: fullPieceData.can_capture_enemy_on_move,
@@ -15598,6 +15604,8 @@ async function applyPromotionToPiece(gameState, pieceId, promoteToPieceId, promo
     ratio_path_blocking_attack: fullPieceData.ratio_path_blocking_attack,
     ratio_path_corner_blocks: fullPieceData.ratio_path_corner_blocks,
     ratio_path_corner_blocks_attack: fullPieceData.ratio_path_corner_blocks_attack,
+    max_repeating_movement: fullPieceData.max_repeating_movement,
+    max_repeating_capture: fullPieceData.max_repeating_capture,
     hop_stop_at_occupied_attack: fullPieceData.hop_stop_at_occupied_attack,
     can_capture_enemy_on_move: fullPieceData.can_capture_enemy_on_move,
     attacks_like_movement: fullPieceData.attacks_like_movement,
@@ -16789,7 +16797,7 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces, gameType) {
       if (exactFlag) {
         // Exact: distance must be exactly value (or multiple if repeating)
         const dist = Math.max(absDx, absDy);
-        if (repeating) return dist > 0 && dist % value === 0;
+        if (repeating) return dist > 0 && dist % value === 0 && dist <= value * repeatCap(piece, true);
         return dist === value;
       }
       return true; // Sliding: up to value squares (caller checks distance)
@@ -16797,7 +16805,7 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces, gameType) {
     if (value < 0) {
       const exact = Math.abs(value);
       const dist = Math.max(absDx, absDy);
-      if (repeating) return dist > 0 && dist % exact === 0;
+      if (repeating) return dist > 0 && dist % exact === 0 && dist <= exact * repeatCap(piece, true);
       return dist === exact;
     }
     return false;
@@ -17492,7 +17500,7 @@ function canPieceMoveToSquare(piece, targetX, targetY, allPieces, gameType = nul
     if (moveVal) {
       const maxDist = Math.abs(moveVal);
       const repM = piece.repeating_movement && exactFlag;
-      if (moveVal === 99 || (exactFlag ? (repM ? (absDy > 0 && absDy % maxDist === 0) : absDy === maxDist) : absDy <= maxDist)) {
+      if (moveVal === 99 || (exactFlag ? (repM ? (absDy > 0 && absDy % maxDist === 0 && absDy <= maxDist * repeatCap(piece, false)) : absDy === maxDist) : absDy <= maxDist)) {
         const canHopDir = (canHopAlliesBase || canHopEnemiesBase) && (!dirHopDisabled || exactFlag);
         if (isPathClear(piece.x, piece.y, targetX, targetY, canHopDir)) {
           if (!exactRatioHopOnly || !exactFlag || pathHasPieceMove(piece.x, piece.y, targetX, targetY)) {
@@ -17514,7 +17522,7 @@ function canPieceMoveToSquare(piece, targetX, targetY, allPieces, gameType = nul
     if (moveVal) {
       const maxDist = Math.abs(moveVal);
       const repM = piece.repeating_movement && exactFlag;
-      if (moveVal === 99 || (exactFlag ? (repM ? (absDx > 0 && absDx % maxDist === 0) : absDx === maxDist) : absDx <= maxDist)) {
+      if (moveVal === 99 || (exactFlag ? (repM ? (absDx > 0 && absDx % maxDist === 0 && absDx <= maxDist * repeatCap(piece, false)) : absDx === maxDist) : absDx <= maxDist)) {
         const canHopDir = (canHopAlliesBase || canHopEnemiesBase) && (!dirHopDisabled || exactFlag);
         if (isPathClear(piece.x, piece.y, targetX, targetY, canHopDir)) {
           if (!exactRatioHopOnly || !exactFlag || pathHasPieceMove(piece.x, piece.y, targetX, targetY)) {
@@ -17549,7 +17557,7 @@ function canPieceMoveToSquare(piece, targetX, targetY, allPieces, gameType = nul
     if (moveVal) {
       const maxDist = Math.abs(moveVal);
       const repM = piece.repeating_movement && exactFlag;
-      if (moveVal === 99 || (exactFlag ? (repM ? (absDx > 0 && absDx % maxDist === 0) : absDx === maxDist) : absDx <= maxDist)) {
+      if (moveVal === 99 || (exactFlag ? (repM ? (absDx > 0 && absDx % maxDist === 0 && absDx <= maxDist * repeatCap(piece, false)) : absDx === maxDist) : absDx <= maxDist)) {
         const canHopDir = (canHopAlliesBase || canHopEnemiesBase) && (!dirHopDisabled || exactFlag);
         if (isPathClear(piece.x, piece.y, targetX, targetY, canHopDir)) {
           if (!exactRatioHopOnly || !exactFlag || pathHasPieceMove(piece.x, piece.y, targetX, targetY)) {
@@ -18349,7 +18357,7 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
       if (!capExact) return dist <= v;
       // Exact captures land only on the given distance, or on multiples of it
       // when repeating_capture is set (same rule the frontend applies).
-      return piece.repeating_capture ? (dist % v === 0) : (dist === v);
+      return piece.repeating_capture ? (dist % v === 0 && dist <= v * repeatCap(piece, true)) : (dist === v);
     };
     
     // Check direction-specific availableForMoves
@@ -18373,7 +18381,10 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
     
     const limit = maxDist === 99 ? Math.max(boardWidth, boardHeight) : Math.abs(maxDist);
     const exactDist = exactFlag ? Math.abs(maxDist) : 0;
-    const maxIter = (exactFlag && repeating) ? Math.max(boardWidth, boardHeight) : limit;
+    // A limited repeat (repeatCap) stops at its last landing; captures by the capture limit.
+    const maxIter = (exactFlag && repeating)
+      ? Math.min(Math.max(boardWidth, boardHeight), Math.abs(maxDist) * repeatCap(piece, captureOnly))
+      : limit;
     for (let dist = 1; dist <= maxIter; dist++) {
       const targetX = piece.x + (dx * dist);
       const targetY = piece.y + (dy * dist);

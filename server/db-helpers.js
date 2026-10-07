@@ -375,6 +375,8 @@ const getAllPiecesWithMovement = async () => {
       p.ratio_path_blocking_attack,
       p.ratio_path_corner_blocks,
       p.ratio_path_corner_blocks_attack,
+      p.max_repeating_movement,
+      p.max_repeating_capture,
       p.can_hop_attack_over_allies,
       p.can_hop_attack_over_enemies,
       p.exact_ratio_hop_only_attack,
@@ -635,6 +637,8 @@ const getPieceById = async (pieceId) => {
       p.ratio_path_blocking_attack,
       p.ratio_path_corner_blocks,
       p.ratio_path_corner_blocks_attack,
+      p.max_repeating_movement,
+      p.max_repeating_capture,
       p.moderation_status,
       p.created_at,
       -- Direction change (movement)

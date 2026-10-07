@@ -264,6 +264,7 @@ function blankMovementAndAttack() {
     ratio_path_order: null, ratio_path_order_attack: null,
     ratio_path_blocking: null, ratio_path_blocking_attack: null,
     ratio_path_corner_blocks: null, ratio_path_corner_blocks_attack: null,
+    max_repeating_movement: null, max_repeating_capture: null,
   };
   for (const d of DIRS) {
     for (const kind of ['movement', 'capture']) {
@@ -419,7 +420,11 @@ export function betzaToPieceData(code) {
         } else if (straight && (part.rider || lame)) {
           // DD, nD, A3 ...: exact distance along the line - hopping between
           // landings for a rider (DD jumps), blocked like a slide when lame.
-          if (part.rider && part.range > 1) warnings.push(`${part.text}: a limited number of ${step}-square jumps cannot be set; it repeats without limit.`);
+          // DD3: at most three jumps (repeatCap). The site allows 1-8.
+          if (part.rider && part.range > 1) {
+            u[kind === 'movement' ? 'max_repeating_movement' : 'max_repeating_capture'] = Math.min(8, part.range);
+            if (part.range > 8) warnings.push(`${part.text}: at most 8 repeats can be set; it repeats up to 8 times.`);
+          }
           for (const [dx, dy] of vectors) setDirection(kind, dirName(dx, dy), step, { exact: true, initial, repeat: part.rider });
           needs[kind][part.rider && !lame ? 'ride' : 'lameExact'] = true;
         } else if (straight) {

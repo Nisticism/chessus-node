@@ -8,6 +8,7 @@ import FairyStockfishInfoNote from "../common/FairyStockfishInfoNote";
 import ToggleSwitch from "../common/ToggleSwitch";
 import HopCountControls from "./HopCountControls";
 import LPathControls from "./LPathControls";
+import RepeatLimitControl from "./RepeatLimitControl";
 import { PIECE_WIZARD_TEXT } from "../../global/global";
 
 const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
@@ -636,6 +637,7 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
                 label="Repeating exact movement"
                 tooltip={<InfoTooltip text="When enabled with exact movements, the piece can repeat its exact distance pattern infinitely along that direction, landing on every Nth square. For example, a piece with Exact 2 could land on squares 2, 4, 6, 8, etc." />}
               />
+              <RepeatLimitControl pieceData={pieceData} handleChange={handleChange} />
             </div>
 
             {/* Direction Change */}

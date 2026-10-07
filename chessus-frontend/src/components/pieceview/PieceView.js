@@ -315,6 +315,8 @@ const PieceView = () => {
       ratio_path_blocking_attack: piece.ratio_path_blocking_attack || null,
       ratio_path_corner_blocks: piece.ratio_path_corner_blocks ?? null,
       ratio_path_corner_blocks_attack: piece.ratio_path_corner_blocks_attack ?? null,
+      max_repeating_movement: piece.max_repeating_movement != null ? parseInt(piece.max_repeating_movement) : null,
+      max_repeating_capture: piece.max_repeating_capture != null ? parseInt(piece.max_repeating_capture) : null,
       directional_attack_style: !!piece.directional_attack_style,
       ratio_attack_style: !!piece.ratio_attack_style,
       step_by_step_attack_style: !!piece.step_by_step_attack_style,
@@ -643,6 +645,8 @@ const PieceView = () => {
       ratio_path_blocking_attack: piece.ratio_path_blocking_attack || null,
       ratio_path_corner_blocks: piece.ratio_path_corner_blocks ?? null,
       ratio_path_corner_blocks_attack: piece.ratio_path_corner_blocks_attack ?? null,
+      max_repeating_movement: piece.max_repeating_movement != null ? parseInt(piece.max_repeating_movement) : null,
+      max_repeating_capture: piece.max_repeating_capture != null ? parseInt(piece.max_repeating_capture) : null,
       directional_attack_style: !!piece.directional_attack_style,
       ratio_attack_style: !!piece.ratio_attack_style,
       step_by_step_attack_style: !!piece.step_by_step_attack_style,
@@ -1079,8 +1083,10 @@ const PieceView = () => {
                   <div className={styles["property-tag"]}>
                     <span className={styles["property-icon"]}>🔄</span>
                     Can Repeat Movement
-                    {pieceToDisplay.max_directional_movement_iterations != null && 
-                      ` (max ${pieceToDisplay.max_directional_movement_iterations}x)`}
+                    {/* max_repeating_movement is the limit the engines enforce (repeatCap);
+                        max_directional_movement_iterations never was. */}
+                    {pieceToDisplay.max_repeating_movement != null &&
+                      ` (at most ${pieceToDisplay.max_repeating_movement}x)`}
                   </div>
                 )}
               </div>

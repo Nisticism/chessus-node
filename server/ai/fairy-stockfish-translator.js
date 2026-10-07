@@ -35,7 +35,7 @@
  * placement references the same piece id, it gets the same char.
  */
 
-const { straightHopRule, lPathRule } = require('../hop-rule');
+const { straightHopRule, lPathRule, repeatCap } = require('../hop-rule');
 
 // ---------- helpers ----------
 
@@ -231,6 +231,14 @@ function emitAtomsForGroup(piece, group, isCapture, mcPrefixOverride) {
 
   const chunks = [];
   const prefix = (mcPrefixOverride != null) ? mcPrefixOverride : (isCapture ? 'c' : 'm');
+  // For exact distances (buildAtomChunk): do they hop, repeat, and how often?
+  const exactInfo = {
+    hops: isCapture
+      ? toBool(piece.can_hop_attack_over_allies) && toBool(piece.can_hop_attack_over_enemies)
+      : toBool(piece.can_hop_over_allies) && toBool(piece.can_hop_over_enemies),
+    repeating: toBool(isCapture ? piece.repeating_capture : piece.repeating_movement),
+    cap: repeatCap(piece, isCapture),
+  };
 
   // Group adjacent directions sharing the same (v, exact) signature.
   // First, try the "all four directions identical" shortcut for nicer output.
@@ -242,7 +250,7 @@ function emitAtomsForGroup(piece, group, isCapture, mcPrefixOverride) {
 
   if (allSame) {
     const sig = vals[group[0]];
-    chunks.push(buildAtomChunk(sig, atom, sliderAtom, prefix, ''));
+    chunks.push(buildAtomChunk(sig, atom, sliderAtom, prefix, '', exactInfo));
     return chunks;
   }
 
@@ -251,7 +259,7 @@ function emitAtomsForGroup(piece, group, isCapture, mcPrefixOverride) {
   for (const d of group) {
     if (vals[d].v === 0) continue;
     const dirPrefix = DIR_TO_BETZA[d] || '';
-    chunks.push(buildAtomChunk(vals[d], atom, sliderAtom, prefix, dirPrefix));
+    chunks.push(buildAtomChunk(vals[d], atom, sliderAtom, prefix, dirPrefix, exactInfo));
   }
   return chunks;
 }
@@ -483,7 +491,23 @@ function canTranslateCustomSquares(piece) {
   ) !== null;
 }
 
-function buildAtomChunk(sig, atom, sliderAtom, mcPrefix, dirPrefix) {
+function buildAtomChunk(sig, atom, sliderAtom, mcPrefix, dirPrefix, exactInfo = null) {
+  /*
+   * An EXACT distance of 2 or 3 is a leap, not a short slide: D / H along a
+   * line, A / G on a diagonal. It is lame (n) when the piece cannot hop what
+   * lies between, a rider when it repeats (DD), and a limited rider with the
+   * repeat limit as its count (DD3 - repeatCap). Longer exact distances keep
+   * the slider approximation below. (Exact 2 used to come out as "2W": up to
+   * two squares, which is a different piece.)
+   */
+  if (sig.exact && exactInfo && (sig.v === 2 || sig.v === 3)) {
+    const leap = atom === 'W' ? (sig.v === 2 ? 'D' : 'H') : (sig.v === 2 ? 'A' : 'G');
+    const lame = exactInfo.hops ? '' : 'n';
+    const ride = exactInfo.repeating
+      ? `${leap}${Number.isFinite(exactInfo.cap) ? exactInfo.cap : ''}`
+      : '';
+    return `${mcPrefix}${lame}${dirPrefix}${leap}${ride}`;
+  }
   // sig = { v, exact }
   // - v=99   -> infinite slider: prefix + dirPrefix + sliderAtom (R or B)
   // - v=1    -> single-step leaper: prefix + dirPrefix + atom (W or F)

@@ -105,4 +105,20 @@ function lRouteClear(fromX, fromY, dx, dy, rule, blocks) {
   return route(legOne, legTwo, true) || route(legTwo, legOne, false);
 }
 
-module.exports = { straightHopRule, straightHopsBetween, hopRuleAllows, lPathRule, lRouteClear };
+/*
+ * How many times a repeating exact distance may repeat: a dabbaba rider
+ * limited to three jumps (Betza DD3) lands on 2, 4 and 6 and no further.
+ * max_repeating_movement / max_repeating_capture, 1-8; unset = no limit, the
+ * rule repeating exact moves always had. A piece that captures like it moves
+ * captures under its movement limit.
+ */
+function repeatCap(piece, attack) {
+  const n = (v) => (Number(v) > 0 ? Math.min(8, Math.floor(Number(v))) : null);
+  const own = n(piece?.[attack ? 'max_repeating_capture' : 'max_repeating_movement']);
+  if (own != null) return own;
+  const likeMovement = piece?.attacks_like_movement === 1 || piece?.attacks_like_movement === true;
+  if (attack && likeMovement) return n(piece?.max_repeating_movement) ?? Infinity;
+  return Infinity;
+}
+
+module.exports = { straightHopRule, straightHopsBetween, hopRuleAllows, lPathRule, lRouteClear, repeatCap };

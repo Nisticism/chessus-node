@@ -2906,6 +2906,7 @@ const CMP_INT_COLS = [
   'max_chain_hops',
   'max_directional_hop_pieces','max_directional_hop_pieces_attack',
   'min_directional_hop_pieces','min_directional_hop_pieces_attack','hop_landing_distance','hop_landing_distance_attack',
+  'max_repeating_movement','max_repeating_capture',
   'available_for_captures',
   'up_left_movement_change','up_movement_change','up_right_movement_change','right_movement_change',
   'down_right_movement_change','down_movement_change','down_left_movement_change','left_movement_change',
@@ -3557,6 +3558,8 @@ addGate(['min_directional_hop_pieces', 'hop_landing_distance'], (p) => gHasDirec
 addGate(['min_directional_hop_pieces_attack', 'hop_landing_distance_attack'], (p) => gHasDirectionalCapture(p) && gHopsOnAttack(p));
 addGate(['ratio_path_order', 'ratio_path_blocking', 'ratio_path_corner_blocks'], gHasRatioMovement);
 addGate(['ratio_path_order_attack', 'ratio_path_blocking_attack', 'ratio_path_corner_blocks_attack'], gHasRatioCapture);
+addGate(['max_repeating_movement'], (p) => cmpNormBool(p.repeating_movement));
+addGate(['max_repeating_capture'], (p) => cmpNormBool(p.repeating_capture));
 addGate(['exact_ratio_hop_only'], (p) => gHasRatioMovement(p) || gHasExactDirectionalMovement(p));
 addGate(['exact_ratio_hop_only_attack'], (p) => gHasRatioCapture(p) || gHasExactDirectionalCapture(p));
 // hop_stop_at_occupied is only ever read while repeating: on a repeating
@@ -5938,6 +5941,7 @@ app.post("/api/games/:gameId/uniqueness-check", authenticateToken, async (req, r
       'min_directional_hop_pieces', 'min_directional_hop_pieces_attack', 'hop_landing_distance', 'hop_landing_distance_attack',
       'ratio_path_order', 'ratio_path_order_attack', 'ratio_path_blocking', 'ratio_path_blocking_attack',
       'ratio_path_corner_blocks', 'ratio_path_corner_blocks_attack',
+      'max_repeating_movement', 'max_repeating_capture',
       'repeating_capture', 'repeating_ratio_capture', 'max_ratio_capture_iterations',
       'can_capture_allies', 'cannot_be_captured', 'max_chain_hops',
       'promotion_pieces_ids'
@@ -9990,6 +9994,7 @@ app.post("/api/pieces/create", authenticateToken, multerWrap(pieceUpload.array('
         min_directional_hop_pieces, min_directional_hop_pieces_attack, hop_landing_distance, hop_landing_distance_attack,
         ratio_path_order, ratio_path_order_attack, ratio_path_blocking, ratio_path_blocking_attack,
         ratio_path_corner_blocks, ratio_path_corner_blocks_attack,
+        max_repeating_movement, max_repeating_capture,
         can_capture_allies, cannot_be_captured, max_chain_hops,
         custom_movement_squares, custom_attack_squares,
         must_move_if_able, must_move_uses_action,
@@ -10012,7 +10017,7 @@ app.post("/api/pieces/create", authenticateToken, multerWrap(pieceUpload.array('
         require_direction_change, require_direction_change_capture,
         image_sources_json,
         created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const pieceWidth = Math.min(4, Math.max(1, parseInt(pieceData.piece_width) || 1));
@@ -10199,6 +10204,9 @@ app.post("/api/pieces/create", authenticateToken, multerWrap(pieceUpload.array('
       lPathField(pieceData.ratio_path_blocking_attack, LPATH_LEGS),
       lPathCorner(pieceData.ratio_path_corner_blocks),
       lPathCorner(pieceData.ratio_path_corner_blocks_attack),
+      // At most so many repeats of a repeating exact distance (repeatCap)
+      hopCountField(pieceData.max_repeating_movement),
+      hopCountField(pieceData.max_repeating_capture),
       // Can capture allies
       parseBooleanField(pieceData.can_capture_allies),
       // Cannot be captured
@@ -10756,6 +10764,8 @@ app.put("/api/pieces/:pieceId", authenticateToken, multerWrap(pieceUpload.array(
         ratio_path_blocking_attack = ?,
         ratio_path_corner_blocks = ?,
         ratio_path_corner_blocks_attack = ?,
+        max_repeating_movement = ?,
+        max_repeating_capture = ?,
         can_capture_allies = ?,
         cannot_be_captured = ?,
         max_chain_hops = ?,
@@ -10965,6 +10975,9 @@ app.put("/api/pieces/:pieceId", authenticateToken, multerWrap(pieceUpload.array(
       lPathField(pieceData.ratio_path_blocking_attack, LPATH_LEGS),
       lPathCorner(pieceData.ratio_path_corner_blocks),
       lPathCorner(pieceData.ratio_path_corner_blocks_attack),
+      // At most so many repeats of a repeating exact distance (repeatCap)
+      hopCountField(pieceData.max_repeating_movement),
+      hopCountField(pieceData.max_repeating_capture),
       // Can capture allies
       parseBooleanField(pieceData.can_capture_allies),
       // Cannot be captured
