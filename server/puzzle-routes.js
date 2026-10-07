@@ -2294,6 +2294,8 @@ function registerPuzzleRoutes(app, {
           blocksPublishing: false,
           unique,
           solverMoves,
+          // Solves, but a reply or move of the line is not the best: { reply, move }.
+          notOptimal: result.notOptimal || null,
         };
       };
 

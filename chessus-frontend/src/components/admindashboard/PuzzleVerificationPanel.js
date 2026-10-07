@@ -25,7 +25,7 @@ const FILTERS = [
   ['all', 'All'],
   ['unchecked', 'Not verified'],
   ['verified', 'Verified'],
-  ['not_unique', 'Not unique'],
+  ['not_unique', 'Refused'],
 ];
 
 const LIMITS = [
@@ -35,7 +35,14 @@ const LIMITS = [
   ['24', 'Stop after 24 hours'],
 ];
 
-const STATUS_LABEL = { verified: 'One solution', not_unique: 'Not unique', unchecked: 'Not verified' };
+const STATUS_LABEL = { verified: 'One solution', not_unique: 'Refused', unchecked: 'Not verified' };
+// A finished search's verdict. The last two grade the line itself (puzzle-line-quality.js).
+const RUN_VERDICT_LABEL = {
+  unique: 'one solution', not_unique: 'not unique', not_forced: 'not forced',
+  weak_reply: 'weak opponent reply', slow_move: 'slow solver move',
+};
+// The verdict form's outcome a search verdict suggests.
+const SUGGESTED_OUTCOME = { weak_reply: 'weak_reply', slow_move: 'slow_move', not_unique: 'not_unique', unique: 'verified' };
 const METHOD_LABEL = { auto: 'automatic check', search: 'staff search', manual: 'by hand' };
 
 const duration = (ms) => {
@@ -153,6 +160,7 @@ export default function PuzzleVerificationPanel() {
   // one the puzzle's current status suggests).
   const startResolve = (p, preset) => {
     const outcome = preset
+      || SUGGESTED_OUTCOME[p.run_verdict]
       || (p.unique_status === 'verified' ? 'verified' : p.unique_status === 'not_unique' ? 'not_unique' : (p.request_id ? 'not_verified' : 'not_unique'));
     const reason = outcome === 'verified' ? '' : (p.unique_detail || p.run_detail || '');
     setResolving({ requestId: p.request_id || null, puzzleId: p.id, outcome, reason });
@@ -262,7 +270,7 @@ export default function PuzzleVerificationPanel() {
                   <td className={styles["cell"]}>
                     {p.live ? <LiveProgress live={p.live} /> : p.run_id ? (
                       <>
-                        {p.run_state === 'done' ? (p.run_verdict || 'done').replace('_', ' ') : p.run_state}
+                        {p.run_state === 'done' ? (RUN_VERDICT_LABEL[p.run_verdict] || p.run_verdict || 'done') : p.run_state}
                         {p.run_finished_at && <span className={styles["small"]}>{formatDateLegacy(p.run_finished_at)}</span>}
                         {p.run_detail && p.run_detail !== p.unique_detail && <span className={styles["small"]}>{p.run_detail}</span>}
                       </>
@@ -312,7 +320,8 @@ export default function PuzzleVerificationPanel() {
                         >
                           <option value="verified">Verified — award the badge</option>
                           <option value="not_unique">Not verified — more than one solution</option>
-                          <option value="not_optimal">Not verified — one or more moves were not optimal</option>
+                          <option value="weak_reply">Not verified — an opponent reply is not their best</option>
+                          <option value="slow_move">Not verified — a solver move is not the fastest</option>
                           {resolving.requestId && <option value="not_verified">Not verified — another reason</option>}
                         </select>
                         <textarea

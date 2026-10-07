@@ -61,6 +61,7 @@ async function verify(puzzle, gameType, opts, onProgress) {
 
   let verdict = null;
   let detail;
+  let quality = null;
   if (!r.supported) {
     detail = `This puzzle cannot be searched: ${r.reason}.`;
   } else if (!r.complete) {
@@ -73,19 +74,44 @@ async function verify(puzzle, gameType, opts, onProgress) {
     const why = await describeNotForced(puzzle, gameType, line, broken.step, label, brokenStep?.forcing || [],
       { aim: opts.aim || puzzle.goal, budgetMs: 5 * 60000, dutyCycle: opts.dutyCycle });
     detail = `The line is not forced: ${why}`;
-  } else if (!r.unique) {
-    const extra = steps.find((s) => s.count > 1);
-    verdict = 'not_unique';
-    detail = `More than one solution: at move ${extra.step}, ${extra.count} different moves force ${label}`
-      + (extra.moves.length ? ` (${extra.moves.join('; ')}${extra.count > extra.moves.length ? ', ...' : ''})` : '')
-      + '.';
   } else {
-    verdict = 'unique';
-    detail = `One solution: at every one of the ${r.solverMoves} moves, exactly one move forces ${label} against every defense.`;
+    /*
+     * Forced - so grade the script too (puzzle-line-quality.js): the
+     * opponent's replies and the solver's own moves. A weak reply or a slow
+     * move is named, and refuses the badge with its own verdict, ahead of
+     * "more than one solution" - it is usually WHY there is more than one.
+     */
+    const { judgeLine } = require('./puzzle-line-quality');
+    quality = await judgeLine(puzzle, gameType, line, {
+      aim: opts.aim || puzzle.goal,
+      budgetMs: Number.isFinite(opts.budgetMs) && opts.budgetMs > 0 ? opts.budgetMs : Infinity,
+      dutyCycle: opts.dutyCycle,
+      ttMax: opts.ttMax,
+    });
+    const said = quality.findings.map((f) => f.text).join(' ');
+    if (quality.findings.some((f) => f.side === 'reply')) {
+      verdict = 'weak_reply';
+      detail = `The opponent's play is not optimal. ${said}`;
+    } else if (quality.findings.some((f) => f.side === 'move')) {
+      verdict = 'slow_move';
+      detail = `The solver's line is not optimal. ${said}`;
+    } else if (!r.unique) {
+      const extra = steps.find((s) => s.count > 1);
+      verdict = 'not_unique';
+      detail = `More than one solution: at move ${extra.step}, ${extra.count} different moves force ${label}`
+        + (extra.moves.length ? ` (${extra.moves.join('; ')}${extra.count > extra.moves.length ? ', ...' : ''})` : '')
+        + '.';
+    } else {
+      verdict = 'unique';
+      detail = `One solution: at every one of the ${r.solverMoves} moves, exactly one move forces ${label} against every defense, `
+        + 'and every reply in the line is the opponent\'s best.';
+    }
+    if (!quality.complete) detail += ' (The check of each move\'s quality stopped before it finished.)';
   }
   return {
     verdict, detail, complete: r.complete, supported: r.supported,
     solverMoves: r.solverMoves, steps, nodes: r.nodes, ms: r.ms,
+    findings: quality ? quality.findings : [],
   };
 }
 

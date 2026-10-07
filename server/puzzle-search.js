@@ -700,4 +700,6 @@ async function defensesAgainst(puzzle, gameType, line, step, opts = {}) {
 
 module.exports = {
   searchWinInTwo, searchWinInN, verifyPuzzleLine, defensesAgainst, cloneState, unsupportedReason, REPLY_COMPLETED_AIMS,
+  // The search's own pieces, for judging a line move by move (puzzle-line-quality.js).
+  Budget, TT_MAX_DEFAULT, playAll, playOne, achieved, achievedAfterReply, winsWithin, everyReplyLoses,
 };

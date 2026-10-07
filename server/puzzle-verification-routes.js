@@ -31,6 +31,9 @@ const { MECHANICAL_GOALS, GOAL_DEFS, lineWinsGame } = require('./puzzle-validati
 const searchableGoal = (goal) => MECHANICAL_GOALS.has(goal) || goal === 'specific_move';
 
 const UNIQUE_STATUSES = new Set(['unchecked', 'verified', 'not_unique']);
+// How staff may close a request. The "not optimal" ones say WHOSE move was not.
+const NOT_OPTIMAL = new Set(['weak_reply', 'slow_move', 'not_optimal']);
+const RESOLVE_OUTCOMES = new Set(['verified', 'not_unique', 'weak_reply', 'slow_move', 'not_optimal', 'not_verified']);
 const MAX_NOTE = 500;
 const MAX_REASON = 1000;
 
@@ -357,7 +360,7 @@ function registerPuzzleVerificationRoutes(app, { db_pool, dbHelpers, authenticat
           await db_pool.query(
             `UPDATE puzzle_verification_runs SET state = 'done', verdict = ?, detail = ?, result_json = ?, finished_at = NOW()
              WHERE id = ?`,
-            [result.verdict, detail, JSON.stringify({ steps: result.steps, nodes: result.nodes, ms: result.ms, complete: result.complete }), runId]
+            [result.verdict, detail, JSON.stringify({ steps: result.steps, nodes: result.nodes, ms: result.ms, complete: result.complete, findings: result.findings || [] }), runId]
           );
           if (unchanged && result.verdict) {
             await setUnique(puzzle.id, {
@@ -447,9 +450,12 @@ function registerPuzzleVerificationRoutes(app, { db_pool, dbHelpers, authenticat
    *   outcome 'verified'     award the badge (keeping a search's verdict as the
    *                          method if one already set it) and say so
    *   outcome 'not_unique'   refuse it - more than one solution
-   *   outcome 'not_optimal'  refuse it - one or more of the line's moves are
-   *                          not the best available (the usual finding for a
-   *                          puzzle the engine cannot judge)
+   *   outcome 'weak_reply'   refuse it - an opponent's reply in the line is not
+   *                          their best: another lasts longer or stops the goal
+   *   outcome 'slow_move'    refuse it - one of the solver's moves is not the
+   *                          best: another finishes the goal sooner
+   *                          ('not_optimal', from before the split, is a
+   *                          weak_reply or slow_move without saying which)
    *   outcome 'not_verified' close it without changing the badge (could not be
    *                          settled, not eligible, ...); the reason says why
    */
@@ -460,8 +466,8 @@ function registerPuzzleVerificationRoutes(app, { db_pool, dbHelpers, authenticat
       if (!request) return res.status(404).send({ message: 'No such request' });
       if (request.status !== 'open') return res.status(409).send({ message: 'That request is already closed.' });
       const outcome = String(req.body?.outcome || '');
-      if (!['verified', 'not_unique', 'not_optimal', 'not_verified'].includes(outcome)) {
-        return res.status(400).send({ message: 'outcome must be verified, not_unique, not_optimal or not_verified' });
+      if (!RESOLVE_OUTCOMES.has(outcome)) {
+        return res.status(400).send({ message: `outcome must be one of: ${[...RESOLVE_OUTCOMES].join(', ')}` });
       }
       const reason = String(req.body?.reason || '').trim().slice(0, MAX_REASON);
       if (outcome !== 'verified' && !reason) return res.status(400).send({ message: 'Give the requester a reason.' });
@@ -474,9 +480,9 @@ function registerPuzzleVerificationRoutes(app, { db_pool, dbHelpers, authenticat
         }
       } else if (outcome === 'not_unique') {
         await setUnique(puzzle.id, { status: 'not_unique', method: puzzle.unique_method === 'search' && puzzle.unique_status === 'not_unique' ? 'search' : 'manual', detail: reason, by: req.user.id });
-      } else if (outcome === 'not_optimal') {
-        // A move that is not the best available means the line is not THE
-        // solution - the badge is refused, with the reason that says so.
+      } else if (NOT_OPTIMAL.has(outcome)) {
+        // A move that is not the best available - either side's - means the
+        // line is not THE solution: the badge is refused, with the reason.
         await setUnique(puzzle.id, { status: 'not_unique', method: 'manual', detail: reason, by: req.user.id });
       }
       await db_pool.query(

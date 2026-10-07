@@ -1389,7 +1389,11 @@ const PuzzleBuilder = () => {
           setCheckResult((prev) => ({ ...(prev || {}), tone: 'info', progress: view }));
         }
       }
-      if (data.status === 'valid') {
+      if (data.status === 'valid' && data.notOptimal) {
+        // Solves, but the script is weak: a reply that is not the opponent's
+        // best, or a move of yours that is not the quickest.
+        setCheckResult({ tone: 'warn', text: `Checked, and it works: ${data.detail}` });
+      } else if (data.status === 'valid') {
         setCheckResult({
           tone: 'ok',
           text: data.searched && data.detail

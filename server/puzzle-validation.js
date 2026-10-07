@@ -1416,27 +1416,72 @@ async function checkWholeLine(puzzle, gameType, line, reached, opts) {
   // cannot recognise a different last move as finishing it either.
   const exact = !!puzzle.require_exact_line || REPLY_COMPLETED_GOALS.has(puzzle.goal);
   const extra = (exact ? r.steps : r.steps.slice(0, -1)).find((st) => st.count > 1);
+  const quality = await judgeLineQuality(puzzle, gameType, line, opts);
   if (extra) {
     const others = extra.step === 1
       ? extra.forcing.filter((m) => boardMoveKey(m) !== boardMoveKey(line[0])).slice(0, 3).map((m) => describeMoveOn(pieces, gameType, m))
       : [];
     return {
       status: VALIDATION.AMBIGUOUS, solutions: extra.step === 1 ? extra.forcing : [line[0]], intendedWorks: true,
-      goalReached: true, searched: true, verification: r, unique: false,
+      goalReached: true, searched: true, verification: r, unique: false, quality,
       detail: `at your move ${extra.step}, ${extra.count} different moves force ${label}`
         + `${others.length ? ` (also ${others.join('; ')})` : ''}. `
         + (exact ? 'This puzzle accepts only your exact line, ' : 'Before the last move only the line\'s move is accepted, ')
-        + 'so a solver who finds another would be told it is wrong.',
+        + 'so a solver who finds another would be told it is wrong.'
+        + (quality?.findings.length ? ` ${describeFindings(quality.findings)}` : ''),
     };
   }
   const last = r.steps[r.steps.length - 1];
+  const detail = `checked against every defense: at each step your move is the only one that forces ${label}`
+    + (last.count > 1 && !exact ? ` (the final move can be played ${last.count} ways, and any of them is accepted).` : '.');
+  /*
+   * Forced and unique - but is the SCRIPT good? A reply that gives up early,
+   * or a move of yours that takes the long way round,
+   * still solves; it is flagged, and it costs the unique-solution badge
+   * (puzzle-line-quality.js).
+   */
+  if (quality?.findings.length) {
+    return {
+      status: VALIDATION.VALID, solutions: [line[0]], intendedWorks: true, goalReached: true, searched: true,
+      verification: r, unique: false, quality,
+      notOptimal: notOptimalSides(quality.findings),
+      detail: `${detail} But the line is not optimal: ${describeFindings(quality.findings)}`,
+    };
+  }
   return {
     status: VALIDATION.VALID, solutions: [line[0]], intendedWorks: true, goalReached: true, searched: true,
-    verification: r, unique: r.unique,
-    detail: `checked against every defense: at each step your move is the only one that forces ${label}`
-      + (last.count > 1 && !exact ? ` (the final move can be played ${last.count} ways, and any of them is accepted).` : '.'),
+    verification: r, unique: r.unique, quality,
+    detail,
   };
 }
+
+/*
+ * Grade the line's moves (puzzle-line-quality.js): the opponent's replies and
+ * the solver's own moves. Only of a forced line - the caller has checked - and
+ * on the time left; null when it could not finish, which flags nothing.
+ */
+async function judgeLineQuality(puzzle, gameType, line, opts) {
+  const { judgeLine } = require('./puzzle-line-quality');
+  try {
+    const q = await judgeLine(puzzle, gameType, line, {
+      aim: opts.aim || puzzle.goal,
+      budgetMs: Math.min(60000, opts.budgetMs || 60000),
+      dutyCycle: opts.dutyCycle,
+    });
+    return q.complete || q.findings.length ? q : null;
+  } catch (err) {
+    console.warn(`[puzzle] could not judge the line of ${puzzle.id}: ${err.message}`);
+    return null;
+  }
+}
+
+const describeFindings = (findings) => findings.map((f) => f.text).join(' ');
+
+/* Which side of the line the findings are about: { reply, move }. */
+const notOptimalSides = (findings) => ({
+  reply: findings.some((f) => f.side === 'reply'),
+  move: findings.some((f) => f.side === 'move'),
+});
 
 /** The line ends with the solver having won the game. */
 async function lineWinsGame(puzzle, gameType, line) {
@@ -1774,6 +1819,9 @@ module.exports = {
   lineGoalLabel,
   // For the staff search: does a "find this exact move" line win the game?
   lineWinsGame,
+  // The line-quality findings, as words and as sides (puzzle-line-quality.js).
+  describeFindings,
+  notOptimalSides,
   // A line's placements named by where they land on a gravity board.
   settleLine,
   sameDrop,

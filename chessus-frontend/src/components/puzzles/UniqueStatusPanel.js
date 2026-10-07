@@ -76,7 +76,9 @@ export default function UniqueStatusPanel({ puzzleId, published, checkResult }) 
 
   let headline;
   if (status === 'verified') headline = <UniqueBadge status="verified" method={info.unique_method} />;
-  else if (status === 'not_unique') headline = <span className={styles["status-warn"]}>No unique solution</span>;
+  // Not only "more than one answer": a reply that is not the opponent's best,
+  // or a slow move, refuses it too. The detail below says which.
+  else if (status === 'not_unique') headline = <span className={styles["status-warn"]}>Not awarded</span>;
   else headline = <span className={styles["status-dim"]}>Not verified yet</span>;
 
   let explain = info.unique_detail;
