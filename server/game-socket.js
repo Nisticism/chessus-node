@@ -15470,6 +15470,14 @@ async function applyPromotionToPiece(gameState, pieceId, promoteToPieceId, promo
 
   const piece = gameState.pieces[pieceIndex];
 
+  // The promotion target as a numeric piece_id. Live games send the numeric id
+  // directly; puzzle solution lines carry an instance-style id ("690_0_0" =
+  // piece_id 690), and Number("690_0_0") is NaN - which made pieceRowsFor and
+  // placementFor below silently find nothing and skip the promotion entirely.
+  const numericPromoteToId = Number.isFinite(Number(promoteToPieceId))
+    ? Number(promoteToPieceId)
+    : parseInt(String(promoteToPieceId), 10);
+
   // Resolve the player who will OWN the promoted piece. Defaults to the
   // promoting piece's own side; a per-placement promotion target may instead
   // hand the piece to another player (cross-player promotion) or to the
@@ -15483,7 +15491,7 @@ async function applyPromotionToPiece(gameState, pieceId, promoteToPieceId, promo
   // The piece as this game knows it - its frozen definition, so a piece edited
   // mid-game promotes into what it was when the game began (game-rule-freeze.js).
   const frozenRules = await loadFrozenRules(db_pool, gameState.ruleSnapshot);
-  const [fullPieceData] = await pieceRowsFor(db_pool, frozenRules, [promoteToPieceId]);
+  const [fullPieceData] = await pieceRowsFor(db_pool, frozenRules, [numericPromoteToId]);
   if (!fullPieceData) return null;
 
   // Look up per-game junction overrides for this target piece.
@@ -15492,7 +15500,7 @@ async function applyPromotionToPiece(gameState, pieceId, promoteToPieceId, promo
   let junctionOverrides = null;
   try {
     if (gameState.gameTypeId) {
-      junctionOverrides = await placementFor(db_pool, frozenRules, gameState.gameTypeId, promoteToPieceId, targetPlayer);
+      junctionOverrides = await placementFor(db_pool, frozenRules, gameState.gameTypeId, numericPromoteToId, targetPlayer);
     }
   } catch (e) {
     console.error('applyPromotionToPiece: failed to load junction overrides:', e);
