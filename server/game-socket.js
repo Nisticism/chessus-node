@@ -4,6 +4,7 @@
  */
 
 const { straightHopRule, straightHopsBetween, hopRuleAllows, lPathRule, lRouteClear, repeatCap } = require('./hop-rule');
+const { firstMoveVariant, parseFirstMoveProfile } = require('./first-move');
 const db_pool = require("../configs/db");
 const crypto = require('crypto');
 const path = require('path');
@@ -4848,6 +4849,8 @@ function initializeSocket(server, { isUserBanned } = {}) {
               ratio_path_corner_blocks_attack: fullPieceData.ratio_path_corner_blocks_attack,
               max_repeating_movement: fullPieceData.max_repeating_movement,
               max_repeating_capture: fullPieceData.max_repeating_capture,
+              first_move_profile: fullPieceData.first_move_profile,
+              first_move_profile_moves: fullPieceData.first_move_profile_moves,
               hop_stop_at_occupied_attack: fullPieceData.hop_stop_at_occupied_attack,
               // Capture data
               can_capture_enemy_on_move: fullPieceData.can_capture_enemy_on_move,
@@ -5537,6 +5540,8 @@ function initializeSocket(server, { isUserBanned } = {}) {
               ratio_path_corner_blocks_attack: fullPieceData.ratio_path_corner_blocks_attack,
               max_repeating_movement: fullPieceData.max_repeating_movement,
               max_repeating_capture: fullPieceData.max_repeating_capture,
+              first_move_profile: fullPieceData.first_move_profile,
+              first_move_profile_moves: fullPieceData.first_move_profile_moves,
               hop_stop_at_occupied_attack: fullPieceData.hop_stop_at_occupied_attack,
               can_capture_enemy_on_move: fullPieceData.can_capture_enemy_on_move,
               attacks_like_movement: fullPieceData.attacks_like_movement,
@@ -11544,6 +11549,8 @@ function initializeSocket(server, { isUserBanned } = {}) {
                     ratio_path_corner_blocks_attack: fullPieceData.ratio_path_corner_blocks_attack,
                     max_repeating_movement: fullPieceData.max_repeating_movement,
                     max_repeating_capture: fullPieceData.max_repeating_capture,
+                    first_move_profile: fullPieceData.first_move_profile,
+                    first_move_profile_moves: fullPieceData.first_move_profile_moves,
                     hop_stop_at_occupied_attack: fullPieceData.hop_stop_at_occupied_attack,
                     // Capture data
                     can_capture_enemy_on_move: fullPieceData.can_capture_enemy_on_move,
@@ -14242,6 +14249,20 @@ function deriveEnPassantTarget(movingPiece, from, to) {
     }
   }
   
+  /*
+   * A first move made by the piece's FIRST-MOVE movement (first-move.js),
+   * further along a line than its ordinary movement reaches that way - the
+   * pawn's double step, written the new way.
+   */
+  const profile = wasFirstMoveOnly ? null : parseFirstMoveProfile(movingPiece.first_move_profile);
+  if (profile && (dx === 0 || dy === 0 || Math.abs(dx) === Math.abs(dy))) {
+    const dist = Math.max(Math.abs(dx), Math.abs(dy));
+    const dir = [effectiveDy < 0 ? 'up' : effectiveDy > 0 ? 'down' : '', effectiveDx < 0 ? 'left' : effectiveDx > 0 ? 'right' : '']
+      .filter(Boolean).join('_');
+    const reach = (v) => (Number(v) === 99 ? Infinity : Math.abs(Number(v) || 0));
+    if (dist > 1 && reach(profile[`${dir}_movement`]) >= dist && reach(movingPiece[`${dir}_movement`]) < dist) wasFirstMoveOnly = true;
+  }
+
   if (!wasFirstMoveOnly) return null;
 
   // The en passant capture square is where the piece "passed through".
@@ -15606,6 +15627,8 @@ async function applyPromotionToPiece(gameState, pieceId, promoteToPieceId, promo
     ratio_path_corner_blocks_attack: fullPieceData.ratio_path_corner_blocks_attack,
     max_repeating_movement: fullPieceData.max_repeating_movement,
     max_repeating_capture: fullPieceData.max_repeating_capture,
+    first_move_profile: fullPieceData.first_move_profile,
+    first_move_profile_moves: fullPieceData.first_move_profile_moves,
     hop_stop_at_occupied_attack: fullPieceData.hop_stop_at_occupied_attack,
     can_capture_enemy_on_move: fullPieceData.can_capture_enemy_on_move,
     attacks_like_movement: fullPieceData.attacks_like_movement,
@@ -16519,7 +16542,19 @@ function canRangedAttackTo(fromRow, fromCol, toRow, toCol, pieceData, playerPosi
  * Check if a piece can attack a specific square
  * This is a simplified version - ideally should use full piece movement data
  */
+/*
+ * Does the piece attack the square, with the piece's FIRST-MOVE movement too while it applies
+ * (server/first-move.js): the same code run on a copy of the piece with its
+ * first-move movement and attack swapped in. canShapeAttackSquare is the piece's ordinary
+ * movement alone.
+ */
 function canPieceAttackSquare(piece, targetX, targetY, allPieces, gameType) {
+  if (canShapeAttackSquare(piece, targetX, targetY, allPieces, gameType)) return true;
+  const variant = firstMoveVariant(piece);
+  return !!variant && canShapeAttackSquare(variant, targetX, targetY, allPieces, gameType);
+}
+
+function canShapeAttackSquare(piece, targetX, targetY, allPieces, gameType) {
   // A multi-tile piece's own squares never obstruct its own paths (a move of
   // one square right or down walks the anchor across them).
   if ((piece.piece_width || 1) > 1 || (piece.piece_height || 1) > 1) {
@@ -17295,7 +17330,19 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces, gameType) {
  * Check if a piece can move to a specific square (non-capture)
  * This validates ONLY the movement rules, not capture rules
  */
+/*
+ * Can the piece move to the square, with the piece's FIRST-MOVE movement too while it applies
+ * (server/first-move.js): the same code run on a copy of the piece with its
+ * first-move movement and attack swapped in. canShapeMoveToSquare is the piece's ordinary
+ * movement alone.
+ */
 function canPieceMoveToSquare(piece, targetX, targetY, allPieces, gameType = null) {
+  if (canShapeMoveToSquare(piece, targetX, targetY, allPieces, gameType)) return true;
+  const variant = firstMoveVariant(piece);
+  return !!variant && canShapeMoveToSquare(variant, targetX, targetY, allPieces, gameType);
+}
+
+function canShapeMoveToSquare(piece, targetX, targetY, allPieces, gameType = null) {
   // A multi-tile piece's own squares never obstruct its own paths (a move of
   // one square right or down walks the anchor across them).
   if ((piece.piece_width || 1) > 1 || (piece.piece_height || 1) > 1) {
@@ -18115,7 +18162,28 @@ function applyRangeSquareBonus(piece, gameType) {  if (!gameType) return piece;
  * @param {Object} gameType - The game type with board dimensions
  * @returns {Array} - Array of {x, y} positions the piece can move to
  */
+/*
+ * Every move a piece can make, with the piece's FIRST-MOVE movement too while it applies
+ * (server/first-move.js): the same code run on a copy of the piece with its
+ * first-move movement and attack swapped in. possibleMovesOfShape is the piece's ordinary
+ * movement alone.
+ */
 function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
+  const moves = possibleMovesOfShape(piece, allPieces, gameType, gamePly);
+  const variant = firstMoveVariant(piece);
+  if (!variant) return moves;
+  const keyOf = (m) => `${m.x},${m.y}|${m.via ? `${m.via.x},${m.via.y}` : ''}|${m.isRangedAttack ? 'R' : ''}`;
+  const seen = new Set(moves.map(keyOf));
+  for (const m of possibleMovesOfShape(variant, allPieces, gameType, gamePly)) {
+    const k = keyOf(m);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    moves.push({ ...m, isFirstMoveOnly: true });
+  }
+  return moves;
+}
+
+function possibleMovesOfShape(piece, allPieces, gameType, gamePly = 0) {
   let moves = [];
   const boardWidth = gameType.board_width || 8;
   const boardHeight = gameType.board_height || 8;

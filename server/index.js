@@ -153,6 +153,7 @@ const { sendWelcomeEmail, sendDonationEmail, sendContactEmail, sendPasswordReset
 
 // Socket.io game handler
 const { isStaffUser, creatorNotHidden, hideFromViewer, hiddenCreatorIds, REMOVED_MESSAGE } = require('./banned-content');
+const { sanitizeFirstMoveProfile } = require('./first-move');
 const { initializeSocket, activeGames: gsActiveGames, gameTimers: gsGameTimers, disconnectTimeouts: gsDisconnectTimeouts, onlineUsers, reconcileOnlineUsers, getIO, SILVER_MIN_DONATION, GOLD_MIN_DONATION } = require("./game-socket");
 
 //  Express
@@ -2907,6 +2908,7 @@ const CMP_INT_COLS = [
   'max_directional_hop_pieces','max_directional_hop_pieces_attack',
   'min_directional_hop_pieces','min_directional_hop_pieces_attack','hop_landing_distance','hop_landing_distance_attack',
   'max_repeating_movement','max_repeating_capture',
+  'first_move_profile_moves',
   'available_for_captures',
   'up_left_movement_change','up_movement_change','up_right_movement_change','right_movement_change',
   'down_right_movement_change','down_movement_change','down_left_movement_change','left_movement_change',
@@ -2922,6 +2924,7 @@ const CMP_INT_COLS = [
   'max_ratio_ranged_attack_iterations','min_ratio_ranged_attack_iterations',
 ];
 const CMP_JSON_COLS = [
+  'first_move_profile',
   // Strings, compared as set or not: the L-path rule (lPathRule).
   'ratio_path_order', 'ratio_path_order_attack', 'ratio_path_blocking', 'ratio_path_blocking_attack',
   'special_scenario_moves','special_scenario_captures',
@@ -2977,6 +2980,13 @@ const lPathField = (v, allowed) => (allowed.includes(v) ? v : null);
 const lPathCorner = (v) => {
   if (v === undefined || v === null || v === '' || v === 'null') return null;
   return (v === true || v === 1 || v === '1' || v === 'true') ? null : 0;
+};
+
+// A piece's first-move movement, as stored: only the movement fields, or NULL.
+const firstMoveProfileField = (v) => {
+  if (v === undefined || v === null || v === '' || v === 'null') return null;
+  const profile = sanitizeFirstMoveProfile(v);
+  return profile ? JSON.stringify(profile) : null;
 };
 
 const PIECE_PASSWORD_MIN = 4;
@@ -5942,6 +5952,7 @@ app.post("/api/games/:gameId/uniqueness-check", authenticateToken, async (req, r
       'ratio_path_order', 'ratio_path_order_attack', 'ratio_path_blocking', 'ratio_path_blocking_attack',
       'ratio_path_corner_blocks', 'ratio_path_corner_blocks_attack',
       'max_repeating_movement', 'max_repeating_capture',
+      'first_move_profile', 'first_move_profile_moves',
       'repeating_capture', 'repeating_ratio_capture', 'max_ratio_capture_iterations',
       'can_capture_allies', 'cannot_be_captured', 'max_chain_hops',
       'promotion_pieces_ids'
@@ -9995,6 +10006,7 @@ app.post("/api/pieces/create", authenticateToken, multerWrap(pieceUpload.array('
         ratio_path_order, ratio_path_order_attack, ratio_path_blocking, ratio_path_blocking_attack,
         ratio_path_corner_blocks, ratio_path_corner_blocks_attack,
         max_repeating_movement, max_repeating_capture,
+        first_move_profile, first_move_profile_moves,
         can_capture_allies, cannot_be_captured, max_chain_hops,
         custom_movement_squares, custom_attack_squares,
         must_move_if_able, must_move_uses_action,
@@ -10017,7 +10029,7 @@ app.post("/api/pieces/create", authenticateToken, multerWrap(pieceUpload.array('
         require_direction_change, require_direction_change_capture,
         image_sources_json,
         created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const pieceWidth = Math.min(4, Math.max(1, parseInt(pieceData.piece_width) || 1));
@@ -10207,6 +10219,9 @@ app.post("/api/pieces/create", authenticateToken, multerWrap(pieceUpload.array('
       // At most so many repeats of a repeating exact distance (repeatCap)
       hopCountField(pieceData.max_repeating_movement),
       hopCountField(pieceData.max_repeating_capture),
+      // The first-move movement (server/first-move.js): only its own fields, compacted
+      firstMoveProfileField(pieceData.first_move_profile),
+      firstMoveProfileField(pieceData.first_move_profile) ? hopCountField(pieceData.first_move_profile_moves) : null,
       // Can capture allies
       parseBooleanField(pieceData.can_capture_allies),
       // Cannot be captured
@@ -10766,6 +10781,8 @@ app.put("/api/pieces/:pieceId", authenticateToken, multerWrap(pieceUpload.array(
         ratio_path_corner_blocks_attack = ?,
         max_repeating_movement = ?,
         max_repeating_capture = ?,
+        first_move_profile = ?,
+        first_move_profile_moves = ?,
         can_capture_allies = ?,
         cannot_be_captured = ?,
         max_chain_hops = ?,
@@ -10978,6 +10995,9 @@ app.put("/api/pieces/:pieceId", authenticateToken, multerWrap(pieceUpload.array(
       // At most so many repeats of a repeating exact distance (repeatCap)
       hopCountField(pieceData.max_repeating_movement),
       hopCountField(pieceData.max_repeating_capture),
+      // The first-move movement (server/first-move.js): only its own fields, compacted
+      firstMoveProfileField(pieceData.first_move_profile),
+      firstMoveProfileField(pieceData.first_move_profile) ? hopCountField(pieceData.first_move_profile_moves) : null,
       // Can capture allies
       parseBooleanField(pieceData.can_capture_allies),
       // Cannot be captured

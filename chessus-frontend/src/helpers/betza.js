@@ -41,6 +41,8 @@
  * Anything the site cannot express is reported, never silently dropped.
  */
 
+import { FIRST_MOVE_FIELDS, compactFirstMoveProfile } from './firstMove';
+
 const ATOMS = {
   W: { leap: [1, 0], name: 'Wazir', says: 'one square orthogonally (up, down, left or right)' },
   F: { leap: [1, 1], name: 'Ferz', says: 'one square diagonally' },
@@ -335,11 +337,37 @@ function hopSettings(needs, warnings) {
  * Settings for the wizard, from a Betza code. `updates` replaces the piece's
  * movement and capture-on-move settings (ranged attacks and special rules are
  * left alone, apart from castling and en passant when the code names them).
+ *
+ * FIRST MOVE (i): the parts marked i become the piece's first-move movement
+ * (helpers/firstMove.js) - built exactly as the rest are, then stored as the
+ * first-move profile. So a pawn, mfWcfFimfnD, is a one-step forward move and
+ * a diagonal capture, plus a first-move lame two-step; and an i on a leap or
+ * an L-move (iN) works, which the old per-direction "first N moves" could not.
  */
 export function betzaToPieceData(code) {
   const parsed = parseBetza(code);
   if (parsed.error) return { updates: null, warnings: [], error: parsed.error, parts: parsed.parts };
   const warnings = [...parsed.warnings];
+  const firstParts = parsed.parts.filter((part) => part.atom !== 'O' && part.mods.includes('i'));
+  const everyParts = parsed.parts.filter((part) => !firstParts.includes(part));
+  const u = buildUpdates(everyParts, warnings);
+  u.first_move_profile = null;
+  u.first_move_profile_moves = null;
+  if (firstParts.length) {
+    const first = buildUpdates(firstParts.map((part) => ({ ...part, mods: part.mods.replace(/i/g, '') })), warnings);
+    const profile = {};
+    for (const f of FIRST_MOVE_FIELDS) if (first[f] !== undefined) profile[f] = first[f];
+    if (first.special_scenario_capture) profile.special_scenario_captures = first.special_scenario_capture;
+    u.first_move_profile = JSON.stringify(compactFirstMoveProfile(profile));
+    u.first_move_profile_moves = 1;
+    if (first.can_en_passant) u.can_en_passant = true;
+  }
+  // Once each: a rule broken in several directions is still one rule.
+  return { updates: u, warnings: [...new Set(warnings)], error: null, parts: parsed.parts };
+}
+
+/* The wizard settings for some parts of a code (first-move parts arrive with their i removed). */
+function buildUpdates(parts, warnings) {
   const u = blankMovementAndAttack();
   const custom = { movement: new Map(), capture: new Map() };
   const extra = { movement: {}, capture: {} };   // additionalMovements / additionalCaptures
@@ -352,21 +380,18 @@ export function betzaToPieceData(code) {
 
   const addCustom = (kind, dx, dy) => custom[kind].set(`${dy},${dx}`, { row: dy, col: dx });
 
-  // A direction at a distance, possibly exact, possibly first-move-only.
-  const setDirection = (kind, d, dist, { exact = false, initial = false, repeat = false }) => {
+  // A direction at a distance, possibly exact. (First-move parts are built
+  // apart, into the first-move profile - betzaToPieceData.)
+  const setDirection = (kind, d, dist, { exact = false, repeat = false }) => {
     const key = `${d}_${kind}`;
     const current = Number(u[key]) || 0;
     const sameShape = !!u[`${key}_exact`] === exact;
-    if (!current && !initial) {
+    if (!current) {
       u[key] = dist; u[`${key}_exact`] = exact;
       if (repeat) u[kind === 'movement' ? 'repeating_movement' : 'repeating_capture'] = true;
       return;
     }
-    if (!current && initial) {
-      u[key] = dist; u[`${key}_exact`] = exact; u[`${key}_available_for`] = 1;
-      return;
-    }
-    if (!initial && sameShape && !exact) { u[key] = Math.max(current, dist); return; }
+    if (sameShape && !exact) { u[key] = Math.max(current, dist); return; }
     // A second distance in a direction that already has one: an alternative.
     const list = extra[kind][d] || (extra[kind][d] = []);
     if (list.length >= 2) {
@@ -381,18 +406,17 @@ export function betzaToPieceData(code) {
     const coveredBelow = !u[`${key}_exact`] && current >= dist - 1;
     list.push({
       value: dist === 99 ? 1 : dist, exact: exact && !coveredBelow, infinite: dist === 99,
-      firstMoveOnly: false, ...(initial ? { availableForMoves: 1 } : {}),
+      firstMoveOnly: false,
     });
   };
 
-  for (const part of parsed.parts) {
+  for (const part of parts) {
     if (part.unsupported.length) {
       warnings.push(`${part.text}: ${part.unsupported.map((c) => `"${c}" (${MODIFIERS[c] || 'unknown'})`).join(', ')} cannot be set up from notation - ignored.`);
     }
     if (part.atom === 'O') { u.can_castle = true; continue; }
     if (part.mods.includes('e')) u.can_en_passant = true;
     const kinds = part.mods.includes('m') ? ['movement'] : part.mods.includes('c') ? ['capture'] : ['movement', 'capture'];
-    const initial = part.mods.includes('i');
     const lame = part.mods.includes('n');
     const cannon = part.mods.includes('p');
     const grasshopper = part.mods.includes('g');
@@ -415,7 +439,7 @@ export function betzaToPieceData(code) {
         if (straight && step === 1) {
           // W / F and their riders: the site's own sliding directions.
           const dist = part.rider ? (part.range || 99) : 1;
-          for (const [dx, dy] of vectors) setDirection(kind, dirName(dx, dy), dist, { initial });
+          for (const [dx, dy] of vectors) setDirection(kind, dirName(dx, dy), dist, {});
           needs[kind][grasshopper ? 'grasshopper' : cannon ? 'cannon' : 'slide'] = true;
         } else if (straight && (part.rider || lame)) {
           // DD, nD, A3 ...: exact distance along the line - hopping between
@@ -425,11 +449,10 @@ export function betzaToPieceData(code) {
             u[kind === 'movement' ? 'max_repeating_movement' : 'max_repeating_capture'] = Math.min(8, part.range);
             if (part.range > 8) warnings.push(`${part.text}: at most 8 repeats can be set; it repeats up to 8 times.`);
           }
-          for (const [dx, dy] of vectors) setDirection(kind, dirName(dx, dy), step, { exact: true, initial, repeat: part.rider });
+          for (const [dx, dy] of vectors) setDirection(kind, dirName(dx, dy), step, { exact: true, repeat: part.rider });
           needs[kind][part.rider && !lame ? 'ride' : 'lameExact'] = true;
         } else if (straight) {
           // D, A, H, G: a true leap - custom squares, which jump.
-          if (initial) warnings.push(`${part.text}: "first move only" cannot be set on a leap (custom squares); it is always available.`);
           for (const [dx, dy] of vectors) addCustom(kind, dx, dy);
         } else if (!filter && vectors.length === all.length && !ratioTaken[kind]) {
           // The first unrestricted oblique leap: the L-shape ratio.
@@ -444,7 +467,6 @@ export function betzaToPieceData(code) {
             u.ratio_one_capture = a; u.ratio_two_capture = b;
             if (part.rider) { u.repeating_ratio_capture = true; u.max_ratio_capture_iterations = part.range || -1; }
           }
-          if (initial) warnings.push(`${part.text}: "first move only" cannot be set on an L-shaped move; it is always available.`);
           if (lame) {
             // Lame (Betza n): the xiangqi horse's path rule (lPathRule) -
             // leg one first, blocked on it, the corner not counted.
@@ -456,7 +478,6 @@ export function betzaToPieceData(code) {
           }
         } else if (!part.rider) {
           // A second oblique leap, or one limited to some directions: custom squares.
-          if (initial) warnings.push(`${part.text}: "first move only" cannot be set on custom squares; it is always available.`);
           if (lame) warnings.push(`${part.text}: a lame (n) leap limited to some directions is a custom-square jump here, and jumps.`);
           for (const [dx, dy] of vectors) addCustom(kind, dx, dy);
         } else {
@@ -477,6 +498,5 @@ export function betzaToPieceData(code) {
   u.directional_movement_style = anyDir('movement');
   u.can_capture_enemy_on_move = anyDir('capture') || !!u.ratio_one_capture || custom.capture.size > 0
     || Object.keys(extra.capture).length > 0;
-  // Once each: a rule broken in several directions is still one rule.
-  return { updates: u, warnings: [...new Set(warnings)], error: null, parts: parsed.parts };
+  return u;
 }

@@ -1403,6 +1403,13 @@ const migrations = [
    */
   { table: 'pieces', column: 'max_repeating_movement', sql: "ALTER TABLE pieces ADD COLUMN max_repeating_movement TINYINT DEFAULT NULL", description: "A repeating exact move repeats at most this many times (1-8)." },
   { table: 'pieces', column: 'max_repeating_capture', sql: "ALTER TABLE pieces ADD COLUMN max_repeating_capture TINYINT DEFAULT NULL", description: "A repeating exact capture repeats at most this many times (1-8)." },
+  /*
+   * A piece's FIRST-MOVE movement (2026-10-07): the Movement and Attack steps'
+   * fields as JSON, used while the piece has made fewer than
+   * first_move_profile_moves moves (1-8). See server/first-move.js.
+   */
+  { table: 'pieces', column: 'first_move_profile', sql: "ALTER TABLE pieces ADD COLUMN first_move_profile TEXT DEFAULT NULL", description: "The piece's first-move movement and attack (JSON of movement fields)." },
+  { table: 'pieces', column: 'first_move_profile_moves', sql: "ALTER TABLE pieces ADD COLUMN first_move_profile_moves TINYINT DEFAULT NULL", description: "For how many of its first moves the first-move movement applies (1-8; NULL = 1)." },
   { table: 'pieces', column: 'hop_landing_distance_attack', sql: "ALTER TABLE pieces ADD COLUMN hop_landing_distance_attack TINYINT DEFAULT NULL", description: "After hopping, a straight-line capture lands at most this many squares past the last piece hopped (1-8)." },
   // --- Direction Change (Movement) ---
   { table: 'pieces', column: 'directional_movement_change', sql: "ALTER TABLE pieces ADD COLUMN directional_movement_change TINYINT(1) DEFAULT 0", description: "Master toggle: when 1, piece can change direction mid-move (second leg after first directional leg)." },

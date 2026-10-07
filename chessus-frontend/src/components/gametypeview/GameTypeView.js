@@ -38,6 +38,7 @@ import { designationRuleSentence } from "../../helpers/designationTypes";
 import { describeMovementRange, describePieceMovement } from "../../helpers/pieceRules";
 import { joinList } from "../../helpers/joinList";
 import { hopRuleWords, lPathWords } from "../../helpers/hopRuleWords";
+import { firstMoveWords } from "../../helpers/firstMove";
 
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";
 
@@ -1070,6 +1071,7 @@ const GameTypeView = () => {
         if (pieceData.directional_hop_only) extras.push('required for all directional moves');
         if (pieceData.directional_hop_only) { const words = hopRuleWords(pieceData).replace(/^ · /, ''); if (words) extras.push(words); }
         { const lWords = lPathWords(pieceData).replace(/^ · /, ''); if (lWords) extras.push(`L-moves ${lWords}`); }
+        { const fm = firstMoveWords(pieceData); if (fm) extras.push(fm); }
         const extrasStr = extras.length > 0 ? ` (${extras.join('; ')})` : '';
         description += `• **Hop**: Can jump over ${who} during movement${extrasStr}.\n`;
         const hopStopAtOccupied = pieceData.repeating_ratio && (pieceData.max_ratio_iterations === -1 || (pieceData.max_ratio_iterations || 1) > 1) && (pieceData.hop_stop_at_occupied !== false && pieceData.hop_stop_at_occupied !== 0);

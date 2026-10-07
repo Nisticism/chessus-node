@@ -36,6 +36,7 @@
  */
 
 const { straightHopRule, lPathRule, repeatCap } = require('../hop-rule');
+const { firstMoveVariant } = require('../first-move');
 
 // ---------- helpers ----------
 
@@ -532,6 +533,28 @@ function buildAtomChunk(sig, atom, sliderAtom, mcPrefix, dirPrefix, exactInfo = 
  * translator cannot express (caller should mark game incompatible).
  */
 function pieceToBetza(piece) {
+  if (!piece) return null;
+  const own = pieceShapeToBetza(piece);
+  /*
+   * The first-move movement (server/first-move.js) as Betza's i ("initial"):
+   * the piece as it moves on a first move, translated the same way, each part
+   * the ordinary movement does not already have marked i. A pawn written the
+   * new way comes out as fW cfF + ifnD, the way it is written by hand.
+   */
+  const variant = firstMoveVariant({ ...piece, moveCount: 0 });
+  if (!variant) return own;
+  const first = pieceShapeToBetza(variant);
+  if (!first) return own;
+  // A part: modifiers, an atom (a letter or "(m,n)"), the atom again for a rider, a range.
+  const chunk = /[a-z]*(?:\(\d+,\d+\)|([A-Z]))\1?\d*/g;
+  const ownParts = new Set((own || '').match(chunk) || []);
+  const extra = (first.match(chunk) || []).filter((c) => !ownParts.has(c)).map((c) => `i${c}`);
+  const out = `${own || ''}${extra.join('')}`;
+  return out.length ? out : null;
+}
+
+/* One movement of a piece - its own, or its first-move one - as Betza. */
+function pieceShapeToBetza(piece) {
   if (!piece) return null;
 
   // Untranslatable: must be filtered by compatibility checker, but we

@@ -11,6 +11,7 @@ import PieceStep1BasicInfo from "./PieceStep1BasicInfo";
 import PieceStep2Movement from "./PieceStep2Movement";
 import PieceStep3Attack from "./PieceStep3Attack";
 import PieceStep4Special from "./PieceStep4Special";
+import FirstMoveSteps from "./FirstMoveSteps";
 
 const PieceWizard = ({ editPieceId = null }) => {
   const { user: currentUser } = useSelector((state) => state.authReducer);
@@ -109,6 +110,9 @@ const PieceWizard = ({ editPieceId = null }) => {
     ratio_path_blocking: null,
     ratio_path_corner_blocks: null,
     max_repeating_movement: null,
+    // The first-move movement (helpers/firstMove.js), set with the same steps
+    first_move_profile: null,
+    first_move_profile_moves: null,
     
     // Step 3: Attack/Capture Configuration
     repeating_capture: false,
@@ -381,6 +385,8 @@ const PieceWizard = ({ editPieceId = null }) => {
             ratio_path_blocking: piece.ratio_path_blocking || null,
             ratio_path_corner_blocks: piece.ratio_path_corner_blocks ?? null,
             max_repeating_movement: piece.max_repeating_movement != null ? parseInt(piece.max_repeating_movement) || null : null,
+            first_move_profile: piece.first_move_profile || null,
+            first_move_profile_moves: piece.first_move_profile_moves != null ? parseInt(piece.first_move_profile_moves) || null : null,
             
             // Attack/Capture fields
             repeating_capture: !!piece.repeating_capture,
@@ -843,9 +849,9 @@ const PieceWizard = ({ editPieceId = null }) => {
       case 1:
         return <PieceStep1BasicInfo pieceData={pieceData} updatePieceData={updatePieceData} isEditMode={isEditMode} existingImages={existingImages} setExistingImages={setExistingImages} currentUser={currentUser} />;
       case 2:
-        return <PieceStep2Movement pieceData={pieceData} updatePieceData={updatePieceData} />;
+        return <FirstMoveSteps Step={PieceStep2Movement} pieceData={pieceData} updatePieceData={updatePieceData} noun="movement" />;
       case 3:
-        return <PieceStep3Attack pieceData={pieceData} updatePieceData={updatePieceData} />;
+        return <FirstMoveSteps Step={PieceStep3Attack} pieceData={pieceData} updatePieceData={updatePieceData} noun="attack" />;
       case 4:
         return <PieceStep4Special pieceData={pieceData} updatePieceData={updatePieceData} currentUser={currentUser} />;
       default:

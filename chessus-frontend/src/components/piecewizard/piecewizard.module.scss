@@ -2340,3 +2340,25 @@
   code { font-weight: 700; }
 }
 .betza-unsupported { opacity: 0.6; }
+
+/* Every move / first move switch above the Movement and Attack steps (FirstMoveSteps). */
+.first-move-bar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  margin: 0 0 12px; padding: 8px 10px; border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.1);
+}
+.first-move-tab {
+  padding: 4px 12px; border-radius: 999px; cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.2); background: transparent; color: inherit; font: inherit;
+}
+.first-move-tab-active { background: rgba(120, 170, 255, 0.2); border-color: rgba(120, 170, 255, 0.6); }
+.first-move-note {
+  margin: 0 0 12px; padding: 8px 10px; border-radius: 8px;
+  background: rgba(120, 170, 255, 0.08); border: 1px solid rgba(120, 170, 255, 0.3);
+}
+.first-move-count { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.legacy-first-move {
+  margin: 0 0 12px; padding: 8px 10px; border-radius: 8px; line-height: 1.5;
+  background: rgba(255, 170, 0, 0.1); border: 1px solid rgba(255, 170, 0, 0.4);
+}
+.legacy-first-move-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 6px; }

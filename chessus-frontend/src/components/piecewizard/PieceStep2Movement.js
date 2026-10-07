@@ -9,7 +9,6 @@ import ToggleSwitch from "../common/ToggleSwitch";
 import HopCountControls from "./HopCountControls";
 import LPathControls from "./LPathControls";
 import RepeatLimitControl from "./RepeatLimitControl";
-import { PIECE_WIZARD_TEXT } from "../../global/global";
 
 const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
   const handleClearMovement = () => {
@@ -204,29 +203,6 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
                   label="Infinite"
                 />
               </div>
-              <div className={styles["additional-movement-line"]}>
-                <ToggleSwitch inline size="small"
-                  checked={!!movement.availableForMoves}
-                  onChange={(v) => {
-                    if (v) {
-                      updateAdditionalMovement(direction, index, 'availableForMoves', 1);
-                    } else {
-                      updateAdditionalMovement(direction, index, 'availableForMoves', null);
-                    }
-                  }}
-                  label={PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}
-                />
-                {movement.availableForMoves && (
-                  <>
-                    <NumberInput
-                      value={movement.availableForMoves || 1}
-                      onChange={(val) => updateAdditionalMovement(direction, index, 'availableForMoves', val)}
-                      options={{ min: 1, max: 99, className: styles["tiny-input"] }}
-                    />
-                    <span>{PIECE_WIZARD_TEXT.MOVES_LABEL}</span>
-                  </>
-                )}
-              </div>
             </div>
           </div>
         ))}
@@ -246,7 +222,6 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
   const renderDCMoveCell = (dirKey, label) => {
     const distKey = `${dirKey}_movement_change`;
     const exactKey = `${dirKey}_movement_change_exact`;
-    const availKey = `${dirKey}_movement_change_available_for`;
     const dist = pieceData[distKey] || 0;
     return (
       <div className={styles["direction-input"]}>
@@ -275,23 +250,6 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
           onChange={(v) => updatePieceData({ [distKey]: v ? 99 : 0, [exactKey]: false })}
           label="Infinite"
         />
-        <div className={styles["available-for-moves-group"]}>
-          <ToggleSwitch inline size="small"
-            checked={!!pieceData[availKey]}
-            onChange={(v) => updatePieceData({ [availKey]: v ? 1 : null })}
-            label={PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}
-          />
-          {pieceData[availKey] && (
-            <>
-              <NumberInput
-                value={pieceData[availKey] || 1}
-                onChange={(val) => updatePieceData({ [availKey]: val })}
-                options={{ min: 1, max: 99, className: styles["tiny-input"] }}
-              />
-              <span>{PIECE_WIZARD_TEXT.MOVES_LABEL}</span>
-            </>
-          )}
-        </div>
       </div>
     );
   };
@@ -337,23 +295,6 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
                   onChange={(v) => handleChange("up_left_movement", v ? 99 : 0)}
                   label="Infinite"
                 />
-                <div className={styles["available-for-moves-group"]}>
-                  <ToggleSwitch inline size="small"
-                    checked={!!pieceData.up_left_movement_available_for}
-                    onChange={(v) => handleChange("up_left_movement_available_for", v ? 1 : null)}
-                    label={PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}
-                  />
-                  {pieceData.up_left_movement_available_for && (
-                    <>
-                      <NumberInput
-                        value={pieceData.up_left_movement_available_for || 1}
-                        onChange={(val) => handleChange("up_left_movement_available_for", val)}
-                        options={{ min: 1, max: 99, className: styles["tiny-input"] }}
-                      />
-                      <span>{PIECE_WIZARD_TEXT.MOVES_LABEL}</span>
-                    </>
-                  )}
-                </div>
                 {renderAdditionalMovements("up_left", "Up-Left", "↖")}
               </div>
               <div className={styles["direction-input"]}>
@@ -374,23 +315,6 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
                   onChange={(v) => handleChange("up_movement", v ? 99 : 0)}
                   label="Infinite"
                 />
-                <div className={styles["available-for-moves-group"]}>
-                  <ToggleSwitch inline size="small"
-                    checked={!!pieceData.up_movement_available_for}
-                    onChange={(v) => handleChange("up_movement_available_for", v ? 1 : null)}
-                    label={PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}
-                  />
-                  {pieceData.up_movement_available_for && (
-                    <>
-                      <NumberInput
-                        value={pieceData.up_movement_available_for || 1}
-                        onChange={(val) => handleChange("up_movement_available_for", val)}
-                        options={{ min: 1, max: 99, className: styles["tiny-input"] }}
-                      />
-                      <span>{PIECE_WIZARD_TEXT.MOVES_LABEL}</span>
-                    </>
-                  )}
-                </div>
                 {renderAdditionalMovements("up", "Up", "↑")}
               </div>
               <div className={styles["direction-input"]}>
@@ -411,23 +335,6 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
                   onChange={(v) => handleChange("up_right_movement", v ? 99 : 0)}
                   label="Infinite"
                 />
-                <div className={styles["available-for-moves-group"]}>
-                  <ToggleSwitch inline size="small"
-                    checked={!!pieceData.up_right_movement_available_for}
-                    onChange={(v) => handleChange("up_right_movement_available_for", v ? 1 : null)}
-                    label={PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}
-                  />
-                  {pieceData.up_right_movement_available_for && (
-                    <>
-                      <NumberInput
-                        value={pieceData.up_right_movement_available_for || 1}
-                        onChange={(val) => handleChange("up_right_movement_available_for", val)}
-                        options={{ min: 1, max: 99, className: styles["tiny-input"] }}
-                      />
-                      <span>{PIECE_WIZARD_TEXT.MOVES_LABEL}</span>
-                    </>
-                  )}
-                </div>
                 {renderAdditionalMovements("up_right", "Up-Right", "↗")}
               </div>
             </div>
@@ -450,23 +357,6 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
                   onChange={(v) => handleChange("left_movement", v ? 99 : 0)}
                   label="Infinite"
                 />
-                <div className={styles["available-for-moves-group"]}>
-                  <ToggleSwitch inline size="small"
-                    checked={!!pieceData.left_movement_available_for}
-                    onChange={(v) => handleChange("left_movement_available_for", v ? 1 : null)}
-                    label={PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}
-                  />
-                  {pieceData.left_movement_available_for && (
-                    <>
-                      <NumberInput
-                        value={pieceData.left_movement_available_for || 1}
-                        onChange={(val) => handleChange("left_movement_available_for", val)}
-                        options={{ min: 1, max: 99, className: styles["tiny-input"] }}
-                      />
-                      <span>{PIECE_WIZARD_TEXT.MOVES_LABEL}</span>
-                    </>
-                  )}
-                </div>
                 {renderAdditionalMovements("left", "Left", "←")}
               </div>
               <div className={styles["direction-center"]}>
@@ -496,23 +386,6 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
                   onChange={(v) => handleChange("right_movement", v ? 99 : 0)}
                   label="Infinite"
                 />
-                <div className={styles["available-for-moves-group"]}>
-                  <ToggleSwitch inline size="small"
-                    checked={!!pieceData.right_movement_available_for}
-                    onChange={(v) => handleChange("right_movement_available_for", v ? 1 : null)}
-                    label={PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}
-                  />
-                  {pieceData.right_movement_available_for && (
-                    <>
-                      <NumberInput
-                        value={pieceData.right_movement_available_for || 1}
-                        onChange={(val) => handleChange("right_movement_available_for", val)}
-                        options={{ min: 1, max: 99, className: styles["tiny-input"] }}
-                      />
-                      <span>{PIECE_WIZARD_TEXT.MOVES_LABEL}</span>
-                    </>
-                  )}
-                </div>
                 {renderAdditionalMovements("right", "Right", "→")}
               </div>
             </div>
@@ -535,23 +408,6 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
                   onChange={(v) => handleChange("down_left_movement", v ? 99 : 0)}
                   label="Infinite"
                 />
-                <div className={styles["available-for-moves-group"]}>
-                  <ToggleSwitch inline size="small"
-                    checked={!!pieceData.down_left_movement_available_for}
-                    onChange={(v) => handleChange("down_left_movement_available_for", v ? 1 : null)}
-                    label={PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}
-                  />
-                  {pieceData.down_left_movement_available_for && (
-                    <>
-                      <NumberInput
-                        value={pieceData.down_left_movement_available_for || 1}
-                        onChange={(val) => handleChange("down_left_movement_available_for", val)}
-                        options={{ min: 1, max: 99, className: styles["tiny-input"] }}
-                      />
-                      <span>{PIECE_WIZARD_TEXT.MOVES_LABEL}</span>
-                    </>
-                  )}
-                </div>
                 {renderAdditionalMovements("down_left", "Down-Left", "↙")}
               </div>
               <div className={styles["direction-input"]}>
@@ -572,23 +428,6 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
                   onChange={(v) => handleChange("down_movement", v ? 99 : 0)}
                   label="Infinite"
                 />
-                <div className={styles["available-for-moves-group"]}>
-                  <ToggleSwitch inline size="small"
-                    checked={!!pieceData.down_movement_available_for}
-                    onChange={(v) => handleChange("down_movement_available_for", v ? 1 : null)}
-                    label={PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}
-                  />
-                  {pieceData.down_movement_available_for && (
-                    <>
-                      <NumberInput
-                        value={pieceData.down_movement_available_for || 1}
-                        onChange={(val) => handleChange("down_movement_available_for", val)}
-                        options={{ min: 1, max: 99, className: styles["tiny-input"] }}
-                      />
-                      <span>{PIECE_WIZARD_TEXT.MOVES_LABEL}</span>
-                    </>
-                  )}
-                </div>
                 {renderAdditionalMovements("down", "Down", "↓")}
               </div>
               <div className={styles["direction-input"]}>
@@ -609,23 +448,6 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
                   onChange={(v) => handleChange("down_right_movement", v ? 99 : 0)}
                   label="Infinite"
                 />
-                <div className={styles["available-for-moves-group"]}>
-                  <ToggleSwitch inline size="small"
-                    checked={!!pieceData.down_right_movement_available_for}
-                    onChange={(v) => handleChange("down_right_movement_available_for", v ? 1 : null)}
-                    label={PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}
-                  />
-                  {pieceData.down_right_movement_available_for && (
-                    <>
-                      <NumberInput
-                        value={pieceData.down_right_movement_available_for || 1}
-                        onChange={(val) => handleChange("down_right_movement_available_for", val)}
-                        options={{ min: 1, max: 99, className: styles["tiny-input"] }}
-                      />
-                      <span>{PIECE_WIZARD_TEXT.MOVES_LABEL}</span>
-                    </>
-                  )}
-                </div>
                 {renderAdditionalMovements("down_right", "Down-Right", "↘")}
               </div>
             </div>

@@ -10,7 +10,6 @@ import HopCountControls from "./HopCountControls";
 import LPathControls from "./LPathControls";
 import RepeatLimitControl from "./RepeatLimitControl";
 import { movementToAttackUpdates } from "../../helpers/pieceMovementAttackCopy";
-import { PIECE_WIZARD_TEXT } from "../../global/global";
 
 const PieceStep3Attack = ({ pieceData, updatePieceData }) => {
   
@@ -183,23 +182,6 @@ const PieceStep3Attack = ({ pieceData, updatePieceData }) => {
                   label="Infinite"
                 />
               </div>
-              <div className={styles["additional-movement-line"]}>
-                <ToggleSwitch inline size="small"
-                  checked={!!capture.availableForMoves}
-                  onChange={(v) => updateAdditionalCapture(direction, index, 'availableForMoves', v ? 1 : null)}
-                  label={PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}
-                />
-                {capture.availableForMoves && (
-                  <>
-                    <NumberInput
-                      value={capture.availableForMoves || 1}
-                      onChange={(val) => updateAdditionalCapture(direction, index, 'availableForMoves', val)}
-                      options={{ min: 1, max: 99, className: styles["tiny-input"] }}
-                    />
-                    <span>{PIECE_WIZARD_TEXT.MOVES_LABEL}</span>
-                  </>
-                )}
-              </div>
             </div>
           </div>
         ))}
@@ -274,7 +256,6 @@ const PieceStep3Attack = ({ pieceData, updatePieceData }) => {
   const renderDCCaptureCell = (dirKey, label) => {
     const distKey = `${dirKey}_capture_change`;
     const exactKey = `${dirKey}_capture_change_exact`;
-    const availKey = `${dirKey}_capture_change_available_for`;
     const dist = pieceData[distKey] || 0;
     return (
       <div className={styles["direction-input"]}>
@@ -303,23 +284,6 @@ const PieceStep3Attack = ({ pieceData, updatePieceData }) => {
           onChange={(v) => updatePieceData({ [distKey]: v ? 99 : 0, [exactKey]: false })}
           label="Infinite"
         />
-        <div className={styles["available-for-moves-group"]}>
-          <ToggleSwitch inline size="small"
-            checked={!!pieceData[availKey]}
-            onChange={(v) => updatePieceData({ [availKey]: v ? 1 : null })}
-            label={PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}
-          />
-          {pieceData[availKey] && (
-            <>
-              <NumberInput
-                value={pieceData[availKey] || 1}
-                onChange={(val) => updatePieceData({ [availKey]: val })}
-                options={{ min: 1, max: 99, className: styles["tiny-input"] }}
-              />
-              <span>{PIECE_WIZARD_TEXT.MOVES_LABEL}</span>
-            </>
-          )}
-        </div>
       </div>
     );
   };
@@ -415,23 +379,6 @@ const PieceStep3Attack = ({ pieceData, updatePieceData }) => {
                         onChange={(v) => handleChange("up_left_capture", v ? 99 : 0)}
                         label="Infinite"
                       />
-                      <div className={styles["available-for-moves-group"]}>
-                        <ToggleSwitch inline size="small"
-                          checked={!!pieceData.up_left_capture_available_for}
-                          onChange={(v) => handleChange("up_left_capture_available_for", v ? 1 : null)}
-                          label={PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}
-                        />
-                        {pieceData.up_left_capture_available_for && (
-                          <>
-                            <NumberInput
-                              value={pieceData.up_left_capture_available_for || 1}
-                              onChange={(val) => handleChange("up_left_capture_available_for", val)}
-                              options={{ min: 1, max: 99, className: styles["tiny-input"] }}
-                            />
-                            <span>{PIECE_WIZARD_TEXT.MOVES_LABEL}</span>
-                          </>
-                        )}
-                      </div>
                       {renderAdditionalCaptures("up_left", "Up-Left", "↖")}
                     </div>
                     
@@ -454,23 +401,6 @@ const PieceStep3Attack = ({ pieceData, updatePieceData }) => {
                         onChange={(v) => handleChange("up_capture", v ? 99 : 0)}
                         label="Infinite"
                       />
-                      <div className={styles["available-for-moves-group"]}>
-                        <ToggleSwitch inline size="small"
-                          checked={!!pieceData.up_capture_available_for}
-                          onChange={(v) => handleChange("up_capture_available_for", v ? 1 : null)}
-                          label={PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}
-                        />
-                        {pieceData.up_capture_available_for && (
-                          <>
-                            <NumberInput
-                              value={pieceData.up_capture_available_for || 1}
-                              onChange={(val) => handleChange("up_capture_available_for", val)}
-                              options={{ min: 1, max: 99, className: styles["tiny-input"] }}
-                            />
-                            <span>{PIECE_WIZARD_TEXT.MOVES_LABEL}</span>
-                          </>
-                        )}
-                      </div>
                       {renderAdditionalCaptures("up", "Up", "↑")}
                     </div>
                     
@@ -493,23 +423,6 @@ const PieceStep3Attack = ({ pieceData, updatePieceData }) => {
                         onChange={(v) => handleChange("up_right_capture", v ? 99 : 0)}
                         label="Infinite"
                       />
-                      <div className={styles["available-for-moves-group"]}>
-                        <ToggleSwitch inline size="small"
-                          checked={!!pieceData.up_right_capture_available_for}
-                          onChange={(v) => handleChange("up_right_capture_available_for", v ? 1 : null)}
-                          label={PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}
-                        />
-                        {pieceData.up_right_capture_available_for && (
-                          <>
-                            <NumberInput
-                              value={pieceData.up_right_capture_available_for || 1}
-                              onChange={(val) => handleChange("up_right_capture_available_for", val)}
-                              options={{ min: 1, max: 99, className: styles["tiny-input"] }}
-                            />
-                            <span>{PIECE_WIZARD_TEXT.MOVES_LABEL}</span>
-                          </>
-                        )}
-                      </div>
                       {renderAdditionalCaptures("up_right", "Up-Right", "↗")}
                     </div>
                   </div>
@@ -534,23 +447,6 @@ const PieceStep3Attack = ({ pieceData, updatePieceData }) => {
                         onChange={(v) => handleChange("left_capture", v ? 99 : 0)}
                         label="Infinite"
                       />
-                      <div className={styles["available-for-moves-group"]}>
-                        <ToggleSwitch inline size="small"
-                          checked={!!pieceData.left_capture_available_for}
-                          onChange={(v) => handleChange("left_capture_available_for", v ? 1 : null)}
-                          label={PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}
-                        />
-                        {pieceData.left_capture_available_for && (
-                          <>
-                            <NumberInput
-                              value={pieceData.left_capture_available_for || 1}
-                              onChange={(val) => handleChange("left_capture_available_for", val)}
-                              options={{ min: 1, max: 99, className: styles["tiny-input"] }}
-                            />
-                            <span>{PIECE_WIZARD_TEXT.MOVES_LABEL}</span>
-                          </>
-                        )}
-                      </div>
                       {renderAdditionalCaptures("left", "Left", "←")}
                     </div>
                     
@@ -584,23 +480,6 @@ const PieceStep3Attack = ({ pieceData, updatePieceData }) => {
                         onChange={(v) => handleChange("right_capture", v ? 99 : 0)}
                         label="Infinite"
                       />
-                      <div className={styles["available-for-moves-group"]}>
-                        <ToggleSwitch inline size="small"
-                          checked={!!pieceData.right_capture_available_for}
-                          onChange={(v) => handleChange("right_capture_available_for", v ? 1 : null)}
-                          label={PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}
-                        />
-                        {pieceData.right_capture_available_for && (
-                          <>
-                            <NumberInput
-                              value={pieceData.right_capture_available_for || 1}
-                              onChange={(val) => handleChange("right_capture_available_for", val)}
-                              options={{ min: 1, max: 99, className: styles["tiny-input"] }}
-                            />
-                            <span>{PIECE_WIZARD_TEXT.MOVES_LABEL}</span>
-                          </>
-                        )}
-                      </div>
                       {renderAdditionalCaptures("right", "Right", "→")}
                     </div>
                   </div>
@@ -625,23 +504,6 @@ const PieceStep3Attack = ({ pieceData, updatePieceData }) => {
                         onChange={(v) => handleChange("down_left_capture", v ? 99 : 0)}
                         label="Infinite"
                       />
-                      <div className={styles["available-for-moves-group"]}>
-                        <ToggleSwitch inline size="small"
-                          checked={!!pieceData.down_left_capture_available_for}
-                          onChange={(v) => handleChange("down_left_capture_available_for", v ? 1 : null)}
-                          label={PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}
-                        />
-                        {pieceData.down_left_capture_available_for && (
-                          <>
-                            <NumberInput
-                              value={pieceData.down_left_capture_available_for || 1}
-                              onChange={(val) => handleChange("down_left_capture_available_for", val)}
-                              options={{ min: 1, max: 99, className: styles["tiny-input"] }}
-                            />
-                            <span>{PIECE_WIZARD_TEXT.MOVES_LABEL}</span>
-                          </>
-                        )}
-                      </div>
                       {renderAdditionalCaptures("down_left", "Down-Left", "↙")}
                     </div>
                     
@@ -664,23 +526,6 @@ const PieceStep3Attack = ({ pieceData, updatePieceData }) => {
                         onChange={(v) => handleChange("down_capture", v ? 99 : 0)}
                         label="Infinite"
                       />
-                      <div className={styles["available-for-moves-group"]}>
-                        <ToggleSwitch inline size="small"
-                          checked={!!pieceData.down_capture_available_for}
-                          onChange={(v) => handleChange("down_capture_available_for", v ? 1 : null)}
-                          label={PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}
-                        />
-                        {pieceData.down_capture_available_for && (
-                          <>
-                            <NumberInput
-                              value={pieceData.down_capture_available_for || 1}
-                              onChange={(val) => handleChange("down_capture_available_for", val)}
-                              options={{ min: 1, max: 99, className: styles["tiny-input"] }}
-                            />
-                            <span>{PIECE_WIZARD_TEXT.MOVES_LABEL}</span>
-                          </>
-                        )}
-                      </div>
                       {renderAdditionalCaptures("down", "Down", "↓")}
                     </div>
                     
@@ -703,23 +548,6 @@ const PieceStep3Attack = ({ pieceData, updatePieceData }) => {
                         onChange={(v) => handleChange("down_right_capture", v ? 99 : 0)}
                         label="Infinite"
                       />
-                      <div className={styles["available-for-moves-group"]}>
-                        <ToggleSwitch inline size="small"
-                          checked={!!pieceData.down_right_capture_available_for}
-                          onChange={(v) => handleChange("down_right_capture_available_for", v ? 1 : null)}
-                          label={PIECE_WIZARD_TEXT.AVAILABLE_FOR_FIRST_MOVES}
-                        />
-                        {pieceData.down_right_capture_available_for && (
-                          <>
-                            <NumberInput
-                              value={pieceData.down_right_capture_available_for || 1}
-                              onChange={(val) => handleChange("down_right_capture_available_for", val)}
-                              options={{ min: 1, max: 99, className: styles["tiny-input"] }}
-                            />
-                            <span>{PIECE_WIZARD_TEXT.MOVES_LABEL}</span>
-                          </>
-                        )}
-                      </div>
                       {renderAdditionalCaptures("down_right", "Down-Right", "↘")}
                     </div>
                   </div>

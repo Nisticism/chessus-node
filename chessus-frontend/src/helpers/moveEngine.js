@@ -27,6 +27,7 @@ import {
   parseSpecialScenarioCaptures,
   repeatCap,
 } from './pieceMovementUtils';
+import { firstMoveVariant } from './firstMove';
 
 /**
  * Board indicator colours, shared by every board that draws move dots.
@@ -1287,8 +1288,10 @@ export const createMoveEngine = ({
     const tw = targetPiece.piece_width || 1;
     const th = targetPiece.piece_height || 1;
     
-    // Check all enemy pieces against ALL occupied squares of the target
-    for (let enemyPiece of pieces) {
+    // Check all enemy pieces against ALL occupied squares of the target -
+    // each also as it moves on a first move, while that applies (firstMove.js).
+    const attackers = pieces.flatMap((p) => { const v = firstMoveVariant(p); return v ? [p, v] : [p]; });
+    for (let enemyPiece of attackers) {
       const enemyTeam = enemyPiece.player_id || enemyPiece.team;
       if (enemyTeam === targetTeam) continue; // Skip friendly pieces
       
@@ -1561,7 +1564,29 @@ export const createMoveEngine = ({
   // of the board, and so every path to it, unchanged), and return straight
   // after the per-square pass. One pass answers "would it reach this square if
   // the square were free?" for every candidate at once.
-  const calculateValidMoves = (piece, pieces, boardWidth, boardHeight, skipCheckFilter = false, forPremove = false, forHoverDisplay = false, forFog = false, permissive = false, opts = null) => {
+  /*
+   * Every move the piece can make, with its FIRST-MOVE movement too while it
+   * applies (helpers/firstMove.js): the same code run on a copy of the piece
+   * with its first-move movement and attack swapped in. calculateShapeMoves is
+   * the ordinary movement alone. Mirrors the server's getPossibleMovesForPiece.
+   */
+  const calculateValidMoves = (piece, pieces, ...rest) => {
+    const moves = calculateShapeMoves(piece, pieces, ...rest) || [];
+    const variant = firstMoveVariant(piece);
+    if (!variant) return moves;
+    const keyOf = (m) => `${m.x},${m.y}|${m.via ? `${m.via.x},${m.via.y}` : ''}|${m.isRangedAttack ? 'R' : ''}`;
+    const seen = new Set(moves.map(keyOf));
+    const out = [...moves];
+    for (const m of calculateShapeMoves(variant, pieces, ...rest) || []) {
+      const k = keyOf(m);
+      if (seen.has(k)) continue;
+      seen.add(k);
+      out.push({ ...m, isFirstMoveOnly: true });
+    }
+    return out;
+  };
+
+  const calculateShapeMoves = (piece, pieces, boardWidth, boardHeight, skipCheckFilter = false, forPremove = false, forHoverDisplay = false, forFog = false, permissive = false, opts = null) => {
     const onlySquares = opts?.onlySquares || null;
     const asIfEmpty = opts?.asIfEmpty || null;
     // Apply range square bonus
