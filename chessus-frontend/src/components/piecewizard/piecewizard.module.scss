@@ -2412,3 +2412,9 @@ button.path-dir-cell { cursor: pointer; border: 1px solid rgba(120, 170, 255, 0.
 }
 .path-turn-on { background: rgba(120, 170, 255, 0.6); opacity: 1; }
 .path-turn-center { opacity: 0.5; font-size: 0.7rem; }
+
+/* Step 2: which board edges the piece's moves wrap round. */
+.wrap-select {
+  padding: 6px 8px; border-radius: 6px; font: inherit; color: inherit; max-width: 100%;
+  background: var(--input-bg, rgba(0, 0, 0, 0.25)); border: 1px solid rgba(255, 255, 255, 0.2);
+}

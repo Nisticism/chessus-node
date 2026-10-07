@@ -36,6 +36,9 @@
  *       it (and back). m / c on the last leg say whether the path moves or
  *       captures. z and q make the atom a rider that turns at every step by
  *       its smallest turn - z left and right in turn, q always the same way.
+ *   o (cylinder)                                           the piece's moves wrap
+ *       round the left and right edges (piece_wrap 'columns', helpers/boardWrap.js).
+ *       It is the whole piece's setting: o on some parts wraps them all.
  *   p (cannon) on a slide (pR, pB, pQ)                     "must hop" with at most
  *       one piece to hop: it moves and captures only over exactly one piece.
  *       mRcpR (the xiangqi cannon) moves as a rook and captures over a screen.
@@ -96,7 +99,7 @@ const RELATIVE_WORDS = {
   f: 'straight on (from the step before)', b: 'straight back', l: 'turning left', r: 'turning right',
   s: 'turning left or right (fs: a slight turn, s alone: a right angle, bs: a sharp turn)', v: 'straight on or back',
 };
-const SUPPORTED_MODS = new Set(['m', 'c', 'i', 'f', 'b', 'l', 'r', 'v', 's', 'n', 'e', 'p', 'g', 'a', 'y', 'z', 'q']);
+const SUPPORTED_MODS = new Set(['m', 'c', 'i', 'f', 'b', 'l', 'r', 'v', 's', 'n', 'e', 'p', 'g', 'a', 'y', 'z', 'q', 'o']);
 const DIRECTION_LETTERS = new Set(['f', 'b', 'l', 'r', 'v', 's']);
 const PAIRS = new Set(['fl', 'lf', 'fr', 'rf', 'bl', 'lb', 'br', 'rb', 'ff', 'bb', 'll', 'rr', 'fs', 'sf', 'bs', 'sb', 'lv', 'vl', 'rv', 'vr', 'fh', 'bh']);
 
@@ -384,6 +387,7 @@ function blankMovementAndAttack() {
     ratio_path_corner_blocks: null, ratio_path_corner_blocks_attack: null,
     max_repeating_movement: null, max_repeating_capture: null,
     movement_paths: null, capture_paths: null,
+    piece_wrap: 'off',
   };
   for (const d of DIRS) {
     for (const kind of ['movement', 'capture']) {
@@ -478,6 +482,7 @@ export function betzaToPieceData(code) {
     u.first_move_profile = JSON.stringify(compactFirstMoveProfile(profile));
     u.first_move_profile_moves = 1;
     if (first.can_en_passant) u.can_en_passant = true;
+    if (first.piece_wrap === 'columns') u.piece_wrap = 'columns';
   }
   // Once each: a rule broken in several directions is still one rule.
   return { updates: u, warnings: [...new Set(warnings)], error: null, parts: parsed.parts };
@@ -616,6 +621,15 @@ function buildUpdates(parts, warnings) {
   }
 
   Object.assign(u, hopSettings(needs, warnings));
+
+  // o: the piece wraps round the left and right edges - a setting of the
+  // whole piece, so o on some of its parts makes all of them wrap.
+  const moving = parts.filter((part) => part.atom !== 'O');
+  const wrapping = moving.filter((part) => part.mods.includes('o'));
+  if (wrapping.length) {
+    u.piece_wrap = 'columns';
+    if (wrapping.length < moving.length) warnings.push('o (wraps round the board edges) is a setting of the whole piece here: all of its moves wrap, not only the ones marked o.');
+  }
 
   if (custom.movement.size) u.custom_movement_squares = JSON.stringify([...custom.movement.values()]);
   if (custom.capture.size) u.custom_attack_squares = JSON.stringify([...custom.capture.values()]);

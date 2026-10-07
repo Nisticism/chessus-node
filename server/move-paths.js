@@ -48,7 +48,8 @@
  * the board is big.
  *
  * Mirrored by chessus-frontend/src/helpers/movePaths.js - the same code with
- * `export`s; scripts/e2e/move-paths-test.js checks they are identical.
+ * `export`s; scripts/sync-shared-rules.js writes it and
+ * scripts/e2e/move-paths-test.js checks they are identical.
  */
 
 const MAX_PATHS = 8;

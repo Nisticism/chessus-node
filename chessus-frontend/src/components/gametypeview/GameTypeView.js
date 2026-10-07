@@ -39,7 +39,7 @@ import { designationRuleSentence } from "../../helpers/designationTypes";
 import { describeMovementRange, describePieceMovement } from "../../helpers/pieceRules";
 import { joinList } from "../../helpers/joinList";
 import { hopRuleWords, lPathWords } from "../../helpers/hopRuleWords";
-import { pieceDescriptionExtras } from "../../helpers/pieceDescriptionExtras";
+import { pieceDescriptionExtras, boardWrapMechanics } from "../../helpers/pieceDescriptionExtras";
 
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";
 
@@ -2425,6 +2425,9 @@ const GameTypeView = () => {
       }
       mechanicsContent.push(placeDesc);
     }
+
+    // Edges that join (helpers/pieceDescriptionExtras.js; [] for a board without).
+    mechanicsContent.push(...boardWrapMechanics(game));
 
     /*
       * Board gravity. Sits immediately after Piece Placement because it only

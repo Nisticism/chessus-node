@@ -759,6 +759,8 @@ function registerPuzzleRoutes(app, {
         board_height: row.board_height,
         // A dropped piece falls this way, and the board is never turned round.
         board_gravity: row.board_gravity || 'off',
+        // Edges that join (server/board-wrap.js): the solver's engine wraps the same way.
+        board_wrap: row.board_wrap || 'off',
         position,
         title: row.title,
         description: row.description,
@@ -1606,6 +1608,7 @@ function registerPuzzleRoutes(app, {
          * for a player-2 solver, as a live game does (puzzleFlipped).
          */
         out.board_gravity = gameType.board_gravity || 'off';
+        out.board_wrap = gameType.board_wrap || 'off';
         out.permanent_fog_reveal = !!gameType.permanent_fog_reveal;
         out.hide_enemy_pieces = !!gameType.hide_enemy_pieces;
         out.rules = summariseRules(gameType, rules);

@@ -1,5 +1,6 @@
-// Multi-leg paths (server/move-paths.js): the frontend copy must be the same
-// code (scripts/sync-move-paths.js writes it), and the classic path pieces
+// Multi-leg paths (server/move-paths.js) and wrapping boards
+// (server/board-wrap.js): the frontend copies must be the same
+// code (scripts/sync-shared-rules.js writes it), and the classic path pieces
 // must reach what they reach. Square counts are from the middle of an empty
 // 8x8 board (d4 = x 3, y 4) and were checked by hand / against an independent
 // XBetza generator.
@@ -7,7 +8,7 @@
 const path = require('path');
 const ROOT = path.resolve(__dirname, '../..');
 const P = require(path.join(ROOT, 'server/move-paths.js'));
-const { frontendSource, frontendNow } = require(path.join(ROOT, 'scripts/sync-move-paths.js'));
+const { outOfSync } = require(path.join(ROOT, 'scripts/sync-shared-rules.js'));
 
 let fail = 0;
 let total = 0;
@@ -17,8 +18,8 @@ const ok = (name, cond, extra = '') => {
   if (!cond) fail++;
 };
 
-ok('frontend movePaths.js is the server code', frontendNow() === frontendSource(),
-  '- run node scripts/sync-move-paths.js');
+ok('frontend movePaths.js and boardWrap.js are the server code', outOfSync().length === 0,
+  '- run node scripts/sync-shared-rules.js');
 
 const board = (pieces = {}, flip = false) => ({
   flip,
@@ -76,6 +77,17 @@ ok('movement path does not capture', P.pathMoves(piece, engineBoard).length === 
 ok('attacks_like_movement makes it capture', P.pathMoves({ ...piece, attacks_like_movement: 1 }, engineBoard).some((m) => m.capture));
 ok('capture path attacks the square', P.pathAttacks({ ...piece, movement_paths: null, capture_paths: JSON.stringify([fwd]) }, 3, 3, engineBoard));
 ok('cannot_be_captured is never taken', P.pathMoves({ ...piece, attacks_like_movement: 1 }, { ...engineBoard, pieceAt: (x, y) => (x === 3 && y === 3 ? { ...enemyAhead, cannot_be_captured: 1 } : null) }).length === 0);
+
+// Wrapping boards (server/board-wrap.js).
+const BW = require(path.join(ROOT, 'server/board-wrap.js'));
+ok('a game wrap makes every piece wrap', BW.boardWrap({}, { board_wrap: 'columns' }).x === true);
+ok('a piece wrap needs no game wrap', BW.boardWrap({ piece_wrap: 'both' }, {}).y === true);
+ok('the virtual board never wraps', BW.boardWrap({ piece_wrap: 'both' }, { _wrapVirtual: true }).x === false);
+const vb = BW.wrapBoard({ id: 'm', x: 0, y: 3 }, [{ id: 'm', x: 0, y: 3 }, { id: 'o', x: 7, y: 3 }], 8, 8, { x: true, y: false });
+ok('the mover is on the middle board, once', vb.mover.x === 8 && vb.pieces.filter((p) => String(p.id).startsWith('m')).length === 1);
+ok('other pieces are on every board', vb.pieces.filter((p) => String(p.id).startsWith('o')).length === 3);
+ok('a virtual square wraps back', JSON.stringify(vb.real(-1, 3)) === '{"x":7,"y":3}');
+ok('special squares are copied', Object.keys(BW.replicateSquares({ '2,1': { impassable: true } }, 8, 8, 3, 1)).join(' ') === '2,1 2,9 2,17');
 
 console.log(`${total - fail}/${total} passed`);
 process.exit(fail ? 1 : 0);

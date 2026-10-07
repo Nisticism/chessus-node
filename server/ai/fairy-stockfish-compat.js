@@ -60,6 +60,7 @@ function parseJsonSafe(value, fallback) {
  *                             on a royal piece is not an incompatibility.
  */
 const { hasPaths } = require('../move-paths');
+const { wrapValue } = require('../board-wrap');
 const { firstMoveVariant } = require('../first-move');
 
 function pieceIncompatReasons(piece, isRoyal = false, isPawn = false) {
@@ -93,6 +94,10 @@ function pieceIncompatReasons(piece, isRoyal = false, isPawn = false) {
         'Uses multi-leg paths (a griffon, rose or crooked move, or similar).',
         'In the piece wizard, remove its paths in Step 2 / Step 3.');
     }
+  }
+  if (wrapValue(piece.piece_wrap) !== 'off') {
+    push('piece_wrap', "Its moves wrap round the board's edges.",
+      'In the piece wizard (Step 2), set its moves not to wrap round the edges.');
   }
   if (toBool(piece.trample)) {
     push('trample', 'Has trample.',
@@ -287,6 +292,9 @@ function checkCompatibility(gameType, pieceDefs = [], placements = []) {
   if (toBool(gameType.simultaneous_turns)) pushGame('simultaneous_turns',
     'Simultaneous turns.',
     'Disable "Simultaneous turns" in the game wizard (Step 1).');
+  if (wrapValue(gameType.board_wrap) !== 'off') pushGame('board_wrap',
+    'The board edges join (a cylinder or torus).',
+    'In the game wizard (Board step), set "Board edges join" to No.');
   if (toBool(gameType.fog_of_war)) pushGame('fog_of_war',
     'Fog of war: the engine sees the full board (gameState.pieces is unfiltered on the client), so play is legal, but the engine itself does not model fog -- it picks its moves with full information rather than respecting hidden squares.',
     'Disable "Fog of war" in the game wizard (Step 1).', true);

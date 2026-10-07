@@ -35,6 +35,7 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
       special_scenario_moves: "",
       custom_movement_squares: null,
       movement_paths: null,
+      piece_wrap: null,
     });
   };
 
@@ -684,6 +685,25 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
             tooltip={<InfoTooltip text="When making repeating ratio (knight-pattern) hops, the piece stops if an earlier multiple square in that direction is occupied. Enabled by default." />}
           />
         )}
+      </div>
+
+      {/* Moves that wrap round the board's edges (helpers/boardWrap.js) */}
+      <div className={styles["condition-section"]}>
+        <h3>Board Edges <InfoTooltip text="Let this piece's moves and captures wrap round the board: leaving one edge, it comes back in on the opposite one, as if the board were a cylinder (Betza's o). A game can also make every piece wrap (its Board step); this is for one piece on any board. Ranged attacks do not wrap, and a piece bigger than one square never ends straddling an edge." /></h3>
+        <div className={styles["sub-field"]}>
+          <label htmlFor="piece-wrap">Its moves wrap round</label>{' '}
+          <select
+            id="piece-wrap"
+            className={styles["wrap-select"]}
+            value={pieceData.piece_wrap || 'off'}
+            onChange={(e) => updatePieceData({ piece_wrap: e.target.value === 'off' ? null : e.target.value })}
+          >
+            <option value="off">No edges - they stop it</option>
+            <option value="columns">The left and right edges (a cylinder)</option>
+            <option value="rows">The top and bottom edges</option>
+            <option value="both">All four edges (a torus)</option>
+          </select>
+        </div>
       </div>
 
       {/* Multi-leg paths (PathBuilder, helpers/movePaths.js) */}

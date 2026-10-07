@@ -751,6 +751,26 @@ const Step3BoardSpecialSquares = ({ gameData, updateGameData }) => {
         </div>
       </div>
 
+      {/* Edges that join (helpers/boardWrap.js): a cylinder or a torus */}
+      <div className={styles["form-group"]}>
+        <label className={styles["form-label"]} htmlFor="board-wrap">Board edges join</label>
+        <select
+          id="board-wrap"
+          className={styles["form-input"]}
+          value={gameData.board_wrap || 'off'}
+          onChange={(e) => handleChange("board_wrap", e.target.value)}
+        >
+          <option value="off">No - the edges are edges</option>
+          <option value="columns">Left and right join (a cylinder)</option>
+          <option value="rows">Top and bottom join</option>
+          <option value="both">All four join (a torus)</option>
+        </select>
+        <p className={styles["field-hint"]}>
+          A piece that leaves one edge comes back in on the opposite one - for every piece's moves and captures
+          (Betza's o). One piece can wrap on its own, in Step 2 of the piece wizard. Ranged attacks do not wrap.
+        </p>
+      </div>
+
       {/* Special Squares Section */}
       <div className={styles["section-divider"]}>
         <h3>Special Squares (Optional)</h3>

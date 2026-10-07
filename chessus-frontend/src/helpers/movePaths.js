@@ -47,7 +47,7 @@
  * turn's side), each visited once, so an unlimited path costs no more than
  * the board is big.
  *
- * GENERATED from server/move-paths.js by scripts/sync-move-paths.js - edit
+ * GENERATED from server/move-paths.js by scripts/sync-shared-rules.js - edit
  * that file and re-run the script; scripts/e2e/move-paths-test.js checks.
  */
 

@@ -6,6 +6,7 @@
 const { straightHopRule, straightHopsBetween, hopRuleAllows, lPathRule, lRouteClear, repeatCap } = require('./hop-rule');
 const { firstMoveVariant, parseFirstMoveProfile } = require('./first-move');
 const { hasPaths, pathMoves, pathAttacks, pathMovesTo, pathEnds, pieceMovementPaths, pieceCapturePaths } = require('./move-paths');
+const { boardWrap, wrapBoard, wrapGameType } = require('./board-wrap');
 const db_pool = require("../configs/db");
 const crypto = require('crypto');
 const path = require('path');
@@ -4854,6 +4855,7 @@ function initializeSocket(server, { isUserBanned } = {}) {
               first_move_profile_moves: fullPieceData.first_move_profile_moves,
               movement_paths: fullPieceData.movement_paths,
               capture_paths: fullPieceData.capture_paths,
+              piece_wrap: fullPieceData.piece_wrap,
               hop_stop_at_occupied_attack: fullPieceData.hop_stop_at_occupied_attack,
               // Capture data
               can_capture_enemy_on_move: fullPieceData.can_capture_enemy_on_move,
@@ -5547,6 +5549,7 @@ function initializeSocket(server, { isUserBanned } = {}) {
               first_move_profile_moves: fullPieceData.first_move_profile_moves,
               movement_paths: fullPieceData.movement_paths,
               capture_paths: fullPieceData.capture_paths,
+              piece_wrap: fullPieceData.piece_wrap,
               hop_stop_at_occupied_attack: fullPieceData.hop_stop_at_occupied_attack,
               can_capture_enemy_on_move: fullPieceData.can_capture_enemy_on_move,
               attacks_like_movement: fullPieceData.attacks_like_movement,
@@ -11558,6 +11561,7 @@ function initializeSocket(server, { isUserBanned } = {}) {
                     first_move_profile_moves: fullPieceData.first_move_profile_moves,
                     movement_paths: fullPieceData.movement_paths,
                     capture_paths: fullPieceData.capture_paths,
+                    piece_wrap: fullPieceData.piece_wrap,
                     hop_stop_at_occupied_attack: fullPieceData.hop_stop_at_occupied_attack,
                     // Capture data
                     can_capture_enemy_on_move: fullPieceData.can_capture_enemy_on_move,
@@ -15648,6 +15652,7 @@ async function applyPromotionToPiece(gameState, pieceId, promoteToPieceId, promo
     first_move_profile_moves: fullPieceData.first_move_profile_moves,
     movement_paths: fullPieceData.movement_paths,
     capture_paths: fullPieceData.capture_paths,
+    piece_wrap: fullPieceData.piece_wrap,
     hop_stop_at_occupied_attack: fullPieceData.hop_stop_at_occupied_attack,
     can_capture_enemy_on_move: fullPieceData.can_capture_enemy_on_move,
     attacks_like_movement: fullPieceData.attacks_like_movement,
@@ -16609,6 +16614,9 @@ function canRangedAttackTo(fromRow, fromCol, toRow, toCol, pieceData, playerPosi
  * movement alone.
  */
 function canPieceAttackSquare(piece, targetX, targetY, allPieces, gameType) {
+  // On a wrapping board: asked on the virtual board, at every copy of the square.
+  const wrapped = onWrappedBoard(piece, allPieces, gameType);
+  if (wrapped) return wrapped.board.copies(targetX, targetY).some(([x, y]) => canPieceAttackSquare(wrapped.board.mover, x, y, wrapped.board.pieces, wrapped.type));
   if (canShapeAttackSquare(piece, targetX, targetY, allPieces, gameType)) return true;
   const variant = firstMoveVariant(piece);
   return !!variant && canShapeAttackSquare(variant, targetX, targetY, allPieces, gameType);
@@ -17400,6 +17408,8 @@ function canShapeAttackSquare(piece, targetX, targetY, allPieces, gameType) {
  * movement alone.
  */
 function canPieceMoveToSquare(piece, targetX, targetY, allPieces, gameType = null) {
+  const wrapped = onWrappedBoard(piece, allPieces, gameType);
+  if (wrapped) return wrapped.board.copies(targetX, targetY).some(([x, y]) => canPieceMoveToSquare(wrapped.board.mover, x, y, wrapped.board.pieces, wrapped.type));
   if (canShapeMoveToSquare(piece, targetX, targetY, allPieces, gameType)) return true;
   const variant = firstMoveVariant(piece);
   return !!variant && canShapeMoveToSquare(variant, targetX, targetY, allPieces, gameType);
@@ -18234,7 +18244,48 @@ function applyRangeSquareBonus(piece, gameType) {  if (!gameType) return piece;
  * first-move movement and attack swapped in. possibleMovesOfShape is the piece's ordinary
  * movement alone.
  */
+/*
+ * A piece whose moves wrap round the board's edges (server/board-wrap.js):
+ * its virtual board - three boards wide and/or tall - and that board's game
+ * type, or null when it does not wrap.
+ */
+function onWrappedBoard(piece, allPieces, gameType) {
+  const wrap = boardWrap(piece, gameType);
+  if (!wrap.x && !wrap.y) return null;
+  const W = gameType.board_width || 8;
+  const H = gameType.board_height || 8;
+  const board = wrapBoard(piece, allPieces, W, H, wrap);
+  return { board, type: wrapGameType(gameType, board.nx, board.ny), W, H };
+}
+
+/* A wrapping piece's moves: found on its virtual board, wrapped back onto the real one. */
+function wrappedPossibleMoves(piece, wrapped, gamePly) {
+  const { board, type, W, H } = wrapped;
+  const pw = piece.piece_width || 1;
+  const ph = piece.piece_height || 1;
+  const byKey = new Map();
+  for (const m of getPossibleMovesForPiece(board.mover, board.pieces, type, gamePly)) {
+    // Ranged attacks do not wrap.
+    if (m.isRangedAttack && !board.inMiddle(m.x, m.y)) continue;
+    const r = board.real(m.x, m.y);
+    if (r.x === piece.x && r.y === piece.y) continue;
+    // A large piece may not end straddling an edge.
+    if (r.x + pw > W || r.y + ph > H) continue;
+    const out = { ...m, x: r.x, y: r.y };
+    if (m.via) out.via = board.real(m.via.x, m.via.y);
+    if (!board.inMiddle(m.x, m.y)) out.isWrap = true;
+    const k = `${out.x},${out.y}|${out.isDirectionChange ? 1 : 0}|${out.isRangedAttack ? 1 : 0}|${out.via ? `${out.via.x},${out.via.y}` : ''}`;
+    const prev = byKey.get(k);
+    // Prefer the unrestricted move, then the one that does not wrap.
+    if (!prev || (prev.isFirstMoveOnly && !out.isFirstMoveOnly)
+      || (!!prev.isFirstMoveOnly === !!out.isFirstMoveOnly && prev.isWrap && !out.isWrap)) byKey.set(k, out);
+  }
+  return [...byKey.values()];
+}
+
 function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
+  const wrapped = onWrappedBoard(piece, allPieces, gameType);
+  if (wrapped) return wrappedPossibleMoves(piece, wrapped, gamePly);
   const moves = possibleMovesOfShape(piece, allPieces, gameType, gamePly);
   const variant = firstMoveVariant(piece);
   if (!variant) return moves;
@@ -19188,9 +19239,12 @@ function possibleMovesOfShape(piece, allPieces, gameType, gamePly = 0) {
             // When hopStopAtOccupiedAtk=false and no capture: hop over to next multiple.
             if (hopStopAtOccupiedAtk || addedCapture) break;
           } else {
-            // Empty square: stop movement iteration if hopStopAtOccupied.
+            // An empty landing: on to the next. (This used to stop here when
+            // hop_stop_at_occupied was set - stopping at an EMPTY square - so
+            // the server's nightrider never went past two jumps, while the
+            // validator and the frontend let it ride on. A piece standing on a
+            // landing is what stops it: blockedLine, above.)
             moves.push({ x: targetX, y: targetY });
-            if (hopStopAtOccupied) break;
           }
         }
       }

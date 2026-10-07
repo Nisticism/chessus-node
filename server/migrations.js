@@ -1415,6 +1415,13 @@ const migrations = [
    * the crooked bishop. JSON lists of paths; see server/move-paths.js.
    */
   { table: 'pieces', column: 'movement_paths', sql: "ALTER TABLE pieces ADD COLUMN movement_paths TEXT DEFAULT NULL", description: "The piece's multi-leg movement paths (JSON; server/move-paths.js)." },
+  /*
+   * Wrapping boards (2026-10-07): edges that join - a cylinder or a torus. A
+   * game setting for every piece, and a piece setting for one. 'off' |
+   * 'columns' | 'rows' | 'both'. See server/board-wrap.js.
+   */
+  { table: 'game_types', column: 'board_wrap', sql: "ALTER TABLE game_types ADD COLUMN board_wrap VARCHAR(8) NOT NULL DEFAULT 'off'", description: "Which board edges join: off, columns (a cylinder), rows, both (a torus)." },
+  { table: 'pieces', column: 'piece_wrap', sql: "ALTER TABLE pieces ADD COLUMN piece_wrap VARCHAR(8) DEFAULT NULL", description: "Which board edges this piece's moves wrap round: columns, rows, both (NULL = none)." },
   { table: 'pieces', column: 'capture_paths', sql: "ALTER TABLE pieces ADD COLUMN capture_paths TEXT DEFAULT NULL", description: "The piece's multi-leg attack paths (JSON; server/move-paths.js)." },
   { table: 'pieces', column: 'hop_landing_distance_attack', sql: "ALTER TABLE pieces ADD COLUMN hop_landing_distance_attack TINYINT DEFAULT NULL", description: "After hopping, a straight-line capture lands at most this many squares past the last piece hopped (1-8)." },
   // --- Direction Change (Movement) ---

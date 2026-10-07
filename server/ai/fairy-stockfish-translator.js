@@ -38,6 +38,7 @@
 const { straightHopRule, lPathRule, repeatCap } = require('../hop-rule');
 const { firstMoveVariant } = require('../first-move');
 const { hasPaths } = require('../move-paths');
+const { wrapValue } = require('../board-wrap');
 
 // ---------- helpers ----------
 
@@ -566,6 +567,8 @@ function pieceShapeToBetza(piece) {
   if (toBool(piece.directional_movement_change) || toBool(piece.directional_capture_change)) return null;
   // Multi-leg paths (server/move-paths.js): Fairy-Stockfish has no such moves.
   if (hasPaths(piece)) return null;
+  // Moves that wrap round the board's edges (server/board-wrap.js).
+  if (wrapValue(piece.piece_wrap) !== 'off') return null;
 
   const chunks = [];
 

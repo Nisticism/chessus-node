@@ -155,6 +155,7 @@ const { sendWelcomeEmail, sendDonationEmail, sendContactEmail, sendPasswordReset
 const { isStaffUser, creatorNotHidden, hideFromViewer, hiddenCreatorIds, REMOVED_MESSAGE } = require('./banned-content');
 const { sanitizeFirstMoveProfile } = require('./first-move');
 const { pathsField } = require('./move-paths');
+const { wrapValue } = require('./board-wrap');
 const { initializeSocket, activeGames: gsActiveGames, gameTimers: gsGameTimers, disconnectTimeouts: gsDisconnectTimeouts, onlineUsers, reconcileOnlineUsers, getIO, SILVER_MIN_DONATION, GOLD_MIN_DONATION } = require("./game-socket");
 
 //  Express
@@ -2928,6 +2929,7 @@ const CMP_JSON_COLS = [
   'first_move_profile',
   // Multi-leg paths (server/move-paths.js)
   'movement_paths', 'capture_paths',
+  'piece_wrap',
   // Strings, compared as set or not: the L-path rule (lPathRule).
   'ratio_path_order', 'ratio_path_order_attack', 'ratio_path_blocking', 'ratio_path_blocking_attack',
   'special_scenario_moves','special_scenario_captures',
@@ -4346,6 +4348,8 @@ app.put("/api/games/:gameId", authenticateToken, async (req, res) => {
         if (typeof od === 'string') { try { od = JSON.parse(od); } catch (_) { od = {}; } }
         return od?.place_pieces_action ? gameData.board_gravity : 'off';
       })(),
+      // Edges that join (server/board-wrap.js)
+      board_wrap:                            wrapValue(gameData.board_wrap),
       promotion_condition:                   gameData.promotion_condition || false,
       // Only meaningful with promotion_condition; harmless stored on its own.
       promotion_condition_requires_empty:    gameData.promotion_condition_requires_empty || false,
@@ -5957,6 +5961,7 @@ app.post("/api/games/:gameId/uniqueness-check", authenticateToken, async (req, r
       'max_repeating_movement', 'max_repeating_capture',
       'first_move_profile', 'first_move_profile_moves',
       'movement_paths', 'capture_paths',
+      'piece_wrap',
       'repeating_capture', 'repeating_ratio_capture', 'max_ratio_capture_iterations',
       'can_capture_allies', 'cannot_be_captured', 'max_chain_hops',
       'promotion_pieces_ids'
@@ -9456,6 +9461,8 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
         if (typeof od === 'string') { try { od = JSON.parse(od); } catch (_) { od = {}; } }
         return od?.place_pieces_action ? gameData.board_gravity : 'off';
       })(),
+      // Edges that join (server/board-wrap.js)
+      board_wrap:                            wrapValue(gameData.board_wrap),
       promotion_condition:                   gameData.promotion_condition || false,
       // Only meaningful with promotion_condition; harmless stored on its own.
       promotion_condition_requires_empty:    gameData.promotion_condition_requires_empty || false,
@@ -10011,7 +10018,7 @@ app.post("/api/pieces/create", authenticateToken, multerWrap(pieceUpload.array('
         ratio_path_corner_blocks, ratio_path_corner_blocks_attack,
         max_repeating_movement, max_repeating_capture,
         first_move_profile, first_move_profile_moves,
-        movement_paths, capture_paths,
+        movement_paths, capture_paths, piece_wrap,
         can_capture_allies, cannot_be_captured, max_chain_hops,
         custom_movement_squares, custom_attack_squares,
         must_move_if_able, must_move_uses_action,
@@ -10034,7 +10041,7 @@ app.post("/api/pieces/create", authenticateToken, multerWrap(pieceUpload.array('
         require_direction_change, require_direction_change_capture,
         image_sources_json,
         created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const pieceWidth = Math.min(4, Math.max(1, parseInt(pieceData.piece_width) || 1));
@@ -10230,6 +10237,8 @@ app.post("/api/pieces/create", authenticateToken, multerWrap(pieceUpload.array('
       // Multi-leg paths (server/move-paths.js), cleaned
       pathsField(pieceData.movement_paths),
       pathsField(pieceData.capture_paths),
+      // Which board edges its moves wrap round (server/board-wrap.js); NULL for none
+      wrapValue(pieceData.piece_wrap) === 'off' ? null : wrapValue(pieceData.piece_wrap),
       // Can capture allies
       parseBooleanField(pieceData.can_capture_allies),
       // Cannot be captured
@@ -10793,6 +10802,7 @@ app.put("/api/pieces/:pieceId", authenticateToken, multerWrap(pieceUpload.array(
         first_move_profile_moves = ?,
         movement_paths = ?,
         capture_paths = ?,
+        piece_wrap = ?,
         can_capture_allies = ?,
         cannot_be_captured = ?,
         max_chain_hops = ?,
@@ -11011,6 +11021,8 @@ app.put("/api/pieces/:pieceId", authenticateToken, multerWrap(pieceUpload.array(
       // Multi-leg paths (server/move-paths.js), cleaned
       pathsField(pieceData.movement_paths),
       pathsField(pieceData.capture_paths),
+      // Which board edges its moves wrap round (server/board-wrap.js); NULL for none
+      wrapValue(pieceData.piece_wrap) === 'off' ? null : wrapValue(pieceData.piece_wrap),
       // Can capture allies
       parseBooleanField(pieceData.can_capture_allies),
       // Cannot be captured

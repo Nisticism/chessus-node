@@ -324,6 +324,7 @@ const PieceView = () => {
       // Multi-leg paths (helpers/movePaths.js)
       movement_paths: piece.movement_paths || null,
       capture_paths: piece.capture_paths || null,
+      piece_wrap: piece.piece_wrap || null,
       directional_attack_style: !!piece.directional_attack_style,
       ratio_attack_style: !!piece.ratio_attack_style,
       step_by_step_attack_style: !!piece.step_by_step_attack_style,
@@ -660,6 +661,7 @@ const PieceView = () => {
       // Multi-leg paths (helpers/movePaths.js)
       movement_paths: piece.movement_paths || null,
       capture_paths: piece.capture_paths || null,
+      piece_wrap: piece.piece_wrap || null,
       directional_attack_style: !!piece.directional_attack_style,
       ratio_attack_style: !!piece.ratio_attack_style,
       step_by_step_attack_style: !!piece.step_by_step_attack_style,

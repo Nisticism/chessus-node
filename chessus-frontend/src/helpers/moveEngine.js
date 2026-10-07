@@ -29,6 +29,7 @@ import {
 } from './pieceMovementUtils';
 import { firstMoveVariant } from './firstMove';
 import { hasPaths, pathMoves, pathAttacks } from './movePaths';
+import { boardWrap, wrapBoard, wrapGameType, wrapSpecialSquares } from './boardWrap';
 
 /**
  * Board indicator colours, shared by every board that draws move dots.
@@ -1326,7 +1327,58 @@ export const createMoveEngine = ({
     };
   };
 
+  /*
+   * Wrapping boards (boardWrap.js): a piece whose moves wrap is asked about on
+   * a virtual board three boards wide and/or tall - the same engine, made for
+   * that board (virtualEngine) - and its answers wrapped back. One engine per
+   * shape of virtual board; the virtual board never wraps itself.
+   */
+  const virtualEngines = new Map();
+  const virtualEngine = (board, W, H) => {
+    const key = `${board.nx}x${board.ny}|${W}x${H}`;
+    if (!virtualEngines.has(key)) {
+      const shift = (sq) => (sq ? { ...sq, x: sq.x + board.ox, y: sq.y + board.oy } : sq);
+      const ep = enPassantTarget
+        ? { ...enPassantTarget, piecePosition: shift(enPassantTarget.piecePosition), captureSquare: shift(enPassantTarget.captureSquare) }
+        : enPassantTarget;
+      virtualEngines.set(key, createMoveEngine({
+        specialSquares: wrapSpecialSquares(specialSquares, W, H, board.nx, board.ny),
+        gameType: wrapGameType({ ...(gameType || {}), board_width: W, board_height: H }, board.nx, board.ny),
+        enPassantTarget: ep,
+        currentPlayerPosition,
+      }));
+    }
+    return virtualEngines.get(key);
+  };
+  const realId = (id) => (typeof id === 'string' && id.includes('@wrap') ? id.slice(0, id.indexOf('@wrap')) : id);
+
+  /*
+   * Is the piece attacked - also by pieces whose moves wrap round the board.
+   * Each wrapping attacker is asked on ITS virtual board (the board built
+   * round the attacker, as the server's canPieceAttackSquare does: the
+   * attacker once, every other piece - the target too - on every copy), at
+   * every copy of the target, so a piece that does not wrap never attacks
+   * across an edge.
+   */
   const isPieceUnderAttack = (targetPiece, pieces, boardWidth, boardHeight) => {
+    if (isPieceUnderAttackFlat(targetPiece, pieces, boardWidth, boardHeight)) return true;
+    if (!gameType || gameType._wrapVirtual || targetPiece.cannot_be_captured) return false;
+    const targetTeam = targetPiece.player_id || targetPiece.team;
+    for (const attacker of pieces) {
+      if ((attacker.player_id || attacker.team) === targetTeam || attacker.id === targetPiece.id) continue;
+      const wrap = boardWrap(attacker, gameType);
+      if (!wrap.x && !wrap.y) continue;
+      const board = wrapBoard(attacker, pieces, boardWidth, boardHeight, wrap);
+      const eng = virtualEngine(board, boardWidth, boardHeight);
+      const only = (a) => a.id === attacker.id;
+      const copies = board.pieces.filter((p) => realId(p.id) === targetPiece.id);
+      if (copies.some((t) => eng.isPieceUnderAttackFlat(t, board.pieces, board.width, board.height, only))) return true;
+    }
+    return false;
+  };
+
+  // attackerFilter: only these attackers count (the wrapping check above).
+  const isPieceUnderAttackFlat = (targetPiece, pieces, boardWidth, boardHeight, attackerFilter = null) => {
     if (targetPiece.cannot_be_captured) return false;
     const targetTeam = targetPiece.player_id || targetPiece.team;
     const tw = targetPiece.piece_width || 1;
@@ -1338,6 +1390,7 @@ export const createMoveEngine = ({
     for (let enemyPiece of attackers) {
       const enemyTeam = enemyPiece.player_id || enemyPiece.team;
       if (enemyTeam === targetTeam) continue; // Skip friendly pieces
+      if (attackerFilter && !attackerFilter(enemyPiece)) continue;
       
       // Apply range square bonus to attacking piece
       enemyPiece = applyRangeSquareBonus(enemyPiece);
@@ -1617,7 +1670,53 @@ export const createMoveEngine = ({
    * with its first-move movement and attack swapped in. calculateShapeMoves is
    * the ordinary movement alone. Mirrors the server's getPossibleMovesForPiece.
    */
+  /*
+   * A wrapping piece's moves: found on its virtual board without the check
+   * filter, wrapped back onto the real board, then filtered for check HERE,
+   * on the real board - where only the pieces that wrap attack across edges.
+   */
+  const wrappedValidMoves = (piece, pieces, wrap, rest) => {
+    const [W, H, skipCheckFilter = false, ...more] = rest;
+    const board = wrapBoard(piece, pieces, W, H, wrap);
+    const eng = virtualEngine(board, W, H);
+    const opts = more[4];
+    let args = more;
+    if (opts && (opts.onlySquares || opts.asIfEmpty)) {
+      const expand = (set) => set && new Set([...set].flatMap((k) => {
+        const [x, y] = k.split(',').map(Number);
+        return board.copies(x, y).map(([a, b]) => `${a},${b}`);
+      }));
+      args = [...more];
+      args[4] = { ...opts, onlySquares: expand(opts.onlySquares), asIfEmpty: expand(opts.asIfEmpty) };
+    }
+    const pw = piece.piece_width || 1;
+    const ph = piece.piece_height || 1;
+    const byKey = new Map();
+    for (const m of eng.calculateValidMoves(board.mover, board.pieces, board.width, board.height, true, ...args) || []) {
+      if (m.isRangedAttack && !board.inMiddle(m.x, m.y)) continue;   // ranged attacks do not wrap
+      const r = board.real(m.x, m.y);
+      if (r.x === piece.x && r.y === piece.y) continue;
+      if (r.x + pw > W || r.y + ph > H) continue;                      // never straddling an edge
+      const out = { ...m, x: r.x, y: r.y };
+      if (m.via) out.via = { ...m.via, ...board.real(m.via.x, m.via.y) };
+      if (m.hopCapturedPieceIds) out.hopCapturedPieceIds = [...new Set(m.hopCapturedPieceIds.map(realId))];
+      if (m.enPassantVictimId != null) out.enPassantVictimId = realId(m.enPassantVictimId);
+      if (!board.inMiddle(m.x, m.y)) out.isWrap = true;
+      const k = `${out.x},${out.y}|${out.isRangedAttack ? 'R' : ''}|${out.via ? `${out.via.x},${out.via.y}` : ''}`;
+      const prev = byKey.get(k);
+      if (!prev || (prev.isFirstMoveOnly && !out.isFirstMoveOnly)
+        || (!!prev.isFirstMoveOnly === !!out.isFirstMoveOnly && prev.isWrap && !out.isWrap)) byKey.set(k, out);
+    }
+    const moves = [...byKey.values()];
+    const team = piece.player_id || piece.team;
+    const own = !!piece.is_neutral || (currentPlayer && team === currentPlayer.position);
+    if (skipCheckFilter || !gameState?.gameType?.mate_condition || !currentPlayer || !own) return moves;
+    return moves.filter((m) => m.isRangedAttack || wouldMoveResolveCheck(piece, m.x, m.y, pieces, currentPlayer.position, W, H));
+  };
+
   const calculateValidMoves = (piece, pieces, ...rest) => {
+    const wrap = boardWrap(piece, gameType);
+    if (wrap.x || wrap.y) return wrappedValidMoves(piece, pieces, wrap, rest);
     const moves = calculateShapeMoves(piece, pieces, ...rest) || [];
     const variant = firstMoveVariant(piece);
     if (!variant) return moves;
@@ -2508,6 +2607,7 @@ export const createMoveEngine = ({
     canReachStepByStepRanged,
     applyRangeSquareBonus,
     isPieceUnderAttack,
+    isPieceUnderAttackFlat,
     checkForCheck,
     simulateMove,
     wouldMoveResolveCheck,

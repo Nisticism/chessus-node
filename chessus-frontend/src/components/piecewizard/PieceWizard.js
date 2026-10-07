@@ -116,6 +116,8 @@ const PieceWizard = ({ editPieceId = null }) => {
     // Multi-leg paths (helpers/movePaths.js), JSON
     movement_paths: null,
     capture_paths: null,
+    // Board edges its moves wrap round (helpers/boardWrap.js)
+    piece_wrap: null,
     
     // Step 3: Attack/Capture Configuration
     repeating_capture: false,
@@ -392,6 +394,7 @@ const PieceWizard = ({ editPieceId = null }) => {
             first_move_profile_moves: piece.first_move_profile_moves != null ? parseInt(piece.first_move_profile_moves) || null : null,
             movement_paths: piece.movement_paths || null,
             capture_paths: piece.capture_paths || null,
+            piece_wrap: piece.piece_wrap || null,
             
             // Attack/Capture fields
             repeating_capture: !!piece.repeating_capture,

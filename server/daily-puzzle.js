@@ -286,6 +286,8 @@ function createDailyPuzzle({ db_pool }) {
               gt.game_name, gt.board_width, gt.board_height,
               -- Which way a dropped piece falls (Connect Four), or 'off'.
               gt.board_gravity,
+              -- Which edges join (a cylinder), or 'off'.
+              gt.board_wrap,
               -- What the game lets a player put down. The home board needs it
               -- to offer a placement when the answer is one rather than a move.
               gt.other_game_data
