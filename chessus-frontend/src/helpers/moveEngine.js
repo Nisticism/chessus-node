@@ -22,7 +22,9 @@ import {
   doesPieceOccupySquare,
   doesPieceFitOnBoard,
   isDestinationClear,
-  getDirectionChangeMoves
+  getDirectionChangeMoves,
+  parseSpecialScenarioMoves,
+  parseSpecialScenarioCaptures
 } from './pieceMovementUtils';
 
 /**
@@ -150,6 +152,47 @@ export const stepCaptureNoOrthogonal = (piece, hasExplicitCapture) => (hasExplic
 
 export const stepAttackNoOrthogonal = (piece) => !!(piece?.step_by_step_attack_no_orthogonal);
 
+/*
+ * The hop rules of a straight-line (directional) move or capture, as one rule:
+ * at least `min` pieces hopped ("require hopping" is min 1), at most `max`, and,
+ * after a hop, landing at most `landing` squares past the last piece hopped.
+ * The xiangqi cannon captures over exactly one piece (attack min 1, max 1); the
+ * grasshopper hops exactly one and lands right behind it (min 1, max 1,
+ * landing 1). A MIRROR of straightHopRule in server/game-socket.js - the two
+ * must agree.
+ */
+export const straightHopRule = (piece, attack) => {
+  const field = (name) => piece?.[attack ? `${name}_attack` : name];
+  const count = (v) => (Number(v) > 0 ? Math.min(8, Math.floor(Number(v))) : null);
+  const hopOnly = field('directional_hop_only') === 1 || field('directional_hop_only') === true;
+  const min = Math.max(count(field('min_directional_hop_pieces')) || 0, hopOnly ? 1 : 0);
+  const max = count(field('max_directional_hop_pieces'));
+  const landing = count(field('hop_landing_distance'));
+  return { min, max, landing, active: min > 0 || max != null || landing != null };
+};
+
+/** Pieces strictly between two squares on a line, and how far past the last of them the end square is. */
+export const straightHopsBetween = (fromX, fromY, toX, toY, isOccupied) => {
+  const dx = toX - fromX;
+  const dy = toY - fromY;
+  if ((dx === 0 && dy === 0) || (dx !== 0 && dy !== 0 && Math.abs(dx) !== Math.abs(dy))) return { count: 0, beyond: null };
+  const sX = Math.sign(dx);
+  const sY = Math.sign(dy);
+  let count = 0;
+  let beyond = null;
+  for (let x = fromX + sX, y = fromY + sY; x !== toX || y !== toY; x += sX, y += sY) {
+    if (isOccupied(x, y)) { count++; beyond = 0; } else if (beyond !== null) beyond++;
+  }
+  return { count, beyond: beyond === null ? null : beyond + 1 };
+};
+
+export const hopRuleAllows = (rule, hops) => {
+  if (hops.count < rule.min) return false;
+  if (rule.max != null && hops.count > rule.max) return false;
+  if (rule.landing != null && hops.count > 0 && hops.beyond > rule.landing) return false;
+  return true;
+};
+
 export const getMoveDotType = (move) => {
   if (!move) return null;
   if (move.isCastling) return 'castle';
@@ -204,6 +247,18 @@ export const createMoveEngine = ({
     if (!value || value === 99) return value;
     if (exactFlag === true || exactFlag === 1) return -Math.abs(value);
     return value;
+  };
+
+  /*
+   * An alternate movement or capture limited to the piece's first N moves,
+   * once those are used. The server skips such an option outright
+   * (getPossibleMovesForPiece, canPieceAttackSquare); here it must not count
+   * either, or the hop-only re-check below takes a spent first-move slide as
+   * the reason a jump needs no hop.
+   */
+  const alternateUsedUp = (option, pieceData) => {
+    const moves = pieceData.moveCount || 0;
+    return !!((option.availableForMoves && moves >= option.availableForMoves) || (option.firstMoveOnly && moves > 0));
   };
 
   // Check if a move is from a first-move-only additional movement option
@@ -394,7 +449,10 @@ export const createMoveEngine = ({
     const stepValue = Number(rawStepValue);
     if (!Number.isNaN(stepValue) && stepValue !== 0) {
       const maxSteps = Math.abs(stepValue);
-      return stepInRange(colDiff, rowDiff, maxSteps, stepValue < 0, stepMoveNoOrthogonal(pieceData));
+      // Out of step range is not "cannot move there": alternate movements and
+      // custom squares are still to be checked (the exact/ratio hop rule calls
+      // this with the util skipped, and a custom square was lost here).
+      if (stepInRange(colDiff, rowDiff, maxSteps, stepValue < 0, stepMoveNoOrthogonal(pieceData))) return true;
     }
 
     // Check additional movements from special_scenario_moves
@@ -421,6 +479,7 @@ export const createMoveEngine = ({
         if (direction && additionalMovements[direction]) {
           for (const movementOption of additionalMovements[direction]) {
             if (skipExactRatio && movementOption.exact) continue;
+            if (alternateUsedUp(movementOption, pieceData)) continue;
             const value = movementOption.value || 0;
             const matches = (movementOption.infinite && distance > 0) ||
                            (movementOption.exact && distance === value) ||
@@ -557,8 +616,9 @@ export const createMoveEngine = ({
       // An explicit step capture range carries its own exclusion; without one
       // the piece captures the way it moves.
       const hasExplicitCapture = pieceData.step_capture_value != null && pieceData.step_capture_value !== 0;
-      return stepInRange(colDiff, rowDiff, maxSteps, stepCaptureValue < 0,
-        stepCaptureNoOrthogonal(pieceData, hasExplicitCapture));
+      // As for movement: out of step range, the other capture patterns still count.
+      if (stepInRange(colDiff, rowDiff, maxSteps, stepCaptureValue < 0,
+        stepCaptureNoOrthogonal(pieceData, hasExplicitCapture))) return true;
     }
 
     // Check additional captures from special_scenario_captures
@@ -585,6 +645,7 @@ export const createMoveEngine = ({
         if (direction && additionalCaptures[direction]) {
           for (const captureOption of additionalCaptures[direction]) {
             if (skipExactRatio && captureOption.exact) continue;
+            if (alternateUsedUp(captureOption, pieceData)) continue;
             const value = captureOption.value || 0;
             if (captureOption.infinite && distance > 0) return true;
             if (captureOption.exact && distance === value) return true;
@@ -620,6 +681,41 @@ export const createMoveEngine = ({
     return false;
   };
 
+  /*
+   * Does an EXACT directional pattern - a fixed-distance jump, base or
+   * alternate - reach the square (dx, dy) away? directional_hop_disabled only
+   * switches hopping off for non-exact (sliding) directional moves, as the
+   * wizard says; exact ones still hop, in the server's move walks and in its
+   * final capture check (canPieceAttackSquare). Directions are named from the
+   * owner's side, as canPieceMoveTo names them.
+   */
+  const reachesByExactDirection = (pieceData, dx, dy, isCapture) => {
+    const team = pieceData?.player_id || pieceData?.team;
+    const rd = team === 2 ? -dy : dy;
+    const cd = team === 2 ? -dx : dx;
+    if (!(rd === 0 || cd === 0 || Math.abs(rd) === Math.abs(cd))) return false;
+    const dir = [rd < 0 ? 'up' : rd > 0 ? 'down' : '', cd < 0 ? 'left' : cd > 0 ? 'right' : ''].filter(Boolean).join('_');
+    if (!dir) return false;
+    const dist = Math.max(Math.abs(rd), Math.abs(cd));
+    // A capture may also come from the movement pattern (the server's final
+    // check reads the movement's exact flag for a capture-on-move piece).
+    const kinds = isCapture
+      ? (pieceData.can_capture_enemy_on_move ? ['capture', 'movement'] : ['capture'])
+      : ['movement'];
+    for (const kind of kinds) {
+      const v = Math.abs(Number(pieceData[`${dir}_${kind}`]) || 0);
+      if (v > 0 && v !== 99 && pieceData[`${dir}_${kind}_exact`]) {
+        if (pieceData[`repeating_${kind}`] ? dist % v === 0 : dist === v) return true;
+      }
+      const special = kind === 'capture'
+        ? parseSpecialScenarioCaptures(pieceData.special_scenario_captures).additionalCaptures
+        : parseSpecialScenarioMoves(pieceData.special_scenario_moves).additionalMovements;
+      const options = special?.[dir];
+      if (Array.isArray(options) && options.some((o) => o.exact && !o.infinite && Math.abs(o.value || 0) === dist)) return true;
+    }
+    return false;
+  };
+
   // Check if path is clear for sliding pieces (no pieces in between)
   const isPathClear = (fromX, fromY, toX, toY, pieces, pieceData, isCapture = false) => {
     // Ghostwalk: piece can pass through any piece
@@ -627,13 +723,16 @@ export const createMoveEngine = ({
     if (hasGhostwalk) return true;
 
     const pieceTeam = pieceData?.player_id || pieceData?.team;
+    // Hopping switched off for directional moves still applies to sliding ones only.
+    const hopDisabledHere = (flag) => (flag === 1 || flag === true)
+      && !reachesByExactDirection(pieceData, toX - fromX, toY - fromY, isCapture);
     let canHopAllies, canHopEnemies;
     if (isCapture) {
-      const dirHopDisabledAtk = pieceData?.directional_hop_disabled_attack === 1 || pieceData?.directional_hop_disabled_attack === true;
+      const dirHopDisabledAtk = hopDisabledHere(pieceData?.directional_hop_disabled_attack);
       canHopAllies = !dirHopDisabledAtk && (pieceData?.can_hop_attack_over_allies === 1 || pieceData?.can_hop_attack_over_allies === true);
       canHopEnemies = !dirHopDisabledAtk && (pieceData?.can_hop_attack_over_enemies === 1 || pieceData?.can_hop_attack_over_enemies === true);
     } else {
-      const directionalHopDisabled = pieceData?.directional_hop_disabled === 1 || pieceData?.directional_hop_disabled === true;
+      const directionalHopDisabled = hopDisabledHere(pieceData?.directional_hop_disabled);
       canHopAllies = !directionalHopDisabled && (pieceData?.can_hop_over_allies === 1 || pieceData?.can_hop_over_allies === true);
       canHopEnemies = !directionalHopDisabled && (pieceData?.can_hop_over_enemies === 1 || pieceData?.can_hop_over_enemies === true);
     }
@@ -781,6 +880,33 @@ export const createMoveEngine = ({
     return routeClear(true) || routeClear(false);
   };
 
+  /*
+   * A rider of L-jumps (a nightrider) attacking a square several jumps away:
+   * stopped by a piece standing ON an earlier landing when it stops at occupied
+   * landings, and always by an enemy there (it would take that one instead).
+   * The server's final check (canPieceAttackSquare) holds it to the same.
+   */
+  const ratioLandingBlocked = (piece, targetX, targetY, pieces) => {
+    const dx = targetX - piece.x;
+    const dy = targetY - piece.y;
+    const r1 = piece.ratio_capture_1 || piece.ratio_movement_1 || 0;
+    const r2 = piece.ratio_capture_2 || piece.ratio_movement_2 || 0;
+    if (!(r1 > 0 && r2 > 0)) return false;
+    const adx = Math.abs(dx);
+    const ady = Math.abs(dy);
+    let k = 0;
+    if (adx % r1 === 0 && ady % r2 === 0 && adx / r1 === ady / r2) k = adx / r1;
+    else if (adx % r2 === 0 && ady % r1 === 0 && adx / r2 === ady / r1) k = adx / r2;
+    if (k < 2) return false;
+    const owner = piece.player_id || piece.team;
+    const stopsAtAny = [piece.hop_stop_at_occupied_attack, piece.hop_stop_at_occupied].some((v) => v === 1 || v === true);
+    for (let i = 1; i < k; i++) {
+      const there = findPieceAtSquare(pieces, piece.x + (dx / k) * i, piece.y + (dy / k) * i);
+      if (there && there.id !== piece.id && (stopsAtAny || (there.player_id || there.team) !== owner)) return true;
+    }
+    return false;
+  };
+
   const checkRatioPathClear = (piece, targetX, targetY, pieces) => {
     const canHopAllies = piece.can_hop_over_allies === 1 || piece.can_hop_over_allies === true;
     const canHopEnemies = piece.can_hop_over_enemies === 1 || piece.can_hop_over_enemies === true;
@@ -849,8 +975,58 @@ export const createMoveEngine = ({
     return stepInRange(dx, dy, config.maxSteps, config.noDiagonal, config.noOrthogonal);
   };
 
-  const canReachStepByStep = (piece, targetX, targetY, pieces, boardWidth, boardHeight, allowOccupiedTarget = false) => {
-    const config = getStepMovementConfig(piece);
+  /*
+   * The step-by-step CAPTURE range, read as canPieceCaptureTo reads it. A
+   * capture inside it is reached the way the server's final capture check
+   * (canPieceAttackSquare) reaches it: a walk through empty squares, by the
+   * capture range and directions, not the movement's.
+   */
+  const getStepCaptureConfig = (piece) => {
+    const raw = piece?.step_capture_value ?? piece?.step_by_step_capture;
+    const value = Number(raw);
+    if (raw == null || Number.isNaN(value) || value === 0) return null;
+    const hasExplicitCapture = piece.step_capture_value != null && piece.step_capture_value !== 0;
+    return {
+      maxSteps: Math.abs(value),
+      noDiagonal: value < 0,
+      noOrthogonal: stepCaptureNoOrthogonal(piece, hasExplicitCapture),
+    };
+  };
+
+  /*
+   * A capture's path where the step capture range covers the square: the walk,
+   * or else - on a straight line - the straight path another pattern found.
+   * Off a line, a straight-line check is no check at all (isPathClear passes
+   * any non-line square), so a step capture boxed in by pieces was offered.
+   * Returns { clear, walked }: walked when the step walk itself reached the
+   * square, which frees it from the directional hop rules, as on the server.
+   * When step capture does not cover the square, the given result stands.
+   */
+  const stepCapturePathClear = (piece, toX, toY, pieces, boardWidth, boardHeight, straightClear) => {
+    const config = getStepCaptureConfig(piece);
+    const dx = toX - piece.x;
+    const dy = toY - piece.y;
+    const unchanged = { clear: straightClear, walked: false };
+    if (!config || !stepInRange(dx, dy, config.maxSteps, config.noDiagonal, config.noOrthogonal)) return unchanged;
+    // A multi-tile piece's step walk is not modelled square by square here.
+    if ((piece.piece_width || 1) > 1 || (piece.piece_height || 1) > 1) return unchanged;
+    if (canReachStepByStep(piece, toX, toY, pieces, boardWidth, boardHeight, true, config)) return { clear: true, walked: true };
+    const onLine = dx === 0 || dy === 0 || Math.abs(dx) === Math.abs(dy);
+    return { clear: onLine && straightClear, walked: false };
+  };
+
+  // Is (dx, dy) one of the piece's custom attack squares (mirrored for player 2)?
+  const isCustomAttackOffset = (piece, dx, dy) => {
+    try {
+      const raw = piece.custom_attack_squares;
+      const squares = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      if (!Array.isArray(squares)) return false;
+      const flip = (piece.player_id || piece.team) === 2 ? -1 : 1;
+      return squares.some((sq) => sq.row * flip === dy && sq.col * flip === dx);
+    } catch { return false; }
+  };
+
+  const canReachStepByStep = (piece, targetX, targetY, pieces, boardWidth, boardHeight, allowOccupiedTarget = false, config = getStepMovementConfig(piece)) => {
     if (!config) {
       return false;
     }
@@ -1078,6 +1254,11 @@ export const createMoveEngine = ({
                 
                 const isStepMove = isStepByStepTarget(enemyPiece, enemyPiece.x, enemyPiece.y, adx, ady);
 
+                // A custom attack square is a jump: nothing in between blocks it.
+                // It was path-checked like a slide, so a dabbaba or alfil leap
+                // never gave check over a piece in the way - the server's final
+                // check (canPieceAttackSquare) says it does.
+                if (isCustomAttackOffset(enemyPiece, adx - enemyPiece.x, ady - enemyPiece.y)) return true;
                 let pathClear = false;
                 if (isRatioMove || usesRatioForCapture) {
                   pathClear = checkRatioPathClear(enemyPiece, adx, ady, pieces);
@@ -1086,7 +1267,29 @@ export const createMoveEngine = ({
                 } else {
                   pathClear = isPathClear(enemyPiece.x, enemyPiece.y, adx, ady, pieces, enemyPiece, true);
                 }
+                if (!isRatioMove && !usesRatioForCapture && !isCustomAttackOffset(enemyPiece, adx - enemyPiece.x, ady - enemyPiece.y)) {
+                  pathClear = stepCapturePathClear(enemyPiece, adx, ady, pieces, boardWidth, boardHeight, pathClear).clear;
+                  /*
+                   * The straight-line hop rule for captures: a cannon gives
+                   * check only over its screen, a grasshopper only from right
+                   * behind its hurdle. Ignored here before, so a cannon with
+                   * an open line to the king "checked" it.
+                   */
+                  if (pathClear && !isStepMove
+                      && (enemyPiece.hop_stop_at_occupied === 1 || enemyPiece.hop_stop_at_occupied === true)
+                      && exactLandingBlocked(enemyPiece, adx, ady, pieces, true)) {
+                    pathClear = false;
+                  }
+                  const hopRule = straightHopRule(enemyPiece, true);
+                  if (pathClear && hopRule.active && !isStepMove) {
+                    const occupied = (cx, cy) => pieces.some((q) => q.id !== enemyPiece.id && doesPieceOccupySquare(q, cx, cy));
+                    pathClear = hopRuleAllows(hopRule, straightHopsBetween(enemyPiece.x, enemyPiece.y, adx, ady, occupied));
+                  }
+                }
                 
+                // Several L-jumps away (a nightrider): not past a piece on an
+                // earlier landing. Single jumps are untouched (ratioLandingBlocked).
+                if (pathClear && ratioLandingBlocked(enemyPiece, adx, ady, pieces)) pathClear = false;
                 if (pathClear) {
                   return true;
                 }
@@ -1100,6 +1303,36 @@ export const createMoveEngine = ({
   };
 
   // Check if a player is in check (any piece with ends_game_on_checkmate is under attack)
+  /*
+   * A straight line of exact jumps (a dabbaba rider, Betza DD) with
+   * hop_stop_at_occupied: it hops whatever lies between its landings, but a
+   * piece standing ON a landing ends the line there - as the server's walk
+   * stops at it. True when such a piece sits on a landing short of (toX, toY).
+   * Used for moves and for check detection alike.
+   */
+  const exactLandingBlocked = (piece, toX, toY, pieces, isCapture) => {
+    const rowD = toY - piece.y;
+    const colD = toX - piece.x;
+    if (!(rowD === 0 || colD === 0 || Math.abs(rowD) === Math.abs(colD))) return false;
+    // Directions are named from the owner's side, as canPieceMoveTo names them.
+    const team = piece.player_id || piece.team;
+    const rd = team === 2 ? -rowD : rowD;
+    const cd = team === 2 ? -colD : colD;
+    const dir = [rd < 0 ? 'up' : rd > 0 ? 'down' : '', cd < 0 ? 'left' : cd > 0 ? 'right' : ''].filter(Boolean).join('_');
+    const exactStep = (kind) => (piece[`${dir}_${kind}_exact`] && piece[`repeating_${kind}`]
+      ? Math.abs(Number(piece[`${dir}_${kind}`]) || 0) : 0);
+    const step = (isCapture && exactStep('capture')) || exactStep('movement');
+    const dist = Math.max(Math.abs(rowD), Math.abs(colD));
+    if (!(step > 0 && dist % step === 0)) return false;
+    const sx = Math.sign(colD);
+    const sy = Math.sign(rowD);
+    for (let k = step; k < dist; k += step) {
+      const blocking = findPieceAtSquare(pieces, piece.x + sx * k, piece.y + sy * k);
+      if (blocking && blocking.id !== piece.id) return true;
+    }
+    return false;
+  };
+
   const checkForCheck = (pieces, playerPosition, boardWidth, boardHeight) => {
     // Find all pieces belonging to this player that have ends_game_on_checkmate
     const checkmatePieces = pieces.filter(p => {
@@ -1415,14 +1648,14 @@ export const createMoveEngine = ({
         }
 
         // Check if this is a custom-square-only move (direct jump, no path check needed).
-        // Use raw absolute offsets (toY - piece.y, toX - piece.x) — this matches the server-side
-        // logic which applies custom squares as (cy + sq.row, cx + sq.col) with no perspective flip.
-        // This avoids the perspective-flip mismatch that can occur when using canPieceMoveTo/
-        // canPieceCaptureTo with skipCustom=true to detect custom squares for opponent pieces.
+        // Custom squares are drawn from the owner's side, so player 2's are mirrored
+        // on both axes - as canPieceMoveTo reads them, and as the server applies them
+        // (getPossibleMovesForPiece and canPieceAttackSquare: isPlayer2 ? -sq.col : sq.col).
+        // Reading them unmirrored made player 2's custom jumps path-checked like slides.
         let isCustomSquareMove = false;
         if (isValidMove) {
-          const rawRowOffset = toY - piece.y;
-          const rawColOffset = toX - piece.x;
+          const rawRowOffset = pieceTeam === 2 ? piece.y - toY : toY - piece.y;
+          const rawColOffset = pieceTeam === 2 ? piece.x - toX : toX - piece.x;
           // For captures, prefer custom_attack_squares; fall back to custom_movement_squares
           // when can_capture_enemy_on_move is set (piece captures using its movement pattern).
           const atkCustom = piece.custom_attack_squares;
@@ -1484,6 +1717,9 @@ export const createMoveEngine = ({
         const isStepMove = isStepByStepTarget(piece, piece.x, piece.y, toX, toY);
 
         let pathClear = false;
+        // Reached by a step-by-step walk: the directional hop rules below
+        // (hop-only, hop limits) do not apply to it, as the wizard says.
+        let stepWalkReached = false;
         if (forPremove) {
           // Premoves skip path checking — pieces may move out of the way before execution
           pathClear = true;
@@ -1495,6 +1731,7 @@ export const createMoveEngine = ({
           pathClear = checkRatioPathClear(piece, toX, toY, pathPieces);
         } else if (isStepMove) {
           pathClear = canReachStepByStep(piece, toX, toY, pathPieces, boardWidth, boardHeight, isCapture);
+          stepWalkReached = pathClear;
         } else if (pw > 1 || ph > 1) {
           // For multi-tile pieces, check path from ALL sub-squares to their destination sub-squares
           pathClear = true;
@@ -1507,6 +1744,11 @@ export const createMoveEngine = ({
           }
         } else {
           pathClear = isPathClear(piece.x, piece.y, toX, toY, pathPieces, piece, isCapture);
+        }
+        if (isCapture && !forPremove && !isCustomSquareMove && !isRatioMove) {
+          const stepCapture = stepCapturePathClear(piece, toX, toY, pathPieces, boardWidth, boardHeight, pathClear);
+          pathClear = stepCapture.clear;
+          if (stepCapture.walked) stepWalkReached = true;
         }
 
         // For repeating ratio moves, check intermediate landing positions are clear.
@@ -1541,6 +1783,12 @@ export const createMoveEngine = ({
               }
             }
           }
+        }
+
+        // The same rule for a straight line of exact jumps (exactLandingBlocked).
+        if (pathClear && hopStopAtOccupied && !isRatioMove && !isCustomSquareMove && !isStepMove
+            && exactLandingBlocked(piece, toX, toY, pieces, isCapture)) {
+          pathClear = false;
         }
 
         // Hop capture: piece has capture_on_hop, destination is empty, enemies are in the path.
@@ -1612,7 +1860,7 @@ export const createMoveEngine = ({
         const exactRatioHopOnlyApplies = isAttackMove
           ? (piece.exact_ratio_hop_only_attack === 1 || piece.exact_ratio_hop_only_attack === true)
           : (piece.exact_ratio_hop_only === 1 || piece.exact_ratio_hop_only === true);
-        if (!forPremove && exactRatioHopOnlyApplies && isValidMove && pathClear && !isHopCapture && !isStepMove && !isRatioMove) {
+        if (!forPremove && exactRatioHopOnlyApplies && isValidMove && pathClear && !isHopCapture && !isStepMove && !stepWalkReached && !isRatioMove) {
           const stillValid = isCapture
             ? canPieceCaptureTo(piece.x, piece.y, toX, toY, piece, pieceTeam, true)
             : canPieceMoveTo(piece.x, piece.y, toX, toY, piece, pieceTeam, true);
@@ -1636,91 +1884,46 @@ export const createMoveEngine = ({
             if (!hasHop) isValidMove = false;
           }
         }
-        // For ratio moves with hop-only: always require a hop
+        // For ratio moves with hop-only: a piece must stand on either L route,
+        // as the server's generator and final capture check require
+        // (getRatioHasAnyPiece / ratioPathHasPieceAtk). This used to refuse
+        // every such ratio move, hop or no hop.
         if (!forPremove && exactRatioHopOnlyApplies && isValidMove && pathClear && !isHopCapture && isRatioMove) {
-          isValidMove = false;
+          const ldx = toX - piece.x;
+          const ldy = toY - piece.y;
+          const sx = Math.sign(ldx);
+          const sy = Math.sign(ldy);
+          let hopped = false;
+          const xFirst = [[sx, 0, Math.abs(ldx)], [0, sy, Math.abs(ldy)]];
+          const yFirst = [[0, sy, Math.abs(ldy)], [sx, 0, Math.abs(ldx)]];
+          for (const legs of [xFirst, yFirst]) {
+            let cx = piece.x;
+            let cy = piece.y;
+            for (const [lx, ly, n] of legs) {
+              for (let i = 0; i < n && !hopped; i++) {
+                cx += lx;
+                cy += ly;
+                if ((cx !== toX || cy !== toY) && otherPieceAt(cx, cy)) hopped = true;
+              }
+            }
+          }
+          if (!hopped) isValidMove = false;
         }
 
-        // directional_hop_only: directional movement requires a piece to be hopped in the path
-        if (!forPremove && isValidMove && !isCapture && !isPotentialCapture && !isHopCapture &&
-            (piece.directional_hop_only === 1 || piece.directional_hop_only === true)) {
-          const xDiff = toX - piece.x;
-          const yDiff = toY - piece.y;
-          if (xDiff === 0 || yDiff === 0 || Math.abs(xDiff) === Math.abs(yDiff)) {
-            const dx = Math.sign(xDiff);
-            const dy = Math.sign(yDiff);
-            let hasHopPiece = false;
-            let cx = piece.x + dx;
-            let cy = piece.y + dy;
-            while ((cx !== toX || cy !== toY) && !hasHopPiece) {
-              if (otherPieceAt(cx, cy)) hasHopPiece = true;
-              cx += dx;
-              cy += dy;
-            }
-            if (!hasHopPiece) isValidMove = false;
+        // The hop requirements and limits below are directional rules. A custom
+        // square is its own jump and is held to none of them (the wizard says so,
+        // and the server generates and checks custom squares apart from them).
+        // The straight-line hop rule (straightHopRule): at least / at most so
+        // many pieces hopped, and how far past the last one it may land - for
+        // a move, and separately for a capture. Not a rule for custom squares,
+        // step walks or checkers-style hop captures (excluded above).
+        if (!forPremove && isValidMove && !isHopCapture && !isCustomSquareMove && !stepWalkReached) {
+          const rule = straightHopRule(piece, isCapture || isPotentialCapture);
+          if (rule.active && !hopRuleAllows(rule, straightHopsBetween(piece.x, piece.y, toX, toY, (cx, cy) => !!otherPieceAt(cx, cy)))) {
+            isValidMove = false;
           }
         }
 
-        // max_directional_hop_pieces: limit how many pieces may be hopped over per directional move
-        if (!forPremove && isValidMove && !isCapture && !isPotentialCapture && !isHopCapture &&
-            piece.max_directional_hop_pieces != null && piece.max_directional_hop_pieces > 0) {
-          const xDiff = toX - piece.x;
-          const yDiff = toY - piece.y;
-          if (xDiff === 0 || yDiff === 0 || Math.abs(xDiff) === Math.abs(yDiff)) {
-            const dx = Math.sign(xDiff);
-            const dy = Math.sign(yDiff);
-            let hopCount = 0;
-            let cx = piece.x + dx;
-            let cy = piece.y + dy;
-            while (cx !== toX || cy !== toY) {
-              if (otherPieceAt(cx, cy)) hopCount++;
-              cx += dx;
-              cy += dy;
-            }
-            if (hopCount > piece.max_directional_hop_pieces) isValidMove = false;
-          }
-        }
-
-        // directional_hop_only_attack: directional attacks require a piece to be hopped in the path
-        if (!forPremove && isValidMove && (isCapture || isPotentialCapture) && !isHopCapture &&
-            (piece.directional_hop_only_attack === 1 || piece.directional_hop_only_attack === true)) {
-          const xDiff = toX - piece.x;
-          const yDiff = toY - piece.y;
-          if (xDiff === 0 || yDiff === 0 || Math.abs(xDiff) === Math.abs(yDiff)) {
-            const dx = Math.sign(xDiff);
-            const dy = Math.sign(yDiff);
-            let hasHopPiece = false;
-            let cx = piece.x + dx;
-            let cy = piece.y + dy;
-            while ((cx !== toX || cy !== toY) && !hasHopPiece) {
-              if (otherPieceAt(cx, cy)) hasHopPiece = true;
-              cx += dx;
-              cy += dy;
-            }
-            if (!hasHopPiece) isValidMove = false;
-          }
-        }
-
-        // max_directional_hop_pieces_attack: limit how many pieces may be hopped over per directional attack
-        if (!forPremove && isValidMove && (isCapture || isPotentialCapture) && !isHopCapture &&
-            piece.max_directional_hop_pieces_attack != null && piece.max_directional_hop_pieces_attack > 0) {
-          const xDiff = toX - piece.x;
-          const yDiff = toY - piece.y;
-          if (xDiff === 0 || yDiff === 0 || Math.abs(xDiff) === Math.abs(yDiff)) {
-            const dx = Math.sign(xDiff);
-            const dy = Math.sign(yDiff);
-            let hopCount = 0;
-            let cx = piece.x + dx;
-            let cy = piece.y + dy;
-            while (cx !== toX || cy !== toY) {
-              if (otherPieceAt(cx, cy)) hopCount++;
-              cx += dx;
-              cy += dy;
-            }
-            if (hopCount > piece.max_directional_hop_pieces_attack) isValidMove = false;
-          }
-        }
-        
         if (isValidMove && pathClear) {
           // Check if this move requires a certain number of first moves
           const firstMovesRequired = (isCapture || isPotentialCapture || isHopCapture)

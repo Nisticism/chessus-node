@@ -1372,6 +1372,18 @@ const migrations = [
     sql: "ALTER TABLE pieces ADD COLUMN max_directional_hop_pieces_attack TINYINT DEFAULT NULL",
     description: "Add max_directional_hop_pieces_attack column - when set (1-4), limits the maximum number of pieces this piece may hop over in a single directional attack. Works alongside directional_hop_only_attack."
   },
+  /*
+   * The rest of the straight-line hop rules (2026-10-07), each 1-8, NULL = no
+   * rule. With the max above they make the classic hoppers, as settings any
+   * piece can combine (straightHopRule in game-socket.js and moveEngine.js):
+   *   cannon (xiangqi)  captures over exactly one piece: min 1, max 1 (attack)
+   *   grasshopper       hops exactly one piece and lands just behind it:
+   *                     min 1, max 1, landing 1 (movement and attack)
+   */
+  { table: 'pieces', column: 'min_directional_hop_pieces', sql: "ALTER TABLE pieces ADD COLUMN min_directional_hop_pieces TINYINT DEFAULT NULL", description: "Straight-line moves must hop at least this many pieces (1-8)." },
+  { table: 'pieces', column: 'min_directional_hop_pieces_attack', sql: "ALTER TABLE pieces ADD COLUMN min_directional_hop_pieces_attack TINYINT DEFAULT NULL", description: "Straight-line captures must hop at least this many pieces (1-8)." },
+  { table: 'pieces', column: 'hop_landing_distance', sql: "ALTER TABLE pieces ADD COLUMN hop_landing_distance TINYINT DEFAULT NULL", description: "After hopping, a straight-line move lands at most this many squares past the last piece hopped (1-8; 1 = a grasshopper)." },
+  { table: 'pieces', column: 'hop_landing_distance_attack', sql: "ALTER TABLE pieces ADD COLUMN hop_landing_distance_attack TINYINT DEFAULT NULL", description: "After hopping, a straight-line capture lands at most this many squares past the last piece hopped (1-8)." },
   // --- Direction Change (Movement) ---
   { table: 'pieces', column: 'directional_movement_change', sql: "ALTER TABLE pieces ADD COLUMN directional_movement_change TINYINT(1) DEFAULT 0", description: "Master toggle: when 1, piece can change direction mid-move (second leg after first directional leg)." },
   { table: 'pieces', column: 'up_left_movement_change', sql: "ALTER TABLE pieces ADD COLUMN up_left_movement_change INT DEFAULT 0", description: "Direction change: up-left second-leg distance for movement." },

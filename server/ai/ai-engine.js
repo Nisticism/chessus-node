@@ -1267,6 +1267,12 @@ function getPieceValue(piece, boardSize) {
   if (maxDirHopPieces === 1) internal *= 0.88;
   else if (maxDirHopPieces === 2) internal *= 0.93;
   else if (maxDirHopPieces === 3) internal *= 0.96;
+  // At least N pieces to hop, and landing close behind them (a grasshopper
+  // lands right behind its hurdle): each takes most of a slider's reach away.
+  const minDirHopPieces = Number(piece.min_directional_hop_pieces) || 0;
+  if (minDirHopPieces > 1) internal *= Math.max(0.6, 1 - (minDirHopPieces - 1) * 0.12);
+  const hopLanding = Number(piece.hop_landing_distance) || 0;
+  if (hopLanding > 0) internal *= Math.min(0.95, 0.6 + hopLanding * 0.08);
 
   // Additional wizard-level attack/mobility features
   const captureActionsPerTurn = piece.capture_actions_per_turn || 1;

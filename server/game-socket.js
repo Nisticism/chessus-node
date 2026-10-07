@@ -3,6 +3,7 @@
  * Manages real-time multiplayer game functionality
  */
 
+const { straightHopRule, straightHopsBetween, hopRuleAllows } = require('./hop-rule');
 const db_pool = require("../configs/db");
 const crypto = require('crypto');
 const path = require('path');
@@ -4835,6 +4836,10 @@ function initializeSocket(server, { isUserBanned } = {}) {
               directional_hop_only_attack: fullPieceData.directional_hop_only_attack,
               max_directional_hop_pieces: fullPieceData.max_directional_hop_pieces,
               max_directional_hop_pieces_attack: fullPieceData.max_directional_hop_pieces_attack,
+              min_directional_hop_pieces: fullPieceData.min_directional_hop_pieces,
+              min_directional_hop_pieces_attack: fullPieceData.min_directional_hop_pieces_attack,
+              hop_landing_distance: fullPieceData.hop_landing_distance,
+              hop_landing_distance_attack: fullPieceData.hop_landing_distance_attack,
               hop_stop_at_occupied_attack: fullPieceData.hop_stop_at_occupied_attack,
               // Capture data
               can_capture_enemy_on_move: fullPieceData.can_capture_enemy_on_move,
@@ -5512,6 +5517,10 @@ function initializeSocket(server, { isUserBanned } = {}) {
               directional_hop_only_attack: fullPieceData.directional_hop_only_attack,
               max_directional_hop_pieces: fullPieceData.max_directional_hop_pieces,
               max_directional_hop_pieces_attack: fullPieceData.max_directional_hop_pieces_attack,
+              min_directional_hop_pieces: fullPieceData.min_directional_hop_pieces,
+              min_directional_hop_pieces_attack: fullPieceData.min_directional_hop_pieces_attack,
+              hop_landing_distance: fullPieceData.hop_landing_distance,
+              hop_landing_distance_attack: fullPieceData.hop_landing_distance_attack,
               hop_stop_at_occupied_attack: fullPieceData.hop_stop_at_occupied_attack,
               can_capture_enemy_on_move: fullPieceData.can_capture_enemy_on_move,
               attacks_like_movement: fullPieceData.attacks_like_movement,
@@ -11507,6 +11516,10 @@ function initializeSocket(server, { isUserBanned } = {}) {
                     directional_hop_only_attack: fullPieceData.directional_hop_only_attack,
                     max_directional_hop_pieces: fullPieceData.max_directional_hop_pieces,
                     max_directional_hop_pieces_attack: fullPieceData.max_directional_hop_pieces_attack,
+                    min_directional_hop_pieces: fullPieceData.min_directional_hop_pieces,
+                    min_directional_hop_pieces_attack: fullPieceData.min_directional_hop_pieces_attack,
+                    hop_landing_distance: fullPieceData.hop_landing_distance,
+                    hop_landing_distance_attack: fullPieceData.hop_landing_distance_attack,
                     hop_stop_at_occupied_attack: fullPieceData.hop_stop_at_occupied_attack,
                     // Capture data
                     can_capture_enemy_on_move: fullPieceData.can_capture_enemy_on_move,
@@ -12978,6 +12991,8 @@ function stepInRange(dx, dy, maxSteps, noDiagonal, noOrthogonal) {
   if (noOrthogonal) return ((adx + ady) % 2 === 0) && Math.max(adx, ady) <= maxSteps;
   return Math.max(adx, ady) <= maxSteps;
 }
+
+// The straight-line hop rule (at least / at most / landing): server/hop-rule.js.
 
 /** True when this piece's step MOVEMENT is diagonal-only. */
 const stepMoveNoOrthogonal = (piece) => !!(
@@ -15547,6 +15562,10 @@ async function applyPromotionToPiece(gameState, pieceId, promoteToPieceId, promo
     directional_hop_only_attack: fullPieceData.directional_hop_only_attack,
     max_directional_hop_pieces: fullPieceData.max_directional_hop_pieces,
     max_directional_hop_pieces_attack: fullPieceData.max_directional_hop_pieces_attack,
+    min_directional_hop_pieces: fullPieceData.min_directional_hop_pieces,
+    min_directional_hop_pieces_attack: fullPieceData.min_directional_hop_pieces_attack,
+    hop_landing_distance: fullPieceData.hop_landing_distance,
+    hop_landing_distance_attack: fullPieceData.hop_landing_distance_attack,
     hop_stop_at_occupied_attack: fullPieceData.hop_stop_at_occupied_attack,
     can_capture_enemy_on_move: fullPieceData.can_capture_enemy_on_move,
     attacks_like_movement: fullPieceData.attacks_like_movement,
@@ -16533,7 +16552,11 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces, gameType) {
   const exactRatioHopOnlyAtk = piece.exact_ratio_hop_only_attack === 1 || piece.exact_ratio_hop_only_attack === true;
   const hopStopAtOccupiedAtk = piece.hop_stop_at_occupied_attack === 1 || piece.hop_stop_at_occupied_attack === true;
   const directionalHopOnlyAtk = piece.directional_hop_only_attack === 1 || piece.directional_hop_only_attack === true;
-  const maxHopPiecesAtk = (piece.max_directional_hop_pieces_attack != null && piece.max_directional_hop_pieces_attack > 0) ? parseInt(piece.max_directional_hop_pieces_attack) : null;
+  // The straight-line hop rule for captures - at least / at most / landing
+  // (straightHopRule). A cannon gives check only over its screen.
+  const hopRuleAtk = straightHopRule(piece, true);
+  const atkHopsOk = (tx, ty) => !hopRuleAtk.active || hopRuleAllows(hopRuleAtk, straightHopsBetween(piece.x, piece.y, tx, ty,
+    (x, y) => { const b = findPieceAtSquare(allPieces, x, y); return !!b && b.id !== piece.id; }));
   // Returns true if any intermediate exact-distance multiple between piece and target is occupied
   // Used for hop_stop_at_occupied_attack when repeating exact directional capture is active
   const hasOccupiedExactMultipleAtk = (exactDist) => {
@@ -16545,7 +16568,10 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces, gameType) {
       if (findPieceAtSquare(allPieces, cx, cy)) return true;
       cx += sX * exactDist;
       cy += sY * exactDist;
-      if (Math.abs(cx - piece.x) > Math.max(boardWidth, boardHeight) + 2 || Math.abs(cy - piece.y) > Math.max(boardWidth, boardHeight) + 2) break;
+      // Bounded by the move itself: boardWidth/boardHeight are not defined in
+      // this function, so this line threw for every repeating exact capture.
+      const limit = Math.max(Math.abs(targetX - piece.x), Math.abs(targetY - piece.y)) + 2;
+      if (Math.abs(cx - piece.x) > limit || Math.abs(cy - piece.y) > limit) break;
     }
     return false;
   };
@@ -16583,14 +16609,6 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces, gameType) {
     let x = fromX + sX, y = fromY + sY;
     while (x !== toX || y !== toY) { if (findPieceAtSquare(allPieces, x, y)) return true; x += sX; y += sY; }
     return false;
-  };
-  // Returns count of pieces in the straight-line path from start to target (excluding target)
-  const countPiecesInPathAtk = (fromX, fromY, toX, toY) => {
-    const sX = toX > fromX ? 1 : toX < fromX ? -1 : 0;
-    const sY = toY > fromY ? 1 : toY < fromY ? -1 : 0;
-    let x = fromX + sX, y = fromY + sY, count = 0;
-    while (x !== toX || y !== toY) { if (findPieceAtSquare(allPieces, x, y)) count++; x += sX; y += sY; }
-    return count;
   };
   // Returns true if any piece is in either L-path from start to target (excluding target)
   const ratioPathHasPieceAtk = (fromX, fromY, toX, toY) => {
@@ -16654,14 +16672,14 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces, gameType) {
             if (dist === maxDist && isPathClear(piece.x, piece.y, targetX, targetY, canHopDirAddl)) {
               if (!exactRatioHopOnlyAtk || pathHasPieceAtk(piece.x, piece.y, targetX, targetY)) {
                 if (!directionalHopOnlyAtk || pathHasPieceAtk(piece.x, piece.y, targetX, targetY)) {
-                  if (maxHopPiecesAtk == null || countPiecesInPathAtk(piece.x, piece.y, targetX, targetY) <= maxHopPiecesAtk) return true;
+                  if (atkHopsOk(targetX, targetY)) return true;
                 }
               }
             }
           } else {
             if ((maxDist === 99 || dist <= maxDist) && isPathClear(piece.x, piece.y, targetX, targetY, canHopDirAddl)) {
               if (!directionalHopOnlyAtk || pathHasPieceAtk(piece.x, piece.y, targetX, targetY)) {
-                if (maxHopPiecesAtk == null || countPiecesInPathAtk(piece.x, piece.y, targetX, targetY) <= maxHopPiecesAtk) return true;
+                if (atkHopsOk(targetX, targetY)) return true;
               }
             }
           }
@@ -16673,14 +16691,14 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces, gameType) {
             if (absDx === maxDist && isPathClear(piece.x, piece.y, targetX, targetY, canHopDirAddl)) {
               if (!exactRatioHopOnlyAtk || pathHasPieceAtk(piece.x, piece.y, targetX, targetY)) {
                 if (!directionalHopOnlyAtk || pathHasPieceAtk(piece.x, piece.y, targetX, targetY)) {
-                  if (maxHopPiecesAtk == null || countPiecesInPathAtk(piece.x, piece.y, targetX, targetY) <= maxHopPiecesAtk) return true;
+                  if (atkHopsOk(targetX, targetY)) return true;
                 }
               }
             }
           } else {
             if ((maxDist === 99 || absDx <= maxDist) && isPathClear(piece.x, piece.y, targetX, targetY, canHopDirAddl)) {
               if (!directionalHopOnlyAtk || pathHasPieceAtk(piece.x, piece.y, targetX, targetY)) {
-                if (maxHopPiecesAtk == null || countPiecesInPathAtk(piece.x, piece.y, targetX, targetY) <= maxHopPiecesAtk) return true;
+                if (atkHopsOk(targetX, targetY)) return true;
               }
             }
           }
@@ -16692,14 +16710,14 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces, gameType) {
             if (absDy === maxDist && isPathClear(piece.x, piece.y, targetX, targetY, canHopDirAddl)) {
               if (!exactRatioHopOnlyAtk || pathHasPieceAtk(piece.x, piece.y, targetX, targetY)) {
                 if (!directionalHopOnlyAtk || pathHasPieceAtk(piece.x, piece.y, targetX, targetY)) {
-                  if (maxHopPiecesAtk == null || countPiecesInPathAtk(piece.x, piece.y, targetX, targetY) <= maxHopPiecesAtk) return true;
+                  if (atkHopsOk(targetX, targetY)) return true;
                 }
               }
             }
           } else {
             if ((maxDist === 99 || absDy <= maxDist) && isPathClear(piece.x, piece.y, targetX, targetY, canHopDirAddl)) {
               if (!directionalHopOnlyAtk || pathHasPieceAtk(piece.x, piece.y, targetX, targetY)) {
-                if (maxHopPiecesAtk == null || countPiecesInPathAtk(piece.x, piece.y, targetX, targetY) <= maxHopPiecesAtk) return true;
+                if (atkHopsOk(targetX, targetY)) return true;
               }
             }
           }
@@ -16767,7 +16785,7 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces, gameType) {
         if (isPathClear(piece.x, piece.y, targetX, targetY, canHopDirAtk)) {
           if (!exactRatioHopOnlyAtk || !exactFlag || pathHasPieceAtk(piece.x, piece.y, targetX, targetY)) {
             if (!directionalHopOnlyAtk || pathHasPieceAtk(piece.x, piece.y, targetX, targetY)) {
-              if (maxHopPiecesAtk == null || countPiecesInPathAtk(piece.x, piece.y, targetX, targetY) <= maxHopPiecesAtk) {
+              if (atkHopsOk(targetX, targetY)) {
                 if (!(hopStopAtOccupiedAtk && repC) || !hasOccupiedExactMultipleAtk(Math.abs(captureVal || moveVal))) return true;
               }
             }
@@ -16790,7 +16808,7 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces, gameType) {
         if (isPathClear(piece.x, piece.y, targetX, targetY, canHopDirAtk)) {
           if (!exactRatioHopOnlyAtk || !exactFlag || pathHasPieceAtk(piece.x, piece.y, targetX, targetY)) {
             if (!directionalHopOnlyAtk || pathHasPieceAtk(piece.x, piece.y, targetX, targetY)) {
-              if (maxHopPiecesAtk == null || countPiecesInPathAtk(piece.x, piece.y, targetX, targetY) <= maxHopPiecesAtk) {
+              if (atkHopsOk(targetX, targetY)) {
                 if (!(hopStopAtOccupiedAtk && repC) || !hasOccupiedExactMultipleAtk(Math.abs(captureVal || moveVal))) return true;
               }
             }
@@ -16830,7 +16848,7 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces, gameType) {
         if (isPathClear(piece.x, piece.y, targetX, targetY, canHopDirAtk)) {
           if (!exactRatioHopOnlyAtk || !exactFlag || pathHasPieceAtk(piece.x, piece.y, targetX, targetY)) {
             if (!directionalHopOnlyAtk || pathHasPieceAtk(piece.x, piece.y, targetX, targetY)) {
-              if (maxHopPiecesAtk == null || countPiecesInPathAtk(piece.x, piece.y, targetX, targetY) <= maxHopPiecesAtk) {
+              if (atkHopsOk(targetX, targetY)) {
                 if (!(hopStopAtOccupiedAtk && repC) || !hasOccupiedExactMultipleAtk(Math.abs(captureVal || moveVal))) return true;
               }
             }
@@ -16845,6 +16863,7 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces, gameType) {
   const ratio2 = piece.ratio_capture_2 || (useMovementForCapture ? piece.ratio_movement_2 : 0) || 0;
   if (ratio1 > 0 && ratio2 > 0) {
     let isRatioMatch = (absDx === ratio1 && absDy === ratio2) || (absDx === ratio2 && absDy === ratio1);
+    let ratioMultiple = 1;
     if (!isRatioMatch) {
       const repRatio = piece.repeating_ratio_capture || (useMovementForCapture && piece.repeating_ratio);
       if (repRatio) {
@@ -16854,9 +16873,25 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces, gameType) {
           if ((absDx === k * ratio1 && absDy === k * ratio2) ||
               (absDx === k * ratio2 && absDy === k * ratio1)) {
             isRatioMatch = true;
+            ratioMultiple = k;
             break;
           }
         }
+      }
+    }
+    /*
+     * A rider of L-jumps (a nightrider) attacks no further than the first piece
+     * standing ON one of its landings when it stops at occupied landings, and
+     * never past an enemy there - it would take that one instead. The same rule
+     * the generator walks by; this check let it attack straight through.
+     */
+    if (isRatioMatch && ratioMultiple > 1) {
+      const stopsAtAny = hopStopAtOccupiedAtk || piece.hop_stop_at_occupied === 1 || piece.hop_stop_at_occupied === true;
+      const ux = dx / ratioMultiple;
+      const uy = dy / ratioMultiple;
+      for (let k = 1; k < ratioMultiple && isRatioMatch; k++) {
+        const there = findPieceAtSquare(allPieces, piece.x + ux * k, piece.y + uy * k);
+        if (there && there.id !== piece.id && (stopsAtAny || (there.team || there.player_id) !== pieceOwner)) isRatioMatch = false;
       }
     }
     if (isRatioMatch) {
@@ -17252,14 +17287,19 @@ function canPieceMoveToSquare(piece, targetX, targetY, allPieces, gameType = nul
   const exactRatioHopOnly = piece.exact_ratio_hop_only === 1 || piece.exact_ratio_hop_only === true;
   const hopStopAtOccupiedMove = piece.hop_stop_at_occupied === 1 || piece.hop_stop_at_occupied === true;
   const directionalHopOnlyMove = piece.directional_hop_only === 1 || piece.directional_hop_only === true;
-  const maxHopPiecesMove = (piece.max_directional_hop_pieces != null && piece.max_directional_hop_pieces > 0) ? parseInt(piece.max_directional_hop_pieces) : null;
+  // The straight-line hop rule for moves - at least / at most / landing (straightHopRule).
+  const hopRuleMove = straightHopRule(piece, false);
+  const moveHopsOk = (tx, ty) => !hopRuleMove.active || hopRuleAllows(hopRuleMove, straightHopsBetween(piece.x, piece.y, tx, ty,
+    (x, y) => { const b = findPieceAtSquare(allPieces, x, y); return !!b && b.id !== piece.id; }));
   // Helper: returns true if any intermediate exact-distance multiple in the movement direction is occupied
   const hasOccupiedExactMultipleMove = (exactDist) => {
     const sX = targetX > piece.x ? 1 : targetX < piece.x ? -1 : 0;
     const sY = targetY > piece.y ? 1 : targetY < piece.y ? -1 : 0;
     let cx = piece.x + sX * exactDist;
     let cy = piece.y + sY * exactDist;
-    const limit = Math.max(boardWidth, boardHeight) + 2;
+    // Bounded by the move itself. This used boardWidth/boardHeight, which this
+    // function never defines: every move it was asked about threw (a DD rider).
+    const limit = Math.max(Math.abs(targetX - piece.x), Math.abs(targetY - piece.y)) + 2;
     while (cx !== targetX || cy !== targetY) {
       if (findPieceAtSquare(allPieces, cx, cy)) return true;
       cx += sX * exactDist;
@@ -17314,14 +17354,6 @@ function canPieceMoveToSquare(piece, targetX, targetY, allPieces, gameType = nul
     let x = fromX + sX, y = fromY + sY;
     while (x !== toX || y !== toY) { if (findPieceAtSquare(allPieces, x, y)) return true; x += sX; y += sY; }
     return false;
-  };
-  // Returns count of pieces in the straight-line path from start to target (excluding target)
-  const countPiecesInPathMove = (fromX, fromY, toX, toY) => {
-    const sX = toX > fromX ? 1 : toX < fromX ? -1 : 0;
-    const sY = toY > fromY ? 1 : toY < fromY ? -1 : 0;
-    let x = fromX + sX, y = fromY + sY, count = 0;
-    while (x !== toX || y !== toY) { if (findPieceAtSquare(allPieces, x, y)) count++; x += sX; y += sY; }
-    return count;
   };
   // Returns true if any piece is in either L-path from start to target (excluding target)
   const ratioPathHasPieceMove = (fromX, fromY, toX, toY) => {
@@ -17421,7 +17453,7 @@ function canPieceMoveToSquare(piece, targetX, targetY, allPieces, gameType = nul
         if (isPathClear(piece.x, piece.y, targetX, targetY, canHopDir)) {
           if (!exactRatioHopOnly || !exactFlag || pathHasPieceMove(piece.x, piece.y, targetX, targetY)) {
             if (!directionalHopOnlyMove || pathHasPieceMove(piece.x, piece.y, targetX, targetY)) {
-              if (maxHopPiecesMove == null || countPiecesInPathMove(piece.x, piece.y, targetX, targetY) <= maxHopPiecesMove) {
+              if (moveHopsOk(targetX, targetY)) {
                 if (!(hopStopAtOccupiedMove && repM) || !hasOccupiedExactMultipleMove(maxDist)) return true;
               }
             }
@@ -17443,7 +17475,7 @@ function canPieceMoveToSquare(piece, targetX, targetY, allPieces, gameType = nul
         if (isPathClear(piece.x, piece.y, targetX, targetY, canHopDir)) {
           if (!exactRatioHopOnly || !exactFlag || pathHasPieceMove(piece.x, piece.y, targetX, targetY)) {
             if (!directionalHopOnlyMove || pathHasPieceMove(piece.x, piece.y, targetX, targetY)) {
-              if (maxHopPiecesMove == null || countPiecesInPathMove(piece.x, piece.y, targetX, targetY) <= maxHopPiecesMove) {
+              if (moveHopsOk(targetX, targetY)) {
                 if (!(hopStopAtOccupiedMove && repM) || !hasOccupiedExactMultipleMove(maxDist)) return true;
               }
             }
@@ -17478,7 +17510,7 @@ function canPieceMoveToSquare(piece, targetX, targetY, allPieces, gameType = nul
         if (isPathClear(piece.x, piece.y, targetX, targetY, canHopDir)) {
           if (!exactRatioHopOnly || !exactFlag || pathHasPieceMove(piece.x, piece.y, targetX, targetY)) {
             if (!directionalHopOnlyMove || pathHasPieceMove(piece.x, piece.y, targetX, targetY)) {
-              if (maxHopPiecesMove == null || countPiecesInPathMove(piece.x, piece.y, targetX, targetY) <= maxHopPiecesMove) {
+              if (moveHopsOk(targetX, targetY)) {
                 if (!(hopStopAtOccupiedMove && repM) || !hasOccupiedExactMultipleMove(maxDist)) return true;
               }
             }
@@ -17493,14 +17525,29 @@ function canPieceMoveToSquare(piece, targetX, targetY, allPieces, gameType = nul
   const ratio2 = piece.ratio_movement_2 || 0;
   if (ratio1 > 0 && ratio2 > 0) {
     let isRatioMatch = (absDx === ratio1 && absDy === ratio2) || (absDx === ratio2 && absDy === ratio1);
+    let ratioMultiple = 1;
     if (!isRatioMatch && piece.repeating_ratio) {
       const maxK = piece.max_ratio_iterations === -1 ? Math.max(absDx, absDy) : (piece.max_ratio_iterations || 1);
       for (let k = 2; k <= maxK; k++) {
         if ((absDx === k * ratio1 && absDy === k * ratio2) ||
             (absDx === k * ratio2 && absDy === k * ratio1)) {
           isRatioMatch = true;
+          ratioMultiple = k;
           break;
         }
+      }
+    }
+    /*
+     * hop_stop_at_occupied: a rider of L-jumps (a nightrider) stops at the first
+     * piece standing ON one of its landings, as the generator and the frontend
+     * stop it. This validator let it carry on past.
+     */
+    if (isRatioMatch && ratioMultiple > 1 && hopStopAtOccupiedMove) {
+      const ux = dx / ratioMultiple;
+      const uy = dy / ratioMultiple;
+      for (let k = 1; k < ratioMultiple; k++) {
+        const landing = findPieceAtSquare(allPieces, piece.x + ux * k, piece.y + uy * k);
+        if (landing && landing.id !== piece.id) { isRatioMatch = false; break; }
       }
     }
     if (isRatioMatch) {
@@ -17642,7 +17689,7 @@ function canPieceMoveToSquare(piece, targetX, targetY, allPieces, gameType = nul
             if (isPathClear(piece.x, piece.y, targetX, targetY, canHopDir)) {
               if (!exactRatioHopOnly || !addlExact || pathHasPieceMove(piece.x, piece.y, targetX, targetY)) {
                 if (!directionalHopOnlyMove || pathHasPieceMove(piece.x, piece.y, targetX, targetY)) {
-                  if (maxHopPiecesMove == null || countPiecesInPathMove(piece.x, piece.y, targetX, targetY) <= maxHopPiecesMove) return true;
+                  if (moveHopsOk(targetX, targetY)) return true;
                 }
               }
             }
@@ -18082,6 +18129,14 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
     if (blockerOwner === pieceOwner) return canHopAlliesGen;
     return canHopEnemiesGen;
   };
+  // The same test for a capture's path, by the attack hop flags - the ones the
+  // final capture check (canPieceAttackSquare) reads.
+  const canHopAttackOverPieceGen = (blocker) => {
+    if (hasGhostwalkGen) return true;
+    const blockerOwner = blocker.team || blocker.player_id;
+    if (blockerOwner === pieceOwner) return canHopAttackAlliesGen;
+    return canHopAttackEnemiesGen;
+  };
 
   /*
    * Multi-tile pieces move by displacing their whole footprint. "One square
@@ -18127,7 +18182,7 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
   // For multi-tile pieces, checks all sub-square parallel paths
   // allowHop: when true, pieces in path that can be hopped are skipped
   // Ghostwalk: piece can pass through any piece
-  const isPathClear = (fromX, fromY, toX, toY, allowHop = false) => {
+  const isPathClear = (fromX, fromY, toX, toY, allowHop = false, canPass = canHopOverPieceGen) => {
     if (hasGhostwalkGen) return true; // Ghostwalk ignores all blocking
     const pw = piece.piece_width || 1;
     const ph = piece.piece_height || 1;
@@ -18144,7 +18199,7 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
           }
           const blocking = pieceAtGen(x, y);
           if (blocking && blocking.id !== piece.id) {
-            if (!allowHop || !canHopOverPieceGen(blocking)) {
+            if (!allowHop || !canPass(blocking)) {
               return false;
             }
           }
@@ -18162,6 +18217,36 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
     let x = fromX + sX, y = fromY + sY;
     while (x !== toX || y !== toY) { if (pieceAtGen(x, y)) return true; x += sX; y += sY; }
     return false;
+  };
+  /*
+   * max_directional_hop_pieces(_attack): how many pieces a straight-line move
+   * (or capture) may hop. The move validator (canPieceMoveToSquare) and the
+   * frontend engine both enforce it; this generator did not, so it offered a
+   * cannon's moves over two or more pieces - to the bot, the puzzle search and
+   * anything else that asks it - that the validator then refused.
+   */
+  const hopRuleMoveGen = straightHopRule(piece, false);
+  const hopRuleAtkGen = straightHopRule(piece, true);
+  // A checkers-style hop capture (capture_on_hop) onto an empty square takes
+  // every enemy it hops, and is not held to the limit - as in the frontend,
+  // which exempts it (isHopCapture).
+  const isHopCaptureGen = (toX, toY) => {
+    if (!(piece.capture_on_hop === 1 || piece.capture_on_hop === true)) return false;
+    const sX = Math.sign(toX - piece.x);
+    const sY = Math.sign(toY - piece.y);
+    for (let x = piece.x + sX, y = piece.y + sY; x !== toX || y !== toY; x += sX, y += sY) {
+      const p = pieceAtGen(x, y);
+      if (p && (p.team || p.player_id) !== pieceOwner) return true;
+    }
+    return false;
+  };
+  // The whole straight-line hop rule - at least / at most / landing
+  // (straightHopRule) - now that it is more than a maximum.
+  const hopCountOk = (toX, toY, isCapture) => {
+    const rule = isCapture ? hopRuleAtkGen : hopRuleMoveGen;
+    if (!rule.active) return true;
+    if (!isCapture && isHopCaptureGen(toX, toY)) return true;
+    return hopRuleAllows(rule, straightHopsBetween(piece.x, piece.y, toX, toY, (x, y) => !!pieceAtGen(x, y)));
   };
   
   // Helper to check directional moves
@@ -18185,11 +18270,18 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
     // frontend move engine, which treats the capture pattern as authoritative once
     // the piece defines any capture direction.
     const captureFieldForDir = directionName ? directionName.replace('_movement', '_capture') : null;
+    //
+    // A capture value of 0 is a real answer - "does not capture this way" - as
+    // in the final capture check (canPieceAttackSquare). Only a value never set
+    // (NULL) lets the movement double as the capture, and then only for a piece
+    // with no dedicated capture direction. Reading 0 as "captures like it
+    // moves" offered queen-slide captures to Power Knight and landing captures
+    // to checkers men, which that check then refused.
     const canCaptureInDirAt = (dist) => {
       if (captureOnly) return true;              // already walking the capture pattern
-      if (!hasAnyCaptureDirection) return true;  // no dedicated captures: movement doubles as capture
       if (!captureFieldForDir) return true;
       const capVal = piece[captureFieldForDir];
+      if (capVal == null) return !hasAnyCaptureDirection; // unset: movement doubles as capture
       if (!capVal) return false;                 // cannot capture this way at all
       if (capVal === 99) return true;            // unlimited range
       const v = Math.abs(capVal);
@@ -18213,6 +18305,11 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
     const canHopDir = hasGhostwalkGen || ((canHopAlliesGen || canHopEnemiesGen) && (!dirHopDisabledGen || exactFlag));
     // Attack hop: also allows landing on enemies after a hop (Step 3 flags only)
     const canHopDirAtk = hasGhostwalkGen || ((canHopAttackAlliesGen || canHopAttackEnemiesGen) && (!dirHopDisabledAtkGen || exactFlag));
+    // A capture walk travels by the attack hop flags. Walking it by the
+    // movement flags stopped a xiangqi cannon at its screen, so it never
+    // captured over one, though the final capture check allows exactly that.
+    const walkHops = captureOnly ? canHopDirAtk : canHopDir;
+    const canPassWalk = captureOnly ? canHopAttackOverPieceGen : canHopOverPieceGen;
     
     const limit = maxDist === 99 ? Math.max(boardWidth, boardHeight) : Math.abs(maxDist);
     const exactDist = exactFlag ? Math.abs(maxDist) : 0;
@@ -18226,13 +18323,13 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
       // Impassable squares: pieces cannot land here (unless ghostwalk)
       if (impassableSet && impassableSet.has(`${targetY},${targetX}`) && !hasGhostwalkGen) {
         // Hopping pieces can pass through but not land; non-hopping stop here
-        if (!canHopDir) break;
+        if (!walkHops) break;
         // Hopping: skip this square as a landing target but continue
         continue;
       }
 
       // Check if path is clear up to this point (with hopping support)
-      if (!isPathClear(piece.x, piece.y, targetX, targetY, canHopDir)) break;
+      if (!isPathClear(piece.x, piece.y, targetX, targetY, walkHops, canPassWalk)) break;
       
       const targetPiece = occupantAt(targetX, targetY);
       if (targetPiece) {
@@ -18242,25 +18339,29 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
         // For exact moves, only allow landing on exact multiples
         const isLandingSquare = exactFlag ? (repeating ? (dist % exactDist === 0) : (dist === exactDist)) : true;
         
-        // Can capture enemy (or ally if can_capture_allies) on valid landing squares
+        // Can capture enemy (or ally if can_capture_allies) on valid landing squares.
+        // An ally capture is held to the same capture pattern and hop rules as
+        // an enemy one: the final capture check does not look at whose piece it
+        // is. It used to be pushed with no checks at all.
+        const mayTakeAlly = targetOwner === pieceOwner && (piece.can_capture_allies || (!!gameType?.simultaneous_turns && (piece.can_capture_enemy_on_move || piece.can_capture_enemy_via_range)));
         if (isLandingSquare && !targetPiece.cannot_be_captured) {
-          if (targetOwner !== pieceOwner && piece.can_capture_enemy_on_move && canCaptureInDirAt(dist) && !hasGlobalFirstMoveOnlyCaptureRestriction) {
-            // Movement-only hops cannot yield captures; attack hop flags or a clear path required
-            if (!canHopDir || canHopDirAtk || isPathClear(piece.x, piece.y, targetX, targetY, false)) {
+          if (((targetOwner !== pieceOwner && piece.can_capture_enemy_on_move) || mayTakeAlly) && canCaptureInDirAt(dist) && !hasGlobalFirstMoveOnlyCaptureRestriction) {
+            // Movement-only hops cannot yield captures: the path must be passable
+            // by the attack hop flags, piece by piece, as the final check reads it.
+            if (captureOnly || isPathClear(piece.x, piece.y, targetX, targetY, canHopDirAtk, canHopAttackOverPieceGen)) {
               // exact_ratio_hop_only_attack: exact capture requires a hop
               if (!exactRatioHopOnlyAtkGen || !exactFlag || pathHasPieceGen(piece.x, piece.y, targetX, targetY)) {
                 // directional_hop_only_attack: all directional attacks require a hop
-                if (!directionalHopOnlyAtkGen || pathHasPieceGen(piece.x, piece.y, targetX, targetY)) {
+                if ((!directionalHopOnlyAtkGen || pathHasPieceGen(piece.x, piece.y, targetX, targetY))
+                    && hopCountOk(targetX, targetY, true)) {
                   moves.push({ x: targetX, y: targetY, isFirstMoveOnly });
                 }
               }
             }
-          } else if (targetOwner === pieceOwner && (piece.can_capture_allies || (!!gameType?.simultaneous_turns && (piece.can_capture_enemy_on_move || piece.can_capture_enemy_via_range)))) {
-            moves.push({ x: targetX, y: targetY, isFirstMoveOnly });
           }
         }
         // If hopping, continue past this piece; otherwise stop
-        if (!canHopDir || !canHopOverPieceGen(targetPiece)) break;
+        if (!walkHops || !canPassWalk(targetPiece)) break;
         // hop_stop_at_occupied: if this is an exact landing multiple and it was occupied, stop repeating
         else if (repeating && isLandingSquare && hopStopAtOccupiedGen) break;
       } else {
@@ -18270,7 +18371,8 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
           // exact_ratio_hop_only: exact movement requires a hop
           if (!exactRatioHopOnly || !exactFlag || pathHasPieceGen(piece.x, piece.y, targetX, targetY)) {
             // directional_hop_only: all directional movement requires a hop
-            if (!directionalHopOnly || pathHasPieceGen(piece.x, piece.y, targetX, targetY)) {
+            if ((!directionalHopOnly || pathHasPieceGen(piece.x, piece.y, targetX, targetY))
+                && hopCountOk(targetX, targetY, false)) {
               moves.push({ x: targetX, y: targetY, isFirstMoveOnly });
             }
           }
@@ -18369,12 +18471,16 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
     // Requiring a *difference* keeps symmetric sliders (rook/queen, where
     // capture == movement) on the movement walk alone, so no duplicate
     // destinations are produced for them.
+    // A capture that hops by different flags than the movement does needs its
+    // own walk as well: the movement walk stops where the movement cannot hop.
+    const attackHopsDiffer = canHopAttackAlliesGen !== canHopAlliesGen ||
+      canHopAttackEnemiesGen !== canHopEnemiesGen || dirHopDisabledAtkGen !== dirHopDisabledGen;
     const needsOwnCaptureWalk = (dir) => {
       const cap = piece[`${dir}_capture`];
       if (!cap) return false;
       const mov = piece[`${dir}_movement`];
       if (!mov) return true;
-      return cap !== mov ||
+      return cap !== mov || attackHopsDiffer ||
         (!!piece[`${dir}_capture_exact`] !== !!piece[`${dir}_movement_exact`]);
     };
     if (isPlayer2) {
@@ -18394,6 +18500,42 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
     }
     if (needsOwnCaptureWalk('left')) checkDirectionalMoves(-1, 0, piece.left_capture, null, false, piece.left_capture_exact, repC && piece.left_capture_exact, true);
     if (needsOwnCaptureWalk('right')) checkDirectionalMoves(1, 0, piece.right_capture, null, false, piece.right_capture_exact, repC && piece.right_capture_exact, true);
+  }
+
+  /*
+   * Alternate captures (special_scenario_captures.additionalCaptures), each a
+   * capture walk of its own. The final capture check accepts them and the
+   * frontend offers them, but this generator never read them, so a piece whose
+   * longer reach is an alternate capture (Shizur's unlimited diagonals) was
+   * never offered those captures - not to the bot, nor to the puzzle search.
+   */
+  if (piece.special_scenario_captures) {
+    let additionalCaptures = {};
+    try {
+      const parsed = typeof piece.special_scenario_captures === 'string'
+        ? JSON.parse(piece.special_scenario_captures)
+        : piece.special_scenario_captures;
+      additionalCaptures = (parsed && parsed.additionalCaptures) || {};
+    } catch (e) {
+      // Ignore parse errors
+    }
+    for (const [direction, captureOptions] of Object.entries(additionalCaptures)) {
+      let [dx, dy] = directionMap[direction] || [0, 0];
+      if ((dx === 0 && dy === 0) || !Array.isArray(captureOptions)) continue;
+      if (isPlayer2) dy = -dy;
+      for (const captureOption of captureOptions) {
+        // The same first-move gates as alternate movements (and canPieceAttackSquare).
+        if (captureOption.availableForMoves && piece.moveCount >= captureOption.availableForMoves) continue;
+        if (captureOption.firstMoveOnly && piece.moveCount > 0) continue;
+        if (blockFirstMove && (captureOption.availableForMoves || captureOption.firstMoveOnly)) continue;
+        if (hasGlobalFirstMoveOnlyCaptureRestriction) continue;
+        let maxDist = captureOption.value || 0;
+        if (captureOption.infinite) maxDist = 99;
+        if (maxDist === 0) continue;
+        const isExact = !!captureOption.exact && !captureOption.infinite;
+        checkDirectionalMoves(dx, dy, maxDist, null, captureOption.availableForMoves || captureOption.firstMoveOnly || false, isExact, false, true);
+      }
+    }
   }
 
   // --- Direction Change moves ---
@@ -18741,8 +18883,11 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
         const pieceOwner = piece.team || piece.player_id;
         const targetOwner = targetPiece.team || targetPiece.player_id;
         
+        // An ally capture meets the same hop rules as an enemy one (it used to
+        // be pushed unchecked); the final capture check reads no ownership.
+        const mayTakeAllyRatio = targetOwner === pieceOwner && (piece.can_capture_allies || (!!gameType?.simultaneous_turns && (piece.can_capture_enemy_on_move || piece.can_capture_enemy_via_range)));
         if (!targetPiece.cannot_be_captured) {
-          if (targetOwner !== pieceOwner && piece.can_capture_enemy_on_move) {
+          if ((targetOwner !== pieceOwner && piece.can_capture_enemy_on_move) || mayTakeAllyRatio) {
             // Movement-only hops cannot yield captures; attack hop flags or clear path required
             if (!movementHopUsed || hasGhostwalkGen || canHopAlliesAtk || canHopEnemiesAtk) {
               // exact_ratio_hop_only_attack: ratio capture requires a hop
@@ -18750,8 +18895,6 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
                 moves.push({ x: targetX, y: targetY });
               }
             }
-          } else if (targetOwner === pieceOwner && (piece.can_capture_allies || (!!gameType?.simultaneous_turns && (piece.can_capture_enemy_on_move || piece.can_capture_enemy_via_range)))) {
-            moves.push({ x: targetX, y: targetY });
           }
         }
       } else if (!isCaptureOnlyOffset(dx, dy)) {
@@ -18958,7 +19101,9 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
           const targetPiece = occupantAt(targetX, targetY);
           if (targetPiece) {
             const targetOwner = targetPiece.team || targetPiece.player_id;
-            if (!targetPiece.cannot_be_captured && targetOwner !== pieceOwner) {
+            // A piece that captures allies takes one here too: the final check
+            // accepts a custom attack square whoever stands on it.
+            if (!targetPiece.cannot_be_captured && (targetOwner !== pieceOwner || piece.can_capture_allies)) {
               moves.push({ x: targetX, y: targetY });
             }
           }
@@ -18972,74 +19117,98 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
   // movement when step_movement_style (or step_by_step_movement_style) is truthy.
   // Positive step_movement_value → Chebyshev distance (includes diagonals).
   // Negative step_movement_value → Manhattan distance (orthogonal only).
-  const stepMovStyle = Number(piece.step_by_step_movement_value ?? piece.step_movement_value ?? 0) !== 0;
-  if (stepMovStyle) {
-    const stepValRaw = piece.step_by_step_movement_value ?? piece.step_movement_value;
-    const stepVal = Number(stepValRaw ?? 0);
-    if (!Number.isNaN(stepVal) && stepVal !== 0) {
-      const maxMoveSteps = Math.abs(stepVal);
-      const noDiagMove = stepVal < 0;
-      const moveDirs = stepDirections(noDiagMove, stepMoveNoOrthogonal(piece));
+  //
+  // Step CAPTURES walk on their own, by the capture range and directions: a
+  // capture may lie up to step_capture_value steps away through empty squares,
+  // exactly as the final capture check (canPieceAttackSquare) searches for it.
+  // They used to ride the movement walk, so they reached no further than one
+  // step past the movement range - and a piece that captures step by step but
+  // does not move that way (DashSprint's Winner Pawn) captured nothing at all.
+  const addedStepMoves = new Set(moves.map(m => `${m.x},${m.y}`));
+  const stepVal = Number(piece.step_by_step_movement_value ?? piece.step_movement_value ?? 0);
+  if (!Number.isNaN(stepVal) && stepVal !== 0) {
+    const maxMoveSteps = Math.abs(stepVal);
+    const moveDirs = stepDirections(stepVal < 0, stepMoveNoOrthogonal(piece));
 
-      // Separate capture range (step_capture_value).
-      // No fallback to movement range — piece must have an explicit step_capture_value
-      // to be able to capture via step-by-step movement.
-      const capValRaw = piece.step_capture_value;
-      const capVal = Number(capValRaw ?? 0);
-      const hasExplicitStepCapture = capValRaw != null && capValRaw !== 0 && !Number.isNaN(capVal);
-      const maxCapSteps = hasExplicitStepCapture ? Math.abs(capVal) : 0;
-      const noDiagCap = hasExplicitStepCapture ? capVal < 0 : noDiagMove;
-      const capDirs = stepDirections(noDiagCap, stepCaptureNoOrthogonal(piece, hasExplicitStepCapture));
+    // BFS: traverse through empty squares (any piece — ally or enemy — blocks traversal).
+    const queue = [{ x: piece.x, y: piece.y, steps: 0 }];
+    const bfsVisited = new Set([`${piece.x},${piece.y}`]);
 
-      // Track already-added squares to avoid duplicates
-      const addedMoves = new Set(moves.map(m => `${m.x},${m.y}`));
+    while (queue.length > 0) {
+      const curr = queue.shift();
+      if (curr.steps >= maxMoveSteps) continue;
 
-      // BFS: traverse through empty squares (any piece — ally or enemy — blocks traversal).
-      // At each BFS node, also check adjacent squares for capturable enemies.
-      const queue = [{ x: piece.x, y: piece.y, steps: 0 }];
-      const bfsVisited = new Set([`${piece.x},${piece.y}`]);
-
-      while (queue.length > 0) {
-        const curr = queue.shift();
-
-        // Check adjacent squares for capture targets reachable in one more step
-        if (piece.can_capture_enemy_on_move && !hasGlobalFirstMoveOnlyCaptureRestriction &&
-            curr.steps + 1 <= maxCapSteps) {
-          for (const [cdx, cdy] of capDirs) {
-            const cx = curr.x + cdx;
-            const cy = curr.y + cdy;
-            if (!isValidSquare(cx, cy)) continue;
-            const capKey = `${cx},${cy}`;
-            if (addedMoves.has(capKey)) continue;
-            const tgt = occupantAt(cx, cy);
-            if (tgt && tgt.id !== piece.id) {
-              const tgtOwner = tgt.team || tgt.player_id;
-              if (tgtOwner !== pieceOwner && !tgt.cannot_be_captured) {
-                moves.push({ x: cx, y: cy });
-                addedMoves.add(capKey);
-              }
-            }
-          }
+      // Step through empty squares
+      for (const [mdx, mdy] of moveDirs) {
+        const nx = curr.x + mdx;
+        const ny = curr.y + mdy;
+        const key = `${nx},${ny}`;
+        if (!isValidSquare(nx, ny)) continue;
+        if (bfsVisited.has(key)) continue;
+        // Any occupant (ally or enemy) blocks path through
+        if (occupantAt(nx, ny)) continue;
+        bfsVisited.add(key);
+        if (!addedStepMoves.has(key)) {
+          moves.push({ x: nx, y: ny });
+          addedStepMoves.add(key);
         }
+        queue.push({ x: nx, y: ny, steps: curr.steps + 1 });
+      }
+    }
+  }
 
-        if (curr.steps >= maxMoveSteps) continue;
-
-        // Step through empty squares
-        for (const [mdx, mdy] of moveDirs) {
-          const nx = curr.x + mdx;
-          const ny = curr.y + mdy;
-          const key = `${nx},${ny}`;
-          if (!isValidSquare(nx, ny)) continue;
-          if (bfsVisited.has(key)) continue;
-          // Any occupant (ally or enemy) blocks path through
-          if (occupantAt(nx, ny)) continue;
-          bfsVisited.add(key);
-          if (!addedMoves.has(key)) {
+  // Separate capture range (step_capture_value).
+  // No fallback to movement range — piece must have an explicit step_capture_value
+  // to be able to capture via step-by-step movement.
+  const capValRaw = piece.step_capture_value;
+  const capVal = Number(capValRaw ?? 0);
+  const hasExplicitStepCapture = capValRaw != null && capValRaw !== 0 && !Number.isNaN(capVal);
+  // A square on the piece's ratio (L) capture pattern is decided by the ratio
+  // rule alone, as in canPieceAttackSquare, which returns from its ratio check
+  // before it reaches step captures - and the frontend, which path-checks such a
+  // square as an L only. So the step walk leaves those squares to the ratio code.
+  const useMovForCapGen = piece.attacks_like_movement || piece.can_capture_enemy_on_move;
+  const ratioCap1 = piece.ratio_capture_1 || (useMovForCapGen ? piece.ratio_movement_1 : 0) || 0;
+  const ratioCap2 = piece.ratio_capture_2 || (useMovForCapGen ? piece.ratio_movement_2 : 0) || 0;
+  const isRatioCaptureOffset = (ox, oy) => {
+    if (!(ratioCap1 > 0 && ratioCap2 > 0)) return false;
+    const ax = Math.abs(ox), ay = Math.abs(oy);
+    const at = (k) => (ax === k * ratioCap1 && ay === k * ratioCap2) || (ax === k * ratioCap2 && ay === k * ratioCap1);
+    if (at(1)) return true;
+    if (!(piece.repeating_ratio_capture || (useMovForCapGen && piece.repeating_ratio))) return false;
+    const maxIter = piece.repeating_ratio_capture ? piece.max_ratio_capture_iterations : piece.max_ratio_iterations;
+    const maxK = maxIter === -1 ? Math.max(ax, ay) : (maxIter || 1);
+    for (let k = 2; k <= maxK; k++) if (at(k)) return true;
+    return false;
+  };
+  if (hasExplicitStepCapture && piece.can_capture_enemy_on_move && !hasGlobalFirstMoveOnlyCaptureRestriction) {
+    const maxCapSteps = Math.abs(capVal);
+    const capDirs = stepDirections(capVal < 0, stepCaptureNoOrthogonal(piece, true));
+    const queue = [{ x: piece.x, y: piece.y, steps: 0 }];
+    const visited = new Set([`${piece.x},${piece.y}`]);
+    while (queue.length > 0) {
+      const curr = queue.shift();
+      if (curr.steps >= maxCapSteps) continue;
+      for (const [cdx, cdy] of capDirs) {
+        const nx = curr.x + cdx;
+        const ny = curr.y + cdy;
+        const key = `${nx},${ny}`;
+        if (!isValidSquare(nx, ny) || visited.has(key)) continue;
+        visited.add(key);
+        const tgt = occupantAt(nx, ny);
+        if (tgt) {
+          // An occupied square ends this line: capture it if it is an enemy
+          // (or a friend, for a piece that captures allies).
+          const tgtOwner = tgt.team || tgt.player_id;
+          const takeable = tgtOwner !== pieceOwner || piece.can_capture_allies;
+          if (tgt.id !== piece.id && takeable && !tgt.cannot_be_captured && !addedStepMoves.has(key)
+              && !isRatioCaptureOffset(nx - piece.x, ny - piece.y)) {
             moves.push({ x: nx, y: ny });
-            addedMoves.add(key);
+            addedStepMoves.add(key);
           }
-          queue.push({ x: nx, y: ny, steps: curr.steps + 1 });
+          continue;
         }
+        queue.push({ x: nx, y: ny, steps: curr.steps + 1 });
       }
     }
   }
@@ -23811,6 +23980,13 @@ module.exports = {
   // rather than a second copy that can drift.
   stepDirections,
   stepInRange,
+  // The straight-line hop rule, mirrored in the frontend engine (parity tests use these).
+  straightHopRule,
+  straightHopsBetween,
+  hopRuleAllows,
+  // The final capture/check test and the move validator, for engine tests.
+  canPieceAttackSquare,
+  canPieceMoveToSquare,
   stepMoveNoOrthogonal,
   stepCaptureNoOrthogonal,
   getAllLegalMovesForPlayer,

@@ -7,7 +7,8 @@ const ABOUT = 'Betza notation is a short code for how a piece moves, used by che
   + 'Capital letters are moves: W one square orthogonally, F one square diagonally, N a knight jump, '
   + 'and R, B, Q, K for the rook, bishop, queen and king. Doubling a letter or adding a number repeats '
   + 'it in a line (WW is a rook; R4 a rook that goes up to 4 squares). Lower-case letters in front change '
-  + 'the move: m move only, c capture only, f/b/l/r forward/back/left/right, i first move only. '
+  + 'the move: m move only, c capture only, f/b/l/r forward/back/left/right, i first move only, '
+  + 'n lame (cannot jump), p cannon (must hop exactly one piece). '
   + 'Example: mfWcfFimfnD is a pawn. Filling in replaces the Movement and Attack steps, which you can then adjust.';
 
 /*

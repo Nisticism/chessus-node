@@ -6,6 +6,7 @@ import NumberInput from "../common/NumberInput";
 import InfoTooltip from "./InfoTooltip";
 import FairyStockfishInfoNote from "../common/FairyStockfishInfoNote";
 import ToggleSwitch from "../common/ToggleSwitch";
+import HopCountControls from "./HopCountControls";
 import { movementToAttackUpdates } from "../../helpers/pieceMovementAttackCopy";
 import { PIECE_WIZARD_TEXT } from "../../global/global";
 
@@ -938,23 +939,9 @@ const PieceStep3Attack = ({ pieceData, updatePieceData }) => {
             tooltip={<InfoTooltip text="When enabled, this piece can only attack in directional paths if there is at least one piece in the path to hop over. Does not affect step-by-step attacks or custom attack squares. This is the attack equivalent of 'Require hopping for any directional movement'." />}
           />
         )}
+        {/* At least / at most so many pieces hopped, and where it lands (HopCountControls). */}
         {(pieceData.can_hop_attack_over_allies || pieceData.can_hop_attack_over_enemies) && pieceData.directional_hop_only_attack && (
-          <ToggleSwitch
-            checked={pieceData.max_directional_hop_pieces_attack != null}
-            onChange={(v) => handleChange("max_directional_hop_pieces_attack", v ? 1 : null)}
-            label="Limit max pieces in path per directional attack"
-            tooltip={<InfoTooltip text="When enabled, this piece can only hop over a limited number of pieces in a single directional attack. Set the maximum between 1 and 4. When disabled, there is no limit." />}
-          />
-        )}
-        {(pieceData.can_hop_attack_over_allies || pieceData.can_hop_attack_over_enemies) && pieceData.directional_hop_only_attack && pieceData.max_directional_hop_pieces_attack != null && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '6px', paddingLeft: '4px' }}>
-            <span style={{ fontSize: '0.9em' }}>Max pieces to hop over per directional attack:</span>
-            <NumberInput
-              value={pieceData.max_directional_hop_pieces_attack}
-              onChange={(val) => handleChange("max_directional_hop_pieces_attack", Math.max(1, val || 1))}
-              options={{ min: 1, max: 4, placeholder: "1" }}
-            />
-          </div>
+          <HopCountControls pieceData={pieceData} handleChange={handleChange} attack />
         )}
         {pieceData.repeating_ratio_capture && (Number(pieceData.max_ratio_capture_iterations) === -1 || (pieceData.max_ratio_capture_iterations || 1) > 1) && (
           <ToggleSwitch

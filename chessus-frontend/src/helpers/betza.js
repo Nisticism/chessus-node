@@ -24,6 +24,18 @@
  *       N moves", or an alternative movement when the direction already has one
  *       (a pawn's double step).
  *   e (en passant), O (castling)                           the piece's own flags.
+ *   p (cannon) on a slide (pR, pB, pQ)                     "must hop" with at most
+ *       one piece to hop: it moves and captures only over exactly one piece.
+ *       mRcpR (the xiangqi cannon) moves as a rook and captures over a screen.
+ *   g (grasshopper) on a slide (gQ)                        the same, landing at
+ *       most one square past the piece it hops: right behind it.
+ *
+ * HOPPING. A site L-shaped move, or an exact distance, is BLOCKED by pieces in
+ * its path unless the piece may hop - so every leap the code names sets the hop
+ * flags (a knight jumps), and slides are kept from hopping with them by
+ * "directional hop disabled", which leaves exact distances hopping. A rider of
+ * leaps (NN, DD) also stops at the first piece ON its line of landings
+ * ("stop at occupied"), and hops everything between them. See hopSettings.
  *
  * Directions are from the piece owner's side: f = forward = "up".
  * Anything the site cannot express is reported, never silently dropped.
@@ -37,7 +49,9 @@ const ATOMS = {
   A: { leap: [2, 2], name: 'Alfil', says: 'a jump of exactly two squares diagonally' },
   H: { leap: [3, 0], name: 'Threeleaper', says: 'a jump of exactly three squares orthogonally' },
   C: { leap: [3, 1], name: 'Camel', says: 'a jump three squares one way and one sideways' },
+  L: { leap: [3, 1], name: 'Camel', says: 'a jump three squares one way and one sideways (L is another letter for C)' },
   Z: { leap: [3, 2], name: 'Zebra', says: 'a jump three squares one way and two sideways' },
+  J: { leap: [3, 2], name: 'Zebra', says: 'a jump three squares one way and two sideways (J is another letter for Z)' },
   G: { leap: [3, 3], name: 'Tripper', says: 'a jump of exactly three squares diagonally' },
 };
 // Shorthands for common combinations, each as the atoms it stands for.
@@ -62,7 +76,7 @@ const MODIFIERS = {
   a: 'moves again', y: 'turns into a slider after', t: 'then', u: 'unloads (relocates) the captured piece',
   w: 'transfers its power',
 };
-const SUPPORTED_MODS = new Set(['m', 'c', 'i', 'f', 'b', 'l', 'r', 'v', 's', 'n', 'e']);
+const SUPPORTED_MODS = new Set(['m', 'c', 'i', 'f', 'b', 'l', 'r', 'v', 's', 'n', 'e', 'p', 'g']);
 const DIRECTION_LETTERS = new Set(['f', 'b', 'l', 'r', 'v', 's']);
 const PAIRS = new Set(['fl', 'lf', 'fr', 'rf', 'bl', 'lb', 'br', 'rb', 'ff', 'bb', 'll', 'rr', 'fs', 'sf', 'bs', 'sb', 'lv', 'vl', 'rv', 'vr', 'fh', 'bh']);
 
@@ -258,6 +272,57 @@ function blankMovementAndAttack() {
   return out;
 }
 
+/*
+ * The hop settings a piece's parts need, per kind (movement / capture).
+ *
+ *   leap    an L-shaped move: it jumps, so the piece may hop allies and enemies.
+ *           The site's L-move uses the MOVEMENT hop flags for its path even
+ *           when it captures, so a capturing leap sets both sets of flags.
+ *   ride    a rider of leaps (NN, DD): hops between landings, stops at the
+ *           first piece standing on one (hop_stop_at_occupied).
+ *   slide   W / F slides: must not hop. With any hopping on, "directional hop
+ *           disabled" keeps them blocked; exact distances still hop.
+ *   lameExact  nD: an exact distance that may NOT jump - which hopping, once
+ *           on for anything else, would let it do. Reported.
+ *   cannon  p on a slide: may only move by hopping, over exactly one piece.
+ *   grasshopper  g on a slide: the same, landing right behind the piece hopped.
+ */
+function hopSettings(needs, warnings) {
+  const out = {
+    can_hop_over_allies: false, can_hop_over_enemies: false,
+    can_hop_attack_over_allies: false, can_hop_attack_over_enemies: false,
+    directional_hop_disabled: false, directional_hop_disabled_attack: false,
+    hop_stop_at_occupied: false, hop_stop_at_occupied_attack: false,
+    directional_hop_only: false, directional_hop_only_attack: false,
+    max_directional_hop_pieces: null, max_directional_hop_pieces_attack: null,
+    min_directional_hop_pieces: null, min_directional_hop_pieces_attack: null,
+    hop_landing_distance: null, hop_landing_distance_attack: null,
+  };
+  const m = needs.movement;
+  const c = needs.capture;
+  const hopsM = m.leap || m.ride || m.cannon || m.grasshopper || c.leap;
+  const hopsC = c.leap || c.ride || c.cannon || c.grasshopper;
+  if (hopsM) { out.can_hop_over_allies = true; out.can_hop_over_enemies = true; }
+  if (hopsC) { out.can_hop_attack_over_allies = true; out.can_hop_attack_over_enemies = true; }
+  if (hopsM && m.slide) out.directional_hop_disabled = true;
+  if (hopsC && c.slide) out.directional_hop_disabled_attack = true;
+  // The server's straight-line walk reads the MOVEMENT flag for captures too.
+  if (m.ride || c.ride) out.hop_stop_at_occupied = true;
+  if (c.ride) out.hop_stop_at_occupied_attack = true;
+  if (m.cannon || m.grasshopper) { out.directional_hop_only = true; out.max_directional_hop_pieces = 1; }
+  if (c.cannon || c.grasshopper) { out.directional_hop_only_attack = true; out.max_directional_hop_pieces_attack = 1; }
+  if (m.grasshopper) out.hop_landing_distance = 1;
+  if (c.grasshopper) out.hop_landing_distance_attack = 1;
+  const hopper = (k) => k.cannon || k.grasshopper;
+  if ((hopper(m) && m.slide) || (hopper(c) && c.slide) || (m.cannon && m.grasshopper) || (c.cannon && c.grasshopper)) {
+    warnings.push('A hopping slide (p or g) and a different slide on one piece cannot be set together for the same kind of move: here they share one hop rule. Moving one way and capturing the other (mRcpR) is fine.');
+  }
+  if ((m.lameExact && hopsM) || (c.lameExact && hopsC)) {
+    warnings.push('A lame (n) leap on a piece that also jumps cannot be kept from jumping: here it jumps too.');
+  }
+  return out;
+}
+
 /**
  * Settings for the wizard, from a Betza code. `updates` replaces the piece's
  * movement and capture-on-move settings (ranged attacks and special rules are
@@ -271,6 +336,11 @@ export function betzaToPieceData(code) {
   const custom = { movement: new Map(), capture: new Map() };
   const extra = { movement: {}, capture: {} };   // additionalMovements / additionalCaptures
   const ratioTaken = { movement: false, capture: false };
+  // What the piece needs from the hop settings, per kind (see hopSettings).
+  const needs = {
+    movement: { leap: false, ride: false, slide: false, lameExact: false, cannon: false, grasshopper: false },
+    capture: { leap: false, ride: false, slide: false, lameExact: false, cannon: false, grasshopper: false },
+  };
 
   const addCustom = (kind, dx, dy) => custom[kind].set(`${dy},${dx}`, { row: dy, col: dx });
 
@@ -295,6 +365,10 @@ export function betzaToPieceData(code) {
       warnings.push(`Only two alternative distances fit in one direction; dropped one for ${d.replace('_', '-')}.`);
       return;
     }
+    // An alternative distance is walked like a slide: it cannot jump, nor repeat.
+    if (repeat) {
+      warnings.push('A ridden leap (DD, AA) in a direction that already has a move is stored as a second distance there, which is blocked by pieces in between and does not repeat.');
+    }
     // Next to a one-square step, "up to N" is the same move as "exactly N" and matches how the site stores a pawn.
     const coveredBelow = !u[`${key}_exact`] && current >= dist - 1;
     list.push({
@@ -312,6 +386,8 @@ export function betzaToPieceData(code) {
     const kinds = part.mods.includes('m') ? ['movement'] : part.mods.includes('c') ? ['capture'] : ['movement', 'capture'];
     const initial = part.mods.includes('i');
     const lame = part.mods.includes('n');
+    const cannon = part.mods.includes('p');
+    const grasshopper = part.mods.includes('g');
     const filter = directionFilter(part.mods);
     const atoms = COMPOUNDS[part.atom] ? COMPOUNDS[part.atom].atoms.map((a) => ATOMS[a].leap) : [part.leap];
 
@@ -322,15 +398,23 @@ export function betzaToPieceData(code) {
       const straight = b === 0 || a === b;   // along a line: orthogonal or diagonal
       const step = straight ? a : null;      // squares per step along it
 
+      if ((cannon || grasshopper) && !(straight && step === 1)) {
+        warnings.push(`${part.text}: a ${cannon ? 'cannon-style (p)' : 'grasshopper (g)'} ${straight ? 'leap' : 'L-shaped move'} cannot be set up - ignored.`);
+        continue;
+      }
+
       for (const kind of kinds) {
         if (straight && step === 1) {
           // W / F and their riders: the site's own sliding directions.
           const dist = part.rider ? (part.range || 99) : 1;
           for (const [dx, dy] of vectors) setDirection(kind, dirName(dx, dy), dist, { initial });
+          needs[kind][grasshopper ? 'grasshopper' : cannon ? 'cannon' : 'slide'] = true;
         } else if (straight && (part.rider || lame)) {
-          // DD, nD, A3 ...: exact distance along the line (blocked like a slide), repeating for a rider.
+          // DD, nD, A3 ...: exact distance along the line - hopping between
+          // landings for a rider (DD jumps), blocked like a slide when lame.
           if (part.rider && part.range > 1) warnings.push(`${part.text}: a limited number of ${step}-square jumps cannot be set; it repeats without limit.`);
           for (const [dx, dy] of vectors) setDirection(kind, dirName(dx, dy), step, { exact: true, initial, repeat: part.rider });
+          needs[kind][part.rider && !lame ? 'ride' : 'lameExact'] = true;
         } else if (straight) {
           // D, A, H, G: a true leap - custom squares, which jump.
           if (initial) warnings.push(`${part.text}: "first move only" cannot be set on a leap (custom squares); it is always available.`);
@@ -338,6 +422,8 @@ export function betzaToPieceData(code) {
         } else if (!filter && vectors.length === all.length && !ratioTaken[kind]) {
           // The first unrestricted oblique leap: the L-shape ratio.
           ratioTaken[kind] = true;
+          needs[kind].leap = true;
+          if (part.rider) needs[kind].ride = true;
           if (kind === 'movement') {
             u.ratio_movement_style = true; u.ratio_one_movement = a; u.ratio_two_movement = b;
             if (part.rider) { u.repeating_ratio = true; u.max_ratio_iterations = part.range || -1; }
@@ -358,6 +444,8 @@ export function betzaToPieceData(code) {
     }
   }
 
+  Object.assign(u, hopSettings(needs, warnings));
+
   if (custom.movement.size) u.custom_movement_squares = JSON.stringify([...custom.movement.values()]);
   if (custom.capture.size) u.custom_attack_squares = JSON.stringify([...custom.capture.values()]);
   if (Object.keys(extra.movement).length) u.special_scenario_moves = JSON.stringify({ additionalMovements: extra.movement });
@@ -367,5 +455,6 @@ export function betzaToPieceData(code) {
   u.directional_movement_style = anyDir('movement');
   u.can_capture_enemy_on_move = anyDir('capture') || !!u.ratio_one_capture || custom.capture.size > 0
     || Object.keys(extra.capture).length > 0;
-  return { updates: u, warnings, error: null, parts: parsed.parts };
+  // Once each: a rule broken in several directions is still one rule.
+  return { updates: u, warnings: [...new Set(warnings)], error: null, parts: parsed.parts };
 }

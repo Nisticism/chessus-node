@@ -2904,6 +2904,7 @@ const CMP_INT_COLS = [
   'capture_actions_per_turn','ranged_capture_actions_per_turn','movement_actions_per_turn',
   'max_chain_hops',
   'max_directional_hop_pieces','max_directional_hop_pieces_attack',
+  'min_directional_hop_pieces','min_directional_hop_pieces_attack','hop_landing_distance','hop_landing_distance_attack',
   'available_for_captures',
   'up_left_movement_change','up_movement_change','up_right_movement_change','right_movement_change',
   'down_right_movement_change','down_movement_change','down_left_movement_change','left_movement_change',
@@ -2951,6 +2952,17 @@ function prettifyPieceField(col) {
 // it in a game type. The hash never leaves the server; list endpoints expose a
 // has_password boolean instead. NULL means unprotected, which is the default and
 // what every pre-existing piece has.
+/*
+ * A hop-count setting (max/min pieces hopped, landing distance): 1-8, or null
+ * for no rule. A form sends "" or "null" for an empty box, which is no rule -
+ * not 1, which is what parseInt-or-1 made of it.
+ */
+const hopCountField = (v) => {
+  if (v === undefined || v === null || v === '' || v === 'null') return null;
+  const n = parseInt(v, 10);
+  return Number.isFinite(n) && n > 0 ? Math.min(8, n) : null;
+};
+
 const PIECE_PASSWORD_MIN = 4;
 const PIECE_PASSWORD_MAX = 72; // bcrypt ignores bytes past 72
 
@@ -3526,6 +3538,8 @@ addGate(['directional_hop_only'], gHasDirectionalMovement);
 addGate(['directional_hop_only_attack'], gHasDirectionalCapture);
 addGate(['max_directional_hop_pieces'], (p) => gHasDirectionalMovement(p) && gHopsOnMove(p));
 addGate(['max_directional_hop_pieces_attack'], (p) => gHasDirectionalCapture(p) && gHopsOnAttack(p));
+addGate(['min_directional_hop_pieces', 'hop_landing_distance'], (p) => gHasDirectionalMovement(p) && gHopsOnMove(p));
+addGate(['min_directional_hop_pieces_attack', 'hop_landing_distance_attack'], (p) => gHasDirectionalCapture(p) && gHopsOnAttack(p));
 addGate(['exact_ratio_hop_only'], (p) => gHasRatioMovement(p) || gHasExactDirectionalMovement(p));
 addGate(['exact_ratio_hop_only_attack'], (p) => gHasRatioCapture(p) || gHasExactDirectionalCapture(p));
 // hop_stop_at_occupied is only ever read while repeating: on a repeating
@@ -5904,6 +5918,7 @@ app.post("/api/games/:gameId/uniqueness-check", authenticateToken, async (req, r
       'exact_ratio_hop_only', 'directional_hop_disabled',
       'exact_ratio_hop_only_attack', 'directional_hop_disabled_attack', 'hop_stop_at_occupied_attack', 'directional_hop_only', 'directional_hop_only_attack',
       'max_directional_hop_pieces', 'max_directional_hop_pieces_attack',
+      'min_directional_hop_pieces', 'min_directional_hop_pieces_attack', 'hop_landing_distance', 'hop_landing_distance_attack',
       'repeating_capture', 'repeating_ratio_capture', 'max_ratio_capture_iterations',
       'can_capture_allies', 'cannot_be_captured', 'max_chain_hops',
       'promotion_pieces_ids'
@@ -9953,6 +9968,7 @@ app.post("/api/pieces/create", authenticateToken, multerWrap(pieceUpload.array('
         can_hop_attack_over_allies, can_hop_attack_over_enemies, chain_hop_allies,
         exact_ratio_hop_only_attack, directional_hop_disabled_attack, hop_stop_at_occupied_attack, directional_hop_only, directional_hop_only_attack,
         max_directional_hop_pieces, max_directional_hop_pieces_attack,
+        min_directional_hop_pieces, min_directional_hop_pieces_attack, hop_landing_distance, hop_landing_distance_attack,
         can_capture_allies, cannot_be_captured, max_chain_hops,
         custom_movement_squares, custom_attack_squares,
         must_move_if_able, must_move_uses_action,
@@ -9975,7 +9991,7 @@ app.post("/api/pieces/create", authenticateToken, multerWrap(pieceUpload.array('
         require_direction_change, require_direction_change_capture,
         image_sources_json,
         created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const pieceWidth = Math.min(4, Math.max(1, parseInt(pieceData.piece_width) || 1));
@@ -10148,8 +10164,13 @@ app.post("/api/pieces/create", authenticateToken, multerWrap(pieceUpload.array('
       parseBooleanField(pieceData.directional_hop_only),
       parseBooleanField(pieceData.directional_hop_only_attack),
       // Max directional hop pieces
-      pieceData.max_directional_hop_pieces != null ? Math.min(4, Math.max(1, parseInt(pieceData.max_directional_hop_pieces) || 1)) : null,
-      pieceData.max_directional_hop_pieces_attack != null ? Math.min(4, Math.max(1, parseInt(pieceData.max_directional_hop_pieces_attack) || 1)) : null,
+      hopCountField(pieceData.max_directional_hop_pieces),
+      hopCountField(pieceData.max_directional_hop_pieces_attack),
+      // At least so many hopped, and landing within so many past the last (straightHopRule)
+      hopCountField(pieceData.min_directional_hop_pieces),
+      hopCountField(pieceData.min_directional_hop_pieces_attack),
+      hopCountField(pieceData.hop_landing_distance),
+      hopCountField(pieceData.hop_landing_distance_attack),
       // Can capture allies
       parseBooleanField(pieceData.can_capture_allies),
       // Cannot be captured
@@ -10697,6 +10718,10 @@ app.put("/api/pieces/:pieceId", authenticateToken, multerWrap(pieceUpload.array(
         directional_hop_only_attack = ?,
         max_directional_hop_pieces = ?,
         max_directional_hop_pieces_attack = ?,
+        min_directional_hop_pieces = ?,
+        min_directional_hop_pieces_attack = ?,
+        hop_landing_distance = ?,
+        hop_landing_distance_attack = ?,
         can_capture_allies = ?,
         cannot_be_captured = ?,
         max_chain_hops = ?,
@@ -10892,8 +10917,13 @@ app.put("/api/pieces/:pieceId", authenticateToken, multerWrap(pieceUpload.array(
       parseBooleanField(pieceData.directional_hop_only),
       parseBooleanField(pieceData.directional_hop_only_attack),
       // Max directional hop pieces
-      pieceData.max_directional_hop_pieces != null ? Math.min(4, Math.max(1, parseInt(pieceData.max_directional_hop_pieces) || 1)) : null,
-      pieceData.max_directional_hop_pieces_attack != null ? Math.min(4, Math.max(1, parseInt(pieceData.max_directional_hop_pieces_attack) || 1)) : null,
+      hopCountField(pieceData.max_directional_hop_pieces),
+      hopCountField(pieceData.max_directional_hop_pieces_attack),
+      // At least so many hopped, and landing within so many past the last (straightHopRule)
+      hopCountField(pieceData.min_directional_hop_pieces),
+      hopCountField(pieceData.min_directional_hop_pieces_attack),
+      hopCountField(pieceData.hop_landing_distance),
+      hopCountField(pieceData.hop_landing_distance_attack),
       // Can capture allies
       parseBooleanField(pieceData.can_capture_allies),
       // Cannot be captured

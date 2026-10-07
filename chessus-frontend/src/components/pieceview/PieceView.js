@@ -29,6 +29,7 @@ import { parseServerDate } from "../../helpers/date-formatter";
 import authHeader from "../../services/auth-header";
 import { renderContent } from "../../helpers/render-content";
 import useSeo from "../../hooks/useSeo";
+import { hopRuleWords } from "../../helpers/hopRuleWords";
 
 const EMPTY_PIECE_VALUE_CACHE = {};
 
@@ -297,12 +298,16 @@ const PieceView = () => {
       directional_hop_disabled: !!piece.directional_hop_disabled,
       directional_hop_only: !!piece.directional_hop_only,
       max_directional_hop_pieces: piece.max_directional_hop_pieces != null ? parseInt(piece.max_directional_hop_pieces) : null,
+      min_directional_hop_pieces: piece.min_directional_hop_pieces != null ? parseInt(piece.min_directional_hop_pieces) : null,
+      hop_landing_distance: piece.hop_landing_distance != null ? parseInt(piece.hop_landing_distance) : null,
       can_hop_attack_over_allies: !!piece.can_hop_attack_over_allies,
       can_hop_attack_over_enemies: !!piece.can_hop_attack_over_enemies,
       exact_ratio_hop_only_attack: !!piece.exact_ratio_hop_only_attack,
       directional_hop_disabled_attack: !!piece.directional_hop_disabled_attack,
       directional_hop_only_attack: !!piece.directional_hop_only_attack,
       max_directional_hop_pieces_attack: piece.max_directional_hop_pieces_attack != null ? parseInt(piece.max_directional_hop_pieces_attack) : null,
+      min_directional_hop_pieces_attack: piece.min_directional_hop_pieces_attack != null ? parseInt(piece.min_directional_hop_pieces_attack) : null,
+      hop_landing_distance_attack: piece.hop_landing_distance_attack != null ? parseInt(piece.hop_landing_distance_attack) : null,
       directional_attack_style: !!piece.directional_attack_style,
       ratio_attack_style: !!piece.ratio_attack_style,
       step_by_step_attack_style: !!piece.step_by_step_attack_style,
@@ -614,12 +619,16 @@ const PieceView = () => {
       directional_hop_disabled: !!piece.directional_hop_disabled,
       directional_hop_only: !!piece.directional_hop_only,
       max_directional_hop_pieces: piece.max_directional_hop_pieces != null ? parseInt(piece.max_directional_hop_pieces) : null,
+      min_directional_hop_pieces: piece.min_directional_hop_pieces != null ? parseInt(piece.min_directional_hop_pieces) : null,
+      hop_landing_distance: piece.hop_landing_distance != null ? parseInt(piece.hop_landing_distance) : null,
       can_hop_attack_over_allies: !!piece.can_hop_attack_over_allies,
       can_hop_attack_over_enemies: !!piece.can_hop_attack_over_enemies,
       exact_ratio_hop_only_attack: !!piece.exact_ratio_hop_only_attack,
       directional_hop_disabled_attack: !!piece.directional_hop_disabled_attack,
       directional_hop_only_attack: !!piece.directional_hop_only_attack,
       max_directional_hop_pieces_attack: piece.max_directional_hop_pieces_attack != null ? parseInt(piece.max_directional_hop_pieces_attack) : null,
+      min_directional_hop_pieces_attack: piece.min_directional_hop_pieces_attack != null ? parseInt(piece.min_directional_hop_pieces_attack) : null,
+      hop_landing_distance_attack: piece.hop_landing_distance_attack != null ? parseInt(piece.hop_landing_distance_attack) : null,
       directional_attack_style: !!piece.directional_attack_style,
       ratio_attack_style: !!piece.ratio_attack_style,
       step_by_step_attack_style: !!piece.step_by_step_attack_style,
@@ -1231,7 +1240,7 @@ const PieceView = () => {
                       {movWho ? `: can hop over ${movWho}` : ''}
                       {pieceToDisplay.exact_ratio_hop_only ? ' · only on ratio/exact moves' : ''}
                       {pieceToDisplay.directional_hop_only ? ' · required for directional moves' : ''}
-                      {pieceToDisplay.directional_hop_only && pieceToDisplay.max_directional_hop_pieces ? ` · max ${pieceToDisplay.max_directional_hop_pieces} piece${pieceToDisplay.max_directional_hop_pieces !== 1 ? 's' : ''} in path` : ''}
+                      {pieceToDisplay.directional_hop_only ? hopRuleWords(pieceToDisplay) : ''}
                       {pieceToDisplay.directional_hop_disabled ? ' · disabled for directional moves' : ''}
                       {movHopStop ? ' · stops at occupied intermediates when repeating' : ''}
                     </li>
@@ -1242,7 +1251,7 @@ const PieceView = () => {
                       {atkWho ? `: can hop over ${atkWho}` : ''}
                       {pieceToDisplay.exact_ratio_hop_only_attack ? ' · only on ratio/exact attacks' : ''}
                       {pieceToDisplay.directional_hop_only_attack ? ' · required for directional attacks' : ''}
-                      {pieceToDisplay.directional_hop_only_attack && pieceToDisplay.max_directional_hop_pieces_attack ? ` · max ${pieceToDisplay.max_directional_hop_pieces_attack} piece${pieceToDisplay.max_directional_hop_pieces_attack !== 1 ? 's' : ''} in path` : ''}
+                      {pieceToDisplay.directional_hop_only_attack ? hopRuleWords(pieceToDisplay, true) : ''}
                       {pieceToDisplay.directional_hop_disabled_attack ? ' · disabled for directional attacks' : ''}
                       {atkHopStop ? ' · stops at occupied intermediates when repeating' : ''}
                       {pieceToDisplay.chain_capture_enabled && pieceToDisplay.chain_hop_allies ? ' · hops over allies during chain captures' : ''}

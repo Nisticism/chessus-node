@@ -35,6 +35,8 @@
  * placement references the same piece id, it gets the same char.
  */
 
+const { straightHopRule } = require('../hop-rule');
+
 // ---------- helpers ----------
 
 function toBool(v) {
@@ -559,34 +561,37 @@ function pieceToBetza(piece) {
     }
   }
 
+  /*
+   * Hoppers, read from the straight-line hop rule the engines play by
+   * (server/hop-rule.js): exactly one piece hopped is a cannon (Betza p), and
+   * landing right behind it a grasshopper (g). The prefix goes on that kind's
+   * own slider atoms - movement and capture separately, so the xiangqi cannon
+   * comes out as mR + cpR. Any other hop rule (two screens, a longer landing)
+   * has no Betza letter, and its slides are emitted plain: the closest the
+   * bot can play.
+   *
+   * This used to ADD pR/pB or gR/gB whenever a hop flag was set, so a queen
+   * that could hop allies for its knight move also became a grasshopper.
+   */
+  const hopLetter = (attack) => {
+    const rule = straightHopRule(piece, attack);
+    if (rule.min !== 1 || rule.max !== 1) return '';
+    return rule.landing === 1 ? 'g' : rule.landing == null ? 'p' : '';
+  };
+  const moveHop = hopLetter(false);
+  // Moving and capturing alike (unprefixed atoms) needs the same rule both ways.
+  const sharedHop = attacksByMovement && moveHop !== hopLetter(true) ? '' : moveHop;
+
   // Direction-style movement & capture.
   if (toBool(piece.directional_movement_style) || hasAnyDir(piece, false)) {
     for (const grp of [ORTHO_DIRS, DIAG_DIRS]) {
-      chunks.push(...emitAtomsForGroup(piece, grp, false, movePrefix));
+      chunks.push(...emitAtomsForGroup(piece, grp, false, movePrefix + sharedHop));
     }
   }
   if (hasAttackDir) {
     for (const grp of [ORTHO_DIRS, DIAG_DIRS]) {
-      chunks.push(...emitAtomsForGroup(piece, grp, true, 'c'));
+      chunks.push(...emitAtomsForGroup(piece, grp, true, 'c' + hopLetter(true)));
     }
-  }
-
-  // Hop prefixes ("p" = cannon-style: hop over exactly one piece to capture;
-  // "g" = grasshopper: hop over a piece and land immediately beyond it).
-  // We append hop variants as additional chunks for capture only when the
-  // piece can hop over enemies during attack.
-  if (toBool(piece.can_hop_attack_over_enemies)) {
-    // Approximate: emit "pR" / "pB" allowing slider-style hop captures along
-    // any direction the piece already moves on. We re-use the slider atoms
-    // (R for orthogonal sliders, B for diagonal sliders) when the piece has
-    // any infinite slider direction in that group.
-    if (anyInfInGroup(piece, ORTHO_DIRS, true)) chunks.push('pR');
-    if (anyInfInGroup(piece, DIAG_DIRS, true)) chunks.push('pB');
-  }
-  if (toBool(piece.can_hop_over_allies)) {
-    // Grasshopper-style: allies as hurdles for movement.
-    if (anyInfInGroup(piece, ORTHO_DIRS, false)) chunks.push('gR');
-    if (anyInfInGroup(piece, DIAG_DIRS, false)) chunks.push('gB');
   }
 
   // En passant (placement flag, but if any direction has it on the piece...).
@@ -622,13 +627,6 @@ function hasAnyDir(piece, isCapture) {
   for (const d of DIRS) {
     const col = isCapture ? `${d}_capture` : `${d}_movement`;
     if (toInt(piece[col]) > 0) return true;
-  }
-  return false;
-}
-function anyInfInGroup(piece, group, isCapture) {
-  for (const d of group) {
-    const col = isCapture ? `${d}_capture` : `${d}_movement`;
-    if (isInf(piece[col])) return true;
   }
   return false;
 }
