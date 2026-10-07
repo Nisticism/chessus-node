@@ -28,6 +28,7 @@ import {
   repeatCap,
 } from './pieceMovementUtils';
 import { firstMoveVariant } from './firstMove';
+import { hasPaths, pathMoves, pathAttacks } from './movePaths';
 
 /**
  * Board indicator colours, shared by every board that draws move dots.
@@ -1282,6 +1283,49 @@ export const createMoveEngine = ({
   };
 
   // Check if a specific piece is under attack by any enemy piece
+  /*
+   * The board a piece's PATHS are walked on (movePaths.js - the server's own
+   * code, server/move-paths.js; its pathBoard is this). A large piece must
+   * fit, and meets whatever stands under its footprint, a piece it cannot take
+   * outranking one it could. Impassable squares block (not for ghostwalk).
+   * asIfEmpty: squares to treat as free (blocked-target queries).
+   */
+  const pathBoard = (piece, pieces, boardWidth, boardHeight, { potential = false, asIfEmpty = null } = {}) => {
+    const w = piece.piece_width || 1;
+    const h = piece.piece_height || 1;
+    const owner = piece.player_id || piece.team;
+    const others = pieces.filter((p) => p.id !== piece.id);
+    const ghost = piece.ghostwalk === 1 || piece.ghostwalk === true;
+    const special = specialSquares?.special || {};
+    const rank = (p) => ((p.player_id || p.team) === owner ? 0 : p.cannot_be_captured ? 1 : p.ends_game_on_checkmate ? 2 : 3);
+    const pieceAt = (x, y) => {
+      if (asIfEmpty && asIfEmpty.has(`${x},${y}`)) return null;
+      if (w === 1 && h === 1) return findPieceAtSquare(others, x, y) || null;
+      const found = [];
+      for (let fy = 0; fy < h; fy++) {
+        for (let fx = 0; fx < w; fx++) {
+          const p = findPieceAtSquare(others, x + fx, y + fy);
+          if (p && !found.includes(p)) found.push(p);
+        }
+      }
+      return found.sort((a, b) => rank(a) - rank(b))[0] || null;
+    };
+    const blocked = ghost ? null : (x, y) => {
+      if (asIfEmpty && asIfEmpty.has(`${x},${y}`)) return false;
+      for (let fy = 0; fy < h; fy++) for (let fx = 0; fx < w; fx++) if (special[`${y + fy},${x + fx}`]?.impassable) return true;
+      return false;
+    };
+    return {
+      flip: owner === 2,
+      inside: (x, y) => doesPieceFitOnBoard(x, y, w, h, boardWidth, boardHeight),
+      pieceAt,
+      isAlly: (p) => (p.player_id || p.team) === owner,
+      blocked,
+      ghost,
+      potential,
+    };
+  };
+
   const isPieceUnderAttack = (targetPiece, pieces, boardWidth, boardHeight) => {
     if (targetPiece.cannot_be_captured) return false;
     const targetTeam = targetPiece.player_id || targetPiece.team;
@@ -1300,6 +1344,8 @@ export const createMoveEngine = ({
       
       const ew = enemyPiece.piece_width || 1;
       const eh = enemyPiece.piece_height || 1;
+      // Its paths (movePaths.js), as the server's canPieceAttackSquare reads them.
+      const pathBoardE = hasPaths(enemyPiece) ? pathBoard(enemyPiece, pieces, boardWidth, boardHeight) : null;
       
       // For multi-tile target, check each occupied square
       for (let dy = 0; dy < th; dy++) {
@@ -1312,6 +1358,7 @@ export const createMoveEngine = ({
             for (let edx = 0; edx < ew; edx++) {
               const adx = sx - edx; // potential anchor destination x
               const ady = sy - edy; // potential anchor destination y
+              if (pathBoardE && pathAttacks(enemyPiece, adx, ady, pathBoardE)) return true;
               
               if (canPieceCaptureTo(enemyPiece.x, enemyPiece.y, adx, ady, enemyPiece, enemyTeam)) {
                 const isRatioMove = enemyPiece.ratio_capture_1 > 0 && enemyPiece.ratio_capture_2 > 0 &&
@@ -2096,6 +2143,27 @@ export const createMoveEngine = ({
       }
     }
     
+    // Paths: moves made of legs - the griffon, the rose, the crooked bishop
+    // (movePaths.js, the server's own code).
+    if (hasPaths(piece)) {
+      const board = pathBoard(piece, pieces, boardWidth, boardHeight, { potential: forPremove || forFog, asIfEmpty });
+      for (const m of pathMoves(piece, board)) {
+        if (onlySquares && !onlySquares.has(`${m.x},${m.y}`)) continue;
+        if (m.capture && m.target && m.target.ends_game_on_checkmate && !forPremove && !permissive) continue;
+        if (moves.some((e) => e.x === m.x && e.y === m.y && !e.isRangedAttack)) continue;
+        moves.push({
+          x: m.x,
+          y: m.y,
+          isCapture: m.capture || (m.byAttack && !m.capture),
+          isFirstMoveOnly: false,
+          isPath: true,
+          isPotentialCapture: m.byAttack && !m.capture,
+          reachedByMove: m.byMove,
+          reachedByAttack: m.byAttack,
+        });
+      }
+    }
+
     // A blocked-target query (opts.onlySquares) wants the per-square answers only.
     if (onlySquares) return moves;
 

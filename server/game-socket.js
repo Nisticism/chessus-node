@@ -5,6 +5,7 @@
 
 const { straightHopRule, straightHopsBetween, hopRuleAllows, lPathRule, lRouteClear, repeatCap } = require('./hop-rule');
 const { firstMoveVariant, parseFirstMoveProfile } = require('./first-move');
+const { hasPaths, pathMoves, pathAttacks, pathMovesTo, pathEnds, pieceMovementPaths, pieceCapturePaths } = require('./move-paths');
 const db_pool = require("../configs/db");
 const crypto = require('crypto');
 const path = require('path');
@@ -4851,6 +4852,8 @@ function initializeSocket(server, { isUserBanned } = {}) {
               max_repeating_capture: fullPieceData.max_repeating_capture,
               first_move_profile: fullPieceData.first_move_profile,
               first_move_profile_moves: fullPieceData.first_move_profile_moves,
+              movement_paths: fullPieceData.movement_paths,
+              capture_paths: fullPieceData.capture_paths,
               hop_stop_at_occupied_attack: fullPieceData.hop_stop_at_occupied_attack,
               // Capture data
               can_capture_enemy_on_move: fullPieceData.can_capture_enemy_on_move,
@@ -5542,6 +5545,8 @@ function initializeSocket(server, { isUserBanned } = {}) {
               max_repeating_capture: fullPieceData.max_repeating_capture,
               first_move_profile: fullPieceData.first_move_profile,
               first_move_profile_moves: fullPieceData.first_move_profile_moves,
+              movement_paths: fullPieceData.movement_paths,
+              capture_paths: fullPieceData.capture_paths,
               hop_stop_at_occupied_attack: fullPieceData.hop_stop_at_occupied_attack,
               can_capture_enemy_on_move: fullPieceData.can_capture_enemy_on_move,
               attacks_like_movement: fullPieceData.attacks_like_movement,
@@ -11551,6 +11556,8 @@ function initializeSocket(server, { isUserBanned } = {}) {
                     max_repeating_capture: fullPieceData.max_repeating_capture,
                     first_move_profile: fullPieceData.first_move_profile,
                     first_move_profile_moves: fullPieceData.first_move_profile_moves,
+                    movement_paths: fullPieceData.movement_paths,
+                    capture_paths: fullPieceData.capture_paths,
                     hop_stop_at_occupied_attack: fullPieceData.hop_stop_at_occupied_attack,
                     // Capture data
                     can_capture_enemy_on_move: fullPieceData.can_capture_enemy_on_move,
@@ -13387,6 +13394,16 @@ function computePieceValue(piece, bw, bh) {
     } catch (_) { /* ignore */ }
   }
 
+  // --- PATHS (multi-leg moves, server/move-paths.js) ---
+  // On the empty board, from the centre; a turning point can be blocked as
+  // well as the line, so path-only attacks count a little less.
+  if (hasPaths(piece)) {
+    const ctx = { flip: false, inside: isOnBoard, occupant: () => null };
+    for (const path of pieceMovementPaths(piece)) for (const e of pathEnds(path, cx, cy, ctx)) moveSet.add(`${e.x},${e.y}`);
+    const capturing = [...pieceCapturePaths(piece), ...(piece.attacks_like_movement ? pieceMovementPaths(piece) : [])];
+    for (const path of capturing) for (const e of pathEnds(path, cx, cy, ctx)) addAttack(`${e.x},${e.y}`, 0.8);
+  }
+
   // --- COMPUTE RAW INTERNAL VALUE ---
   const centerParity = (cx + cy) % 2;
   function isColorBound(keys) {
@@ -14736,7 +14753,7 @@ async function validateAndApplyMove(gameState, move, options = {}) {
     // This is critical for premoves that become captures.
     // Skip for direction-change moves — they were already validated against the full move list above.
     if (!move.via) {
-      const canCapture = canPieceAttackSquare(piece, to.x, to.y, pieces);
+      const canCapture = canPieceAttackSquare(piece, to.x, to.y, pieces, gameState.gameType);
       if (!canCapture) {
         return { valid: false, reason: "Piece cannot capture to that square" };
       }
@@ -15629,6 +15646,8 @@ async function applyPromotionToPiece(gameState, pieceId, promoteToPieceId, promo
     max_repeating_capture: fullPieceData.max_repeating_capture,
     first_move_profile: fullPieceData.first_move_profile,
     first_move_profile_moves: fullPieceData.first_move_profile_moves,
+    movement_paths: fullPieceData.movement_paths,
+    capture_paths: fullPieceData.capture_paths,
     hop_stop_at_occupied_attack: fullPieceData.hop_stop_at_occupied_attack,
     can_capture_enemy_on_move: fullPieceData.can_capture_enemy_on_move,
     attacks_like_movement: fullPieceData.attacks_like_movement,
@@ -16116,6 +16135,47 @@ function doesPieceFitOnBoard(anchorX, anchorY, pieceWidth, pieceHeight, boardWid
          anchorY + pieceHeight <= boardHeight;
 }
 
+/*
+ * The board a piece's PATHS (server/move-paths.js) are walked on. For a large
+ * piece every square is its footprint there: it must fit, and what stands
+ * anywhere under it is what it meets - a piece it cannot take outranking one
+ * it could, as the move generator's occupantAt ranks them.
+ */
+function pathBoard(piece, allPieces, gameType) {
+  const boardWidth = gameType?.board_width || 8;
+  const boardHeight = gameType?.board_height || 8;
+  const w = piece.piece_width || 1;
+  const h = piece.piece_height || 1;
+  const owner = piece.team || piece.player_id;
+  const others = allPieces.filter(p => p.id !== piece.id);
+  const ghost = piece.ghostwalk === 1 || piece.ghostwalk === true;
+  const impassable = !ghost && gameType ? collectImpassableSquares(gameType) : null;
+  const rank = (p) => ((p.team || p.player_id) === owner ? 0 : p.cannot_be_captured ? 1 : p.ends_game_on_checkmate ? 2 : 3);
+  const pieceAt = (x, y) => {
+    if (w === 1 && h === 1) return findPieceAtSquare(others, x, y) || null;
+    const found = [];
+    for (let fy = 0; fy < h; fy++) {
+      for (let fx = 0; fx < w; fx++) {
+        const p = findPieceAtSquare(others, x + fx, y + fy);
+        if (p && !found.includes(p)) found.push(p);
+      }
+    }
+    return found.sort((a, b) => rank(a) - rank(b))[0] || null;
+  };
+  const blocked = impassable && impassable.size ? (x, y) => {
+    for (let fy = 0; fy < h; fy++) for (let fx = 0; fx < w; fx++) if (impassable.has(`${y + fy},${x + fx}`)) return true;
+    return false;
+  } : null;
+  return {
+    flip: owner === 2,
+    inside: (x, y) => doesPieceFitOnBoard(x, y, w, h, boardWidth, boardHeight),
+    pieceAt,
+    isAlly: (p) => (p.team || p.player_id) === owner,
+    blocked,
+    ghost,
+  };
+}
+
 /**
  * Is there an L route a multi-tile piece can take with its whole footprint?
  *
@@ -16581,6 +16641,9 @@ function canShapeAttackSquare(piece, targetX, targetY, allPieces, gameType) {
       return false;
     }
   }
+
+  // A path's capture (server/move-paths.js).
+  if (hasPaths(piece) && pathAttacks(piece, targetX, targetY, pathBoard(piece, allPieces, gameType))) return true;
 
   const dx = targetX - piece.x;
   const dy = targetY - piece.y;
@@ -17362,6 +17425,9 @@ function canShapeMoveToSquare(piece, targetX, targetY, allPieces, gameType = nul
 
   // Block movement to impassable squares (unless ghostwalk)
   if (impassableSet && impassableSet.has(`${targetY},${targetX}`)) return false;
+
+  // A path's move (server/move-paths.js).
+  if (hasPaths(piece) && pathMovesTo(piece, targetX, targetY, pathBoard(piece, allPieces, gameType))) return true;
 
   // Check if piece needs direction flipping
   const pieceOwner = piece.team || piece.player_id;
@@ -18802,6 +18868,13 @@ function possibleMovesOfShape(piece, allPieces, gameType, gamePly = 0) {
   if (piece.directional_movement_change) generateDirectionChangeMoves('movement');
   if (piece.directional_capture_change || (piece.attacks_like_movement && piece.directional_movement_change)) {
     generateDirectionChangeMoves('capture');
+  }
+
+  // Paths: moves made of legs - the griffon, the rose, the crooked bishop
+  // (server/move-paths.js). canShapeMoveToSquare and canShapeAttackSquare
+  // read the same paths.
+  if (hasPaths(piece)) {
+    for (const m of pathMoves(piece, pathBoard(piece, allPieces, gameType))) moves.push({ x: m.x, y: m.y, isPath: true });
   }
 
   // Ratio movements (knight-like)

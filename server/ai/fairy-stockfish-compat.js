@@ -59,6 +59,9 @@ function parseJsonSafe(value, fallback) {
  *                             uncapturable in Fairy-Stockfish, so cannot_be_captured
  *                             on a royal piece is not an incompatibility.
  */
+const { hasPaths } = require('../move-paths');
+const { firstMoveVariant } = require('../first-move');
+
 function pieceIncompatReasons(piece, isRoyal = false, isPawn = false) {
   const reasons = [];
   if (!piece) return reasons;
@@ -81,6 +84,15 @@ function pieceIncompatReasons(piece, isRoyal = false, isPawn = false) {
     push('directional_movement_change',
       'Uses direction-change (two-leg) movement.',
       'In the piece wizard, disable directional movement / capture change in Step 2 / Step 3.');
+  }
+  {
+    // Multi-leg paths (server/move-paths.js), its own or on a first move.
+    const variant = firstMoveVariant({ ...piece, moveCount: 0 });
+    if (hasPaths(piece) || (variant && hasPaths(variant))) {
+      push('movement_paths',
+        'Uses multi-leg paths (a griffon, rose or crooked move, or similar).',
+        'In the piece wizard, remove its paths in Step 2 / Step 3.');
+    }
   }
   if (toBool(piece.trample)) {
     push('trample', 'Has trample.',

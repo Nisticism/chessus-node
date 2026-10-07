@@ -24,6 +24,18 @@
  *       N moves", or an alternative movement when the direction already has one
  *       (a pawn's double step).
  *   e (en passant), O (castling)                           the piece's own flags.
+ *   a (again: FyafsF, the griffon), z (crooked: zB), q (circular: qN, the
+ *   rose), and leap riders a direction cannot hold (RDD, a direction-limited
+ *   nightrider)                                            PATHS (helpers/movePaths.js):
+ *       moves made of legs. In a chain (mods split by "a") the first leg's
+ *       directions are absolute and every later leg's relative to the step
+ *       before - f straight on, fs a slight turn, s a square one, bs a sharp
+ *       one, b back; none given = all but back. A one-square atom (W, F, K)
+ *       continues in all eight directions, so the griffon's fs from a diagonal
+ *       step is orthogonal. y turns a leaper into a slider for the legs after
+ *       it (and back). m / c on the last leg say whether the path moves or
+ *       captures. z and q make the atom a rider that turns at every step by
+ *       its smallest turn - z left and right in turn, q always the same way.
  *   p (cannon) on a slide (pR, pB, pQ)                     "must hop" with at most
  *       one piece to hop: it moves and captures only over exactly one piece.
  *       mRcpR (the xiangqi cannon) moves as a rook and captures over a screen.
@@ -42,6 +54,7 @@
  */
 
 import { FIRST_MOVE_FIELDS, compactFirstMoveProfile } from './firstMove';
+import { pathWords, headingOf, DEFAULT_TURN, stepVectors } from './movePaths';
 
 const ATOMS = {
   W: { leap: [1, 0], name: 'Wazir', says: 'one square orthogonally (up, down, left or right)' },
@@ -78,7 +91,12 @@ const MODIFIERS = {
   a: 'moves again', y: 'turns into a slider after', t: 'then', u: 'unloads (relocates) the captured piece',
   w: 'transfers its power',
 };
-const SUPPORTED_MODS = new Set(['m', 'c', 'i', 'f', 'b', 'l', 'r', 'v', 's', 'n', 'e', 'p', 'g']);
+// Direction letters on a leg after "a", which turn from the step before.
+const RELATIVE_WORDS = {
+  f: 'straight on (from the step before)', b: 'straight back', l: 'turning left', r: 'turning right',
+  s: 'turning left or right (fs: a slight turn, s alone: a right angle, bs: a sharp turn)', v: 'straight on or back',
+};
+const SUPPORTED_MODS = new Set(['m', 'c', 'i', 'f', 'b', 'l', 'r', 'v', 's', 'n', 'e', 'p', 'g', 'a', 'y', 'z', 'q']);
 const DIRECTION_LETTERS = new Set(['f', 'b', 'l', 'r', 'v', 's']);
 const PAIRS = new Set(['fl', 'lf', 'fr', 'rf', 'bl', 'lb', 'br', 'rb', 'ff', 'bb', 'll', 'rr', 'fs', 'sf', 'bs', 'sb', 'lv', 'vl', 'rv', 'vr', 'fh', 'bh']);
 
@@ -210,8 +228,11 @@ const dirName = (dx, dy) => {
 /** One part, letter by letter, for the translation panel. */
 export function explainPart(part) {
   const rows = [];
+  let continuing = false;   // after an "a": direction letters are relative to the step before
   for (const c of part.mods) {
-    rows.push({ symbol: c, meaning: MODIFIERS[c] || 'unknown modifier', supported: SUPPORTED_MODS.has(c) });
+    const meaning = continuing && RELATIVE_WORDS[c] ? RELATIVE_WORDS[c] : MODIFIERS[c] || 'unknown modifier';
+    rows.push({ symbol: c, meaning, supported: SUPPORTED_MODS.has(c) });
+    if (c === 'a') continuing = true;
   }
   if (part.atom === 'O') {
     rows.push({ symbol: `O${part.castle}`, meaning: `castling - the king moves ${part.castle} squares toward a rook`, supported: true });
@@ -234,6 +255,11 @@ export function explainPart(part) {
 /** The whole move of one part in a sentence. */
 export function describePart(part) {
   if (part.atom === 'O') return `Castles (the king moves ${part.castle}).`;
+  const asPath = partToPath(part, []);
+  if (asPath) {
+    const kinds = asPath.kinds.length === 2 ? 'Moves and captures' : asPath.kinds[0] === 'movement' ? 'Moves (no capture)' : 'Captures only';
+    return `${kinds} by a path: ${pathWords(asPath.path)}`;
+  }
   const kinds = part.mods.includes('m') ? 'Moves (no capture)' : part.mods.includes('c') ? 'Captures only' : 'Moves and captures';
   const DIR_WORDS = { f: 'forward', b: 'backward', l: 'left', r: 'right', v: 'forward and backward', s: 'sideways' };
   const dir = part.mods.split('').filter((c) => DIRECTION_LETTERS.has(c)).map((c) => DIR_WORDS[c]).join(', ');
@@ -241,6 +267,96 @@ export function describePart(part) {
   const what = a ? a.name : `${part.leap[0]},${part.leap[1]}-leaper`;
   const range = part.rider ? (part.range ? `, up to ${part.range} in a line` : ', any distance in a line') : '';
   return `${kinds}: ${what}${dir ? ` (${dir})` : ''}${range}${part.mods.includes('i') ? ', on its first move only' : ''}.`;
+}
+
+/* ----------------------------------------------------------------- paths -- */
+
+// Relative direction letters of a continuation leg -> the path headings (movePaths.js).
+const RELATIVE = {
+  f: ['f'], b: ['b'], l: ['l'], r: ['r'], s: ['l', 'r'], v: ['f', 'b'],
+  ff: ['f'], bb: ['b'], ll: ['l'], rr: ['r'],
+  fs: ['fl', 'fr'], sf: ['fl', 'fr'], bs: ['bl', 'br'], sb: ['bl', 'br'],
+  fl: ['fl'], lf: ['fl'], fr: ['fr'], rf: ['fr'], bl: ['bl'], lb: ['bl'], br: ['br'], rb: ['br'],
+};
+function relativeTurns(mods) {
+  const letters = mods.split('').filter((c) => DIRECTION_LETTERS.has(c));
+  if (!letters.length) return null;
+  const out = new Set();
+  for (let k = 0; k < letters.length; k++) {
+    const pair = letters[k] + (letters[k + 1] || '');
+    if (pair.length === 2 && RELATIVE[pair]) { RELATIVE[pair].forEach((h) => out.add(h)); k++; } else (RELATIVE[letters[k]] || []).forEach((h) => out.add(h));
+  }
+  return [...out];
+}
+const atomShapes = (part) => (COMPOUNDS[part.atom] ? COMPOUNDS[part.atom].atoms.map((a) => ATOMS[a].leap) : [part.leap]);
+// A straight atom continues in all eight directions at its length (W, F -> a king's step).
+const continuationShapes = (shapes) => {
+  const out = new Map();
+  for (const [a, b] of shapes) {
+    const list = b === 0 || a === b ? [[a, 0], [a, a]] : [[a, b]];
+    for (const sh of list) out.set(sh.join(','), sh);
+  }
+  return [...out.values()];
+};
+const firstDirs = (shapes, mods) => {
+  const filter = directionFilter(mods);
+  if (!filter) return null;
+  return shapes.flatMap((sh) => leapVectors(sh)).filter(([dx, dy]) => filter(dx, dy));
+};
+
+/*
+ * A part that is a path: an "a" chain, or z / q. Returns { path, kinds } -
+ * kinds: which lists (movement, capture) it goes in - or null for any other
+ * part.
+ */
+function partToPath(part, warnings) {
+  const legMods = part.mods.split('a');
+  const shapes = atomShapes(part);
+  const modeOf = (mods) => (mods.includes('m') ? ['movement'] : mods.includes('c') ? ['capture'] : ['movement', 'capture']);
+  if (legMods.length > 1) {
+    let slide = part.rider;
+    let before = shapes;   // the step shapes of the leg before
+    const legs = legMods.map((mods, i) => {
+      const leg = {
+        step: i === 0 ? shapes : continuationShapes(shapes),
+        dist: slide ? [1, part.range > 1 ? part.range : null] : [1, 1],
+      };
+      if (i === 0) leg.dirs = firstDirs(shapes, mods);
+      else {
+        leg.turn = relativeTurns(mods);
+        // Only the shapes its turns can reach from the leg before: the
+        // griffon's slight turns off a diagonal are orthogonal, so its second
+        // leg is a rook's, not a queen's.
+        const turns = leg.turn || DEFAULT_TURN;
+        const reached = leg.step.filter((sh) => stepVectors(before).some((v) => stepVectors([sh]).some((w) => turns.includes(headingOf(v, w)))));
+        if (reached.length) leg.step = reached;
+      }
+      before = leg.step;
+      if (mods.includes('y')) slide = !slide;
+      const odd = mods.split('').filter((c) => ['p', 'g', 'n', 'j', 'z', 'q'].includes(c) || (i < legMods.length - 1 && c === 'c'));
+      if (odd.length) warnings.push(`${part.text}: "${[...new Set(odd)].join('')}" on a leg of a multi-leg move cannot be set up - ignored.`);
+      return leg;
+    });
+    return { path: { legs, turning: 'any' }, kinds: modeOf(legMods[legMods.length - 1]) };
+  }
+  const z = part.mods.includes('z');
+  const q = part.mods.includes('q');
+  if (!z && !q) return null;
+  const vectors = shapes.flatMap((sh) => leapVectors(sh));
+  const eightWay = vectors.length > 4;
+  return {
+    path: {
+      legs: [{
+        step: shapes,
+        dirs: firstDirs(shapes, part.mods),
+        turn: eightWay ? ['fl', 'fr'] : ['l', 'r'],
+        dist: [1, 1],
+        times: [1, part.rider && part.range > 1 ? part.range : null],
+      }],
+      turning: q ? 'same' : 'alternate',
+    },
+    kinds: modeOf(part.mods),
+  };
 }
 
 /* ------------------------------------------------------------ piece data -- */
@@ -267,6 +383,7 @@ function blankMovementAndAttack() {
     ratio_path_blocking: null, ratio_path_blocking_attack: null,
     ratio_path_corner_blocks: null, ratio_path_corner_blocks_attack: null,
     max_repeating_movement: null, max_repeating_capture: null,
+    movement_paths: null, capture_paths: null,
   };
   for (const d of DIRS) {
     for (const kind of ['movement', 'capture']) {
@@ -372,6 +489,7 @@ function buildUpdates(parts, warnings) {
   const custom = { movement: new Map(), capture: new Map() };
   const extra = { movement: {}, capture: {} };   // additionalMovements / additionalCaptures
   const ratioTaken = { movement: false, capture: false };
+  const paths = { movement: [], capture: [] };   // movePaths.js
   // What the piece needs from the hop settings, per kind (see hopSettings).
   const needs = {
     movement: { leap: false, ride: false, slide: false, lameExact: false, lameLeap: false, cannon: false, grasshopper: false },
@@ -416,6 +534,11 @@ function buildUpdates(parts, warnings) {
     }
     if (part.atom === 'O') { u.can_castle = true; continue; }
     if (part.mods.includes('e')) u.can_en_passant = true;
+    const asPath = partToPath(part, warnings);
+    if (asPath) {
+      for (const kind of asPath.kinds) paths[kind].push(asPath.path);
+      continue;
+    }
     const kinds = part.mods.includes('m') ? ['movement'] : part.mods.includes('c') ? ['capture'] : ['movement', 'capture'];
     const lame = part.mods.includes('n');
     const cannon = part.mods.includes('p');
@@ -441,6 +564,10 @@ function buildUpdates(parts, warnings) {
           const dist = part.rider ? (part.range || 99) : 1;
           for (const [dx, dy] of vectors) setDirection(kind, dirName(dx, dy), dist, {});
           needs[kind][grasshopper ? 'grasshopper' : cannon ? 'cannon' : 'slide'] = true;
+        } else if (straight && part.rider && !lame && vectors.some(([dx, dy]) => Number(u[`${dirName(dx, dy)}_${kind}`]))) {
+          // A rider of leaps in a direction that already has a move (RDD): a
+          // direction holds one distance, so the rider is a path of its own.
+          paths[kind].push({ legs: [{ step: [[a, b]], dirs: vectors.length === all.length ? null : vectors, dist: [1, part.range > 1 ? part.range : null] }] });
         } else if (straight && (part.rider || lame)) {
           // DD, nD, A3 ...: exact distance along the line - hopping between
           // landings for a rider (DD jumps), blocked like a slide when lame.
@@ -481,7 +608,8 @@ function buildUpdates(parts, warnings) {
           if (lame) warnings.push(`${part.text}: a lame (n) leap limited to some directions is a custom-square jump here, and jumps.`);
           for (const [dx, dy] of vectors) addCustom(kind, dx, dy);
         } else {
-          warnings.push(`${part.text}: ${ratioTaken[kind] ? 'a second' : 'a direction-limited'} L-shaped rider cannot be set up - ignored.`);
+          // A second L-shaped rider, or one limited to some directions: a path.
+          paths[kind].push({ legs: [{ step: [[a, b]], dirs: vectors.length === all.length ? null : vectors, dist: [1, part.range > 1 ? part.range : null] }] });
         }
       }
     }
@@ -494,9 +622,31 @@ function buildUpdates(parts, warnings) {
   if (Object.keys(extra.movement).length) u.special_scenario_moves = JSON.stringify({ additionalMovements: extra.movement });
   if (Object.keys(extra.capture).length) u.special_scenario_capture = JSON.stringify({ additionalCaptures: extra.capture });
 
+  if (paths.movement.length) u.movement_paths = JSON.stringify(paths.movement.slice(0, 8));
+  if (paths.capture.length) u.capture_paths = JSON.stringify(paths.capture.slice(0, 8));
+  if (paths.movement.length > 8 || paths.capture.length > 8) warnings.push('A piece has at most 8 paths of each kind; the rest were dropped.');
+
   const anyDir = (kind) => DIRS.some((d) => Number(u[`${d}_${kind}`]) !== 0);
   u.directional_movement_style = anyDir('movement');
   u.can_capture_enemy_on_move = anyDir('capture') || !!u.ratio_one_capture || custom.capture.size > 0
-    || Object.keys(extra.capture).length > 0;
+    || Object.keys(extra.capture).length > 0 || paths.capture.length > 0;
   return u;
 }
+
+/*
+ * Classic pieces for the Betza section's preset buttons (BetzaEntry): each
+ * fills the wizard from its code, as typing it would. The multi-leg ones show
+ * off the path builder (Steps 2 and 3), where they can be changed.
+ */
+export const BETZA_PRESETS = [
+  { name: 'Griffon', code: 'FyafsF', says: 'One square diagonally, then on as a rook, outward' },
+  { name: 'Aanca', code: 'WyafsW', says: 'One square orthogonally, then on as a bishop, outward' },
+  { name: 'Rose', code: 'qN', says: 'Knight jumps that keep turning the same way round a circle' },
+  { name: 'Crooked bishop', code: 'zB', says: 'Diagonal steps, turning left and right in turn' },
+  { name: 'Crooked rook', code: 'zR', says: 'Orthogonal steps, turning left and right in turn' },
+  { name: 'Moa', code: 'FafsF', says: 'A knight move made as a diagonal step then an orthogonal one - blocked on the diagonal' },
+  { name: 'Nightrider', code: 'NN', says: 'Knight jumps repeated in a straight line' },
+  { name: 'Xiangqi horse', code: 'nN', says: 'A knight blocked by a piece beside it in the long direction' },
+  { name: 'Xiangqi cannon', code: 'mRcpR', says: 'Moves as a rook, captures by hopping exactly one piece' },
+  { name: 'Grasshopper', code: 'gQ', says: 'Hops one piece in a queen line, landing right behind it' },
+];

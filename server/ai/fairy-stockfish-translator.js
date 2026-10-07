@@ -37,6 +37,7 @@
 
 const { straightHopRule, lPathRule, repeatCap } = require('../hop-rule');
 const { firstMoveVariant } = require('../first-move');
+const { hasPaths } = require('../move-paths');
 
 // ---------- helpers ----------
 
@@ -543,6 +544,8 @@ function pieceToBetza(piece) {
    */
   const variant = firstMoveVariant({ ...piece, moveCount: 0 });
   if (!variant) return own;
+  // A first move by paths cannot be written; leaving it out would be a different piece.
+  if (hasPaths(variant)) return null;
   const first = pieceShapeToBetza(variant);
   if (!first) return own;
   // A part: modifiers, an atom (a letter or "(m,n)"), the atom again for a rider, a range.
@@ -561,6 +564,8 @@ function pieceShapeToBetza(piece) {
   // double-check here.
   if (Number(piece.step_by_step_movement_value ?? 0) !== 0) return null;
   if (toBool(piece.directional_movement_change) || toBool(piece.directional_capture_change)) return null;
+  // Multi-leg paths (server/move-paths.js): Fairy-Stockfish has no such moves.
+  if (hasPaths(piece)) return null;
 
   const chunks = [];
 

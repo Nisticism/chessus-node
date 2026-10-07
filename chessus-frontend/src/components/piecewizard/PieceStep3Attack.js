@@ -10,6 +10,7 @@ import HopCountControls from "./HopCountControls";
 import LPathControls from "./LPathControls";
 import RepeatLimitControl from "./RepeatLimitControl";
 import { movementToAttackUpdates } from "../../helpers/pieceMovementAttackCopy";
+import PathBuilder from "./PathBuilder";
 
 const PieceStep3Attack = ({ pieceData, updatePieceData }) => {
   
@@ -241,6 +242,7 @@ const PieceStep3Attack = ({ pieceData, updatePieceData }) => {
       directional_hop_only_attack: false,
       special_scenario_capture: "",
       custom_attack_squares: null,
+      capture_paths: null,
     });
   };
 
@@ -1133,6 +1135,12 @@ const PieceStep3Attack = ({ pieceData, updatePieceData }) => {
             </div>
           </>
         )}
+      </div>
+
+      {/* Multi-leg attack paths (PathBuilder, helpers/movePaths.js) */}
+      <div className={styles["condition-section"]}>
+        <h3>Attack Paths <InfoTooltip text="Captures made of legs: the path goes one way, then turns and goes another, and captures the piece it ends on - a griffon's capture, a rose's, a crooked bishop's. Like custom attack squares, these work on their own, whether or not 'Can capture by moving to enemy square' is on. A piece that attacks like it moves also captures along its movement paths." /></h3>
+        <PathBuilder pieceData={pieceData} updatePieceData={updatePieceData} field="capture_paths" noun="attack" />
       </div>
 
       {/* Custom Square Attack */}

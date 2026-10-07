@@ -48,6 +48,7 @@ const FIRST_MOVE_FIELDS = [
   'directional_capture_change', 'repeating_capture_change', 'require_empty_via_capture',
   'require_direction_change', 'require_direction_change_capture',
   'special_scenario_moves', 'special_scenario_captures',
+  'movement_paths', 'capture_paths',
 ];
 const FIRST_MOVE_FIELD_SET = new Set(FIRST_MOVE_FIELDS);
 // The direction values (0 = none), as opposed to their exact flags and the rest.

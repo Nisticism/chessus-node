@@ -30,7 +30,7 @@ import authHeader from "../../services/auth-header";
 import { renderContent } from "../../helpers/render-content";
 import useSeo from "../../hooks/useSeo";
 import { hopRuleWords, lPathWords } from "../../helpers/hopRuleWords";
-import FirstMoveTag from "./FirstMoveTag";
+import PathTags from "./PathTags";
 
 const EMPTY_PIECE_VALUE_CACHE = {};
 
@@ -321,6 +321,9 @@ const PieceView = () => {
       // The first-move movement (helpers/firstMove.js), for the preview board's engine
       first_move_profile: piece.first_move_profile || null,
       first_move_profile_moves: piece.first_move_profile_moves != null ? parseInt(piece.first_move_profile_moves) : null,
+      // Multi-leg paths (helpers/movePaths.js)
+      movement_paths: piece.movement_paths || null,
+      capture_paths: piece.capture_paths || null,
       directional_attack_style: !!piece.directional_attack_style,
       ratio_attack_style: !!piece.ratio_attack_style,
       step_by_step_attack_style: !!piece.step_by_step_attack_style,
@@ -654,6 +657,9 @@ const PieceView = () => {
       // The first-move movement (helpers/firstMove.js), for the preview board's engine
       first_move_profile: piece.first_move_profile || null,
       first_move_profile_moves: piece.first_move_profile_moves != null ? parseInt(piece.first_move_profile_moves) : null,
+      // Multi-leg paths (helpers/movePaths.js)
+      movement_paths: piece.movement_paths || null,
+      capture_paths: piece.capture_paths || null,
       directional_attack_style: !!piece.directional_attack_style,
       ratio_attack_style: !!piece.ratio_attack_style,
       step_by_step_attack_style: !!piece.step_by_step_attack_style,
@@ -1043,6 +1049,8 @@ const PieceView = () => {
 
         <div className={styles["section"]}>
           <h2>Movement Details</h2>
+          {/* First-move movement and paths: whatever else the piece has. */}
+          <PathTags piece={pieceToDisplay} wrapperClassName={styles["ability-properties"]} className={styles["property-tag"]} iconClassName={styles["property-icon"]} />
           
           {/* Directional Movement */}
           {pieceToDisplay.directional_movement_style && (
@@ -1086,7 +1094,6 @@ const PieceView = () => {
                 </div>
               )}
               <div className={styles["ability-properties"]}>
-                <FirstMoveTag piece={pieceToDisplay} className={styles["property-tag"]} iconClassName={styles["property-icon"]} />
                 {pieceToDisplay.repeating_movement && (
                   <div className={styles["property-tag"]}>
                     <span className={styles["property-icon"]}>🔄</span>

@@ -10,8 +10,9 @@ import {
   canRangedAttackTo as canRangedAttackToUtil,
   canHopCaptureToUtil,
   getSquareHighlightStyle,
-  getDirectionChangeMoves
+  getMultiLegPreviewMoves
 } from "../../helpers/pieceMovementUtils";
+import { hasPaths } from "../../helpers/movePaths";
 
 import { applySvgStretchBackground } from "../../helpers/svgStretchUtils";
 import { remapPromotionOverridePlayers } from "../../helpers/promotionOverride";
@@ -1274,9 +1275,9 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId, piecePasswo
         let requireDCCap = false;
         if (draggedPiece && draggedPiecePosition) {
           const dcPieceData = pieceDataMap[draggedPiece.data.piece_id];
-          if (dcPieceData && (dcPieceData.directional_movement_change || dcPieceData.directional_capture_change)) {
-            const dcMoves = getDirectionChangeMoves(dcPieceData, draggedPiecePosition.col, draggedPiecePosition.row, draggedPiece.data.player_id, gameData.board_width, gameData.board_height, 'movement');
-            const dcCaptures = getDirectionChangeMoves(dcPieceData, draggedPiecePosition.col, draggedPiecePosition.row, draggedPiece.data.player_id, gameData.board_width, gameData.board_height, 'capture');
+          if (dcPieceData && (dcPieceData.directional_movement_change || dcPieceData.directional_capture_change || hasPaths(dcPieceData))) {
+            const dcMoves = getMultiLegPreviewMoves(dcPieceData, draggedPiecePosition.col, draggedPiecePosition.row, draggedPiece.data.player_id, gameData.board_width, gameData.board_height, 'movement');
+            const dcCaptures = getMultiLegPreviewMoves(dcPieceData, draggedPiecePosition.col, draggedPiecePosition.row, draggedPiece.data.player_id, gameData.board_width, gameData.board_height, 'capture');
             canMoveDirectionChange = dcMoves.some(m => m.y === row && m.x === col);
             canCaptureDirectionChange = dcCaptures.some(m => m.y === row && m.x === col);
             requireDCMov = !!(dcPieceData.directional_movement_change && dcPieceData.require_direction_change);
@@ -1285,9 +1286,9 @@ const Step5PiecePlacement = ({ gameData, updateGameData, editGameId, piecePasswo
           }
         } else if (hoveredPiecePosition && !draggedPiece) {
           const dcPieceData = pieceDataMap[hoveredPiecePosition.pieceId];
-          if (dcPieceData && (dcPieceData.directional_movement_change || dcPieceData.directional_capture_change)) {
-            const dcMoves = getDirectionChangeMoves(dcPieceData, hoveredPiecePosition.col, hoveredPiecePosition.row, hoveredPiecePosition.playerId, gameData.board_width, gameData.board_height, 'movement');
-            const dcCaptures = getDirectionChangeMoves(dcPieceData, hoveredPiecePosition.col, hoveredPiecePosition.row, hoveredPiecePosition.playerId, gameData.board_width, gameData.board_height, 'capture');
+          if (dcPieceData && (dcPieceData.directional_movement_change || dcPieceData.directional_capture_change || hasPaths(dcPieceData))) {
+            const dcMoves = getMultiLegPreviewMoves(dcPieceData, hoveredPiecePosition.col, hoveredPiecePosition.row, hoveredPiecePosition.playerId, gameData.board_width, gameData.board_height, 'movement');
+            const dcCaptures = getMultiLegPreviewMoves(dcPieceData, hoveredPiecePosition.col, hoveredPiecePosition.row, hoveredPiecePosition.playerId, gameData.board_width, gameData.board_height, 'capture');
             canMoveDirectionChange = dcMoves.some(m => m.y === row && m.x === col);
             canCaptureDirectionChange = dcCaptures.some(m => m.y === row && m.x === col);
             requireDCMov = !!(dcPieceData.directional_movement_change && dcPieceData.require_direction_change);

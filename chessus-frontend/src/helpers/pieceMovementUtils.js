@@ -1,3 +1,4 @@
+import { hasPaths, pathEnds, pieceMovementPaths, pieceCapturePaths } from './movePaths';
 /**
  * Utility functions for calculating piece movement, captures, and ranged attacks.
  * Shared across PieceBoardPreview, GameWizard, GameTypeView, and other components.
@@ -961,6 +962,31 @@ export const rowToRank = (row) => {
  */
 export const toChessNotation = (col, row) => {
   return colToFile(col) + rowToRank(row);
+};
+
+/*
+ * The squares a piece's multi-leg moves reach on an open board, for the
+ * hover previews: its direction-change moves (getDirectionChangeMoves) and its
+ * paths (movePaths.js), together. type: 'movement' or 'capture'.
+ */
+export const getMultiLegPreviewMoves = (piece, fromX, fromY, playerPosition, boardWidth, boardHeight, type = 'movement') => {
+  const out = getDirectionChangeMoves(piece, fromX, fromY, playerPosition, boardWidth, boardHeight, type);
+  if (!hasPaths(piece)) return out;
+  const ctx = {
+    flip: Number(playerPosition) === 2,
+    inside: (x, y) => x >= 0 && y >= 0 && x < boardWidth && y < boardHeight,
+    occupant: () => null,
+  };
+  const attacksLikeMoves = piece.attacks_like_movement === true || piece.attacks_like_movement === 1;
+  const paths = type === 'capture'
+    ? [...pieceCapturePaths(piece), ...(attacksLikeMoves ? pieceMovementPaths(piece) : [])]
+    : pieceMovementPaths(piece);
+  for (const path of paths) {
+    for (const e of pathEnds(path, fromX, fromY, ctx)) {
+      if (!out.some((m) => m.x === e.x && m.y === e.y)) out.push({ x: e.x, y: e.y, isPath: true, isCapture: type === 'capture' });
+    }
+  }
+  return out;
 };
 
 /**

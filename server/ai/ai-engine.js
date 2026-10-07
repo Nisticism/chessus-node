@@ -10,6 +10,7 @@ console.log('[AI] ai-engine loaded -- threat-first build (getTacticalCandidates 
 
 // Lazy require to avoid circular dependency with game-socket.js
 let _gameSocket = null;
+const { hasPaths, pathEnds, pieceMovementPaths, pieceCapturePaths } = require('../move-paths');
 function getGameSocket() {
   if (!_gameSocket) _gameSocket = require('../game-socket');
   return _gameSocket;
@@ -1189,6 +1190,25 @@ function getPieceValue(piece, boardSize) {
     for (const k of dcAttackKeys) if (!attackMap.has(k)) addAttack(k, 1.0);
   }
 
+  // ---- Paths (server/move-paths.js) ------------------------------------
+  // Multi-leg moves on the empty board, a little discounted (PATH_WEIGHT): a
+  // turning point can be blocked as well as the line. Squares ordinary
+  // movement already reaches are not added again.
+  const pathMoveKeys = new Set();
+  const pathAttackKeys = new Set();
+  if (hasPaths(piece)) {
+    const ctx = { flip: false, inside: isOnBoard, occupant: () => null };
+    for (const path of pieceMovementPaths(piece)) {
+      for (const e of pathEnds(path, cx, cy, ctx)) { const k = `${e.x},${e.y}`; if (!moveSet.has(k)) pathMoveKeys.add(k); }
+    }
+    const capturing = [...pieceCapturePaths(piece), ...(piece.attacks_like_movement ? pieceMovementPaths(piece) : [])];
+    for (const path of capturing) {
+      for (const e of pathEnds(path, cx, cy, ctx)) { const k = `${e.x},${e.y}`; if (!attackMap.has(k)) pathAttackKeys.add(k); }
+    }
+    for (const k of pathMoveKeys) moveSet.add(k);
+    for (const k of pathAttackKeys) addAttack(k, 1.0);
+  }
+
   // Snapshot pre-custom sets so we can identify squares NEWLY added by custom squares
   const preCustMoveKeys   = new Set(moveSet);
   const preCustAttackKeys = new Set(attackMap.keys());
@@ -1220,12 +1240,14 @@ function getPieceValue(piece, boardSize) {
   // Direction-change-only squares get a heavy discount (~0.45x) since reaching
   // them requires the DC ability and an empty via square in the live position.
   const DC_WEIGHT = 0.45;
+  const PATH_WEIGHT = 0.8;
 
   let moveContrib = 0;
   for (const key of moveSet) {
     const base = stepMoveSet.has(key) ? 1.2 : 1.0;
     let v = customMoveKeys.has(key) ? base * 1.25 : base;
     if (dcMoveKeys.has(key) && !customMoveKeys.has(key)) v *= DC_WEIGHT;
+    if (pathMoveKeys.has(key) && !customMoveKeys.has(key)) v *= PATH_WEIGHT;
     moveContrib += v;
   }
   if (isColorBound(moveSet)) moveContrib *= 0.7;
@@ -1235,6 +1257,7 @@ function getPieceValue(piece, boardSize) {
     const base = stepAttackSet.has(key) ? w * 1.2 : w;
     let v = customAttackKeys.has(key) ? base * 1.25 : base;
     if (dcAttackKeys.has(key) && !customAttackKeys.has(key)) v *= DC_WEIGHT;
+    if (pathAttackKeys.has(key) && !customAttackKeys.has(key)) v *= PATH_WEIGHT;
     attackContrib += v;
   }
   if (isColorBound(attackMap.keys())) attackContrib *= 0.7;

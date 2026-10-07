@@ -29,6 +29,7 @@ export const hasAnyMovement = (pieceData) => !!pieceData && (
   || num(pieceData.step_by_step_movement_value) !== 0
   || !!pieceData.custom_movement_squares
   || !!pieceData.special_scenario_moves
+  || !!pieceData.movement_paths
 );
 
 /*
@@ -58,7 +59,7 @@ export const hasAnyAttack = (pieceData) => {
 
   // Custom squares and scenario captures are not cleared by the toggle, so they
   // stand on their own.
-  if (pieceData.custom_attack_squares || pieceData.special_scenario_captures) return true;
+  if (pieceData.custom_attack_squares || pieceData.special_scenario_captures || pieceData.capture_paths) return true;
 
   const ranged = !!pieceData.can_capture_enemy_via_range;
   if (ranged && (
@@ -101,6 +102,7 @@ export const movementToAttackUpdates = (pieceData) => {
     max_ratio_capture_iterations: ratioSet ? pieceData.max_ratio_iterations : 0,
     ...(converted && { special_scenario_capture: converted }),
     custom_attack_squares: pieceData.custom_movement_squares,
+    capture_paths: pieceData.movement_paths || null,
     can_capture_enemy_via_range: pieceData.can_capture_enemy_via_range,
     can_hop_attack_over_allies: pieceData.can_hop_over_allies,
     can_hop_attack_over_enemies: pieceData.can_hop_over_enemies,
@@ -145,7 +147,8 @@ export const attackToMovementUpdates = (pieceData) => {
     || hasRatio(pieceData, 'ratio_one_capture', 'ratio_two_capture')
     || num(pieceData.step_by_step_capture) !== 0
     || !!pieceData.custom_attack_squares
-    || !!pieceData.special_scenario_captures;
+    || !!pieceData.special_scenario_captures
+    || !!pieceData.capture_paths;
 
   const src = fromCapture ? '_capture' : '_attack_range';
   const ratioOne = fromCapture ? 'ratio_one_capture' : 'ratio_one_attack_range';
@@ -167,6 +170,7 @@ export const attackToMovementUpdates = (pieceData) => {
       step_by_step_movement_no_orthogonal: pieceData.step_by_step_capture_no_orthogonal,
       repeating_movement: pieceData.repeating_capture,
       custom_movement_squares: pieceData.custom_attack_squares,
+      movement_paths: pieceData.capture_paths || null,
       can_hop_over_allies: pieceData.can_hop_attack_over_allies,
       can_hop_over_enemies: pieceData.can_hop_attack_over_enemies,
       exact_ratio_hop_only: pieceData.exact_ratio_hop_only_attack,

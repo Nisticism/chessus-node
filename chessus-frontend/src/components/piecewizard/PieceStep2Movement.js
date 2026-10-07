@@ -9,6 +9,7 @@ import ToggleSwitch from "../common/ToggleSwitch";
 import HopCountControls from "./HopCountControls";
 import LPathControls from "./LPathControls";
 import RepeatLimitControl from "./RepeatLimitControl";
+import PathBuilder from "./PathBuilder";
 
 const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
   const handleClearMovement = () => {
@@ -33,6 +34,7 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
       exact_ratio_hop_only: false, directional_hop_disabled: false, hop_stop_at_occupied: true,
       special_scenario_moves: "",
       custom_movement_squares: null,
+      movement_paths: null,
     });
   };
 
@@ -682,6 +684,12 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
             tooltip={<InfoTooltip text="When making repeating ratio (knight-pattern) hops, the piece stops if an earlier multiple square in that direction is occupied. Enabled by default." />}
           />
         )}
+      </div>
+
+      {/* Multi-leg paths (PathBuilder, helpers/movePaths.js) */}
+      <div className={styles["condition-section"]}>
+        <h3>Movement Paths <InfoTooltip text="Moves made of legs: go one way, then turn and go another - a griffon (one square diagonally, then on as a rook, outward), a rose (knight jumps turning round a circle), a crooked bishop (zig-zagging diagonally), or a rider of any jump. Each path is a list of legs walked in order. These only move; attack paths are set in Step 3 (or turn on 'Attacks like it moves' there). The Betza presets in Step 1 fill these in." /></h3>
+        <PathBuilder pieceData={pieceData} updatePieceData={updatePieceData} field="movement_paths" noun="movement" />
       </div>
 
       {/* Custom Square Movement */}

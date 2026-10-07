@@ -2,7 +2,8 @@ import React, { useState, useMemo, useRef, useCallback, useEffect } from "react"
 import useTouchPieceGestures from "../common/useTouchPieceGestures";
 import styles from "./piecewizard.module.scss";
 import { applySvgStretchBackground } from "../../helpers/svgStretchUtils";
-import { getSquareHighlightStyle, getDirectionChangeMoves } from "../../helpers/pieceMovementUtils";
+import { getSquareHighlightStyle, getMultiLegPreviewMoves } from "../../helpers/pieceMovementUtils";
+import { hasPaths } from "../../helpers/movePaths";
 // Same step geometry the move engine uses, so the preview and the real board agree.
 import { stepInRange } from "../../helpers/moveEngine";
 import BoardLegend from "../common/BoardLegend";
@@ -1071,11 +1072,11 @@ const PieceBoardPreview = ({ pieceData, showAttack = true, showLegend = true }) 
     // Precompute direction-change reachable squares for hover display (open-board assumption)
     let dcMoveSet = null;
     let dcCaptureSet = null;
-    if (isHovering && (pieceData.directional_movement_change || pieceData.directional_capture_change)) {
+    if (isHovering && (pieceData.directional_movement_change || pieceData.directional_capture_change || hasPaths(pieceData))) {
       dcMoveSet = new Set();
       dcCaptureSet = new Set();
-      const dcMovement = getDirectionChangeMoves(pieceData, anchorCol, anchorRow, 1, boardWidth, boardHeight, 'movement');
-      const dcCapture = getDirectionChangeMoves(pieceData, anchorCol, anchorRow, 1, boardWidth, boardHeight, 'capture');
+      const dcMovement = getMultiLegPreviewMoves(pieceData, anchorCol, anchorRow, 1, boardWidth, boardHeight, 'movement');
+      const dcCapture = getMultiLegPreviewMoves(pieceData, anchorCol, anchorRow, 1, boardWidth, boardHeight, 'capture');
       for (const m of dcMovement) dcMoveSet.add(`${m.y},${m.x}`);
       for (const m of dcCapture) dcCaptureSet.add(`${m.y},${m.x}`);
     }

@@ -113,6 +113,9 @@ const PieceWizard = ({ editPieceId = null }) => {
     // The first-move movement (helpers/firstMove.js), set with the same steps
     first_move_profile: null,
     first_move_profile_moves: null,
+    // Multi-leg paths (helpers/movePaths.js), JSON
+    movement_paths: null,
+    capture_paths: null,
     
     // Step 3: Attack/Capture Configuration
     repeating_capture: false,
@@ -387,6 +390,8 @@ const PieceWizard = ({ editPieceId = null }) => {
             max_repeating_movement: piece.max_repeating_movement != null ? parseInt(piece.max_repeating_movement) || null : null,
             first_move_profile: piece.first_move_profile || null,
             first_move_profile_moves: piece.first_move_profile_moves != null ? parseInt(piece.first_move_profile_moves) || null : null,
+            movement_paths: piece.movement_paths || null,
+            capture_paths: piece.capture_paths || null,
             
             // Attack/Capture fields
             repeating_capture: !!piece.repeating_capture,

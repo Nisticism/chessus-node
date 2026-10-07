@@ -1,14 +1,16 @@
 import React, { useMemo, useState } from "react";
 import styles from "./piecewizard.module.scss";
 import InfoTooltip from "./InfoTooltip";
-import { parseBetza, betzaToPieceData, explainPart, describePart } from "../../helpers/betza";
+import { parseBetza, betzaToPieceData, explainPart, describePart, BETZA_PRESETS } from "../../helpers/betza";
 
 const ABOUT = 'Betza notation is a short code for how a piece moves, used by chess-variant designers. '
   + 'Capital letters are moves: W one square orthogonally, F one square diagonally, N a knight jump, '
   + 'and R, B, Q, K for the rook, bishop, queen and king. Doubling a letter or adding a number repeats '
   + 'it in a line (WW is a rook; R4 a rook that goes up to 4 squares). Lower-case letters in front change '
   + 'the move: m move only, c capture only, f/b/l/r forward/back/left/right, i first move only, '
-  + 'n lame (cannot jump), p cannon (must hop exactly one piece). '
+  + 'n lame (cannot jump), p cannon (must hop exactly one piece), g grasshopper. '
+  + 'Moves made of legs: a "again" chains legs (FyafsF, the griffon: F, then on as a rook outward), '
+  + 'z crooked (zB zig-zags), q circular (qN, the rose); these fill in the paths in the Movement and Attack steps. '
   + 'Example: mfWcfFimfnD is a pawn. Filling in replaces the Movement and Attack steps, which you can then adjust.';
 
 /*
@@ -26,13 +28,18 @@ export default function BetzaEntry({ pieceData, updatePieceData }) {
   const parsed = useMemo(() => parseBetza(code), [code]);
   const result = useMemo(() => (code.trim() && !parsed.error ? betzaToPieceData(code) : null), [code, parsed.error]);
 
-  const fill = () => {
-    if (!result?.updates) return;
+  const fillFrom = (text, res) => {
+    if (!res?.updates) return;
     const before = {};
-    for (const key of Object.keys(result.updates)) before[key] = pieceData[key];
+    for (const key of Object.keys(res.updates)) before[key] = pieceData[key];
     setUndo(before);
-    updatePieceData(result.updates);
-    setFilled({ code: code.trim(), warnings: result.warnings });
+    updatePieceData(res.updates);
+    setFilled({ code: text, warnings: res.warnings });
+  };
+  const fill = () => fillFrom(code.trim(), result);
+  const preset = (p) => {
+    setCode(p.code);
+    fillFrom(p.code, betzaToPieceData(p.code));
   };
   const revert = () => {
     if (undo) updatePieceData(undo);
@@ -67,6 +74,15 @@ export default function BetzaEntry({ pieceData, updatePieceData }) {
         </button>
       </div>
       {parsed.error && code.trim() && <p className={styles["betza-error"]}>{parsed.error}</p>}
+      <div className={styles["betza-presets"]}>
+        <span>Or start from:</span>
+        {BETZA_PRESETS.map((p) => (
+          <button key={p.name} type="button" className={styles["betza-preset"]} onClick={() => preset(p)} title={`${p.code}: ${p.says}`}>
+            {p.name}
+          </button>
+        ))}
+        <InfoTooltip text="Classic fairy pieces. A click fills in the Movement and Attack steps from the piece's Betza code (shown in the box), replacing what is there - Undo puts it back. The griffon, aanca, rose, crooked pieces and moa are paths: moves made of legs, which you can then change in the Movement Paths and Attack Paths sections." />
+      </div>
 
       {filled && (
         <p className={styles["betza-done"]}>

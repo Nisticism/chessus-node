@@ -14,9 +14,10 @@ import {
   canRangedAttackTo as canRangedAttackToUtil,
   canHopCaptureToUtil,
   getSquareHighlightStyle,
-  getDirectionChangeMoves,
+  getMultiLegPreviewMoves,
   colToFile
 } from "../../helpers/pieceMovementUtils";
+import { hasPaths } from "../../helpers/movePaths";
 
 import { applySvgStretchBackground } from "../../helpers/svgStretchUtils";
 import { parseServerDate } from "../../helpers/date-formatter";
@@ -38,7 +39,7 @@ import { designationRuleSentence } from "../../helpers/designationTypes";
 import { describeMovementRange, describePieceMovement } from "../../helpers/pieceRules";
 import { joinList } from "../../helpers/joinList";
 import { hopRuleWords, lPathWords } from "../../helpers/hopRuleWords";
-import { firstMoveWords } from "../../helpers/firstMove";
+import { pieceDescriptionExtras } from "../../helpers/pieceDescriptionExtras";
 
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";
 
@@ -1070,8 +1071,6 @@ const GameTypeView = () => {
         if (pieceData.directional_hop_disabled) extras.push('disabled for directional moves');
         if (pieceData.directional_hop_only) extras.push('required for all directional moves');
         if (pieceData.directional_hop_only) { const words = hopRuleWords(pieceData).replace(/^ · /, ''); if (words) extras.push(words); }
-        { const lWords = lPathWords(pieceData).replace(/^ · /, ''); if (lWords) extras.push(`L-moves ${lWords}`); }
-        { const fm = firstMoveWords(pieceData); if (fm) extras.push(fm); }
         const extrasStr = extras.length > 0 ? ` (${extras.join('; ')})` : '';
         description += `• **Hop**: Can jump over ${who} during movement${extrasStr}.\n`;
         const hopStopAtOccupied = pieceData.repeating_ratio && (pieceData.max_ratio_iterations === -1 || (pieceData.max_ratio_iterations || 1) > 1) && (pieceData.hop_stop_at_occupied !== false && pieceData.hop_stop_at_occupied !== 0);
@@ -1099,6 +1098,9 @@ const GameTypeView = () => {
           description += `• **Repeating Attack Hop Limit**: Stops if an intermediate multiple square is occupied during attacks.\n`;
         }
       }
+
+      // L-move blocking, first-move movement, paths (helpers/pieceDescriptionExtras.js)
+      description += pieceDescriptionExtras(pieceData);
 
       // Ally capture
       if (pieceData.can_capture_allies) {
@@ -2743,9 +2745,9 @@ A placed piece falls towards ${fallsTo} instead of staying on the square it was 
         let requireDCCap = false;
         if (hoveredPiecePosition) {
           const pieceData = pieceDataMap[hoveredPiecePosition.pieceId];
-          if (pieceData && (pieceData.directional_movement_change || pieceData.directional_capture_change)) {
-            const dcMoves = getDirectionChangeMoves(pieceData, hoveredPiecePosition.col, hoveredPiecePosition.row, hoveredPiecePosition.playerId, game.board_width, game.board_height, 'movement');
-            const dcCaptures = getDirectionChangeMoves(pieceData, hoveredPiecePosition.col, hoveredPiecePosition.row, hoveredPiecePosition.playerId, game.board_width, game.board_height, 'capture');
+          if (pieceData && (pieceData.directional_movement_change || pieceData.directional_capture_change || hasPaths(pieceData))) {
+            const dcMoves = getMultiLegPreviewMoves(pieceData, hoveredPiecePosition.col, hoveredPiecePosition.row, hoveredPiecePosition.playerId, game.board_width, game.board_height, 'movement');
+            const dcCaptures = getMultiLegPreviewMoves(pieceData, hoveredPiecePosition.col, hoveredPiecePosition.row, hoveredPiecePosition.playerId, game.board_width, game.board_height, 'capture');
             canMoveDirectionChange = dcMoves.some(m => `${m.y},${m.x}` === squareDcMoveKey);
             canCaptureDirectionChange = dcCaptures.some(m => `${m.y},${m.x}` === squareDcMoveKey);
             requireDCMov = !!(pieceData.directional_movement_change && pieceData.require_direction_change);
