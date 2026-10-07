@@ -7,6 +7,7 @@ import InfoTooltip from "./InfoTooltip";
 import FairyStockfishInfoNote from "../common/FairyStockfishInfoNote";
 import ToggleSwitch from "../common/ToggleSwitch";
 import HopCountControls from "./HopCountControls";
+import LPathControls from "./LPathControls";
 import { movementToAttackUpdates } from "../../helpers/pieceMovementAttackCopy";
 import { PIECE_WIZARD_TEXT } from "../../global/global";
 
@@ -855,6 +856,8 @@ const PieceStep3Attack = ({ pieceData, updatePieceData }) => {
                         )}
                       </div>
                     )}
+                    {/* What blocks the L-capture (LPathControls) - renders nothing without one. */}
+                    <LPathControls pieceData={pieceData} handleChange={handleChange} attack />
               </div>
             )}
 

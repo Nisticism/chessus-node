@@ -3,7 +3,7 @@
  * Manages real-time multiplayer game functionality
  */
 
-const { straightHopRule, straightHopsBetween, hopRuleAllows } = require('./hop-rule');
+const { straightHopRule, straightHopsBetween, hopRuleAllows, lPathRule, lRouteClear } = require('./hop-rule');
 const db_pool = require("../configs/db");
 const crypto = require('crypto');
 const path = require('path');
@@ -4840,6 +4840,12 @@ function initializeSocket(server, { isUserBanned } = {}) {
               min_directional_hop_pieces_attack: fullPieceData.min_directional_hop_pieces_attack,
               hop_landing_distance: fullPieceData.hop_landing_distance,
               hop_landing_distance_attack: fullPieceData.hop_landing_distance_attack,
+              ratio_path_order: fullPieceData.ratio_path_order,
+              ratio_path_order_attack: fullPieceData.ratio_path_order_attack,
+              ratio_path_blocking: fullPieceData.ratio_path_blocking,
+              ratio_path_blocking_attack: fullPieceData.ratio_path_blocking_attack,
+              ratio_path_corner_blocks: fullPieceData.ratio_path_corner_blocks,
+              ratio_path_corner_blocks_attack: fullPieceData.ratio_path_corner_blocks_attack,
               hop_stop_at_occupied_attack: fullPieceData.hop_stop_at_occupied_attack,
               // Capture data
               can_capture_enemy_on_move: fullPieceData.can_capture_enemy_on_move,
@@ -5521,6 +5527,12 @@ function initializeSocket(server, { isUserBanned } = {}) {
               min_directional_hop_pieces_attack: fullPieceData.min_directional_hop_pieces_attack,
               hop_landing_distance: fullPieceData.hop_landing_distance,
               hop_landing_distance_attack: fullPieceData.hop_landing_distance_attack,
+              ratio_path_order: fullPieceData.ratio_path_order,
+              ratio_path_order_attack: fullPieceData.ratio_path_order_attack,
+              ratio_path_blocking: fullPieceData.ratio_path_blocking,
+              ratio_path_blocking_attack: fullPieceData.ratio_path_blocking_attack,
+              ratio_path_corner_blocks: fullPieceData.ratio_path_corner_blocks,
+              ratio_path_corner_blocks_attack: fullPieceData.ratio_path_corner_blocks_attack,
               hop_stop_at_occupied_attack: fullPieceData.hop_stop_at_occupied_attack,
               can_capture_enemy_on_move: fullPieceData.can_capture_enemy_on_move,
               attacks_like_movement: fullPieceData.attacks_like_movement,
@@ -11520,6 +11532,12 @@ function initializeSocket(server, { isUserBanned } = {}) {
                     min_directional_hop_pieces_attack: fullPieceData.min_directional_hop_pieces_attack,
                     hop_landing_distance: fullPieceData.hop_landing_distance,
                     hop_landing_distance_attack: fullPieceData.hop_landing_distance_attack,
+                    ratio_path_order: fullPieceData.ratio_path_order,
+                    ratio_path_order_attack: fullPieceData.ratio_path_order_attack,
+                    ratio_path_blocking: fullPieceData.ratio_path_blocking,
+                    ratio_path_blocking_attack: fullPieceData.ratio_path_blocking_attack,
+                    ratio_path_corner_blocks: fullPieceData.ratio_path_corner_blocks,
+                    ratio_path_corner_blocks_attack: fullPieceData.ratio_path_corner_blocks_attack,
                     hop_stop_at_occupied_attack: fullPieceData.hop_stop_at_occupied_attack,
                     // Capture data
                     can_capture_enemy_on_move: fullPieceData.can_capture_enemy_on_move,
@@ -15566,6 +15584,12 @@ async function applyPromotionToPiece(gameState, pieceId, promoteToPieceId, promo
     min_directional_hop_pieces_attack: fullPieceData.min_directional_hop_pieces_attack,
     hop_landing_distance: fullPieceData.hop_landing_distance,
     hop_landing_distance_attack: fullPieceData.hop_landing_distance_attack,
+    ratio_path_order: fullPieceData.ratio_path_order,
+    ratio_path_order_attack: fullPieceData.ratio_path_order_attack,
+    ratio_path_blocking: fullPieceData.ratio_path_blocking,
+    ratio_path_blocking_attack: fullPieceData.ratio_path_blocking_attack,
+    ratio_path_corner_blocks: fullPieceData.ratio_path_corner_blocks,
+    ratio_path_corner_blocks_attack: fullPieceData.ratio_path_corner_blocks_attack,
     hop_stop_at_occupied_attack: fullPieceData.hop_stop_at_occupied_attack,
     can_capture_enemy_on_move: fullPieceData.can_capture_enemy_on_move,
     attacks_like_movement: fullPieceData.attacks_like_movement,
@@ -16925,6 +16949,18 @@ function canPieceAttackSquare(piece, targetX, targetY, allPieces, gameType) {
         if (!exactRatioHopOnlyAtk || ratioPathHasPieceAtk(piece.x, piece.y, targetX, targetY)) return true;
         return false;
       }
+
+      // The piece's own L-path rule for captures (lPathRule): its route and legs alone decide.
+      const lRuleAtk = lPathRule(piece, true);
+      if (!lRuleAtk.isDefault && !hasGhostwalk && (piece.piece_width || 1) === 1 && (piece.piece_height || 1) === 1) {
+        const routeOpen = lRouteClear(piece.x, piece.y, dx, dy, lRuleAtk, (cx, cy) => {
+          const o = findPieceAtSquare(allPieces, cx, cy);
+          if (!o || o.id === piece.id) return false;
+          return !((o.team || o.player_id) === pieceOwner ? canHopAllies : canHopEnemies);
+        });
+        if (!routeOpen) return false;
+        return !exactRatioHopOnlyAtk || ratioPathHasPieceAtk(piece.x, piece.y, targetX, targetY);
+      }
       
       // If no hopping ability at all, path must be completely clear
       if (!canHopAllies && !canHopEnemies) {
@@ -17559,6 +17595,22 @@ function canPieceMoveToSquare(piece, targetX, targetY, allPieces, gameType = nul
       if (hasGhostwalkMove || (canHopAllies && canHopEnemies)) {
         if (!exactRatioHopOnly || ratioPathHasPieceMove(piece.x, piece.y, targetX, targetY)) return true;
         return false;
+      }
+
+      // The piece's own L-path rule (lPathRule): its route and legs alone decide.
+      const ratioTargetMove = findPieceAtSquare(allPieces, targetX, targetY);
+      const lRuleMove = lPathRule(piece, !!ratioTargetMove && ratioTargetMove.id !== piece.id
+        && (ratioTargetMove.team || ratioTargetMove.player_id) !== pieceOwner);
+      if (!lRuleMove.isDefault && (piece.piece_width || 1) === 1 && (piece.piece_height || 1) === 1) {
+        let hoppedOnRoute = false;
+        const routeOpen = lRouteClear(piece.x, piece.y, dx, dy, lRuleMove, (cx, cy) => {
+          const o = findPieceAtSquare(allPieces, cx, cy);
+          if (!o || o.id === piece.id) return false;
+          if ((o.team || o.player_id) === pieceOwner ? canHopAllies : canHopEnemies) { hoppedOnRoute = true; return false; }
+          return true;
+        });
+        if (!routeOpen) return false;
+        return !exactRatioHopOnly || hoppedOnRoute || ratioPathHasPieceMove(piece.x, piece.y, targetX, targetY);
       }
       
       // Helper to determine if can hop over a piece
@@ -18731,7 +18783,22 @@ function getPossibleMovesForPiece(piece, allPieces, gameType, gamePly = 0) {
       // Check if piece has NO hopping ability at all
       const noHoppingAbility = !hasGhostwalkGen && !canHopAllies && !canHopEnemies;
       
-      if (noHoppingAbility) {
+      // The piece's own L-path rule, when it has one (lPathRule): its route
+      // and legs alone decide. A capture is judged by the attack rule.
+      const ratioTarget = occupantAt(targetX, targetY);
+      const lRule = lPathRule(piece, !!ratioTarget && (ratioTarget.team || ratioTarget.player_id) !== pieceOwner);
+      const useLRule = !lRule.isDefault && !hasGhostwalkGen && !isMultiTileGen && !(canHopAllies && canHopEnemies);
+
+      if (useLRule) {
+        const routeOpen = lRouteClear(piece.x, piece.y, dx, dy, lRule, (cx, cy) => {
+          const o = pieceAtGen(cx, cy);
+          if (!o) return false;
+          const ally = (o.team || o.player_id) === pieceOwner;
+          if (ally ? canHopAllies : canHopEnemies) { movementHopUsed = true; return false; }
+          return true;
+        });
+        if (!routeOpen) continue;
+      } else if (noHoppingAbility) {
         // If no hopping ability, path must be completely clear
         const absRatio1 = Math.abs(dx) > Math.abs(dy) ? Math.abs(dx) : Math.abs(dy);
         const absRatio2 = Math.abs(dx) < Math.abs(dy) ? Math.abs(dx) : Math.abs(dy);

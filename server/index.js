@@ -2846,6 +2846,7 @@ app.get("/api/pieces/community-images", async (req, res) => {
 // (/api/pieces/duplicates). They power the user-facing piece comparer below
 // (/api/pieces/:id/compare/:otherId), which reports differences & similarities.
 const CMP_BOOL_COLS = [
+  'ratio_path_corner_blocks', 'ratio_path_corner_blocks_attack',
   'repeating_movement','first_move_only','first_move_only_capture',
   'up_left_movement_exact','up_movement_exact','up_right_movement_exact','right_movement_exact',
   'down_right_movement_exact','down_movement_exact','down_left_movement_exact','left_movement_exact',
@@ -2920,6 +2921,8 @@ const CMP_INT_COLS = [
   'max_ratio_ranged_attack_iterations','min_ratio_ranged_attack_iterations',
 ];
 const CMP_JSON_COLS = [
+  // Strings, compared as set or not: the L-path rule (lPathRule).
+  'ratio_path_order', 'ratio_path_order_attack', 'ratio_path_blocking', 'ratio_path_blocking_attack',
   'special_scenario_moves','special_scenario_captures',
   'custom_movement_squares','custom_attack_squares',
   'promotion_pieces_ids',
@@ -2961,6 +2964,18 @@ const hopCountField = (v) => {
   if (v === undefined || v === null || v === '' || v === 'null') return null;
   const n = parseInt(v, 10);
   return Number.isFinite(n) && n > 0 ? Math.min(8, n) : null;
+};
+
+/*
+ * The L-path rule's settings (lPathRule in hop-rule.js). Anything else, or the
+ * default, is stored as NULL: the rule L-moves always had.
+ */
+const LPATH_ORDERS = ['long_first', 'short_first'];
+const LPATH_LEGS = ['long', 'short'];
+const lPathField = (v, allowed) => (allowed.includes(v) ? v : null);
+const lPathCorner = (v) => {
+  if (v === undefined || v === null || v === '' || v === 'null') return null;
+  return (v === true || v === 1 || v === '1' || v === 'true') ? null : 0;
 };
 
 const PIECE_PASSWORD_MIN = 4;
@@ -3540,6 +3555,8 @@ addGate(['max_directional_hop_pieces'], (p) => gHasDirectionalMovement(p) && gHo
 addGate(['max_directional_hop_pieces_attack'], (p) => gHasDirectionalCapture(p) && gHopsOnAttack(p));
 addGate(['min_directional_hop_pieces', 'hop_landing_distance'], (p) => gHasDirectionalMovement(p) && gHopsOnMove(p));
 addGate(['min_directional_hop_pieces_attack', 'hop_landing_distance_attack'], (p) => gHasDirectionalCapture(p) && gHopsOnAttack(p));
+addGate(['ratio_path_order', 'ratio_path_blocking', 'ratio_path_corner_blocks'], gHasRatioMovement);
+addGate(['ratio_path_order_attack', 'ratio_path_blocking_attack', 'ratio_path_corner_blocks_attack'], gHasRatioCapture);
 addGate(['exact_ratio_hop_only'], (p) => gHasRatioMovement(p) || gHasExactDirectionalMovement(p));
 addGate(['exact_ratio_hop_only_attack'], (p) => gHasRatioCapture(p) || gHasExactDirectionalCapture(p));
 // hop_stop_at_occupied is only ever read while repeating: on a repeating
@@ -5919,6 +5936,8 @@ app.post("/api/games/:gameId/uniqueness-check", authenticateToken, async (req, r
       'exact_ratio_hop_only_attack', 'directional_hop_disabled_attack', 'hop_stop_at_occupied_attack', 'directional_hop_only', 'directional_hop_only_attack',
       'max_directional_hop_pieces', 'max_directional_hop_pieces_attack',
       'min_directional_hop_pieces', 'min_directional_hop_pieces_attack', 'hop_landing_distance', 'hop_landing_distance_attack',
+      'ratio_path_order', 'ratio_path_order_attack', 'ratio_path_blocking', 'ratio_path_blocking_attack',
+      'ratio_path_corner_blocks', 'ratio_path_corner_blocks_attack',
       'repeating_capture', 'repeating_ratio_capture', 'max_ratio_capture_iterations',
       'can_capture_allies', 'cannot_be_captured', 'max_chain_hops',
       'promotion_pieces_ids'
@@ -9969,6 +9988,8 @@ app.post("/api/pieces/create", authenticateToken, multerWrap(pieceUpload.array('
         exact_ratio_hop_only_attack, directional_hop_disabled_attack, hop_stop_at_occupied_attack, directional_hop_only, directional_hop_only_attack,
         max_directional_hop_pieces, max_directional_hop_pieces_attack,
         min_directional_hop_pieces, min_directional_hop_pieces_attack, hop_landing_distance, hop_landing_distance_attack,
+        ratio_path_order, ratio_path_order_attack, ratio_path_blocking, ratio_path_blocking_attack,
+        ratio_path_corner_blocks, ratio_path_corner_blocks_attack,
         can_capture_allies, cannot_be_captured, max_chain_hops,
         custom_movement_squares, custom_attack_squares,
         must_move_if_able, must_move_uses_action,
@@ -9991,7 +10012,7 @@ app.post("/api/pieces/create", authenticateToken, multerWrap(pieceUpload.array('
         require_direction_change, require_direction_change_capture,
         image_sources_json,
         created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const pieceWidth = Math.min(4, Math.max(1, parseInt(pieceData.piece_width) || 1));
@@ -10171,6 +10192,13 @@ app.post("/api/pieces/create", authenticateToken, multerWrap(pieceUpload.array('
       hopCountField(pieceData.min_directional_hop_pieces_attack),
       hopCountField(pieceData.hop_landing_distance),
       hopCountField(pieceData.hop_landing_distance_attack),
+      // The L-path rule (lPathRule): route then blocking legs then corner
+      lPathField(pieceData.ratio_path_order, LPATH_ORDERS),
+      lPathField(pieceData.ratio_path_order_attack, LPATH_ORDERS),
+      lPathField(pieceData.ratio_path_blocking, LPATH_LEGS),
+      lPathField(pieceData.ratio_path_blocking_attack, LPATH_LEGS),
+      lPathCorner(pieceData.ratio_path_corner_blocks),
+      lPathCorner(pieceData.ratio_path_corner_blocks_attack),
       // Can capture allies
       parseBooleanField(pieceData.can_capture_allies),
       // Cannot be captured
@@ -10722,6 +10750,12 @@ app.put("/api/pieces/:pieceId", authenticateToken, multerWrap(pieceUpload.array(
         min_directional_hop_pieces_attack = ?,
         hop_landing_distance = ?,
         hop_landing_distance_attack = ?,
+        ratio_path_order = ?,
+        ratio_path_order_attack = ?,
+        ratio_path_blocking = ?,
+        ratio_path_blocking_attack = ?,
+        ratio_path_corner_blocks = ?,
+        ratio_path_corner_blocks_attack = ?,
         can_capture_allies = ?,
         cannot_be_captured = ?,
         max_chain_hops = ?,
@@ -10924,6 +10958,13 @@ app.put("/api/pieces/:pieceId", authenticateToken, multerWrap(pieceUpload.array(
       hopCountField(pieceData.min_directional_hop_pieces_attack),
       hopCountField(pieceData.hop_landing_distance),
       hopCountField(pieceData.hop_landing_distance_attack),
+      // The L-path rule (lPathRule): route then blocking legs then corner
+      lPathField(pieceData.ratio_path_order, LPATH_ORDERS),
+      lPathField(pieceData.ratio_path_order_attack, LPATH_ORDERS),
+      lPathField(pieceData.ratio_path_blocking, LPATH_LEGS),
+      lPathField(pieceData.ratio_path_blocking_attack, LPATH_LEGS),
+      lPathCorner(pieceData.ratio_path_corner_blocks),
+      lPathCorner(pieceData.ratio_path_corner_blocks_attack),
       // Can capture allies
       parseBooleanField(pieceData.can_capture_allies),
       // Cannot be captured

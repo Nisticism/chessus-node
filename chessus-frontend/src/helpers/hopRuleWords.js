@@ -1,4 +1,4 @@
-import { straightHopRule } from './moveEngine';
+import { straightHopRule, lPathRule } from './moveEngine';
 
 /*
  * A piece's straight-line hop rule in words, for the piece page and the game
@@ -22,3 +22,16 @@ export const hopRuleWords = (piece, attack = false) => {
 };
 
 export default hopRuleWords;
+
+/*
+ * A piece's L-path rule in words (lPathRule): empty for the default - either
+ * route, both legs, corner included - which is what every L-move always did.
+ */
+export const lPathWords = (piece, attack = false) => {
+  const rule = lPathRule(piece, attack);
+  if (rule.isDefault) return '';
+  if (rule.order === 'long_first' && rule.legs === 'long' && !rule.corner) return ' · blocked only by the square beside it in the long direction (like a Xiangqi horse)';
+  const route = { either: 'either route', long_first: 'longer leg first', short_first: 'shorter leg first' }[rule.order];
+  const legs = { both: 'blocked on either leg', long: 'blocked on the longer leg only', short: 'blocked on the shorter leg only' }[rule.legs];
+  return ` · ${route}, ${legs}${rule.corner ? '' : ', not by the corner square'}`;
+};

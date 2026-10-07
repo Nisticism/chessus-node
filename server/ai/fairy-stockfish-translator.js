@@ -35,7 +35,7 @@
  * placement references the same piece id, it gets the same char.
  */
 
-const { straightHopRule } = require('../hop-rule');
+const { straightHopRule, lPathRule } = require('../hop-rule');
 
 // ---------- helpers ----------
 
@@ -557,7 +557,14 @@ function pieceToBetza(piece) {
       // "capture-only ratio" concept here), so emit unprefixed even when
       // attacksByMovement is false. For unnamed (m,n) atoms this matches the
       // FS constraint that m/c-prefixed parenthesised atoms mis-behave.
-      chunks.push(atom);
+      //
+      // A piece blocked like a xiangqi horse - leg one first, blocked on it,
+      // the corner not counted (lPathRule) - is Betza's lame leaper, nN. Any
+      // other path rule has no letter and is emitted as the plain leap.
+      const rule = lPathRule(piece, false);
+      const jumps = toBool(piece.can_hop_over_allies) && toBool(piece.can_hop_over_enemies);
+      const lame = !jumps && rule.order === 'long_first' && rule.legs === 'long' && !rule.corner;
+      chunks.push(lame && atom.length === 1 ? `n${atom}` : atom);
     }
   }
 

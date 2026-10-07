@@ -105,6 +105,9 @@ const PieceWizard = ({ editPieceId = null }) => {
     max_directional_hop_pieces: null,
     min_directional_hop_pieces: null,
     hop_landing_distance: null,
+    ratio_path_order: null,
+    ratio_path_blocking: null,
+    ratio_path_corner_blocks: null,
     
     // Step 3: Attack/Capture Configuration
     repeating_capture: false,
@@ -119,6 +122,9 @@ const PieceWizard = ({ editPieceId = null }) => {
     max_directional_hop_pieces_attack: null,
     min_directional_hop_pieces_attack: null,
     hop_landing_distance_attack: null,
+    ratio_path_order_attack: null,
+    ratio_path_blocking_attack: null,
+    ratio_path_corner_blocks_attack: null,
     can_capture_enemy_via_range: false,
     can_capture_enemy_on_move: true,
     can_capture_ally_via_range: false,
@@ -369,6 +375,9 @@ const PieceWizard = ({ editPieceId = null }) => {
             max_directional_hop_pieces: piece.max_directional_hop_pieces != null ? parseInt(piece.max_directional_hop_pieces) || null : null,
             min_directional_hop_pieces: piece.min_directional_hop_pieces != null ? parseInt(piece.min_directional_hop_pieces) || null : null,
             hop_landing_distance: piece.hop_landing_distance != null ? parseInt(piece.hop_landing_distance) || null : null,
+            ratio_path_order: piece.ratio_path_order || null,
+            ratio_path_blocking: piece.ratio_path_blocking || null,
+            ratio_path_corner_blocks: piece.ratio_path_corner_blocks ?? null,
             
             // Attack/Capture fields
             repeating_capture: !!piece.repeating_capture,
@@ -381,6 +390,9 @@ const PieceWizard = ({ editPieceId = null }) => {
             max_directional_hop_pieces_attack: piece.max_directional_hop_pieces_attack != null ? parseInt(piece.max_directional_hop_pieces_attack) || null : null,
             min_directional_hop_pieces_attack: piece.min_directional_hop_pieces_attack != null ? parseInt(piece.min_directional_hop_pieces_attack) || null : null,
             hop_landing_distance_attack: piece.hop_landing_distance_attack != null ? parseInt(piece.hop_landing_distance_attack) || null : null,
+            ratio_path_order_attack: piece.ratio_path_order_attack || null,
+            ratio_path_blocking_attack: piece.ratio_path_blocking_attack || null,
+            ratio_path_corner_blocks_attack: piece.ratio_path_corner_blocks_attack ?? null,
             can_capture_enemy_via_range: hasAnyRangedAttack,
             can_capture_ally_via_range: !!piece.can_capture_ally_via_range,
             can_capture_enemy_on_move: !!piece.can_capture_enemy_on_move,

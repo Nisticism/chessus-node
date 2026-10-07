@@ -7,6 +7,7 @@ import InfoTooltip from "./InfoTooltip";
 import FairyStockfishInfoNote from "../common/FairyStockfishInfoNote";
 import ToggleSwitch from "../common/ToggleSwitch";
 import HopCountControls from "./HopCountControls";
+import LPathControls from "./LPathControls";
 import { PIECE_WIZARD_TEXT } from "../../global/global";
 
 const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
@@ -755,6 +756,8 @@ const PieceStep2Movement = ({ pieceData, updatePieceData }) => {
                 )}
               </div>
             )}
+            {/* What blocks the L-move (LPathControls) - renders nothing without one. */}
+            <LPathControls pieceData={pieceData} handleChange={handleChange} />
           </div>
       </div>
 

@@ -37,7 +37,7 @@ import { designationRuleSentence } from "../../helpers/designationTypes";
 // puzzle rules modal. See the note there.
 import { describeMovementRange, describePieceMovement } from "../../helpers/pieceRules";
 import { joinList } from "../../helpers/joinList";
-import { hopRuleWords } from "../../helpers/hopRuleWords";
+import { hopRuleWords, lPathWords } from "../../helpers/hopRuleWords";
 
 const ASSET_URL = process.env.REACT_APP_ASSET_URL || "http://localhost:3001";
 
@@ -234,7 +234,7 @@ const describePieceCapture = (pieceData) => {
   const ratio2 = pieceData.ratio_capture_2 || pieceData.ratio_two_capture || 0;
   if (hasRatioCapture || (ratio1 > 0 && ratio2 > 0)) {
     if (ratio1 > 0 && ratio2 > 0) {
-      let ratioText = `in an L-shape (${ratio1} squares by ${ratio2} squares)`;
+      let ratioText = `in an L-shape (${ratio1} squares by ${ratio2} squares)${lPathWords(pieceData, true).replace(' · ', ', ')}`;
       if (pieceData.repeating_ratio_capture) {
         const maxIter = pieceData.max_ratio_capture_iterations;
         if (maxIter === -1) {
@@ -1069,6 +1069,7 @@ const GameTypeView = () => {
         if (pieceData.directional_hop_disabled) extras.push('disabled for directional moves');
         if (pieceData.directional_hop_only) extras.push('required for all directional moves');
         if (pieceData.directional_hop_only) { const words = hopRuleWords(pieceData).replace(/^ · /, ''); if (words) extras.push(words); }
+        { const lWords = lPathWords(pieceData).replace(/^ · /, ''); if (lWords) extras.push(`L-moves ${lWords}`); }
         const extrasStr = extras.length > 0 ? ` (${extras.join('; ')})` : '';
         description += `• **Hop**: Can jump over ${who} during movement${extrasStr}.\n`;
         const hopStopAtOccupied = pieceData.repeating_ratio && (pieceData.max_ratio_iterations === -1 || (pieceData.max_ratio_iterations || 1) > 1) && (pieceData.hop_stop_at_occupied !== false && pieceData.hop_stop_at_occupied !== 0);

@@ -29,7 +29,7 @@ import { parseServerDate } from "../../helpers/date-formatter";
 import authHeader from "../../services/auth-header";
 import { renderContent } from "../../helpers/render-content";
 import useSeo from "../../hooks/useSeo";
-import { hopRuleWords } from "../../helpers/hopRuleWords";
+import { hopRuleWords, lPathWords } from "../../helpers/hopRuleWords";
 
 const EMPTY_PIECE_VALUE_CACHE = {};
 
@@ -308,6 +308,13 @@ const PieceView = () => {
       max_directional_hop_pieces_attack: piece.max_directional_hop_pieces_attack != null ? parseInt(piece.max_directional_hop_pieces_attack) : null,
       min_directional_hop_pieces_attack: piece.min_directional_hop_pieces_attack != null ? parseInt(piece.min_directional_hop_pieces_attack) : null,
       hop_landing_distance_attack: piece.hop_landing_distance_attack != null ? parseInt(piece.hop_landing_distance_attack) : null,
+      // The L-path rule, for the preview board's engine (lPathRule)
+      ratio_path_order: piece.ratio_path_order || null,
+      ratio_path_order_attack: piece.ratio_path_order_attack || null,
+      ratio_path_blocking: piece.ratio_path_blocking || null,
+      ratio_path_blocking_attack: piece.ratio_path_blocking_attack || null,
+      ratio_path_corner_blocks: piece.ratio_path_corner_blocks ?? null,
+      ratio_path_corner_blocks_attack: piece.ratio_path_corner_blocks_attack ?? null,
       directional_attack_style: !!piece.directional_attack_style,
       ratio_attack_style: !!piece.ratio_attack_style,
       step_by_step_attack_style: !!piece.step_by_step_attack_style,
@@ -629,6 +636,13 @@ const PieceView = () => {
       max_directional_hop_pieces_attack: piece.max_directional_hop_pieces_attack != null ? parseInt(piece.max_directional_hop_pieces_attack) : null,
       min_directional_hop_pieces_attack: piece.min_directional_hop_pieces_attack != null ? parseInt(piece.min_directional_hop_pieces_attack) : null,
       hop_landing_distance_attack: piece.hop_landing_distance_attack != null ? parseInt(piece.hop_landing_distance_attack) : null,
+      // The L-path rule, for the preview board's engine (lPathRule)
+      ratio_path_order: piece.ratio_path_order || null,
+      ratio_path_order_attack: piece.ratio_path_order_attack || null,
+      ratio_path_blocking: piece.ratio_path_blocking || null,
+      ratio_path_blocking_attack: piece.ratio_path_blocking_attack || null,
+      ratio_path_corner_blocks: piece.ratio_path_corner_blocks ?? null,
+      ratio_path_corner_blocks_attack: piece.ratio_path_corner_blocks_attack ?? null,
       directional_attack_style: !!piece.directional_attack_style,
       ratio_attack_style: !!piece.ratio_attack_style,
       step_by_step_attack_style: !!piece.step_by_step_attack_style,
@@ -1106,6 +1120,8 @@ const PieceView = () => {
                 Pattern: <span className={styles["ratio-value"]}>
                   {pieceToDisplay.ratio_one_movement || '?'}:{pieceToDisplay.ratio_two_movement || '?'}
                 </span>
+                {/* What blocks it, when not the usual rule (empty otherwise). */}
+                <span>{lPathWords(pieceToDisplay)}</span>
               </div>
               {pieceToDisplay.repeating_ratio && (
                 <div className={styles["ability-properties"]}>
@@ -1496,7 +1512,7 @@ const PieceView = () => {
                 {(pieceToDisplay.ratio_one_capture || pieceToDisplay.ratio_two_capture) && (
                   <div className={styles["property-tag"]}>
                     <span className={styles["property-icon"]}>🔀</span>
-                    Ratio Capture: {pieceToDisplay.ratio_one_capture || '?'}:{pieceToDisplay.ratio_two_capture || '?'}
+                    Ratio Capture: {pieceToDisplay.ratio_one_capture || '?'}:{pieceToDisplay.ratio_two_capture || '?'}{lPathWords(pieceToDisplay, true)}
                     {!!piece.repeating_ratio_capture && (
                       <span> (repeating{piece.max_ratio_capture_iterations != null && piece.max_ratio_capture_iterations !== -1 ? `, max ${piece.max_ratio_capture_iterations}x` : ''})</span>
                     )}

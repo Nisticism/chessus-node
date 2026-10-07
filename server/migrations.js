@@ -1383,6 +1383,19 @@ const migrations = [
   { table: 'pieces', column: 'min_directional_hop_pieces', sql: "ALTER TABLE pieces ADD COLUMN min_directional_hop_pieces TINYINT DEFAULT NULL", description: "Straight-line moves must hop at least this many pieces (1-8)." },
   { table: 'pieces', column: 'min_directional_hop_pieces_attack', sql: "ALTER TABLE pieces ADD COLUMN min_directional_hop_pieces_attack TINYINT DEFAULT NULL", description: "Straight-line captures must hop at least this many pieces (1-8)." },
   { table: 'pieces', column: 'hop_landing_distance', sql: "ALTER TABLE pieces ADD COLUMN hop_landing_distance TINYINT DEFAULT NULL", description: "After hopping, a straight-line move lands at most this many squares past the last piece hopped (1-8; 1 = a grasshopper)." },
+  /*
+   * The path of an L-shaped move that does not jump (2026-10-07): which route
+   * (either / long leg first / short leg first), which legs block (both / the
+   * long one / the short one) and whether the corner does. NULL = the rule
+   * L-moves always had. The xiangqi horse: long_first, long, corner 0.
+   * See lPathRule in server/hop-rule.js.
+   */
+  { table: 'pieces', column: 'ratio_path_order', sql: "ALTER TABLE pieces ADD COLUMN ratio_path_order VARCHAR(12) DEFAULT NULL", description: "L-move route: 'either', 'long_first' or 'short_first'." },
+  { table: 'pieces', column: 'ratio_path_order_attack', sql: "ALTER TABLE pieces ADD COLUMN ratio_path_order_attack VARCHAR(12) DEFAULT NULL", description: "L-capture route: 'either', 'long_first' or 'short_first'." },
+  { table: 'pieces', column: 'ratio_path_blocking', sql: "ALTER TABLE pieces ADD COLUMN ratio_path_blocking VARCHAR(8) DEFAULT NULL", description: "Which legs of an L-move block: 'both', 'long' or 'short'." },
+  { table: 'pieces', column: 'ratio_path_blocking_attack', sql: "ALTER TABLE pieces ADD COLUMN ratio_path_blocking_attack VARCHAR(8) DEFAULT NULL", description: "Which legs of an L-capture block: 'both', 'long' or 'short'." },
+  { table: 'pieces', column: 'ratio_path_corner_blocks', sql: "ALTER TABLE pieces ADD COLUMN ratio_path_corner_blocks TINYINT(1) DEFAULT NULL", description: "Whether the corner square of an L-move blocks it (NULL = yes)." },
+  { table: 'pieces', column: 'ratio_path_corner_blocks_attack', sql: "ALTER TABLE pieces ADD COLUMN ratio_path_corner_blocks_attack TINYINT(1) DEFAULT NULL", description: "Whether the corner square of an L-capture blocks it (NULL = yes)." },
   { table: 'pieces', column: 'hop_landing_distance_attack', sql: "ALTER TABLE pieces ADD COLUMN hop_landing_distance_attack TINYINT DEFAULT NULL", description: "After hopping, a straight-line capture lands at most this many squares past the last piece hopped (1-8)." },
   // --- Direction Change (Movement) ---
   { table: 'pieces', column: 'directional_movement_change', sql: "ALTER TABLE pieces ADD COLUMN directional_movement_change TINYINT(1) DEFAULT 0", description: "Master toggle: when 1, piece can change direction mid-move (second leg after first directional leg)." },

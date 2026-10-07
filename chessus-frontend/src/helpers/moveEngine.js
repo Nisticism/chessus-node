@@ -193,6 +193,61 @@ export const hopRuleAllows = (rule, hops) => {
   return true;
 };
 
+/*
+ * The path of an L-shaped (ratio) move, for a piece that does not simply jump.
+ *
+ * An (a, b) move is two straight legs. LEG ONE is the longer; when they are
+ * equal, leg one is the sideways (x) leg. Three settings, for movement and
+ * (the *_attack ones) for captures:
+ *   ratio_path_order    'either' (default) - either route may be taken, so the
+ *                       move is blocked only when both are; 'long_first' -
+ *                       leg one, then leg two; 'short_first' - the reverse.
+ *   ratio_path_blocking 'both' (default) - a piece on either leg blocks;
+ *                       'long' - only on leg one; 'short' - only on leg two.
+ *   ratio_path_corner_blocks  whether the square where the legs meet blocks
+ *                       (default yes).
+ * The defaults are the rule every L-move has always had. The xiangqi horse
+ * (Betza nN) is long_first + long + no corner: blocked only by the square
+ * beside it in the long direction. A piece that may hop the blocker still
+ * passes, as with any path; the destination square is never part of it.
+ * A MIRROR of server/hop-rule.js - the two must agree.
+ */
+export const lPathRule = (piece, attack) => {
+  const field = (name) => piece?.[attack ? `${name}_attack` : name];
+  const order = ['long_first', 'short_first'].includes(field('ratio_path_order')) ? field('ratio_path_order') : 'either';
+  const legs = ['long', 'short'].includes(field('ratio_path_blocking')) ? field('ratio_path_blocking') : 'both';
+  const c = field('ratio_path_corner_blocks');
+  const corner = c === null || c === undefined || c === '' ? true : (c === 1 || c === true || c === '1' || c === 'true');
+  return { order, legs, corner, isDefault: order === 'either' && legs === 'both' && corner };
+};
+
+/** Is the L route from (fromX, fromY) by (dx, dy) open under `rule`? blocks(x, y) says whether a square stops it. */
+export const lRouteClear = (fromX, fromY, dx, dy, rule, blocks) => {
+  const ax = Math.abs(dx);
+  const ay = Math.abs(dy);
+  const oneIsX = ax >= ay;
+  const legOne = oneIsX ? { x: Math.sign(dx), y: 0, n: ax } : { x: 0, y: Math.sign(dy), n: ay };
+  const legTwo = oneIsX ? { x: 0, y: Math.sign(dy), n: ay } : { x: Math.sign(dx), y: 0, n: ax };
+  const counts = (isLegOne) => rule.legs === 'both' || (rule.legs === 'long') === isLegOne;
+  const route = (first, second, firstIsOne) => {
+    let x = fromX;
+    let y = fromY;
+    for (let i = 1; i <= first.n; i++) {
+      x += first.x; y += first.y;
+      const isCorner = i === first.n && second.n > 0;
+      if ((isCorner ? rule.corner : counts(firstIsOne)) && blocks(x, y)) return false;
+    }
+    for (let i = 1; i < second.n; i++) {
+      x += second.x; y += second.y;
+      if (counts(!firstIsOne) && blocks(x, y)) return false;
+    }
+    return true;
+  };
+  if (rule.order === 'long_first') return route(legOne, legTwo, true);
+  if (rule.order === 'short_first') return route(legTwo, legOne, false);
+  return route(legOne, legTwo, true) || route(legTwo, legOne, false);
+};
+
 export const getMoveDotType = (move) => {
   if (!move) return null;
   if (move.isCastling) return 'castle';
@@ -907,7 +962,7 @@ export const createMoveEngine = ({
     return false;
   };
 
-  const checkRatioPathClear = (piece, targetX, targetY, pieces) => {
+  const checkRatioPathClear = (piece, targetX, targetY, pieces, attack = false) => {
     const canHopAllies = piece.can_hop_over_allies === 1 || piece.can_hop_over_allies === true;
     const canHopEnemies = piece.can_hop_over_enemies === 1 || piece.can_hop_over_enemies === true;
     const hasGhostwalk = piece.ghostwalk === 1 || piece.ghostwalk === true;
@@ -931,6 +986,16 @@ export const createMoveEngine = ({
       });
     }
     
+    // The piece's own L-path rule (lPathRule): its route and legs alone decide.
+    const lRule = lPathRule(piece, attack);
+    if (!lRule.isDefault) {
+      return lRouteClear(piece.x, piece.y, dx, dy, lRule, (cx, cy) => {
+        const o = findPieceAtSquare(pieces, cx, cy);
+        if (!o || o.id === piece.id) return false;
+        return !((o.player_id || o.team) === pieceOwner ? canHopAllies : canHopEnemies);
+      });
+    }
+
     // If no hopping ability, check if both L-shape paths are clear
     if (!canHopAllies && !canHopEnemies) {
       return checkBothLPaths(piece.x, piece.y, dx, dy, absDx, absDy, pieces, () => false);
@@ -1261,7 +1326,7 @@ export const createMoveEngine = ({
                 if (isCustomAttackOffset(enemyPiece, adx - enemyPiece.x, ady - enemyPiece.y)) return true;
                 let pathClear = false;
                 if (isRatioMove || usesRatioForCapture) {
-                  pathClear = checkRatioPathClear(enemyPiece, adx, ady, pieces);
+                  pathClear = checkRatioPathClear(enemyPiece, adx, ady, pieces, true);
                 } else if (isStepMove) {
                   pathClear = canReachStepByStep(enemyPiece, adx, ady, pieces, boardWidth, boardHeight, true);
                 } else {
@@ -1728,7 +1793,7 @@ export const createMoveEngine = ({
           pathClear = true;
         } else if (isRatioMove) {
           // Check L-shape paths with hopping abilities
-          pathClear = checkRatioPathClear(piece, toX, toY, pathPieces);
+          pathClear = checkRatioPathClear(piece, toX, toY, pathPieces, isCapture);
         } else if (isStepMove) {
           pathClear = canReachStepByStep(piece, toX, toY, pathPieces, boardWidth, boardHeight, isCapture);
           stepWalkReached = pathClear;
@@ -1968,7 +2033,7 @@ export const createMoveEngine = ({
             if (isCustomSquareMove) {
               attackPathClear = true;
             } else if (isRatioMove) {
-              attackPathClear = checkRatioPathClear(piece, toX, toY, pathPieces);
+              attackPathClear = checkRatioPathClear(piece, toX, toY, pathPieces, true);
             } else if (isStepMove) {
               attackPathClear = canReachStepByStep(piece, toX, toY, pathPieces, boardWidth, boardHeight, true);
             } else if (pw > 1 || ph > 1) {

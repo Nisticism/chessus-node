@@ -261,6 +261,9 @@ function blankMovementAndAttack() {
     custom_attack_squares: null, special_scenario_capture: '',
     directional_capture_change: false,
     first_move_only: false, first_move_only_capture: false,
+    ratio_path_order: null, ratio_path_order_attack: null,
+    ratio_path_blocking: null, ratio_path_blocking_attack: null,
+    ratio_path_corner_blocks: null, ratio_path_corner_blocks_attack: null,
   };
   for (const d of DIRS) {
     for (const kind of ['movement', 'capture']) {
@@ -320,6 +323,10 @@ function hopSettings(needs, warnings) {
   if ((m.lameExact && hopsM) || (c.lameExact && hopsC)) {
     warnings.push('A lame (n) leap on a piece that also jumps cannot be kept from jumping: here it jumps too.');
   }
+  // An L-move's path rule is read only when the piece does not hop everything.
+  if ((m.lameLeap || c.lameLeap) && hopsM) {
+    warnings.push('A lame (n) L-move on a piece that also jumps over allies and enemies cannot be kept from jumping: here it jumps too.');
+  }
   return out;
 }
 
@@ -338,8 +345,8 @@ export function betzaToPieceData(code) {
   const ratioTaken = { movement: false, capture: false };
   // What the piece needs from the hop settings, per kind (see hopSettings).
   const needs = {
-    movement: { leap: false, ride: false, slide: false, lameExact: false, cannon: false, grasshopper: false },
-    capture: { leap: false, ride: false, slide: false, lameExact: false, cannon: false, grasshopper: false },
+    movement: { leap: false, ride: false, slide: false, lameExact: false, lameLeap: false, cannon: false, grasshopper: false },
+    capture: { leap: false, ride: false, slide: false, lameExact: false, lameLeap: false, cannon: false, grasshopper: false },
   };
 
   const addCustom = (kind, dx, dy) => custom[kind].set(`${dy},${dx}`, { row: dy, col: dx });
@@ -422,7 +429,8 @@ export function betzaToPieceData(code) {
         } else if (!filter && vectors.length === all.length && !ratioTaken[kind]) {
           // The first unrestricted oblique leap: the L-shape ratio.
           ratioTaken[kind] = true;
-          needs[kind].leap = true;
+          // Lame (n): blocked on its path rather than jumping - see below.
+          needs[kind][lame ? 'lameLeap' : 'leap'] = true;
           if (part.rider) needs[kind].ride = true;
           if (kind === 'movement') {
             u.ratio_movement_style = true; u.ratio_one_movement = a; u.ratio_two_movement = b;
@@ -432,10 +440,19 @@ export function betzaToPieceData(code) {
             if (part.rider) { u.repeating_ratio_capture = true; u.max_ratio_capture_iterations = part.range || -1; }
           }
           if (initial) warnings.push(`${part.text}: "first move only" cannot be set on an L-shaped move; it is always available.`);
-          if (lame) warnings.push(`${part.text}: a lame (blockable) L-shaped move cannot be set; it jumps.`);
+          if (lame) {
+            // Lame (Betza n): the xiangqi horse's path rule (lPathRule) -
+            // leg one first, blocked on it, the corner not counted.
+            const sfx = kind === 'movement' ? '' : '_attack';
+            u[`ratio_path_order${sfx}`] = 'long_first';
+            u[`ratio_path_blocking${sfx}`] = 'long';
+            u[`ratio_path_corner_blocks${sfx}`] = 0;
+            if (b > 1) warnings.push(`${part.text}: a lame leap whose shorter leg is more than one square is set up as blocked on its longer leg.`);
+          }
         } else if (!part.rider) {
           // A second oblique leap, or one limited to some directions: custom squares.
           if (initial) warnings.push(`${part.text}: "first move only" cannot be set on custom squares; it is always available.`);
+          if (lame) warnings.push(`${part.text}: a lame (n) leap limited to some directions is a custom-square jump here, and jumps.`);
           for (const [dx, dy] of vectors) addCustom(kind, dx, dy);
         } else {
           warnings.push(`${part.text}: ${ratioTaken[kind] ? 'a second' : 'a direction-limited'} L-shaped rider cannot be set up - ignored.`);
