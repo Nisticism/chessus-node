@@ -51,6 +51,7 @@ const {
   placementCandidates,
   enPassantCandidates,
   MECHANICAL_GOALS,
+  endingMeetsGoal,
 } = require('./puzzle-validation');
 const { getAllLegalMovesForPlayer } = require('./game-socket');
 
@@ -295,7 +296,7 @@ async function forcesAfter(s1, side, aim, budget, memory) {
     // No legal reply. Either that ends the game (and says who won), or the
     // defender passes and it is `side` to move again.
     const outcome = terminalOutcome(s1, defender, null);
-    if (outcome) return { forces: Number(outcome.winner) === Number(side), refutation: null, answers: [], passed: false };
+    if (outcome) return { forces: Number(outcome.winner) === Number(side) && endingMeetsGoal(aim, s1, side, null), refutation: null, answers: [], passed: false };
     const win = await findWinInOne(s1, side, aim, budget, memory.wins);
     if (budget.exhausted && !win) return { forces: false, incomplete: true };
     return { forces: !!win, refutation: win ? null : { pass: true }, answers: win ? [{ reply: { pass: true }, win }] : [], passed: true };
@@ -306,7 +307,7 @@ async function forcesAfter(s1, side, aim, budget, memory) {
     // A reply that ends the game: fine if it hands `side` the win, an escape if not.
     const ended = terminalOutcome(r.state, side, r.ctx);
     if (ended) {
-      if (Number(ended.winner) === Number(side)) { answers.push({ reply: r.move, win: null }); continue; }
+      if (Number(ended.winner) === Number(side) && endingMeetsGoal(aim, r.state, side, r.ctx)) { answers.push({ reply: r.move, win: null }); continue; }
       memory.refutations.add(moveKey(r.move));
       return { forces: false, refutation: r.move, answers };
     }
@@ -472,7 +473,7 @@ async function everyReplyLoses(s1, side, aim, n, budget, memory) {
   if (budget.exhausted) return { forces: false };
   if (!replies.length) {
     const outcome = terminalOutcome(s1, defender, null);
-    if (outcome) return { forces: Number(outcome.winner) === Number(side) };
+    if (outcome) return { forces: Number(outcome.winner) === Number(side) && endingMeetsGoal(aim, s1, side, null) };
     // No legal reply and no ending: they pass, and it is the solver's move again.
     if (n === 0) return { forces: false, refutation: { pass: true } };
     const win = await winsWithin(s1, side, aim, n, budget, memory);
@@ -481,7 +482,9 @@ async function everyReplyLoses(s1, side, aim, n, budget, memory) {
   for (const r of replies) {
     const ended = terminalOutcome(r.state, side, r.ctx);
     if (ended) {
-      if (Number(ended.winner) === Number(side)) continue;
+      // A win only counts when it is the goal's (endingMeetsGoal): a stalemate
+      // puzzle won by losing every piece has not been solved.
+      if (Number(ended.winner) === Number(side) && endingMeetsGoal(aim, r.state, side, r.ctx)) continue;
       refs.add(moveKey(r.move));
       return { forces: false, refutation: r.move };
     }
@@ -698,7 +701,7 @@ async function defensesAgainst(puzzle, gameType, line, step, opts = {}) {
     if (budget.exhausted) return out;
     const ended = terminalOutcome(r.state, side, r.ctx);
     let escapes;
-    if (ended) escapes = Number(ended.winner) !== side;
+    if (ended) escapes = !(Number(ended.winner) === side && endingMeetsGoal(aim, r.state, side, r.ctx));
     else if (achievedAfterReply(aim, r.state, side)) escapes = false;
     else if (depth - 1 === 0) escapes = true;
     else {

@@ -40,9 +40,10 @@ const STATUS_LABEL = { verified: 'One solution', not_unique: 'Refused', unchecke
 const RUN_VERDICT_LABEL = {
   unique: 'one solution', not_unique: 'not unique', not_forced: 'not forced',
   weak_reply: 'weak opponent reply', slow_move: 'slow solver move',
+  goal_not_met: 'goal not met',
 };
 // The verdict form's outcome a search verdict suggests.
-const SUGGESTED_OUTCOME = { weak_reply: 'weak_reply', slow_move: 'slow_move', not_unique: 'not_unique', unique: 'verified' };
+const SUGGESTED_OUTCOME = { weak_reply: 'weak_reply', slow_move: 'slow_move', not_unique: 'not_unique', unique: 'verified', goal_not_met: 'goal_not_met' };
 const METHOD_LABEL = { auto: 'automatic check', search: 'staff search', manual: 'by hand' };
 
 const duration = (ms) => {
@@ -322,6 +323,7 @@ export default function PuzzleVerificationPanel() {
                           <option value="not_unique">Not verified — more than one solution</option>
                           <option value="weak_reply">Not verified — an opponent reply is not their best</option>
                           <option value="slow_move">Not verified — a solver move is not the fastest</option>
+                          <option value="goal_not_met">Not verified — the line does not meet the puzzle's goal</option>
                           {resolving.requestId && <option value="not_verified">Not verified — another reason</option>}
                         </select>
                         <textarea

@@ -32,8 +32,9 @@ const searchableGoal = (goal) => MECHANICAL_GOALS.has(goal) || goal === 'specifi
 
 const UNIQUE_STATUSES = new Set(['unchecked', 'verified', 'not_unique']);
 // How staff may close a request. The "not optimal" ones say WHOSE move was not.
-const NOT_OPTIMAL = new Set(['weak_reply', 'slow_move', 'not_optimal']);
-const RESOLVE_OUTCOMES = new Set(['verified', 'not_unique', 'weak_reply', 'slow_move', 'not_optimal', 'not_verified']);
+// Refusals that grade the line rather than count its solutions - each refuses the badge.
+const NOT_OPTIMAL = new Set(['weak_reply', 'slow_move', 'not_optimal', 'goal_not_met']);
+const RESOLVE_OUTCOMES = new Set(['verified', 'not_unique', 'weak_reply', 'slow_move', 'not_optimal', 'goal_not_met', 'not_verified']);
 const MAX_NOTE = 500;
 const MAX_REASON = 1000;
 
@@ -456,6 +457,8 @@ function registerPuzzleVerificationRoutes(app, { db_pool, dbHelpers, authenticat
    *                          best: another finishes the goal sooner
    *                          ('not_optimal', from before the split, is a
    *                          weak_reply or slow_move without saying which)
+   *   outcome 'goal_not_met' refuse it - the line does not meet the puzzle's
+   *                          goal (it may win the game another way)
    *   outcome 'not_verified' close it without changing the badge (could not be
    *                          settled, not eligible, ...); the reason says why
    */

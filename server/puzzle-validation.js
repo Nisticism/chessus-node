@@ -161,9 +161,17 @@ const GOAL_DEFS = {
       + 'Find the moves that leave your opponent no choice but to stalemate you.',
     available: (gt) => !!gt.stalemate_win_condition,
     mechanical: true,
+    /*
+     * Stalemated means having pieces that cannot move. A player with no
+     * pieces left has no legal move either, but that is losing everything -
+     * its own win condition and its own goal (lose_all_pieces) - and a line
+     * that wins that way had this goal pass by accident: puzzle 113, "Giveaway
+     * All", was set to stalemate and won by losing its last piece.
+     */
     achieved: (state, side, ctx) => {
       const mover = ctx?.movingPiece;
       if (mover && Number(mover.team ?? mover.player_id) === Number(side)) return false;
+      if (!state.pieces.some((p) => Number(p.team ?? p.player_id) === Number(side))) return false;
       if (checkForCheck(state, side).inCheck) return false;
       return (getAllLegalMovesForPlayer(state, side) || []).length === 0;
     },
@@ -279,6 +287,33 @@ const REPLY_COMPLETED_GOALS = new Set(['lose_all_pieces', 'get_stalemated']);
 const MECHANICAL_GOALS = new Set(
   Object.entries(GOAL_DEFS).filter(([, d]) => d.mechanical).map(([k]) => k)
 );
+
+/*
+ * The goal a game ending meets, by the ending's reason (terminalOutcome /
+ * checkWinCondition) - for telling a creator which goal their line actually
+ * wins by when it is not the one they chose. null when no goal names it.
+ */
+const GOAL_FOR_ENDING = {
+  checkmate: 'checkmate_in_1',
+  capture: 'capture_target',
+  lose_all_pieces: 'lose_all_pieces',
+  stalemate_win: 'get_stalemated',
+  no_moves: 'no_moves_them',
+};
+
+/*
+ * Does winning the game this way meet the GOAL? A win is not automatically
+ * the puzzle's answer: a stalemate puzzle won by losing every piece, or a
+ * checkmate puzzle won because the opponent had to walk into a loss, reached
+ * the end of the game but not what it asked for. The search counts an ending
+ * only when it is a win for `side` AND it meets the goal - except for the
+ * plain 'win' aim, which any win meets.
+ */
+function endingMeetsGoal(goal, state, side, ctx) {
+  if (!goal || goal === 'win') return true;
+  if (goal === 'lose_all_pieces') return !state.pieces.some((p) => Number(p.team ?? p.player_id) === Number(side));
+  return goalMet(goal, state, side, ctx);
+}
 
 /** Control squares, merged with any custom square flagged asControl. Keyed "y,x". */
 function controlSquareKeys(gameType) {
@@ -1520,6 +1555,29 @@ function stepToExplain(steps) {
   }) || failing[failing.length - 1];
 }
 
+/*
+ * Why a line that ends without meeting its goal is wrong, in words: and when
+ * it wins the game anyway, by which rule and which goal that is.
+ */
+function lineMissesGoal(puzzle, gameType, state, ctx) {
+  const side = Number(puzzle.side_to_move);
+  const label = lineGoalLabel(puzzle.goal);
+  const ended = terminalOutcome(state, other(side), ctx) || terminalOutcome(state, side, ctx);
+  if (ended && Number(ended.winner) === side) {
+    const fits = GOAL_FOR_ENDING[ended.reason];
+    const fitsLabel = fits && GOAL_DEFS[fits] && GOAL_DEFS[fits].available(gameType || {}) ? GOAL_DEFS[fits].label : null;
+    return `the line wins the game, but by ${ENDING_WORDS[ended.reason] || ended.reason}, not by ${label}. `
+      + (fitsLabel ? `Set the puzzle's goal to "${fitsLabel}" - that is the one this line achieves.`
+        : 'Change the goal to the one the line achieves, or the line to one that achieves this goal.');
+  }
+  return `the line does not reach the goal (${label}) - after its last move the goal is not met.`;
+}
+const ENDING_WORDS = {
+  checkmate: 'checkmate', capture: 'capturing a key piece', lose_all_pieces: 'losing all your pieces',
+  stalemate_win: 'being stalemated', no_moves: 'leaving the opponent no move', elimination: 'elimination',
+  line: 'making a line', connection: 'connecting the sides', control: 'holding the control squares',
+};
+
 /** A first move that forces the goal in two, or null (none, or the search could not finish). */
 async function forcedWinInTwo(puzzle, gameType) {
   const { searchWinInTwo } = require('./puzzle-search');
@@ -1753,6 +1811,23 @@ async function validatePuzzle(puzzle, gameType, opts = {}) {
     played.state.currentTurn = other(side);
     const reached = isMechanical && goalMet(puzzle.goal, played.state, side, played.ctx);
     const moves = Math.ceil(line.length / 2);
+
+    /*
+     * The line has to MEET THE GOAL, not merely be legal. This used to fall
+     * through to "the whole line is legal" with no word about the goal, so a
+     * line that ended somewhere else entirely passed as fine; and when it wins
+     * the game by a different rule (losing every piece, in a stalemate
+     * puzzle), the creator is told which goal it does win by.
+     */
+    if (isMechanical && !reached) {
+      return {
+        status: VALIDATION.UNSOLVABLE,
+        solutions: [],
+        intendedWorks: false,
+        goalReached: false,
+        detail: lineMissesGoal(puzzle, gameType, played.state, played.ctx),
+      };
+    }
 
     // A win on the very first move makes the rest of the line beside the point.
     const quicker = await immediateWins(puzzle, gameType, intended);
@@ -1994,6 +2069,9 @@ module.exports = {
   promotionChoiceEquivalent,
   // Which failing step of a line check to explain.
   stepToExplain,
+  // Does a game ending meet the goal; why a line misses its goal.
+  endingMeetsGoal,
+  lineMissesGoal,
   positionSignature,
   applyToFreshState,
   applyPly,

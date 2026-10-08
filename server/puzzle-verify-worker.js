@@ -64,7 +64,30 @@ async function verify(puzzle, gameType, opts, onProgress) {
   let verdict = null;
   let detail;
   let quality = null;
-  if (!r.supported) {
+  /*
+   * The line has to meet the puzzle's GOAL before forcedness means anything:
+   * a line that wins the game by another rule (puzzle 113 - a stalemate goal,
+   * won by losing every piece) is refused for that, with the goal it does
+   * meet, rather than as "not forced".
+   */
+  let missed = null;
+  try {
+    const { goalMet, lineMissesGoal, MECHANICAL_GOALS } = require('./puzzle-validation');
+    const goal = opts.aim || puzzle.goal;
+    if (MECHANICAL_GOALS.has(goal)) {
+      const played = await playLine(puzzle, gameType, line);
+      if (played.ok) {
+        played.state.currentTurn = Number(puzzle.side_to_move) === 1 ? 2 : 1;
+        if (!goalMet(goal, played.state, Number(puzzle.side_to_move), played.ctx)) {
+          missed = lineMissesGoal({ ...puzzle, goal }, gameType, played.state, played.ctx);
+        }
+      }
+    }
+  } catch (_) { /* judged by the search as before */ }
+  if (missed) {
+    verdict = 'goal_not_met';
+    detail = `The line does not meet the puzzle's goal: ${missed}`;
+  } else if (!r.supported) {
     detail = `This puzzle cannot be searched: ${r.reason}.`;
   } else if (!r.complete) {
     detail = r.reason ? `The search stopped: ${r.reason}.` : 'The search stopped before it finished.';
