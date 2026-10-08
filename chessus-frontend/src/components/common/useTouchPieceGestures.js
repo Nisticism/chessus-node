@@ -225,12 +225,29 @@ export default function useTouchPieceGestures(boardRef, options = {}) {
  * A finger tap anywhere OUTSIDE the board: how a picked-up piece is put down
  * on a touch screen, now that a tap on the board can move it. A tap is a
  * touch that starts outside `ref`'s element and lifts without travelling (a
- * scroll is not a tap). Mouse clicks are not affected.
+ * scroll is not a tap).
+ *
+ * { mouse: true } (the puzzle boards): a mouse click outside the board, and
+ * the Escape key, put it down too. Otherwise mouse clicks are not affected.
  */
 const TAP_SLOP_PX = 10;
-export function useTapOutside(ref, onTapOutside) {
+export function useTapOutside(ref, onTapOutside, { mouse = false } = {}) {
   const handler = useRef(onTapOutside);
   handler.current = onTapOutside;
+  useEffect(() => {
+    if (!mouse) return undefined;
+    const onDown = (e) => {
+      const node = ref && ref.current;
+      if (node && !node.contains(e.target) && handler.current) handler.current();
+    };
+    const onKey = (e) => { if (e.key === 'Escape' && handler.current) handler.current(); };
+    document.addEventListener('mousedown', onDown, true);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown, true);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [ref, mouse]);
   useEffect(() => {
     let start = null;
     const onStart = (e) => {

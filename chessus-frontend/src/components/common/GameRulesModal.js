@@ -58,7 +58,17 @@ const mechanicLines = (c) => {
   return out;
 };
 
-/** How the game is won, in the order a solver would care. */
+/*
+ * How the game is won, in the order a solver would care. The server sends the
+ * exact sentences for this board (win_lines: which pieces must be mated or
+ * taken and on which squares, how long a line, which squares to hold -
+ * server/puzzle-win-lines.js); the generic ones below are only for a server
+ * that does not.
+ */
+const winLinesFor = (rules) => (Array.isArray(rules?.win_lines) && rules.win_lines.length
+  ? rules.win_lines
+  : winLines(rules?.conditions || {}));
+
 const winLines = (c) => {
   const out = [];
   if (c.mate_condition) {
@@ -208,7 +218,7 @@ const GameRulesModal = ({
 
             <h3 className={styles["section"]}>How it is won</h3>
             <ul className={styles["notes"]}>
-              {winLines(rules.conditions).map((line, i) => <li key={i}>{line}</li>)}
+              {winLinesFor(rules).map((line, i) => <li key={i}>{line}</li>)}
             </ul>
 
             {mechanicLines(rules.conditions).length > 0 && (

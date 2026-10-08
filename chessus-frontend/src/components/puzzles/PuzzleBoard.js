@@ -158,6 +158,11 @@ const PuzzleBoard = ({
    * component and style as every other board's previews.
    */
   outlines = null,
+  /*
+   * Put the selected piece down: a right-click on the board does (and opens
+   * no menu). Optional - a board with nothing to put down omits it.
+   */
+  onDeselect = null,
 }) => {
   const boardEl = useRef(null);
   const setBoardEl = useCallback((el) => {
@@ -272,6 +277,7 @@ const PuzzleBoard = ({
             className={`${styles["board"]}${className ? ` ${className}` : ''}`}
             ref={setBoardEl}
             data-touch-board=""
+            onContextMenu={onDeselect ? (e) => { e.preventDefault(); onDeselect(); } : undefined}
             style={{ gridTemplateColumns: `repeat(${boardWidth}, ${vp.squareSize}px)` }}
           >
             {squares}

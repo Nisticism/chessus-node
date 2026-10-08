@@ -61,6 +61,7 @@ const {
   getPossibleMovesForPiece,
 } = require('./game-socket');
 const { summariseRules } = require('./game-rules-summary');
+const { puzzleWinLines } = require('./puzzle-win-lines');
 const { isDesignationGame } = require('./designated-piece');
 const {
   vetoConfigOf, cleanVetoList, isVetoed, answerSteps, stepMatches, nextPrompt,
@@ -1792,8 +1793,23 @@ function registerPuzzleRoutes(app, {
       const countOf = (id) => position.filter(pl => Number(pl.piece_id) === id).length;
       pieces.sort((a, b) => countOf(b.piece_id) - countOf(a.piece_id));
 
+      /*
+       * How it is won, exactly, from the solver's side of THIS board: which
+       * pieces must be mated or taken and where they stand, how long a line,
+       * which squares to hold (server/puzzle-win-lines.js). Built from the
+       * hydrated position so the key-piece flags are the ones the engine reads.
+       */
+      let winLines = [];
+      try {
+        const hydrated = await hydratePosition(rules, position);
+        winLines = puzzleWinLines(game, hydrated, Number(puzzle.side_to_move) || 1, { placements, pieces: rules.pieces });
+      } catch (e) {
+        console.error('GET /api/puzzles/:id/rules: win lines', e.message);
+      }
+
       res.json({
         game_name: game.game_name || null,
+        win_lines: winLines,
         // So the card can point at the game's own page. A puzzle is a fragment
         // of somebody's game and the page is where the rest of it lives.
         game_type_id: Number(puzzle.game_type_id) || null,

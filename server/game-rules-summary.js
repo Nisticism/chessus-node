@@ -64,6 +64,40 @@ function keyPiecesBySide(gt, placements, pieces, flag) {
   return out;
 }
 
+/*
+ * The control-square rule as the engine applies it (updateControlSquareTracking
+ * in game-socket.js): the squares - control_squares_string plus custom squares
+ * marked "acts as a control square" - that count for `side` (all of them when
+ * no side is given), how many must be held AT ONCE (squares_count, else every
+ * one that counts), for how many turns (the most any square asks), whether in a
+ * row, and whether only pieces that can control squares count.
+ */
+function controlSquareRule(gt, side = null) {
+  const squares = {};
+  const control = parse(gt.control_squares_string);
+  if (control && typeof control === 'object') Object.assign(squares, control);
+  const custom = parse(gt.special_squares_string);
+  if (custom && typeof custom === 'object') {
+    for (const [key, cfg] of Object.entries(custom)) {
+      if (cfg && cfg.asControl && !squares[key]) squares[key] = { ...(cfg.controlConfig || {}) };
+    }
+  }
+  const all = Object.entries(squares);
+  const applies = (cfg) => {
+    const ap = cfg?.appliesToPlayer || 'both';
+    return side == null || ap === 'both' || ap === 'all' || ap === `p${side}`;
+  };
+  const mine = all.filter(([, cfg]) => applies(cfg));
+  const count = I(gt.squares_count);
+  return {
+    squares: mine.map(([key]) => { const [row, col] = key.split(',').map(Number); return [col, row]; }),
+    needed: count ? Math.min(count, all.length) : Math.max(1, mine.length),
+    turns: Math.max(1, ...all.map(([, cfg]) => Number(cfg?.turnsRequired) || 1)),
+    consecutive: !!(all[0] && all[0][1]?.consecutiveTurns),
+    specificPiece: all.some(([, cfg]) => cfg?.requireSpecificPiece),
+  };
+}
+
 /** "Rook ×2, Knight ×2, Bishop ×2 and King" */
 function listPieces(list, joiner = 'and') {
   const parts = list.map((p) => (p.count > 1 ? `${p.name} ×${p.count}` : p.name));
@@ -169,8 +203,19 @@ function summariseRules(gameType, extra = {}) {
       'A player with no legal move loses, whether or not they are in check.'),
     item(T(gt.promotion_condition), 'Promotion wins',
       `Getting a piece to a promotion square wins the game outright${promotionTerms.length ? ` — ${promotionTerms.join(', ')}` : ''}.`),
-    item(T(gt.squares_condition), 'Control squares',
-      `Hold the marked control squares${I(gt.squares_count) ? ` for ${I(gt.squares_count)} turns` : ''} to win.`),
+    /*
+     * squares_count is how many squares must be held AT ONCE, not for how many
+     * turns (this said "for N turns"); the turns come from the squares
+     * themselves (controlSquareRule).
+     */
+    item(T(gt.squares_condition), 'Control squares', (() => {
+      const rule = controlSquareRule(gt);
+      const n = rule.squares.length;
+      const howMany = !n ? 'the marked control squares'
+        : (rule.needed >= n ? (n === 1 ? 'the marked control square' : `all ${n} marked control squares`) : `${rule.needed} of the ${n} marked control squares`);
+      const turns = `${rule.turns} ${rule.turns === 1 ? 'turn' : 'turns'}${rule.turns > 1 ? (rule.consecutive ? ' in a row' : ' in total') : ''}`;
+      return `Hold ${howMany}${rule.needed > 1 ? ' at once' : ''} for ${turns} to win.`;
+    })()),
     item(T(gt.piece_count_condition), 'Most pieces wins',
       'The player with the most pieces on the board at the end wins.'),
     /*
@@ -248,4 +293,4 @@ function summariseRules(gameType, extra = {}) {
   return { groups };
 }
 
-module.exports = { summariseRules };
+module.exports = { summariseRules, controlSquareRule };

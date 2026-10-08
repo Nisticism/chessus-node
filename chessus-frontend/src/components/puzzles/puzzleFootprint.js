@@ -243,6 +243,12 @@ export const moveCovers = (move, cells, end, x, y) => {
  * tapping another of your pieces picks that one up instead, which is what a
  * second tap on a piece nearly always means.
  */
+/** Are `moves` the dots of the piece anchored at `key` ("y,x") - not a stale hover's? */
+export const dotsAreFor = (moves, key) => {
+  const piece = moves && moves.forPiece;
+  return !!piece && `${piece.y},${piece.x}` === key;
+};
+
 export const tapMovesTo = (moves, activeKey, x, y, ownPieceThere) => {
   if (ownPieceThere) return false;
   // Only the selected piece's own moves count - not a stale hover's.

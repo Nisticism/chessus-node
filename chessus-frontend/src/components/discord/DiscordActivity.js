@@ -14,7 +14,7 @@ import { useTapOutside } from "../common/useTouchPieceGestures";
 import useDiscordSdk from "./useDiscordSdk";
 import { launchedPuzzleId, getLaunchParams } from "../../helpers/discord-launch-params";
 import GameRulesModal from "../common/GameRulesModal";
-import { cellSize, coveringKey, clearFootprint, spanStyle, moveTarget, dotAt, movesOf, previewOutlines, tapMovesTo, placementLanding } from "../puzzles/puzzleFootprint";
+import { cellSize, coveringKey, clearFootprint, spanStyle, moveTarget, dotAt, movesOf, previewOutlines, tapMovesTo, dotsAreFor, placementLanding } from "../puzzles/puzzleFootprint";
 import usePuzzleEngine from "../puzzles/usePuzzleEngine";
 import styles from "./discordactivity.module.scss";
 
@@ -487,7 +487,9 @@ export default function DiscordActivity() {
    * pieces' definitions have loaded, and it still judges every move.
    */
   // On a touch screen, a tap outside the board puts a picked-up piece down.
-  useTapOutside(boardRef, () => { setPicked(null); setHints([]); });
+  // A tap or click outside the board, a right-click on it, or Escape puts a picked-up piece down.
+  const putDown = useCallback(() => { setPicked(null); setHints([]); }, []);
+  useTapOutside(boardRef, putDown, { mouse: true });
 
   const engine = usePuzzleEngine({
     placements: board || {},
@@ -975,13 +977,16 @@ export default function DiscordActivity() {
      */
     if (picked === key) { setPicked(null); loadHints(x, y).then(setHints); return; }
     /*
-     * A finger tap on a square the piece can go to moves it, as a click does.
-     * Tapping another of your pieces picks that one up instead, and any other
-     * tap puts the piece down and shows what was tapped (tapMovesTo). Tapping
-     * outside the board puts it down too (useTapOutside).
+     * A click or tap on a square the piece can go to moves it. Clicking another
+     * of your pieces picks that one up instead, and any other square puts the
+     * piece down and shows what is there (tapMovesTo) - it used to be sent as
+     * a move, so a mouse had no way to let go. A click outside the board, a
+     * right-click or Escape puts it down too (useTapOutside, onDeselect).
+     * While the piece's own dots are not known yet (still loading), a click is
+     * sent as a move as before, so a legal move is never refused.
      */
     const ownHere = !!here && Number(here.player_id) === Number(puzzle.side_to_move);
-    if (how && how.touch && !tapMovesTo(hints, picked, x, y, ownHere)) {
+    if (((how && how.touch) || dotsAreFor(hints, picked)) && !tapMovesTo(hints, picked, x, y, ownHere)) {
       setPicked(here && Number(here.player_id) === Number(puzzle.side_to_move) ? key : null);
       if (here) loadHints(x, y).then(setHints);
       else setHints([]);
@@ -1129,6 +1134,7 @@ export default function DiscordActivity() {
       <div className={styles["board-frame"]}>
         <PuzzleBoard
           vp={vp}
+          onDeselect={finished ? null : putDown}
           flipped={flipped}
           boardWidth={boardWidth}
           boardHeight={boardHeight}

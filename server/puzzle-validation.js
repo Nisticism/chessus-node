@@ -729,10 +729,18 @@ async function applyPly(state, ply, { autoPromote = false, listPromotions = fals
       let promotionOptions;
       if (listPromotions) {
         const options = await getPromotionOptions(state, applied.movingPiece);
+        // Once per distinct choice: an option listed twice (by the game and
+        // by the piece) is one move, not two.
+        const seenChoice = new Set();
         promotionOptions = (options || []).map(o => ({
           promotionPieceId: o.id ?? o.piece_id,
           promotionPlayer: o.player ?? null,
-        })).filter(o => o.promotionPieceId != null);
+        })).filter(o => {
+          const k = `${o.promotionPieceId}|${o.promotionPlayer}`;
+          if (o.promotionPieceId == null || seenChoice.has(k)) return false;
+          seenChoice.add(k);
+          return true;
+        });
       }
       return {
         ok: false,
@@ -1357,9 +1365,30 @@ function describeMoveOn(pieces, gameType, move) {
   const target = move.to && base.pieces.find((p) => p.id !== move.pieceId && p.x === move.to.x && p.y === move.to.y);
   const from = move.from ? squareLabel(move.from.x, move.from.y, height) : '?';
   const name = piece?.piece_name || 'a piece';
-  return target
+  const said = target
     ? `${name} on ${from} takes the ${target.piece_name || 'piece'} on ${to}`
     : `${name} from ${from} to ${to}`;
+  return said + promotionWords(base.pieces, piece, move);
+}
+
+/*
+ * Which promotion choice a move made, in words - or '' when it made none.
+ * The search plays every choice as its own move (puzzle-search playOne), so
+ * without this a capture that may promote or not read as the same move twice:
+ * "the opponent has 2 defenses: Silver General takes ... or Silver General
+ * takes ...". move.promotedName (the search records it) is the surest;
+ * otherwise the choice's piece type is looked up on the board.
+ */
+function promotionWords(pieces, piece, move) {
+  if (move?.promotionPieceId == null) return '';
+  const article = (n) => (/^[aeiou]/i.test(n) ? 'an' : 'a');
+  const sameType = piece && String(piece.piece_id) === String(move.promotionPieceId);
+  const name = move.promotedName
+    || (sameType ? piece.piece_name : null)
+    || pieces.find((p) => String(p.piece_id) === String(move.promotionPieceId))?.piece_name
+    || null;
+  if (sameType || (name && piece && name === piece.piece_name)) return ', without promoting';
+  return name ? `, promoting to ${article(name)} ${name}` : ', promoting';
 }
 
 /*

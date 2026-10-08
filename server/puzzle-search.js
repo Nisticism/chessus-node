@@ -691,7 +691,10 @@ async function defensesAgainst(puzzle, gameType, line, step, opts = {}) {
     }
     if (escapes) {
       out.total += 1;
-      if (out.defenses.length < max) out.defenses.push(r.move);
+      // A promoting reply names what it became, so two choices of one capture
+      // do not read as the same move twice (describeMoveOn).
+      const promotedName = r.ctx?.promotedTo ? (r.ctx.movingPiece?.piece_name || null) : null;
+      if (out.defenses.length < max) out.defenses.push(promotedName ? { ...r.move, promotedName } : r.move);
     }
   }
   out.complete = true;

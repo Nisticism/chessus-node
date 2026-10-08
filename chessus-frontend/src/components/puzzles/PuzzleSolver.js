@@ -22,7 +22,7 @@ import { solverTrayItems, withPlacers, placesPieces } from "../../helpers/placem
 import { usePuzzleVetoes, VetoPanel, VetoAnswer, ContinueNotice, MoveProgress, MoveHint } from "./PuzzleVetoes";
 import { ReviewControls, PlayAgainButton } from "./PuzzleReview";
 import { applyPromotionDefinition, promotionPieceNumber, solvedPliesRemaining, colToFile, doesPieceOccupySquare } from "../../helpers/pieceMovementUtils";
-import { cellSize, coveringKey, clearFootprint, spanStyle, moveTarget, dotAt, movesOf, previewOutlines, moveCovers, tapMovesTo, placementLanding } from "./puzzleFootprint";
+import { cellSize, coveringKey, clearFootprint, spanStyle, moveTarget, dotAt, movesOf, previewOutlines, moveCovers, tapMovesTo, dotsAreFor, placementLanding } from "./puzzleFootprint";
 import usePuzzleEngine, { buildEnginePieces } from "./usePuzzleEngine";
 import { otherFinishesText } from "../../helpers/puzzleFinishes";
 import { readBlockedDotMode } from "../../helpers/blockedDotMode";
@@ -445,8 +445,9 @@ const PuzzleSolver = () => {
     }
   }, [board, puzzle]);
 
-  // On a touch screen, a tap outside the board puts a picked-up piece down.
-  useTapOutside(boardRef, () => { setSelected(null); setHoveredMoves([]); });
+  // A tap or click outside the board, or Escape, puts a picked-up piece down.
+  const putDown = useCallback(() => { setSelected(null); setHoveredMoves([]); }, []);
+  useTapOutside(boardRef, putDown, { mouse: true });
 
   // Piece definitions, the engine's pieces and the move engine - shared with
   // the home page puzzle and the Discord activity (see usePuzzleEngine).
@@ -993,21 +994,27 @@ const PuzzleSolver = () => {
       });
       return;
     }
+    // The piece's own moves, shown for as long as it is held.
+    const showHeld = () => hoverPiece(enginePieces.find((p) => doesPieceOccupySquare(p, x, y)));
     if (!selected) {
       if (!here) return;
       if (Number(here.player_id) !== Number(puzzle?.side_to_move)) return;
       setSelected(k);
+      showHeld();
       return;
     }
     if (selected === k) { setSelected(null); return; }
     /*
-     * A finger tap on a square the piece can go to moves it, as a click does.
-     * Tapping another of your pieces picks that one up instead, and any other
-     * tap puts the piece down and shows what was tapped (tapMovesTo). Tapping
-     * outside the board puts it down too (useTapOutside).
+     * A click or tap on a square the piece can go to moves it. Clicking another
+     * of your pieces picks that one up instead, and any other square puts the
+     * piece down and shows what is there (tapMovesTo) - it used to be sent as
+     * a move, so a mouse had no way to let go. A click outside the board, a
+     * right-click or Escape puts it down too (useTapOutside, onDeselect).
+     * While the piece's own dots are not known yet (still loading), a click is
+     * sent as a move as before, so a legal move is never refused.
      */
     const ownHere = !!here && Number(here.player_id) === Number(puzzle?.side_to_move);
-    if (how && how.touch && !tapMovesTo(hoveredMoves, selected, x, y, ownHere)) {
+    if (((how && how.touch) || dotsAreFor(hoveredMoves, selected)) && !tapMovesTo(hoveredMoves, selected, x, y, ownHere)) {
       const tapped = enginePieces.find((p) => doesPieceOccupySquare(p, x, y));
       if (here && Number(here.player_id) === Number(puzzle?.side_to_move)) setSelected(k);
       else setSelected(null);
@@ -1313,7 +1320,11 @@ const PuzzleSolver = () => {
                   && Number(here.player_id) === Number(puzzle?.side_to_move);
                 return movable ? 'own' : 'other';
               }}
-              onSquareLift={(x, y) => setSelected(coveringKey(placements, x, y) || keyOf(x, y))}
+              onSquareLift={(x, y) => {
+                setSelected(coveringKey(placements, x, y) || keyOf(x, y));
+                hoverPiece(enginePieces.find((p) => doesPieceOccupySquare(p, x, y)));
+              }}
+              onDeselect={finished ? null : putDown}
               onSquareMouseEnter={(x, y) => {
                 setPointerSq({ x, y });
                 // Before AND after the puzzle ends, on the position as drawn.
