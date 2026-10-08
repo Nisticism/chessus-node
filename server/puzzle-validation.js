@@ -61,6 +61,7 @@ const {
 } = require('./game-socket');
 const { gravityOf, restingSquare } = require('./board-gravity');
 const { squareLabel } = require('./square-label');
+const { findWinningLine, describeLineRule } = require('./win-line');
 
 const VALIDATION = {
   VALID: 'valid',
@@ -186,6 +187,58 @@ const GOAL_DEFS = {
       !state.pieces.some(p => Number(p.team ?? p.player_id) === Number(side)),
   },
 
+  /*
+   * A row of your pieces, or a chain joining two sides - the line win
+   * (win-line.js), as Connect Four, Gomoku and Hex play it. Met when the
+   * solver's pieces make the line the game asks for.
+   */
+  make_line: {
+    label: 'Make a line',
+    describe: (gt) => {
+      const rule = describeLineRule(gt);
+      return rule ? `${rule.replace(/\.$/, '')} - find the moves that get there.` : 'Find the moves that complete your line.';
+    },
+    available: (gt) => !!gt.line_condition,
+    mechanical: true,
+    achieved: (state, side) => !!findWinningLine(state, Number(side)),
+  },
+
+  /*
+   * Every enemy piece gone. The capture win in a game with no key pieces to
+   * take (and a goal of its own in one that has them: clearing the board is a
+   * different puzzle from taking the king).
+   */
+  capture_all: {
+    label: 'Capture every enemy piece',
+    describe: () => 'Find the moves that capture every one of your opponent\'s pieces.',
+    available: (gt) => !!gt.capture_condition,
+    mechanical: true,
+    achieved: (state, side) => state.pieces.length > 0
+      && !state.pieces.some((p) => Number(p.team ?? p.player_id) === other(side)),
+  },
+
+  /*
+   * Most pieces when the board is full - the piece-count win (Othello and its
+   * relatives). Met when the board has no empty square left and the solver
+   * has more pieces on it than the opponent.
+   */
+  most_pieces: {
+    label: 'Finish with more pieces',
+    describe: () => 'This game ends when the board is full, and whoever has more pieces on it wins. '
+      + 'Find the moves that fill it with more of yours.',
+    available: (gt) => !!gt.piece_count_condition,
+    mechanical: true,
+    achieved: (state, side) => {
+      const w = Number(state.gameType?.board_width) || 8;
+      const h = Number(state.gameType?.board_height) || 8;
+      const covered = state.pieces.reduce((n, p) => n + (p.piece_width || 1) * (p.piece_height || 1), 0);
+      if (covered < w * h) return false;
+      const mine = state.pieces.filter((p) => Number(p.team ?? p.player_id) === Number(side)).length;
+      const theirs = state.pieces.filter((p) => Number(p.team ?? p.player_id) === other(side)).length;
+      return mine > theirs;
+    },
+  },
+
   promote_a_piece: {
     label: 'Promote a piece',
     describe: (gt) => (gt.promotion_condition
@@ -296,6 +349,10 @@ const MECHANICAL_GOALS = new Set(
 const GOAL_FOR_ENDING = {
   checkmate: 'checkmate_in_1',
   capture: 'capture_target',
+  line: 'make_line',
+  connection: 'make_line',
+  elimination: 'capture_all',
+  piece_count: 'most_pieces',
   lose_all_pieces: 'lose_all_pieces',
   stalemate_win: 'get_stalemated',
   no_moves: 'no_moves_them',

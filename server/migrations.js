@@ -5726,6 +5726,26 @@ const runMigrations = async () => {
     console.error('Error adding get_stalemated to puzzles.goal:', err.message);
   }
 
+  // make_line, capture_all, most_pieces (2026-10-08): goals for the line,
+  // capture-everything and most-pieces wins. Keyed off make_line, so it runs once.
+  try {
+    const [[col]] = await db_pool.query("SHOW COLUMNS FROM puzzles LIKE 'goal'");
+    if (col && String(col.Type).startsWith('enum') && !String(col.Type).includes('make_line')) {
+      await runMigration(
+        `ALTER TABLE puzzles MODIFY COLUMN goal ENUM(
+           'checkmate_in_1','capture_target','stalemate_them','no_moves_them',
+           'lose_all_pieces','get_stalemated','make_line','capture_all','most_pieces',
+           'promote_a_piece','control_square','reach_points',
+           'win_in_1','win_material','specific_move','custom'
+         ) NOT NULL DEFAULT 'checkmate_in_1'`,
+        'Add the make_line, capture_all and most_pieces puzzle goals'
+      );
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding the line / capture-all / most-pieces goals:', err.message);
+  }
+
   /*
    * The GridGrove account, which owns the seeded daily-pool puzzles.
    *
