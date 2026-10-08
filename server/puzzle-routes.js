@@ -17,7 +17,7 @@ const {
   validatePuzzle, moveKey, GOALS, GOAL_DEFS, MECHANICAL_GOALS, VALIDATION,
   goalsForGameType, describeGoal, buildGameState, playLine, applyPly, placementRules,
   goalMet, terminalOutcome, describeMoveOn, boardMoveKey, sameDrop,
-  immediateWinsByChoice, sameFinish,
+  immediateWinsByChoice, sameFinish, promotionChoiceEquivalent,
 } = require('./puzzle-validation');
 
 /*
@@ -3120,9 +3120,44 @@ function registerPuzzleRoutes(app, {
        * creator clicked rather than the one the disc landed on (sameDrop).
        */
       const sameMove = (a, b) => moveKey(a) === moveKey(b) || sameDrop(solveRules?.game, a, b);
+      /*
+       * The line's move promoting to a different piece, when the line's reply
+       * takes that piece at once and the position comes out the same either
+       * way (promotionChoiceEquivalent) - puzzle 113's kind of choice, where
+       * nothing the solver picked survives to matter. It is the line's move:
+       * normalised to it, so everything after (score, reply, position) reads
+       * the line exactly as for the creator's own choice.
+       */
+      let equivPuzzle = null;
+      const sameAnswer = async (i) => {
+        if (sameMove(submitted[i], mine[i])) return true;
+        if (submitted[i]?.promotionPieceId == null || boardMoveKey(submitted[i]) !== boardMoveKey(mine[i])) return false;
+        try {
+          if (!equivPuzzle) {
+            const rules = solveRules || await loadRulesFor(puzzle);
+            equivPuzzle = {
+              rules,
+              puzzle: {
+                position: await hydratePosition(rules, safeParse(puzzle.position, [])),
+                placeable_definitions: placeableDefinitions(rules),
+                initial_pieces: await loadStartingRoster(rules),
+                side_to_move: puzzle.side_to_move,
+                setup_move: safeParse(puzzle.setup_move),
+                game_type_id: puzzle.game_type_id,
+              },
+            };
+          }
+          if (!(await promotionChoiceEquivalent(equivPuzzle.puzzle, equivPuzzle.rules.game, line, i + 1, submitted[i]))) return false;
+          submitted[i] = mine[i];
+          return true;
+        } catch (err) {
+          console.warn(`[puzzle] promotion equivalence check failed for ${puzzle.id}: ${err.message}`);
+          return false;
+        }
+      };
       let matched = 0;
-      while (matched < submitted.length && matched < mine.length
-             && sameMove(submitted[matched], mine[matched])) matched++;
+      // eslint-disable-next-line no-await-in-loop
+      while (matched < submitted.length && matched < mine.length && await sameAnswer(matched)) matched++;
 
       /*
        * A DIFFERENT move that finishes the puzzle counts.

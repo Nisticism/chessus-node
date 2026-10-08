@@ -821,6 +821,49 @@ async function playLine(puzzle, gameType, line) {
 }
 
 /*
+ * What a position IS, for telling two of them apart: every piece (square,
+ * type, owner, hit points), the reserves and the capture scores. Not which
+ * piece has moved or how often - nothing a solver could see differs by that.
+ */
+function positionSignature(state) {
+  const pieces = (state?.pieces || []).map((p) => [
+    p.x, p.y, String(p.piece_id), Number(p.player_id ?? p.team), p.current_hp ?? '',
+  ].join(':')).sort();
+  return JSON.stringify({ pieces, reserves: state?.reserves || null, scores: state?.captureScores || null });
+}
+
+/*
+ * Is `move` - the line's move at solver step `step`, promoting to a DIFFERENT
+ * piece - the same answer as the line's own?
+ *
+ * Normally two promotion choices are two moves: they leave different pieces
+ * behind. But when the line's next reply takes the promoted piece straight
+ * away, the choice never reaches the board that matters - a forced capture
+ * game (puzzle 113's kind) takes it whatever it became. So: play the line's
+ * move and its reply, play this move and the same reply, and if both come to
+ * the very same position (positionSignature - the captured piece's type can
+ * still differ in a reserve or a score, and then it is NOT the same), it is
+ * one answer. The solve route accepts it in the line's place, and the line
+ * check counts it as one move for the unique-solution badge.
+ *
+ * `puzzle.position` must already be hydrated (as playLine needs it).
+ */
+async function promotionChoiceEquivalent(puzzle, gameType, line, step, move) {
+  const index = (step - 1) * 2;
+  const lineMove = line[index];
+  const reply = line[index + 1];
+  if (!lineMove || !reply || !move || move.promotionPieceId == null) return false;
+  if (boardMoveKey(move) !== boardMoveKey(lineMove)) return false;
+  if (moveKey(move) === moveKey(lineMove)) return true;
+  const prefix = line.slice(0, index);
+  const a = await playLine(puzzle, gameType, [...prefix, lineMove, reply]);
+  if (!a.ok) return false;
+  const b = await playLine(puzzle, gameType, [...prefix, move, reply]);
+  if (!b.ok) return false;
+  return positionSignature(a.state) === positionSignature(b.state);
+}
+
+/*
  * The line with every placement naming the square its piece LANDS on.
  *
  * On a gravity board (Connect Four) a ply's square is only where the piece was
@@ -1459,6 +1502,24 @@ async function checkTwoMoveLine(puzzle, gameType, intended, reached) {
   };
 }
 
+/*
+ * Which failing step of a line check (verifyPuzzleLine's steps) to explain.
+ * The first one the line fails at is not always where it goes wrong: when
+ * nothing at all forces the aim from the NEXT step (count 0), the line's own
+ * reply was already an escape, and naming "defenses" at this step lists the
+ * line's own reply among them - puzzle 113 named the very promotion its line
+ * plays. The defence worth naming is the first failing step after which the
+ * line's own continuation still had a forcing move. null when none fails.
+ */
+function stepToExplain(steps) {
+  const failing = (steps || []).filter((st) => !st.lineIncluded);
+  if (!failing.length) return null;
+  return failing.find((st) => {
+    const next = steps.find((n) => n.step === st.step + 1);
+    return !next || next.count > 0;
+  }) || failing[failing.length - 1];
+}
+
 /** A first move that forces the goal in two, or null (none, or the search could not finish). */
 async function forcedWinInTwo(puzzle, gameType) {
   const { searchWinInTwo } = require('./puzzle-search');
@@ -1482,7 +1543,16 @@ async function checkWholeLine(puzzle, gameType, line, reached, opts) {
   });
   if (!r.supported || !r.complete) return null;
   const pieces = buildGameState(puzzle, gameType).pieces;
-  const broken = r.steps.find((st) => !st.lineIncluded);
+  /*
+   * Which step to explain. The first one the line fails at is not always where
+   * it goes wrong: when nothing at all forces the aim from the NEXT step (count
+   * 0), the line's own reply was already an escape, and naming "defenses" at
+   * this step would list the line's own reply among them - puzzle 113 named
+   * the very promotion its line plays. The defence worth naming is the first
+   * failing step after which the line's own continuation still had a forcing
+   * move.
+   */
+  const broken = stepToExplain(r.steps);
   if (broken) {
     const why = await describeNotForced(puzzle, gameType, line, broken.step, label, broken.forcing,
       { budgetMs: Math.min(60000, opts.budgetMs || 60000), dutyCycle: opts.dutyCycle });
@@ -1920,6 +1990,11 @@ module.exports = {
   immediateWins,
   describeMoveOn,
   boardMoveKey,
+  // Two promotion choices that come to the same position after the line's reply.
+  promotionChoiceEquivalent,
+  // Which failing step of a line check to explain.
+  stepToExplain,
+  positionSignature,
   applyToFreshState,
   applyPly,
   // Exported for the seed generator, which tests a position for a goal directly

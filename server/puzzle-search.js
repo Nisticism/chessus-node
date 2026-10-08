@@ -610,17 +610,35 @@ async function verifyPuzzleLine(puzzle, gameType, line, opts = {}) {
     if (!r.complete) { out.ms = Date.now() - started; return out; }
     const forcing = [...r.winsAtOnce, ...r.forcing];
     /*
-     * Counted by MOVE, not by promotion choice: promoting the same pawn to two
-     * pieces that both win is one move with a choice attached - the
-     * validator's convention (boardMoveKey). Whether the line's own move is
-     * among them is asked exactly, promotion choice included.
+     * How many different answers. Promoting to two different pieces is two
+     * moves - they leave different pieces on the board - EXCEPT when the
+     * line's next reply takes the promoted piece at once and both come to the
+     * same position (promotionChoiceEquivalent): then the choice is not part
+     * of the answer, and the solve route accepts either. The last move has no
+     * reply to decide that, and any winning promotion finishes the puzzle
+     * there, so its choices still count as one move (boardMoveKey). Whether the
+     * line's own move is among them is asked exactly, promotion choice included.
      */
-    const { boardMoveKey } = require('./puzzle-validation');
-    const moves = new Set(forcing.map(boardMoveKey));
+    const { boardMoveKey, promotionChoiceEquivalent } = require('./puzzle-validation');
+    const lastStep = step === solverMoves;
+    let count = new Set(forcing.map(boardMoveKey)).size;
+    if (!lastStep) {
+      const seen = new Set();
+      count = 0;
+      for (const m of forcing) {
+        const k = moveKey(m);
+        if (seen.has(k)) continue;
+        seen.add(k);
+        // eslint-disable-next-line no-await-in-loop
+        const sameAsLine = boardMoveKey(m) === boardMoveKey(lineMove) && await promotionChoiceEquivalent(puzzle, gameType, line, step, m);
+        if (sameAsLine && moveKey(m) !== moveKey(lineMove) && forcing.some((f) => moveKey(f) === moveKey(lineMove))) continue;
+        count += 1;
+      }
+    }
     out.steps.push({
       step, depth,
       forcing,
-      count: moves.size,
+      count,
       lineIncluded: forcing.some((m) => moveKey(m) === moveKey(lineMove)),
     });
   }

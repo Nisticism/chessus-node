@@ -51,7 +51,9 @@ async function verify(puzzle, gameType, opts, onProgress) {
     const seen = new Set();
     const named = [];
     for (const m of st.forcing) {
-      const k = boardMoveKey(m);
+      // Each promotion choice by name: they are different answers unless the
+      // line's reply makes them the same (the step's count says how many).
+      const k = `${boardMoveKey(m)}|${m.promotionPieceId ?? ''}`;
       if (seen.has(k)) continue;
       seen.add(k);
       if (named.length < 6) named.push(describeMoveOn(pieces, gameType, m));
@@ -67,7 +69,9 @@ async function verify(puzzle, gameType, opts, onProgress) {
   } else if (!r.complete) {
     detail = r.reason ? `The search stopped: ${r.reason}.` : 'The search stopped before it finished.';
   } else if (!r.lineForces) {
-    const broken = steps.find((s) => !s.lineIncluded);
+    // Not always the first failing step (stepToExplain).
+    const { stepToExplain } = require('./puzzle-validation');
+    const broken = stepToExplain(r.steps);
     const brokenStep = r.steps.find((s) => s.step === broken.step);
     verdict = 'not_forced';
     const { describeNotForced } = require('./puzzle-validation');
