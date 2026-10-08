@@ -1371,6 +1371,43 @@ async function immediateWins(puzzle, gameType, intended) {
 }
 
 /*
+ * The first of the solver's moves, before the last, at which the game can
+ * already be won outright - the line plays on when it could have ended.
+ *
+ * immediateWins asks this of the first move only; a win that only appears
+ * later in the line was missed. Puzzle 102: after its first placement and
+ * the reply, a disc in column d makes four in a row at the solver's SECOND
+ * move, and the line goes on to a fourth. Played along the line itself
+ * (the replies are the creator's), step by step. The last move is not
+ * asked: a different finishing move there is simply another way to finish.
+ *
+ * @returns {Promise<{step, wins, pieces}|null>}  wins: the winning moves;
+ *   pieces: the board they are played on, for naming them.
+ */
+async function earlierWin(puzzle, gameType, line) {
+  const steps = Math.ceil(line.length / 2);
+  for (let step = 2; step < steps; step++) {
+    const prefix = line.slice(0, (step - 1) * 2);
+    // eslint-disable-next-line no-await-in-loop
+    const played = await playLine(puzzle, gameType, prefix);
+    if (!played.ok) return null;
+    const at = { ...puzzle, position: played.state.pieces, setup_move: prefix[prefix.length - 1] };
+    // eslint-disable-next-line no-await-in-loop
+    const wins = await immediateWins(at, gameType, line[(step - 1) * 2]);
+    if (wins.length) return { step, wins, pieces: played.state.pieces };
+  }
+  return null;
+}
+
+/** An earlierWin result in words. */
+function describeEarlierWin(found, gameType, moves) {
+  const named = found.wins.slice(0, 3).map((m) => describeMoveOn(found.pieces, gameType, m));
+  const more = found.wins.length > 3 ? ` (and ${found.wins.length - 3} more)` : '';
+  return `the game can already be won at your move ${found.step} - ${named.join('; ')}${more} - `
+    + `but the line plays on to move ${moves}. A faster win means the line is not the solution.`;
+}
+
+/*
  * Every move that wins the game at once, with EACH PROMOTION CHOICE its own
  * move: [{ move, promotedName }]. immediateWins asks "which moves win" and
  * counts a promotion once, played with the game's first offered piece; this
@@ -1903,6 +1940,20 @@ async function validatePuzzle(puzzle, gameType, opts = {}) {
       };
     }
 
+    // ... and at any later move of the line before its last (earlierWin).
+    const later = await earlierWin(puzzle, gameType, line);
+    if (later) {
+      return {
+        status: VALIDATION.AMBIGUOUS,
+        solutions: [intended],
+        intendedWorks: true,
+        goalReached: reached,
+        quickerWin: true,
+        unique: false,
+        detail: describeEarlierWin(later, gameType, moves),
+      };
+    }
+
     /*
      * Searched, not taken on trust: a two-move line is checked against EVERY
      * defence (puzzle-search.js), and a longer one for a forced win in two that
@@ -2128,6 +2179,10 @@ module.exports = {
   stepToExplain,
   // Does a game ending meet the goal; why a line misses its goal.
   endingMeetsGoal,
+  // A win the line plays past; in words.
+  earlierWin,
+  describeEarlierWin,
+  immediateWins,
   lineMissesGoal,
   positionSignature,
   applyToFreshState,

@@ -28,8 +28,8 @@ export const gravityOf = (gameType) => {
 
 /**
  * Where a piece dropped at (x, y) comes to rest, or null if the column is full.
- * Same walk as the server's: run to the far edge of the column, then back until
- * a square is free.
+ * Same walk as the server's: it falls from where it is put and stops on the
+ * first piece below; a click on a piece drops onto that stack.
  */
 // `size` ({ w, h }): a multi-tile piece's whole footprint falls as one and
 // its anchor (top-left) is returned - same rule as the server.
@@ -53,8 +53,22 @@ export const restingSquare = (gravity, clicked, boardWidth, boardHeight, isOccup
   y = Math.min(y, boardHeight - h);
   if (!onBoard(x, y)) return null;
 
-  while (onBoard(x + dx, y + dy)) { x += dx; y += dy; }
-  while (onBoard(x, y) && footprintOccupied(x, y)) { x -= dx; y -= dy; }
-
-  return onBoard(x, y) ? { x, y } : null;
+  /*
+   * The piece falls FROM where it is put and stops on the first piece below
+   * it - it never passes through a piece. (It used to land on the lowest
+   * empty square of the column, so in a column with a gap - a piece moved up
+   * and left a hole under it - a disc dropped above passed through that piece
+   * into the hole: puzzle 102's c4 landed on c2, under the disc on c3.)
+   *
+   * Clicking an occupied square still means "drop into this column": the
+   * piece goes on top of the stack that was clicked - up against gravity to
+   * the first free square, which is resting on the stack by construction.
+   */
+  if (footprintOccupied(x, y)) {
+    while (onBoard(x, y) && footprintOccupied(x, y)) { x -= dx; y -= dy; }
+    if (!onBoard(x, y)) return null;   // the whole column is full
+    return { x, y };
+  }
+  while (onBoard(x + dx, y + dy) && !footprintOccupied(x + dx, y + dy)) { x += dx; y += dy; }
+  return { x, y };
 };

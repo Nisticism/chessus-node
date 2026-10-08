@@ -84,9 +84,31 @@ async function verify(puzzle, gameType, opts, onProgress) {
       }
     }
   } catch (_) { /* judged by the search as before */ }
+  /*
+   * A win the line plays past (earlierWin): the game could already have been
+   * won at an earlier move of the solver's, so the recorded line is not THE
+   * solution - its own reason, more exact than "more than one solution".
+   */
+  let earlier = null;
+  if (!missed) {
+    try {
+      const { earlierWin, describeEarlierWin, immediateWins } = require('./puzzle-validation');
+      const atOnce = await immediateWins(puzzle, gameType, line[0]);
+      const k = Math.ceil(line.length / 2);
+      if (atOnce.length && k > 1) {
+        earlier = describeEarlierWin({ step: 1, wins: atOnce, pieces: buildGameState(puzzle, gameType).pieces }, gameType, k);
+      } else {
+        const found = await earlierWin(puzzle, gameType, line);
+        if (found) earlier = describeEarlierWin(found, gameType, k);
+      }
+    } catch (_) { /* judged by the search as before */ }
+  }
   if (missed) {
     verdict = 'goal_not_met';
     detail = `The line does not meet the puzzle's goal: ${missed}`;
+  } else if (earlier) {
+    verdict = 'earlier_win';
+    detail = `A faster win was missed: ${earlier}`;
   } else if (!r.supported) {
     detail = `This puzzle cannot be searched: ${r.reason}.`;
   } else if (!r.complete) {

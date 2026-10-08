@@ -53,18 +53,12 @@ function gravityOf(gameType) {
  * would cover there is free. A click anywhere in the columns it spans works.
  *
  * Walks from the clicked square in the direction of gravity for as long as the
- * next square is empty and on the board. Returns null when the clicked square
- * is itself occupied AND cannot fall - which is how a full column is refused,
- * rather than by a separate emptiness test that would have to know about
- * gravity to be right.
+ * next square is empty and on the board, so the piece rests on the first piece
+ * below it. A click on an occupied square drops onto that stack instead (the
+ * first free square above it); null when there is none - a full column.
  *
- * Deliberately tolerant about WHERE in the column you click: in Connect Four
- * you pick a column, not a square, so a click on an occupied square still
- * drops into the lowest empty one beneath it... except there is none, because
- * the pieces below it are what it is resting on. So the walk starts from the
- * clicked square when that is empty, and from the far edge of the column when
- * it is not - which is the same thing said from the other end, and is what
- * makes clicking anywhere in a column work.
+ * In a column with no gaps - Connect Four, where pieces never move - this is
+ * the lowest empty square wherever in the column you click.
  *
  * @param {{x:number,y:number}} clicked  the square the player picked
  * @param {(x:number,y:number)=>boolean} isOccupied
@@ -85,12 +79,6 @@ function restingSquare(gravity, clicked, boardWidth, boardHeight, isOccupied, si
     return false;
   };
 
-  /*
-   * Start at the far edge of the column the click landed in and walk BACK
-   * against gravity until the first empty square. That square is where the
-   * piece comes to rest, whichever square in the column was clicked - which is
-   * the behaviour a player expects from a board that drops pieces.
-   */
   let x = Number(clicked.x);
   let y = Number(clicked.y);
   if (!(x >= 0 && y >= 0 && x < boardWidth && y < boardHeight)) return null;
@@ -99,13 +87,23 @@ function restingSquare(gravity, clicked, boardWidth, boardHeight, isOccupied, si
   y = Math.min(y, boardHeight - h);
   if (!onBoard(x, y)) return null;
 
-  // Run to the far edge in the direction of the fall.
-  while (onBoard(x + dx, y + dy)) { x += dx; y += dy; }
-
-  // Then walk back until a square is free.
-  while (onBoard(x, y) && footprintOccupied(x, y)) { x -= dx; y -= dy; }
-
-  if (!onBoard(x, y)) return null;   // the whole column is full
+  /*
+   * The piece falls FROM where it is put and stops on the first piece below
+   * it - it never passes through a piece. (It used to land on the lowest
+   * empty square of the column, so in a column with a gap - a piece moved up
+   * and left a hole under it - a disc dropped above passed through that piece
+   * into the hole: puzzle 102's c4 landed on c2, under the disc on c3.)
+   *
+   * Clicking an occupied square still means "drop into this column": the
+   * piece goes on top of the stack that was clicked - up against gravity to
+   * the first free square, which is resting on the stack by construction.
+   */
+  if (footprintOccupied(x, y)) {
+    while (onBoard(x, y) && footprintOccupied(x, y)) { x -= dx; y -= dy; }
+    if (!onBoard(x, y)) return null;   // the whole column is full
+    return { x, y };
+  }
+  while (onBoard(x + dx, y + dy) && !footprintOccupied(x + dx, y + dy)) { x += dx; y += dy; }
   return { x, y };
 }
 
@@ -118,7 +116,7 @@ function describeGravity(gameType) {
   }[gravity.direction];
   const axis = gravity.direction === 'down' || gravity.direction === 'up' ? 'column' : 'row';
   return `Pieces you place fall towards ${where}, so choosing a ${axis} is enough`
-    + ' - the piece lands on the first free square. Both players see the board'
+    + ' - the piece falls until it lands on another piece or the edge. Both players see the board'
     + ' the same way up.';
 }
 

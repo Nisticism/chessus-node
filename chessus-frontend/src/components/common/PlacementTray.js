@@ -25,6 +25,9 @@ const PlacementTray = ({
   disabled = false,
 }) => {
   if (!items || !items.length) return null;
+  // The owner's number is only worth showing when the tray holds more than one
+  // owner's pieces; a solver placing only their own got a stray "2" on it.
+  const owners = new Set(items.map((item) => item.player));
 
   return (
     <div className={`${styles.tray} ${tone === "discord" ? styles.discord : ""}`}>
@@ -50,8 +53,8 @@ const PlacementTray = ({
                 ? <img src={src} alt="" className={styles.img} />
                 : <span className={styles.letter}>{name.slice(0, 1)}</span>}
               {/* Two identical-looking stones differ only in who owns them, so
-                  the number has to be on the button. */}
-              <span className={styles.who}>{item.player === 0 ? "N" : item.player}</span>
+                  the number has to be on the button - when there are two. */}
+              {owners.size > 1 && <span className={styles.who}>{item.player === 0 ? "N" : item.player}</span>}
             </button>
           );
         })}

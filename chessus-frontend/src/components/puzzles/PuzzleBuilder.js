@@ -718,6 +718,11 @@ const PuzzleBuilder = () => {
   const nextSide = nextIsSolver
     ? Number(sideToMove)
     : (Number(sideToMove) === 1 ? 2 : 1);
+  // Solution step: only the pieces the side to move in the line can place.
+  const shownTrayItems = mode === 'solution'
+    ? trayItems.filter((item) => item.player === 0 || Number(item.player) === nextSide)
+    : trayItems;
+  const trayOwners = new Set(shownTrayItems.map((item) => item.player)).size;
   const nextMoveNumber = Math.floor(nextPlyIndex / 2) + 1;
   const lineFull = solutionLine.length >= MAX_PLIES;
 
@@ -1714,11 +1719,16 @@ const PuzzleBuilder = () => {
             */}
           {trayOpen && (
             <div className={styles["tray"]}>
+              {/* In the solution step the tray holds the pieces of whoever's
+                  turn it is in the line - the solver's, or the opponent's for
+                  a reply that is a placement - and says which. */}
               <span className={styles["tray-label"]}>
-                {mode === 'solution' ? 'Answer by placing' : 'Place a piece'}
+                {mode === 'solution'
+                  ? (nextIsSolver ? 'Answer by placing' : "The opponent's reply: place a piece")
+                  : 'Place a piece'}
               </span>
               <div className={styles["tray-items"]}>
-                {trayItems.map((item) => {
+                {shownTrayItems.map((item) => {
                   const src = imageFor(
                     {
                       piece_id: item.template.piece_id,
@@ -1744,7 +1754,7 @@ const PuzzleBuilder = () => {
                       {src
                         ? <img src={src} alt="" className={styles["tray-img"]} />
                         : <span className={styles["tray-letter"]}>{name.slice(0, 1)}</span>}
-                      <span className={styles["tray-who"]}>{item.player === 0 ? 'N' : item.player}</span>
+                      {trayOwners > 1 && <span className={styles["tray-who"]}>{item.player === 0 ? 'N' : item.player}</span>}
                     </button>
                   );
                 })}
