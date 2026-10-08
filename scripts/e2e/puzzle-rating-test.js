@@ -8,8 +8,12 @@
  */
 const {
   rateAttempt, scoreAttempt, foldSolverIntoPuzzleRating, isRatingPublic,
-  expectedScore, ANCHOR_RATING, MIN_SOLVERS_FOR_PUBLIC_RATING,
+  expectedScore, ANCHOR_RATING, PUZZLE_ELO_DEFAULT, MIN_SOLVERS_FOR_PUBLIC_RATING,
 } = require('../../server/puzzle-rating');
+
+// Everything is measured from the anchor, so the checks hold wherever it sits
+// (1200 until 2026-10-08, 1000 since).
+const A = ANCHOR_RATING;
 
 const results = [];
 const check = (name, ok, detail) => results.push({ name, ok, detail });
@@ -18,10 +22,11 @@ const check = (name, ok, detail) => results.push({ name, ok, detail });
 const solved = (elo, n = 50) => rateAttempt({ currentElo: elo, ratedAttemptsSoFar: n, solved: true }).delta;
 const failed = (elo, n = 50) => rateAttempt({ currentElo: elo, ratedAttemptsSoFar: n, solved: false }).delta;
 
-const gains = [800, 1200, 1600, 2000].map(solved);
-const losses = [800, 1200, 1600, 2000].map(failed);
-console.log(`  gains  by rating 800/1200/1600/2000: ${gains.join(', ')}`);
-console.log(`  losses by rating 800/1200/1600/2000: ${losses.join(', ')}`);
+const ladder = [A - 400, A, A + 400, A + 800];
+const gains = ladder.map(solved);
+const losses = ladder.map(failed);
+console.log(`  gains  by rating ${ladder.join('/')}: ${gains.join(', ')}`);
+console.log(`  losses by rating ${ladder.join('/')}: ${losses.join(', ')}`);
 
 check(
   'gains shrink as your rating rises',
@@ -33,6 +38,8 @@ check(
   losses.every((l, i) => i === 0 || Math.abs(l) > Math.abs(losses[i - 1])) && losses.every((l) => l < 0),
   losses.join(', ')
 );
+check('new players start at the anchor, on the same 1000 as game Elo',
+  PUZZLE_ELO_DEFAULT === A && A === 1000, `default ${PUZZLE_ELO_DEFAULT}, anchor ${A}`);
 check(
   'a solver at the anchor gains and loses symmetrically',
   Math.abs(solved(ANCHOR_RATING) + failed(ANCHOR_RATING)) <= 1,
@@ -40,32 +47,32 @@ check(
 );
 check(
   'solving always gains at least a point, however high you are',
-  solved(2400) >= 1 && solved(2000) >= 1,
-  `${solved(2000)} at 2000, ${solved(2400)} at 2400`
+  solved(A + 1200) >= 1 && solved(A + 800) >= 1,
+  `${solved(A + 800)} at ${A + 800}, ${solved(A + 1200)} at ${A + 1200}`
 );
 check(
   'failing always costs at least a point, however low you are',
-  failed(400) <= -1,
-  `${failed(400)} at 400`
+  failed(A - 800) <= -1,
+  `${failed(A - 800)} at ${A - 800}`
 );
 check(
   'a new solver moves faster than a settled one',
-  solved(1200, 0) > solved(1200, 100),
-  `${solved(1200, 0)} vs ${solved(1200, 100)}`
+  solved(A, 0) > solved(A, 100),
+  `${solved(A, 0)} vs ${solved(A, 100)}`
 );
 
 // A rating should settle where solve rate meets expectation, not run away.
-let elo = 1200;
+let elo = PUZZLE_ELO_DEFAULT;
 for (let i = 0; i < 400; i++) {
   elo = rateAttempt({ currentElo: elo, ratedAttemptsSoFar: 100, solved: Math.random() < 0.9 }).after;
 }
 check(
   'a 90% solver settles well above the anchor rather than running away',
-  elo > 1400 && elo < 1800,
+  elo > A + 200 && elo < A + 600,
   `settled at ${elo}`
 );
 
-let elo2 = 1200;
+let elo2 = PUZZLE_ELO_DEFAULT;
 for (let i = 0; i < 400; i++) {
   elo2 = rateAttempt({ currentElo: elo2, ratedAttemptsSoFar: 100, solved: Math.random() < 0.5 }).after;
 }
@@ -86,10 +93,10 @@ check(
 check('a single-move puzzle is all or nothing',
   scoreAttempt(['a'], ['a'], same) === 1 && scoreAttempt(['x'], ['a'], same) === 0, 'x');
 
-const partial = rateAttempt({ currentElo: 1200, ratedAttemptsSoFar: 50, score: 0.5 });
-const full = rateAttempt({ currentElo: 1200, ratedAttemptsSoFar: 50, score: 1 });
-const none = rateAttempt({ currentElo: 1200, ratedAttemptsSoFar: 50, score: 0 });
-console.log(`  at 1200: full ${full.delta}, half ${partial.delta}, none ${none.delta}`);
+const partial = rateAttempt({ currentElo: A, ratedAttemptsSoFar: 50, score: 0.5 });
+const full = rateAttempt({ currentElo: A, ratedAttemptsSoFar: 50, score: 1 });
+const none = rateAttempt({ currentElo: A, ratedAttemptsSoFar: 50, score: 0 });
+console.log(`  at ${A}: full ${full.delta}, half ${partial.delta}, none ${none.delta}`);
 check(
   'partial credit lands between a solve and a miss',
   partial.delta < full.delta && partial.delta > none.delta,
@@ -97,7 +104,7 @@ check(
 );
 
 // --- the puzzle's emergent rating -------------------------------------------
-let pz = { rating: 1200, sampleCount: 0 };
+let pz = { rating: PUZZLE_ELO_DEFAULT, sampleCount: 0 };
 // First solver replaces the placeholder rather than averaging with it.
 pz = foldSolverIntoPuzzleRating({ rating: pz.rating, sampleCount: pz.sampleCount, solverElo: 1900 });
 check('the first solver sets the rating outright', pz.rating === 1900 && pz.sampleCount === 1, JSON.stringify(pz));

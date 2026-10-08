@@ -619,7 +619,7 @@ tableMigrations.push(
       -- actually solved it, not a number the creator picks. Meaningless until
       -- enough people have tried, so it stays hidden below a threshold, and the
       -- creator can hide it outright.
-      rating INT NOT NULL DEFAULT 1200,
+      rating INT NOT NULL DEFAULT 1000,
       rating_sample_count INT UNSIGNED NOT NULL DEFAULT 0,
       hide_rating TINYINT(1) NOT NULL DEFAULT 0,
       attempt_count INT UNSIGNED NOT NULL DEFAULT 0,
@@ -942,7 +942,7 @@ const migrations = [
   {
     table: 'users',
     column: 'puzzle_elo',
-    sql: "ALTER TABLE users ADD COLUMN puzzle_elo INT NOT NULL DEFAULT 1200",
+    sql: "ALTER TABLE users ADD COLUMN puzzle_elo INT NOT NULL DEFAULT 1000",
     description: "Add puzzle_elo to users (kept separate from match elo)"
   },
   {
@@ -4497,7 +4497,7 @@ const runMigrations = async () => {
 
   /*
    * Whether a player HAS a rating, as opposed to the number everybody starts
-   * on. elo starts at 1000 and puzzle_elo at 1200 for everyone, so the number
+   * on. elo and puzzle_elo both start at 1000 for everyone, so the number
    * alone cannot tell a player who has never played from one who has played
    * and come back to the start - and sorting by it put the never-played among
    * the rated. These count what moved the rating:
@@ -4557,6 +4557,7 @@ const runMigrations = async () => {
         // Solves or a rating that moved with no attempt left on record (attempts
         // can go with their puzzle) still mean the rating was played for.
         await runMigration(
+          // (1200 was the starting puzzle rating then; this runs before the move to 1000 below.)
           "UPDATE users SET puzzles_rated = GREATEST(puzzles_solved, 1) WHERE puzzles_rated = 0 AND (puzzles_solved > 0 OR puzzle_elo <> 1200)",
           "Backfill puzzles_rated for ratings that moved without a recorded attempt"
         );
@@ -4567,6 +4568,77 @@ const runMigrations = async () => {
     }
   } catch (err) {
     console.error('Error adding puzzles_rated to users:', err.message);
+  }
+
+  /*
+   * Puzzle ratings start at 1000, like game Elo, instead of 1200.
+   *
+   * Every puzzle rating moves down 200 together with the anchor it is scored
+   * against (puzzle-rating.js): solvers, the puzzles' emergent ratings (the
+   * mean of their solvers'), and the before/after recorded on each attempt so
+   * a player's history does not jump. Ratings are only ever compared with
+   * the anchor and with each other, so the move changes nobody's standing.
+   *
+   * Exactly once. Moving the ratings twice would take 400 off everyone, so
+   * this does not go through runOnceDataMigration, which records the run
+   * AFTER the work: here the ledger row is written FIRST, in the same
+   * transaction as the updates. A second server starting at the same moment
+   * fails on that row's key and does nothing; a crash part-way rolls the
+   * whole thing back, ledger row included, to be run again next boot.
+   */
+  try {
+    await db_pool.query(`
+      CREATE TABLE IF NOT EXISTS applied_data_migrations (
+        migration_key VARCHAR(120) NOT NULL PRIMARY KEY,
+        description   VARCHAR(255) NULL,
+        applied_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        rows_affected INT NULL
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+    const KEY = 'puzzle-ratings-start-at-1000';
+    const [[seen]] = await db_pool.query('SELECT COUNT(*) AS n FROM applied_data_migrations WHERE migration_key = ?', [KEY]);
+    if (seen.n === 0) {
+      const conn = await db_pool.getConnection();
+      try {
+        await conn.beginTransaction();
+        await conn.query(
+          'INSERT INTO applied_data_migrations (migration_key, description) VALUES (?, ?)',
+          [KEY, 'Move every puzzle rating down 200: puzzle ratings start at 1000, like Elo']
+        );
+        const [u] = await conn.query('UPDATE users SET puzzle_elo = GREATEST(100, puzzle_elo - 200)');
+        const [p] = await conn.query('UPDATE puzzles SET rating = GREATEST(100, rating - 200)');
+        const [a] = await conn.query(
+          `UPDATE puzzle_attempts
+              SET rating_before = CASE WHEN rating_before IS NULL THEN NULL ELSE GREATEST(100, rating_before - 200) END,
+                  rating_after  = CASE WHEN rating_after  IS NULL THEN NULL ELSE GREATEST(100, rating_after  - 200) END
+            WHERE rating_before IS NOT NULL OR rating_after IS NOT NULL`
+        );
+        const rows = u.affectedRows + p.affectedRows + a.affectedRows;
+        await conn.query('UPDATE applied_data_migrations SET rows_affected = ? WHERE migration_key = ?', [rows, KEY]);
+        await conn.commit();
+        console.log(`[DB] Data migration '${KEY}' applied: ${u.affectedRows} player(s), ${p.affectedRows} puzzle(s), ${a.affectedRows} attempt(s) - it will not run again.`);
+        migrationsRun++;
+      } catch (err) {
+        await conn.rollback().catch(() => {});
+        if (err.code !== 'ER_DUP_ENTRY') throw err;   // another server got there first
+      } finally {
+        conn.release();
+      }
+    }
+    // New players and new puzzles start at 1000 too. (Only a default; safe to repeat.)
+    const [[d]] = await db_pool.query(
+      `SELECT COLUMN_DEFAULT AS v FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'puzzle_elo'`);
+    if (d && String(d.v) !== '1000') {
+      await runMigration('ALTER TABLE users ALTER COLUMN puzzle_elo SET DEFAULT 1000', 'New players start on a 1000 puzzle rating');
+    }
+    const [[pd]] = await db_pool.query(
+      `SELECT COLUMN_DEFAULT AS v FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'puzzles' AND COLUMN_NAME = 'rating'`);
+    if (pd && String(pd.v) !== '1000') {
+      await runMigration('ALTER TABLE puzzles ALTER COLUMN rating SET DEFAULT 1000', 'New puzzles start on a 1000 rating');
+    }
+  } catch (err) {
+    console.error('Error moving puzzle ratings to a 1000 start:', err.message);
   }
 
   // Widen notifications.content from VARCHAR(500) to TEXT so that full

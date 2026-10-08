@@ -1813,10 +1813,10 @@ app.get("/api/users", async (req, res) => {
     const countQuery = `SELECT COUNT(*) as total FROM users u ${joinClause} ${whereSQL}`;
     // Get paginated users - exclude personal information (email, first_name, last_name)
     /*
-     * puzzles_solved travels with puzzle_elo so the list can tell a rating
-     * somebody earned from the default everybody starts on. A 1200 with no
-     * solves is not a rating, it is an initial value, and showing it as one
-     * would put unrated players above rated ones who have simply had a bad week.
+     * rated_games and puzzles_rated travel with the ratings so the list can
+     * tell a rating somebody earned from the 1000 everybody starts on. A 1000
+     * never played for is not a rating, it is an initial value, and showing it
+     * as one would put unrated players above rated ones having a bad week.
      */
     /*
      * By a rating, the players who have one come first in EITHER direction;

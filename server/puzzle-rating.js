@@ -22,7 +22,14 @@
  *
  * A rating therefore settles where your solve rate matches the expected score -
  * roughly, it measures how often you solve puzzles. Someone solving 90% settles
- * near 1580; someone solving half stays near the 1200 anchor.
+ * near 1380; someone solving half stays near the 1000 anchor.
+ *
+ * The anchor is where everyone starts, and the same 1000 a player's game Elo
+ * starts on. It was 1200 until 2026-10-08, when every puzzle rating was moved
+ * down 200 with it (migrations.js, 'puzzle-ratings-start-at-1000'). Only the
+ * DIFFERENCE between a rating and the anchor enters the arithmetic, so moving
+ * both by the same amount changed no rating's standing and no future gain or
+ * loss - it relabelled the scale. Changing one without the other would not.
  *
  * Switching the anchor to the puzzle's own emergent rating (once it has enough
  * samples) would make hard puzzles worth more, and is a one-line change here -
@@ -30,10 +37,10 @@
  * puzzle the feedback loop is louder than the signal.
  */
 
-const PUZZLE_ELO_DEFAULT = 1200;
+const PUZZLE_ELO_DEFAULT = 1000;
 
 // What a puzzle is assumed to be worth while we have nothing better to go on.
-const ANCHOR_RATING = 1200;
+const ANCHOR_RATING = 1000;
 
 // Ratings move faster while a solver is new, then settle down.
 const PROVISIONAL_ATTEMPTS = 20;
