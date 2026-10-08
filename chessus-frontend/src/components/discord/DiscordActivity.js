@@ -810,6 +810,7 @@ export default function DiscordActivity() {
     return movable ? 'own' : 'other';
   }, [board, puzzle, busy, finished, replaying]);
 
+  const justPickedRef = useRef(null);
   const startPress = useCallback((e, x, y) => {
     // `replaying`: the position is still arriving.
     if (!puzzle || busy || finished || replaying) return;
@@ -817,12 +818,16 @@ export default function DiscordActivity() {
     const here = board?.[key];
     if (!here || Number(here.player_id) !== Number(puzzle.side_to_move)) return;
     const [ay, ax] = key.split(',').map(Number);
+    // This press picks the piece up, so the click that ends it must not then
+    // put it back down (clickSquare's "click the held piece again"). Without
+    // this a plain mouse click selected and deselected in one go - nothing.
+    justPickedRef.current = picked === key ? null : key;
     setPicked(key);
     setVerdict(null);
     // `grab`: which square of a multi-tile piece was pressed.
     setDrag({ fromKey: key, x: e.clientX, y: e.clientY, grab: { x: x - ax, y: y - ay } });
     loadHints(x, y).then(setHints);
-  }, [puzzle, busy, finished, replaying, board, loadHints]);
+  }, [puzzle, busy, finished, replaying, board, loadHints, picked]);
 
   useEffect(() => {
     if (!drag) return undefined;
@@ -975,6 +980,9 @@ export default function DiscordActivity() {
      * mouse. On a phone there is no hover to come back to, so clearing here
      * meant the second tap on a piece showed nothing at all.
      */
+    // The click ending the press that just picked this piece up (startPress).
+    if (justPickedRef.current === key) { justPickedRef.current = null; return; }
+    justPickedRef.current = null;
     if (picked === key) { setPicked(null); loadHints(x, y).then(setHints); return; }
     /*
      * A click or tap on a square the piece can go to moves it. Clicking another
