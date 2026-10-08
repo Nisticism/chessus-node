@@ -51,6 +51,8 @@ const solverMovesOf = (p) => Math.ceil((safeParse(p.solution_line, []) || []).le
 
 const puzzleUrl = (p) => `/games/${p.game_type_id}/puzzles/${p.id}`;
 
+const { notifyUser } = require('./notification-push');
+
 function registerPuzzleVerificationRoutes(app, { db_pool, dbHelpers, authenticateToken, hasAdminRole, puzzleValidateLimiter }) {
   const isStaff = (user) => hasAdminRole(user?.role);
 
@@ -61,16 +63,11 @@ function registerPuzzleVerificationRoutes(app, { db_pool, dbHelpers, authenticat
   const notify = async (userId, { senderId = null, title, content, relatedId = null, actionUrl = null }) => {
     if (!userId) return;
     try {
-      await dbHelpers.createNotification({
+      // The whole row goes out (notification-push.js): it used to push only
+      // the title, so the entry showed no reason and no link until a reload.
+      await notifyUser({
         user_id: userId, sender_id: senderId, type: 'system', title, content, related_id: relatedId, action_url: actionUrl,
       });
-      const gameSocket = require('./game-socket');
-      const socketId = gameSocket.userSockets?.get(String(userId));
-      if (socketId && gameSocket.getIO()) {
-        const unreadCount = await dbHelpers.getUnreadNotificationCount(userId);
-        gameSocket.getIO().to(socketId).emit('newNotification', { type: 'system', title });
-        gameSocket.getIO().to(socketId).emit('unreadNotificationCount', { unreadCount });
-      }
     } catch (err) {
       console.error('[puzzle-verification] notification failed:', err.message);
     }

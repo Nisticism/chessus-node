@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef, useLayoutEffect } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { Link, useNavigate } from "react-router-dom";
 import {
@@ -23,6 +23,58 @@ const NOTIFICATION_ICONS = {
   announcement: "📣",
   ai_analysis_request: "📊",
   tournament: "🏆",
+  game_outcome: "🏁",
+  game_chat: "🗨️",
+  mention: "🏷️",
+  reply: "↩️",
+  corres_low_time: "⏰",
+  moderation_approved: "✅",
+  moderation_rejected: "🚫",
+  physical_board_request: "📦",
+};
+
+/*
+ * A notification's text, wrapped (it was cut to one line, so a verification
+ * reason or an announcement could not be read in the list) and held to a few
+ * lines: past that it fades out with a "Show more" that opens it in place.
+ * Re-measured when the width changes, so a phone gets the button when a wide
+ * screen does not need it.
+ */
+const NotificationText = ({ text }) => {
+  const ref = useRef(null);
+  const [open, setOpen] = useState(false);
+  const [overflows, setOverflows] = useState(false);
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || open) return undefined;
+    const measure = () => setOverflows(el.scrollHeight > el.clientHeight + 1);
+    measure();
+    if (typeof ResizeObserver === "undefined") return undefined;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [text, open]);
+
+  return (
+    <>
+      <div
+        ref={ref}
+        className={`${styles["notification-content"]} ${open ? "" : styles.clamped} ${!open && overflows ? styles.faded : ""}`}
+      >
+        {renderContent(text)}
+      </div>
+      {(overflows || open) && (
+        <button
+          type="button"
+          className={styles["notification-more"]}
+          onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }}
+        >
+          {open ? "Show less" : "Show more"}
+        </button>
+      )}
+    </>
+  );
 };
 
 const formatTimeAgo = (dateStr) => {
@@ -189,11 +241,7 @@ const NotificationsPage = () => {
                   <div className={styles["notification-title"]}>
                     {notification.title}
                   </div>
-                  {notification.content && (
-                    <div className={styles["notification-content"]}>
-                      {renderContent(notification.content)}
-                    </div>
-                  )}
+                  {notification.content && <NotificationText text={notification.content} />}
                   <div className={styles["notification-time"]}>
                     {formatTimeAgo(notification.created_at)}
                     {notification.sender_username &&

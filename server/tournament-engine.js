@@ -243,14 +243,7 @@ const sendNotification = async ({ userId, type, title, content, tournamentId, ac
     // Live delivery, if the socket layer is up. Required lazily: the socket
     // module is large, and this file is loaded by scripts that never start it.
     try {
-      const gameSocket = require('./game-socket');
-      const io = gameSocket.getIO && gameSocket.getIO();
-      const socketId = gameSocket.userSockets && gameSocket.userSockets.get(String(userId));
-      if (io && socketId) {
-        io.to(socketId).emit('newNotification', notification);
-        const unreadCount = await dbHelpers.getUnreadNotificationCount(userId);
-        io.to(socketId).emit('unreadNotificationCount', { unreadCount });
-      }
+      await require('./notification-push').pushNotification(userId, notification);
     } catch (_) { /* no socket layer in this process */ }
   } catch (err) {
     // A notification that cannot be delivered must not undo a result that has

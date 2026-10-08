@@ -1288,7 +1288,11 @@ const createNotification = async ({ user_id, sender_id, type, title, content, re
      VALUES (?, ?, ?, ?, ?, ?, ?)`,
     [user_id, sender_id || null, type, title, content || null, related_id || null, action_url || null]
   );
-  return { id: result.insertId, user_id, sender_id, type, title, content, related_id, action_url, is_read: 0, is_actioned: 0 };
+  return {
+    id: result.insertId, user_id, sender_id: sender_id || null, type, title, content: content || null,
+    related_id: related_id || null, action_url: action_url || null, is_read: 0, is_actioned: 0,
+    created_at: new Date().toISOString(),
+  };
 };
 
 const findUnreadNotification = async (userId, type, relatedId) => {

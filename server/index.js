@@ -351,6 +351,7 @@ app.use((req, res, next) => {
 // const path = require('path');
 const db_pool = require("../configs/db");
 const dbHelpers = require("./db-helpers");
+const { notifyUser, pushNotification } = require("./notification-push");
 const { checkUsername, validateContent, checkProfessionalName, checkPiecePatterns, checkBoardPatterns } = require("./content-moderation");
 const imageModeration = require("./image-moderation");
 const initialStateValidator = require("./initial-state-validator");
@@ -388,26 +389,17 @@ async function notifyMentionedUsers(text, senderId, senderName, contextTitle, ac
   try {
     const usernames = extractMentionedUsernames(text);
     if (usernames.length === 0) return;
-    const io = app.get('io');
-    const { userSockets } = require('./game-socket');
     for (const username of usernames) {
       try {
         const user = await dbHelpers.findUserByUsername(username);
         if (!user || user.id === parseInt(senderId)) continue;
-        const notification = await dbHelpers.createNotification({
+        await notifyUser({
           user_id: user.id,
           sender_id: parseInt(senderId),
           type: 'mention',
-          title: `${senderName} mentioned you`,
-          content: contextTitle,
+          title: `${senderName} ${contextTitle}`,
           action_url: actionUrl,
-        });
-        if (io) {
-          const socketId = userSockets?.get(user.id);
-          if (socketId) {
-            io.to(socketId).emit('newNotification', { ...notification, sender_username: senderName });
-          }
-        }
+        }, { senderUsername: senderName });
       } catch (e) {
         console.error('[mention] Failed to notify user:', username, e.message);
       }
@@ -2151,14 +2143,7 @@ app.post("/api/users/:userId/friends", authenticateToken, async (req, res) => {
           related_id: existingRequest.id,
           action_url: '/notifications'
         });
-        const io = app.get('io');
-        if (io) {
-          const { userSockets } = require('./game-socket');
-          const targetSocketId = userSockets?.get(parseInt(friendId));
-          if (targetSocketId) {
-            io.to(targetSocketId).emit('newNotification', { ...notification, sender_username: senderUser.username });
-          }
-        }
+        await pushNotification(parseInt(friendId), notification, { senderUsername: senderUser.username });
         
         return res.json({ message: "Friend request sent", friend: friend[0] });
       }
@@ -2188,14 +2173,7 @@ app.post("/api/users/:userId/friends", authenticateToken, async (req, res) => {
       action_url: '/notifications'
     });
     // Real-time push via socket
-    const io = app.get('io');
-    if (io) {
-      const { userSockets } = require('./game-socket');
-      const targetSocketId = userSockets?.get(parseInt(friendId));
-      if (targetSocketId) {
-        io.to(targetSocketId).emit('newNotification', { ...notification, sender_username: senderUser.username });
-      }
-    }
+    await pushNotification(parseInt(friendId), notification, { senderUsername: senderUser.username });
     
     res.json({ message: "Friend request sent", friend: friend[0] });
   } catch (err) {
@@ -4700,7 +4678,7 @@ app.post('/api/trainer/keys', authenticateToken, async (req, res) => {
       [req.user.id, keyHash, keyPrefix, name],
     );
     // Return the raw key once � it is never stored and cannot be recovered
-    res.json({ key: rawKey, prefix: keyPrefix, name, message: 'Save this key � it will not be shown again.' });
+    res.json({ key: rawKey, prefix: keyPrefix, name, message: 'Save this key - it will not be shown again.' });
   } catch (err) {
     console.error('Error in POST /api/trainer/keys:', err);
     res.status(500).json({ message: err.message });
@@ -4881,7 +4859,7 @@ app.get('/api/trainer/global-pack', authenticateToken, async (req, res) => {
       if (ownerId && ownerId !== req.user.id) {
         try {
           const username = req.user.username || `User #${req.user.id}`;
-          await dbHelpers.createNotification({
+          await notifyUser({
             user_id: ownerId,
             sender_id: req.user.id,
             type: 'system',
@@ -4892,13 +4870,6 @@ app.get('/api/trainer/global-pack', authenticateToken, async (req, res) => {
             // opened nothing at all.
             action_url: `/admin/dashboard?tab=ai-training`,
           });
-          const gameSocket = require('./game-socket');
-          const ownerSocketId = gameSocket.userSockets.get(ownerId.toString());
-          if (ownerSocketId && gameSocket.getIO()) {
-            const unreadCount = await dbHelpers.getUnreadNotificationCount(ownerId);
-            gameSocket.getIO().to(ownerSocketId).emit('newNotification', { type: 'system', title: `Trainer downloaded: ${username}` });
-            gameSocket.getIO().to(ownerSocketId).emit('unreadNotificationCount', { unreadCount });
-          }
         } catch (err) { console.error('[global-pack] owner notification failed:', err.message); }
       }
     }).catch(() => {});
@@ -5121,10 +5092,9 @@ app.post(
         try {
           const username = req.user.username || `User #${req.user.id}`;
           const ownerId = await dbHelpers.getOwnerUserId();
-          const gameSocket = require('./game-socket');
-          const notifyUser = async (userId, title, content) => {
+          const notifyArtifact = async (userId, title, content) => {
             if (!userId || userId === req.user.id) return;
-            await dbHelpers.createNotification({
+            await notifyUser({
               user_id: userId,
               sender_id: req.user.id,
               type: 'system',
@@ -5134,18 +5104,12 @@ app.post(
               // The admin page is /admin/dashboard; /admin is not a route, so this link
             // opened nothing at all.
             action_url: `/admin/dashboard?tab=ai-training`,
-            });
-            const socketId = gameSocket.userSockets.get(userId.toString());
-            if (socketId && gameSocket.getIO()) {
-              const unreadCount = await dbHelpers.getUnreadNotificationCount(userId);
-              gameSocket.getIO().to(socketId).emit('newNotification', { type: 'system', title });
-              gameSocket.getIO().to(socketId).emit('unreadNotificationCount', { unreadCount });
-            }
+            }, { senderUsername: username });
           };
-          await notifyUser(ownerId, `Training artifact uploaded: ${username}`, `${username} uploaded a training artifact for game #${gameId} (${kind}).`);
+          await notifyArtifact(ownerId, `Training artifact uploaded: ${username}`, `${username} uploaded a training artifact for game #${gameId} (${kind}).`);
           // Also notify game creator if they are not the uploader and not the owner
           if (game.creator_id && game.creator_id !== ownerId) {
-            await notifyUser(game.creator_id, `Training artifact uploaded to your game`, `${username} uploaded a training artifact for your game #${gameId} (${kind}).`);
+            await notifyArtifact(game.creator_id, `Training artifact uploaded to your game`, `${username} uploaded a training artifact for your game #${gameId} (${kind}).`);
           }
         } catch (err) { console.error('[trainer-upload] notification failed:', err.message); }
       })();
@@ -6298,7 +6262,7 @@ app.post("/api/register", registerLimiter, async (req, res) => {
     dbHelpers.getOwnerUserId().then(async (ownerId) => {
       if (ownerId && ownerId !== user.id) {
         try {
-          await dbHelpers.createNotification({
+          await notifyUser({
             user_id: ownerId,
             sender_id: user.id,
             type: 'system',
@@ -6310,14 +6274,6 @@ app.post("/api/register", registerLimiter, async (req, res) => {
             related_id: user.id,
             action_url: `/profile/id/${user.id}`
           });
-          // Push real-time notification if owner is online
-          const gameSocket = require("./game-socket");
-          const ownerSocketId = gameSocket.userSockets.get(ownerId.toString());
-          if (ownerSocketId && gameSocket.getIO()) {
-            const unreadCount = await dbHelpers.getUnreadNotificationCount(ownerId);
-            gameSocket.getIO().to(ownerSocketId).emit('newNotification', { type: 'system', title: `New user registered: ${username}` });
-            gameSocket.getIO().to(ownerSocketId).emit('unreadNotificationCount', { unreadCount });
-          }
         } catch (err) { console.error('Owner notification (new user) failed:', err.message); }
       }
     }).catch(() => {});
@@ -6818,7 +6774,7 @@ app.post("/api/auth/google", async (req, res) => {
         dbHelpers.getOwnerUserId().then(async (ownerId) => {
           if (ownerId && ownerId !== user.id) {
             try {
-              await dbHelpers.createNotification({
+              await notifyUser({
                 user_id: ownerId,
                 sender_id: user.id,
                 type: 'system',
@@ -6827,13 +6783,6 @@ app.post("/api/auth/google", async (req, res) => {
                 // Use ID-based URL so the link survives username changes.
                 action_url: `/profile/id/${user.id}`
               });
-              const gameSocket = require("./game-socket");
-              const ownerSocketId = gameSocket.userSockets.get(ownerId.toString());
-              if (ownerSocketId && gameSocket.getIO()) {
-                const unreadCount = await dbHelpers.getUnreadNotificationCount(ownerId);
-                gameSocket.getIO().to(ownerSocketId).emit('newNotification', { type: 'system', title: `New user registered: ${username}` });
-                gameSocket.getIO().to(ownerSocketId).emit('unreadNotificationCount', { unreadCount });
-              }
             } catch (err) { console.error('Owner notification (new Google user) failed:', err.message); }
           }
         }).catch(() => {});
@@ -7014,7 +6963,7 @@ app.post("/api/auth/lichess", async (req, res) => {
         dbHelpers.getOwnerUserId().then(async (ownerId) => {
           if (ownerId && ownerId !== user.id) {
             try {
-              await dbHelpers.createNotification({
+              await notifyUser({
                 user_id: ownerId,
                 sender_id: user.id,
                 type: 'system',
@@ -7023,13 +6972,6 @@ app.post("/api/auth/lichess", async (req, res) => {
                 // Use ID-based URL so the link survives username changes.
                 action_url: `/profile/id/${user.id}`
               });
-              const gameSocket = require("./game-socket");
-              const ownerSocketId = gameSocket.userSockets.get(ownerId.toString());
-              if (ownerSocketId && gameSocket.getIO()) {
-                const unreadCount = await dbHelpers.getUnreadNotificationCount(ownerId);
-                gameSocket.getIO().to(ownerSocketId).emit('newNotification', { type: 'system', title: `New user registered: ${username}` });
-                gameSocket.getIO().to(ownerSocketId).emit('unreadNotificationCount', { unreadCount });
-              }
             } catch (err) { console.error('Owner notification (new Lichess user) failed:', err.message); }
           }
         }).catch(() => {});
@@ -7217,7 +7159,7 @@ app.post("/api/auth/twitch", async (req, res) => {
         dbHelpers.getOwnerUserId().then(async (ownerId) => {
           if (ownerId && ownerId !== user.id) {
             try {
-              await dbHelpers.createNotification({
+              await notifyUser({
                 user_id: ownerId,
                 sender_id: user.id,
                 type: "system",
@@ -7225,13 +7167,6 @@ app.post("/api/auth/twitch", async (req, res) => {
                 content: `A new user "${username}" has joined via Twitch sign-in.`,
                 action_url: `/profile/id/${user.id}`,
               });
-              const gameSocket = require("./game-socket");
-              const ownerSocketId = gameSocket.userSockets.get(ownerId.toString());
-              if (ownerSocketId && gameSocket.getIO()) {
-                const unreadCount = await dbHelpers.getUnreadNotificationCount(ownerId);
-                gameSocket.getIO().to(ownerSocketId).emit("newNotification", { type: "system", title: `New user registered: ${username}` });
-                gameSocket.getIO().to(ownerSocketId).emit("unreadNotificationCount", { unreadCount });
-              }
             } catch (err) { console.error("Owner notification (new Twitch user) failed:", err.message); }
           }
         }).catch(() => {});
@@ -7699,7 +7634,7 @@ app.post("/api/admin/users/:userId/set-donations", authenticateToken, async (req
     const parsedAmount = parseFloat(amount);
 
     if (isNaN(parsedAmount) || parsedAmount < 0) {
-      return res.status(400).send({ message: "Invalid donation amount � must be 0 or a positive number" });
+      return res.status(400).send({ message: "Invalid donation amount - must be 0 or a positive number" });
     }
 
     const [users] = await db_pool.query(
@@ -8254,14 +8189,7 @@ app.post("/api/forums/new", authenticateToken, async (req, res) => {
             related_id: forumId,
             action_url: forumUrl
           });
-          const io = app.get('io');
-          if (io) {
-            const { userSockets } = require('./game-socket');
-            const targetSocketId = userSockets?.get(gameType.creator_id);
-            if (targetSocketId) {
-              io.to(targetSocketId).emit('newNotification', { ...notification, sender_username: author?.username });
-            }
-          }
+          await pushNotification(gameType.creator_id, notification, { senderUsername: author?.username });
         }
       } catch (notifErr) {
         console.error('Error creating game thread notification:', notifErr.message);
@@ -8605,9 +8533,6 @@ app.post("/api/comments/new", async (req, res) => {
       parent_id: parent_id || null
     });
 
-    const io = app.get('io');
-    const { userSockets } = require('./game-socket');
-
     // If this is a reply, notify the parent comment's author
     if (parent_id) {
       try {
@@ -8626,12 +8551,7 @@ app.post("/api/comments/new", async (req, res) => {
               related_id: forum_id,
               action_url: `/forums/${forum_id}`
             });
-            if (io) {
-              const targetSocketId = userSockets?.get(parentAuthorId);
-              if (targetSocketId) {
-                io.to(targetSocketId).emit('newNotification', { ...notification, sender_username: author_name });
-              }
-            }
+            await pushNotification(parentAuthorId, notification, { senderUsername: author_name });
           }
         }
       } catch (replyNotifErr) {
@@ -8660,12 +8580,7 @@ app.post("/api/comments/new", async (req, res) => {
               related_id: forum_id,
               action_url: `/forums/${forum_id}`
             });
-            if (io) {
-              const targetSocketId = userSockets?.get(forum.author_id);
-              if (targetSocketId) {
-                io.to(targetSocketId).emit('newNotification', { ...notification, sender_username: author_name });
-              }
-            }
+            await pushNotification(forum.author_id, notification, { senderUsername: author_name });
           }
         } else {
           const notification = await dbHelpers.createNotification({
@@ -8677,12 +8592,7 @@ app.post("/api/comments/new", async (req, res) => {
             related_id: forum_id,
             action_url: `/forums/${forum_id}`
           });
-          if (io) {
-            const targetSocketId = userSockets?.get(forum.author_id);
-            if (targetSocketId) {
-              io.to(targetSocketId).emit('newNotification', { ...notification, sender_username: author_name });
-            }
-          }
+          await pushNotification(forum.author_id, notification, { senderUsername: author_name });
         }
       }
     } catch (notifErr) {
@@ -9637,7 +9547,7 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
       if (ownerId && ownerId !== creator_id) {
         try {
           const creatorName = creator_id ? (await dbHelpers.findUserById(creator_id))?.username || 'Anonymous' : 'Anonymous';
-          await dbHelpers.createNotification({
+          await notifyUser({
             user_id: ownerId,
             sender_id: creator_id,
             type: 'system',
@@ -9646,13 +9556,6 @@ app.post("/api/games/create", authenticateToken, async (req, res) => {
             related_id: gameId,
             action_url: `/games/${gameId}`
           });
-          const gameSocket = require("./game-socket");
-          const ownerSocketId = gameSocket.userSockets.get(ownerId.toString());
-          if (ownerSocketId && gameSocket.getIO()) {
-            const unreadCount = await dbHelpers.getUnreadNotificationCount(ownerId);
-            gameSocket.getIO().to(ownerSocketId).emit('newNotification', { type: 'system', title: `New game type created: ${gameData.game_name}` });
-            gameSocket.getIO().to(ownerSocketId).emit('unreadNotificationCount', { unreadCount });
-          }
         } catch (err) { console.error('Owner notification (new game type) failed:', err.message); }
       }
     }).catch(() => {});
@@ -10378,7 +10281,7 @@ app.post("/api/pieces/create", authenticateToken, multerWrap(pieceUpload.array('
       if (ownerId && ownerId !== creator_id) {
         try {
           const creatorName = creator_id ? (await dbHelpers.findUserById(creator_id))?.username || 'Anonymous' : 'Anonymous';
-          await dbHelpers.createNotification({
+          await notifyUser({
             user_id: ownerId,
             sender_id: creator_id,
             type: 'system',
@@ -10387,13 +10290,6 @@ app.post("/api/pieces/create", authenticateToken, multerWrap(pieceUpload.array('
             related_id: pieceId,
             action_url: `/pieces/${pieceId}`
           });
-          const gameSocket = require("./game-socket");
-          const ownerSocketId = gameSocket.userSockets.get(ownerId.toString());
-          if (ownerSocketId && gameSocket.getIO()) {
-            const unreadCount = await dbHelpers.getUnreadNotificationCount(ownerId);
-            gameSocket.getIO().to(ownerSocketId).emit('newNotification', { type: 'system', title: `New piece created: ${pieceData.piece_name}` });
-            gameSocket.getIO().to(ownerSocketId).emit('unreadNotificationCount', { unreadCount });
-          }
         } catch (err) { console.error('Owner notification (new piece) failed:', err.message); }
       }
     }).catch(() => {});
@@ -11291,7 +11187,7 @@ app.post("/api/admin/name-review-queue/:id/approve", authenticateAdmin, async (r
       const creatorId = creatorRows[0]?.creator_id;
       if (creatorId) {
         const label = item_type === 'game' ? 'Game' : 'Piece';
-        await dbHelpers.createNotification({
+        await notifyUser({
           user_id: creatorId,
           sender_id: reviewerId,
           type: 'moderation_approved',
@@ -11345,7 +11241,7 @@ app.post("/api/admin/name-review-queue/:id/reject", authenticateAdmin, async (re
       if (creatorId) {
         const noteText = review_note ? ` Reason: ${review_note}` : '';
         const label = item_type === 'game' ? 'Game' : 'Piece';
-        await dbHelpers.createNotification({
+        await notifyUser({
           user_id: creatorId,
           sender_id: reviewerId,
           type: 'moderation_rejected',
@@ -11415,7 +11311,7 @@ app.post("/api/admin/moderation-queue/:id/approve", authenticateAdmin, async (re
         const [pieceRows] = await db_pool.query("SELECT id, creator_id, piece_name FROM pieces WHERE id = ?", [pieceId]);
         const piece = pieceRows[0];
         if (piece && piece.creator_id) {
-          await dbHelpers.createNotification({
+          await notifyUser({
             user_id: piece.creator_id,
             sender_id: reviewerId,
             type: 'moderation_approved',
@@ -11424,15 +11320,6 @@ app.post("/api/admin/moderation-queue/:id/approve", authenticateAdmin, async (re
             related_id: piece.id,
             action_url: `/pieces/${piece.id}`
           });
-          // Live push if recipient is online
-          try {
-            const ioInst = app.get('io');
-            if (ioInst) {
-              const { userSockets: uSockets } = require('./game-socket');
-              const targetSockId = uSockets && uSockets.get(parseInt(piece.creator_id));
-              if (targetSockId) ioInst.to(targetSockId).emit('newNotification', { type: 'moderation_approved', title: 'Piece approved' });
-            }
-          } catch (e) { /* non-fatal live-push */ }
         }
       } catch (notifyErr) { console.error('Failed to send approval notification:', notifyErr.message); }
     }
@@ -11478,7 +11365,7 @@ app.post("/api/admin/moderation-queue/:id/reject", authenticateAdmin, async (req
       const piece = pieceRows[0];
       if (piece && piece.creator_id) {
         const noteText = review_note ? ` Reason: ${review_note}` : '';
-        await dbHelpers.createNotification({
+        await notifyUser({
           user_id: piece.creator_id,
           sender_id: reviewerId,
           type: 'moderation_rejected',
@@ -11487,14 +11374,6 @@ app.post("/api/admin/moderation-queue/:id/reject", authenticateAdmin, async (req
           related_id: piece.id,
           action_url: `/pieces`
         });
-        try {
-          const ioInst = app.get('io');
-          if (ioInst) {
-            const { userSockets: uSockets } = require('./game-socket');
-            const targetSockId = uSockets && uSockets.get(parseInt(piece.creator_id));
-            if (targetSockId) ioInst.to(targetSockId).emit('newNotification', { type: 'moderation_rejected', title: 'Piece rejected' });
-          }
-        } catch (e) { /* non-fatal live-push */ }
       }
     } catch (notifyErr) { console.error('Failed to send rejection notification:', notifyErr.message); }
 
@@ -11525,7 +11404,7 @@ app.post("/api/admin/pieces/:pieceId/approve-moderation", authenticateAdmin, asy
       const [pieceRows] = await db_pool.query("SELECT id, creator_id, piece_name FROM pieces WHERE id = ?", [pieceId]);
       const piece = pieceRows[0];
       if (piece && piece.creator_id) {
-        await dbHelpers.createNotification({
+        await notifyUser({
           user_id: piece.creator_id,
           sender_id: reviewerId,
           type: 'moderation_approved',
@@ -11534,14 +11413,6 @@ app.post("/api/admin/pieces/:pieceId/approve-moderation", authenticateAdmin, asy
           related_id: piece.id,
           action_url: `/pieces/${piece.id}`
         });
-        try {
-          const ioInst = app.get('io');
-          if (ioInst) {
-            const { userSockets: uSockets } = require('./game-socket');
-            const targetSockId = uSockets && uSockets.get(parseInt(piece.creator_id));
-            if (targetSockId) ioInst.to(targetSockId).emit('newNotification', { type: 'moderation_approved', title: 'Piece approved' });
-          }
-        } catch (e) { /* non-fatal live-push */ }
       }
     } catch (notifyErr) { console.error('Failed to send approval notification:', notifyErr.message); }
 
@@ -11893,7 +11764,7 @@ app.get('/api/admin/ai-training/jobs/:id/game-replay', authenticateAdmin1, async
     const moves = [];
 
     if (targetBlock) {
-      const headerLine = targetBlock.match(/^=== Game #\d+ � (.+?) � \d+ moves ===/);
+      const headerLine = targetBlock.match(/^=== Game #\d+ — (.+?) — \d+ moves ===/);
       if (headerLine) outcome = headerLine[1].trim();
 
       for (const line of targetBlock.split('\n')) {
@@ -12414,7 +12285,7 @@ app.post('/api/admin/ai-training/sync-disk', authenticateAdmin1, async (req, res
           // Data is gone from disk � zero out DB so UI reflects reality.
           await db_pool.query(
             `UPDATE ai_training_jobs SET games_played = 0,
-               error_message = CONCAT(IFNULL(error_message, ''), ' [disk data missing � zeroed by sync]')
+               error_message = CONCAT(IFNULL(error_message, ''), ' [disk data missing - zeroed by sync]')
              WHERE id = ?`,
             [row.id],
           );
@@ -12693,7 +12564,7 @@ app.get('/api/admin/ai-training/rules/:gameTypeId', authenticateAdmin1, async (r
     const filePath = rulesPathFor(gtid);
     const fs = require('fs');
     if (!fs.existsSync(filePath)) {
-      return res.status(404).send({ message: 'rules.json not found after export � check game type has pieces' });
+      return res.status(404).send({ message: 'rules.json not found after export - check game type has pieces' });
     }
     res.setHeader('Content-Type', 'application/json');
     res.setHeader('Content-Disposition', `attachment; filename="rules-${gtid}.json"`);
@@ -12823,7 +12694,7 @@ app.delete('/api/admin/ai-training/wipe', authenticateAdmin1, async (req, res) =
     const active = jobRows.filter((j) => j.status === 'running' || j.status === 'queued');
     if (active.length > 0) {
       return res.status(400).send({
-        message: `Cannot wipe � ${active.length} job(s) are still running or queued. Stop them first.`,
+        message: `Cannot wipe - ${active.length} job(s) are still running or queued. Stop them first.`,
         activeIds: active.map((j) => j.id),
       });
     }
@@ -13349,11 +13220,13 @@ app.post('/api/game-types/:id/request-analysis', authenticateToken, async (req, 
     // Deduplicate: if an unread request for this game already exists, bump it
     const existing = await dbHelpers.findUnreadNotification(owner.id, 'ai_analysis_request', gameTypeId);
     if (existing) {
-      await dbHelpers.updateNotification(existing.id, {
+      const updated = {
         sender_id: requester.id,
         title: `AI analysis requested for "${gameType.game_name}"`,
-        content: `${requester.username} (re-)requested AI analysis training for game #${gameTypeId}.`,
-      });
+        content: `${requester.username} requested AI analysis training for game #${gameTypeId} again.`,
+      };
+      await dbHelpers.updateNotification(existing.id, updated);
+      await pushNotification(owner.id, { ...existing, ...updated, created_at: new Date().toISOString() }, { senderUsername: requester.username });
       return res.json({ message: 'Analysis request updated', notificationId: existing.id });
     }
 
@@ -13362,20 +13235,13 @@ app.post('/api/game-types/:id/request-analysis', authenticateToken, async (req, 
       sender_id: requester.id,
       type: 'ai_analysis_request',
       title: `AI analysis requested for "${gameType.game_name}"`,
-      content: `${requester.username} requested AI analysis training for game #${gameTypeId} � "${gameType.game_name}".`,
+      content: `${requester.username} requested AI analysis training for game #${gameTypeId}, "${gameType.game_name}".`,
       related_id: gameTypeId,
       action_url: `/admin/dashboard?tab=ai-analysis-requests&gameTypeId=${gameTypeId}`,
     });
 
     // Real-time push if owner is online
-    const io = app.get('io');
-    if (io) {
-      const { userSockets } = require('./game-socket');
-      const ownerSocket = userSockets?.get(owner.id);
-      if (ownerSocket) {
-        io.to(ownerSocket).emit('newNotification', { ...notification, sender_username: requester.username });
-      }
-    }
+    await pushNotification(owner.id, notification, { senderUsername: requester.username });
 
     res.json({ message: 'Analysis request sent', notificationId: notification.id });
   } catch (err) {
@@ -13596,27 +13462,20 @@ app.post('/api/announcements', authenticateAdmin, async (req, res) => {
     }
 
     // Real-time push to anyone online.
-    const io = app.get('io');
-    if (io) {
-      try {
-        const { userSockets } = require('./game-socket');
-        if (userSockets) {
-          for (const u of users) {
-            const socketId = userSockets.get(u.id);
-            if (socketId) {
-              io.to(socketId).emit('newNotification', {
-                type: 'announcement',
-                title,
-                content,
-                related_id: announcementId,
-                action_url: linkUrl,
-                created_at: new Date().toISOString(),
-              });
-            }
-          }
+    // Each their own row, so the entry they see has an id to mark read.
+    try {
+      const { socketIdsOf } = require('./game-socket');
+      const online = users.map((u) => u.id).filter((id) => socketIdsOf(id).length > 0);
+      if (online.length) {
+        const [rows] = await db_pool.query(
+          `SELECT * FROM notifications WHERE type = 'announcement' AND related_id = ? AND user_id IN (?)`,
+          [announcementId, online]
+        );
+        for (const row of rows) {
+          await pushNotification(row.user_id, row, { senderUsername: req.user?.username });
         }
-      } catch (e) { /* non-fatal */ }
-    }
+      }
+    } catch (e) { /* non-fatal */ }
 
     res.status(201).json({
       announcement: {
@@ -15891,7 +15750,7 @@ app.post("/api/physical-board-request", async (req, res) => {
         "SELECT id, username FROM users WHERE role = 'owner' LIMIT 1"
       );
       if (owner) {
-        await dbHelpers.createNotification({
+        await notifyUser({
           user_id: owner.id,
           sender_id: null,
           type: 'physical_board_request',
@@ -15900,15 +15759,6 @@ app.post("/api/physical-board-request", async (req, res) => {
           action_url: '/admin/dashboard?tab=physical-board-requests',
         });
 
-        // Real-time push if owner is online
-        const io = app.get('io');
-        if (io) {
-          const { userSockets } = require('./game-socket');
-          const ownerSocket = userSockets?.get(owner.id);
-          if (ownerSocket) {
-            io.to(ownerSocket).emit('newNotification', { type: 'physical_board_request', title: `Physical board request from ${name}` });
-          }
-        }
       }
     } catch (notifyErr) {
       // Non-critical � email was sent successfully

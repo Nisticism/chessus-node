@@ -28,6 +28,7 @@ const designated = require('./designated-piece');
 const { freezeRulesForGame, gameTypeForGame, loadFrozenRules, pieceRowsFor, placementFor } = require('./game-rule-freeze');
 // Who a socket is: verified access tokens, and payload ids checked against them.
 const { verifyAccessToken, bindActorFields } = require('./socket-identity');
+const { notifyUser, pushNotification, upsertNotification } = require('./notification-push');
 
 // Verbose per-move debug logging is gated behind an env var so PM2 isn't
 // hammered with disk I/O during normal play. Set VERBOSE_GAME_LOG=1 to enable.
@@ -49,6 +50,22 @@ const userSockets = new Map(); // Maps userId to their most recent socket.id
 // socket they own has gone.
 const userSocketIds = new Map();
 const onlineUsers = new Set(); // Set of online user IDs
+
+/** Every live socket id of a user (or anon id) - all their tabs and devices. */
+function socketIdsOf(userId) {
+  if (userId == null) return [];
+  return [...(userSocketIds.get(String(userId)) || [])];
+}
+
+/**
+ * Is the user looking at this room in ANY of their tabs? Asking only their
+ * most recent socket (userSockets) said "no" whenever the game was open in an
+ * older tab, and a notification was sent to someone watching the game.
+ */
+function userInRoom(io, userId, room) {
+  if (!io) return false;
+  return socketIdsOf(userId).some((id) => io.sockets.sockets.get(id)?.rooms?.has(room));
+}
 
 /** Record a socket as belonging to a user (or anon id). Safe to call repeatedly. */
 function registerUserSocket(userId, socketId) {
@@ -1801,6 +1818,52 @@ function getImageUrlForPlayer(imageLocation, playerNumber, imageIndexOverride = 
   return null;
 }
 
+/*
+ * How a game was won, in words, for the result notification. It used to print
+ * the raw code: 'Victory in "X" by lose_all_pieces.'
+ */
+const OUTCOME_REASON_TEXT = {
+  checkmate: 'by checkmate',
+  capture: 'by capturing the key piece',
+  elimination: 'by elimination',
+  lose_all_pieces: 'by losing all their pieces',
+  no_moves: 'by leaving no legal moves',
+  stalemate_win: 'by stalemate',
+  stalemate: 'by stalemate',
+  piece_count: 'on piece count',
+  equal_piece_count: 'on piece count',
+  promotion: 'by promotion',
+  free_move_after_promotion: 'by promotion',
+  control: 'by controlling the board',
+  line: 'by making a line',
+  connection: 'by connecting the edges',
+  score: 'on points',
+  timeout: 'on time',
+  resignation: 'by resignation',
+  disconnect: 'by disconnection',
+  illegal_move_limit: 'on illegal moves',
+  insufficient_material: 'on insufficient material',
+};
+function outcomeReasonText(reason) {
+  if (!reason) return '';
+  const known = OUTCOME_REASON_TEXT[reason];
+  if (known) return ` ${known}`;
+  // An unlisted code still reads as words, never as snake_case.
+  return /^[a-z_]+$/.test(reason) ? ` (${reason.replace(/_/g, ' ')})` : '';
+}
+
+/** A game's time control in words: "10 min + 5s", "3 days per move", "untimed". */
+function describeTimeControl({ timeControl, increment, isCorrespondence, correspondenceDays }) {
+  if (isCorrespondence) {
+    const d = Number(correspondenceDays) || 0;
+    return d ? `correspondence, ${d} day${d === 1 ? '' : 's'} per move` : 'correspondence';
+  }
+  const minutes = Number(timeControl) || 0;
+  if (!minutes) return 'untimed';
+  const inc = Number(increment) || 0;
+  return `${minutes} min${inc ? ` + ${inc}s` : ''}`;
+}
+
 /**
  * Notify the site owner when a new game is created (non-blocking).
  */
@@ -1810,7 +1873,7 @@ async function notifyOwnerOfGameCreation(io, gameId, hostId, hostUsername, gameS
     const ownerId = await dbHelpers.getOwnerUserId();
     if (!ownerId || ownerId === hostId) return;
     const gameName = gameState.gameType?.game_name || 'Custom Game';
-    await dbHelpers.createNotification({
+    await notifyUser({
       user_id: ownerId,
       sender_id: hostId,
       type: 'system',
@@ -1818,13 +1881,7 @@ async function notifyOwnerOfGameCreation(io, gameId, hostId, hostUsername, gameS
       content: `${hostUsername} started a game of "${gameName}".`,
       related_id: gameId,
       action_url: `/play/${gameId}`
-    });
-    const ownerSocketId = userSockets.get(ownerId.toString());
-    if (ownerSocketId && io) {
-      const unreadCount = await dbHelpers.getUnreadNotificationCount(ownerId);
-      io.to(ownerSocketId).emit('newNotification', { type: 'system', title: `New game started: ${gameName}` });
-      io.to(ownerSocketId).emit('unreadNotificationCount', { unreadCount });
-    }
+    }, { senderUsername: hostUsername });
   } catch (err) {
     console.error('Owner notification (new game) failed:', err.message);
   }
@@ -1857,12 +1914,7 @@ async function notifyHostOfPlayerJoin(io, gameId, gameState, joiningPlayer) {
       related_id: gameId,
       action_url: `/play/${gameId}`
     });
-    const hostSocketId = userSockets.get(hostId.toString());
-    if (hostSocketId && io) {
-      io.to(hostSocketId).emit('newNotification', { ...notification, sender_username: joinerName });
-      const unreadCount = await dbHelpers.getUnreadNotificationCount(hostId);
-      io.to(hostSocketId).emit('unreadNotificationCount', { unreadCount });
-    }
+    await pushNotification(hostId, notification, { senderUsername: joinerName });
   } catch (err) {
     console.error('Player-join notification failed:', err.message);
   }
@@ -1902,7 +1954,7 @@ async function notifyPlayersOfGameOutcome(io, gameId, gameState, winnerId, reaso
         return opid && opid !== pid;
       });
       const opponentName = opponent?.username || (opponent?.isBot ? 'the bot' : 'your opponent');
-      const reasonText = reason ? ` by ${reason}` : '';
+      const reasonText = outcomeReasonText(reason);
       const title = isWin
         ? `You won against ${opponentName}!`
         : `You lost to ${opponentName}`;
@@ -1922,12 +1974,7 @@ async function notifyPlayersOfGameOutcome(io, gameId, gameState, winnerId, reaso
         related_id: gameId,
         action_url: actionUrl,
       });
-      const sockId = userSockets.get(pid.toString());
-      if (sockId && io) {
-        io.to(sockId).emit('newNotification', { ...notification, sender_username: opponentName });
-        const unreadCount = await dbHelpers.getUnreadNotificationCount(pid);
-        io.to(sockId).emit('unreadNotificationCount', { unreadCount });
-      }
+      await pushNotification(pid, notification, { senderUsername: opponent?.username });
     }
   } catch (err) {
     console.error('Game-outcome notification failed:', err.message);
@@ -2106,25 +2153,16 @@ async function sendCorrespondenceMoveNotification(io, gameId, gameState, moverId
     const opponent = gameState.players.find(p => p.id !== moverId);
     // Skip notification for bot opponents — they have no DB user row.
     if (!opponent || opponent.id === 'bot' || !Number.isInteger(opponent.id)) return;
-    const opponentSocketId = userSockets.get(opponent.id.toString());
-    const opponentInGame = opponentSocketId && io.sockets.sockets.get(opponentSocketId)?.rooms?.has(`game-${gameId}`);
-    if (opponentInGame) return;
+    if (userInRoom(io, opponent.id, `game-${gameId}`)) return;
     const moveNum = gameState.moveHistory.length;
-    const title = `${movingPlayer?.username || 'Opponent'} made a move`;
-    const content = `Move #${moveNum} in your ${gameState.isCorrespondence ? 'correspondence' : ''} game. It's your turn!`;
+    const gameName = gameState.gameType?.game_name;
+    const title = `${movingPlayer?.username || 'Your opponent'} made a move`;
+    const content = `Move ${moveNum} in your ${gameState.isCorrespondence ? 'correspondence ' : ''}game${gameName ? ` of "${gameName}"` : ''}. It's your turn!`;
     const actionUrl = `/play/${gameId}`;
-    const existing = await dbHelpers.findUnreadNotification(opponent.id, 'game_move', parseInt(gameId));
-    if (existing) {
-      await dbHelpers.updateNotification(existing.id, { sender_id: moverId, title, content });
-      const updatedNotification = { ...existing, sender_id: moverId, title, content, sender_username: movingPlayer?.username };
-      if (opponentSocketId) io.to(opponentSocketId).emit('newNotification', updatedNotification);
-    } else {
-      const notification = await dbHelpers.createNotification({
-        user_id: opponent.id, sender_id: moverId, type: 'game_move',
-        title, content, related_id: parseInt(gameId), action_url: actionUrl
-      });
-      if (opponentSocketId) io.to(opponentSocketId).emit('newNotification', { ...notification, sender_username: movingPlayer?.username });
-    }
+    await upsertNotification({
+      user_id: opponent.id, sender_id: moverId, type: 'game_move',
+      title, content, related_id: parseInt(gameId), action_url: actionUrl
+    }, { senderUsername: movingPlayer?.username });
   } catch (notifErr) {
     console.error('Error sending move notification:', notifErr);
   }
@@ -3789,34 +3827,21 @@ async function resolveSimulRound(io, gameId, gameState) {
       for (const player of (gameState.players || [])) {
         const pId = player.id;
         if (!pId || (gameState.botPlayer && pId === gameState.botPlayer.id)) continue;
-        const playerSocketId = userSockets.get(pId.toString());
-        const playerInGame = playerSocketId && io.sockets.sockets.get(playerSocketId)?.rooms?.has(`game-${gameId}`);
-        if (playerInGame) continue;
+        if (userInRoom(io, pId, `game-${gameId}`)) continue;
         const opponent = (gameState.players || []).find(p => p.id !== pId);
         const roundNum = (gameState.moveHistory || []).length;
         const title = `Both moves resolved — your turn to submit again`;
         const content = `Round ${roundNum} resolved in your ${gameState.isCorrespondence ? 'correspondence ' : ''}simultaneous-turns game${opponent ? ` against ${opponent.username}` : ''}.`;
         const actionUrl = `/play/${gameId}`;
-        const existing = await dbHelpers.findUnreadNotification(pId, 'game_move', parseInt(gameId));
-        if (existing) {
-          await dbHelpers.updateNotification(existing.id, { sender_id: opponent?.id || null, title, content });
-          if (playerSocketId) {
-            io.to(playerSocketId).emit('newNotification', { ...existing, sender_id: opponent?.id || null, title, content, sender_username: opponent?.username });
-          }
-        } else {
-          const notification = await dbHelpers.createNotification({
-            user_id: pId,
-            sender_id: opponent?.id || null,
-            type: 'game_move',
-            title,
-            content,
-            related_id: parseInt(gameId),
-            action_url: actionUrl
-          });
-          if (playerSocketId) {
-            io.to(playerSocketId).emit('newNotification', { ...notification, sender_username: opponent?.username });
-          }
-        }
+        await upsertNotification({
+          user_id: pId,
+          sender_id: opponent?.id || null,
+          type: 'game_move',
+          title,
+          content,
+          related_id: parseInt(gameId),
+          action_url: actionUrl
+        }, { senderUsername: opponent?.username });
       }
     } catch (notifErr) {
       console.error('simul: error sending round-resolved correspondence notification:', notifErr);
@@ -5298,9 +5323,11 @@ function initializeSocket(server, { isUserBanned } = {}) {
         // For regular games, broadcast to all users
         if (challengedUserId) {
           // Find the challenged user's socket and send them a challenge notification
-          const challengedSocketId = userSockets.get(challengedUserId);
-          if (challengedSocketId) {
-            io.to(challengedSocketId).emit("friendChallenge", {
+          // Every tab of theirs. (This looked the socket up by a number, but
+          // the map is keyed by strings, so the popup never appeared.)
+          const challengedSockets = socketIdsOf(challengedUserId);
+          if (challengedSockets.length) {
+            io.to(challengedSockets).emit("friendChallenge", {
               gameId,
               challengerUsername: hostUsername,
               challengerId: hostId,
@@ -5312,19 +5339,15 @@ function initializeSocket(server, { isUserBanned } = {}) {
 
           // Create a persistent notification for the challenge
           try {
-            const dbHelpers = require("./db-helpers");
-            const notification = await dbHelpers.createNotification({
+            await notifyUser({
               user_id: challengedUserId,
               sender_id: hostId,
               type: 'challenge',
               title: `${hostUsername} challenged you to a game!`,
-              content: `${gameType.game_name} - ${timeControl}s${increment ? ` +${increment}s` : ''}`,
+              content: `"${gameType.game_name}" - ${describeTimeControl({ timeControl, increment, isCorrespondence, correspondenceDays })}`,
               related_id: gameId,
               action_url: `/play/${gameId}`
-            });
-            if (challengedSocketId) {
-              io.to(challengedSocketId).emit('newNotification', { ...notification, sender_username: hostUsername });
-            }
+            }, { senderUsername: hostUsername });
           } catch (notifErr) {
             console.error('Error creating challenge notification:', notifErr.message);
           }
@@ -12386,59 +12409,21 @@ function initializeSocket(server, { isUserBanned } = {}) {
         if (player) {
           const opponent = gameState.players.find(p => p.id !== socket.userId);
           if (opponent) {
-            const opponentSocketId = userSockets.get(opponent.id);
-            let opponentInRoom = false;
-            if (opponentSocketId) {
-              const opponentSocket = io.sockets.sockets.get(opponentSocketId);
-              if (opponentSocket) {
-                opponentInRoom = opponentSocket.rooms.has(`game-${gameIdStr}`);
-              }
-            }
-            if (!opponentInRoom) {
-              try {
-                const dbHelpers = require("./db-helpers");
-                // Upsert: update existing unread game_chat notification or create new
-                const existing = await dbHelpers.query(
-                  `SELECT id FROM notifications WHERE user_id = ? AND type = 'game_chat' AND related_id = ? AND is_read = 0 LIMIT 1`,
-                  [opponent.id, parseInt(gameId)]
-                );
-                if (existing.length > 0) {
-                  await dbHelpers.query(
-                    `UPDATE notifications SET title = ?, content = ?, created_at = NOW() WHERE id = ?`,
-                    [`Chat from ${socket.username}`, content.trim().substring(0, 100), existing[0].id]
-                  );
-                  // Push updated notification to client
-                  if (opponentSocketId) {
-                    const [updatedNotif] = await dbHelpers.query(
-                      `SELECT * FROM notifications WHERE id = ?`, [existing[0].id]
-                    );
-                    if (updatedNotif) {
-                      io.to(opponentSocketId).emit('newNotification', { ...updatedNotif, sender_username: socket.username });
-                    }
-                  }
-                } else {
-                  const notification = await dbHelpers.createNotification({
-                    user_id: opponent.id,
-                    sender_id: socket.userId,
-                    type: 'game_chat',
-                    title: `Chat from ${socket.username}`,
-                    content: content.trim().substring(0, 100),
-                    related_id: parseInt(gameId),
-                    action_url: `/play/${gameId}`
-                  });
-                  // Push new notification to client
-                  if (opponentSocketId) {
-                    io.to(opponentSocketId).emit('newNotification', { ...notification, sender_username: socket.username });
-                  }
-                }
-                // Push updated count if opponent is online
-                if (opponentSocketId) {
-                  const unreadCount = await dbHelpers.getUnreadNotificationCount(opponent.id);
-                  io.to(opponentSocketId).emit('unreadNotificationCount', { unreadCount });
-                }
-              } catch (notifErr) {
-                console.error("Error creating game chat notification:", notifErr);
-              }
+            // Only when they are not in the game in any tab. (The socket was
+            // looked up by a number in a map keyed by strings, so this always
+            // said "not in the room" and a chat notification was sent to a
+            // player who was reading the chat.)
+            if (Number.isInteger(Number(opponent.id)) && !userInRoom(io, opponent.id, `game-${gameIdStr}`)) {
+              // One unread chat notification per game, brought up to date.
+              await upsertNotification({
+                user_id: opponent.id,
+                sender_id: socket.userId,
+                type: 'game_chat',
+                title: `Chat from ${socket.username}`,
+                content: content.trim().substring(0, 100),
+                related_id: parseInt(gameId),
+                action_url: `/play/${gameId}`
+              }, { senderUsername: socket.username });
             }
           }
         }
@@ -23422,11 +23407,11 @@ async function cancelExpiredCorrespondenceGames() {
           const opponent = playerRows.find(p => p.player_position !== currentTurn);
           if (!currentPlayer?.user_id) continue;
 
-          const title = `⏰ Less than ${hoursLeft} hour${hoursLeft === 1 ? '' : 's'} left to move`;
+          const title = `Less than ${hoursLeft} hour${hoursLeft === 1 ? '' : 's'} left to move`;
           const content = `Your correspondence game against ${opponent?.username || 'your opponent'} expires in under ${hoursLeft} hour${hoursLeft === 1 ? '' : 's'}. Make your move soon!`;
           const actionUrl = `/play/${row.id}`;
 
-          await dbHelpers.createNotification({
+          const lowTimeNotification = await dbHelpers.createNotification({
             user_id: currentPlayer.user_id,
             sender_id: null,
             type: 'corres_low_time',
@@ -23436,15 +23421,7 @@ async function cancelExpiredCorrespondenceGames() {
             action_url: actionUrl
           });
 
-          if (ioInstance) {
-            const socketId = userSockets.get(currentPlayer.user_id.toString());
-            if (socketId) {
-              ioInstance.to(socketId).emit('newNotification', {
-                type: 'corres_low_time', title, content,
-                action_url: actionUrl, related_id: parseInt(row.id), is_read: 0
-              });
-            }
-          }
+          await pushNotification(currentPlayer.user_id, lowTimeNotification);
           console.log(`[correspondence] Low-time warning sent for game ${row.id} to user ${currentPlayer.user_id} (${hoursLeft}h left)`);
         } catch (innerErr) {
           console.error(`[correspondence] Low-time notification failed for game ${row.id}:`, innerErr);
@@ -24244,6 +24221,8 @@ function applyRandomizationWithRerollGuard(gameState, mode) {
 
 module.exports = {
   initializeSocket,
+  socketIdsOf,
+  userInRoom,
   activeGames,
   gameTimers,
   disconnectTimeouts,

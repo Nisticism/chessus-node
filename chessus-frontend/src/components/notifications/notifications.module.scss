@@ -153,33 +153,86 @@
 .notification-body {
   flex: 1;
   min-width: 0;
+  /* .app centres text; a title that now wraps showed it. */
+  text-align: left;
 }
 
+/*
+ * Titles and text wrap - they were cut to one line with an ellipsis, so most
+ * of a long title and nearly all of a reason or a message was never seen.
+ * text-wrap: pretty keeps a last line from being one stranded word;
+ * break-word (not the site's overflow-wrap: anywhere) splits only a word too
+ * long for the whole line, never a name that would fit on the next one.
+ */
 .notification-title {
-  font-size: 0.92rem;
+  font-size: 0.95rem;
   font-weight: 500;
   color: var(--text-muted, #a0d0b8);
   line-height: 1.4;
   margin-bottom: 2px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: break-word;
+  text-wrap: pretty;
 }
 
 .notification-content {
-  font-size: 0.82rem;
+  font-size: 0.86rem;
   color: var(--text-dim, #6ba88b);
-  line-height: 1.4;
+  line-height: 1.45;
   margin-top: 2px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: break-word;
+  text-wrap: pretty;
+
+  /*
+   * renderContent indents every paragraph with an inline padding-left (right
+   * for an announcement page, not here) - !important is the only way past an
+   * inline style. The text lines up with the title above it.
+   */
+  p {
+    margin: 0;
+    padding: 0 !important;
+  }
+
+  p + p,
+  ul {
+    margin-top: 4px;
+  }
+
+  ul {
+    margin-bottom: 0;
+    padding-left: 18px;
+  }
+
+  /* Four lines, then "Show more". */
+  &.clamped {
+    max-height: calc(1.45em * 4);
+    overflow: hidden;
+  }
+
+  &.faded {
+    -webkit-mask-image: linear-gradient(to bottom, #000 60%, transparent);
+    mask-image: linear-gradient(to bottom, #000 60%, transparent);
+  }
+}
+
+.notification-more {
+  background: none;
+  border: none;
+  padding: 2px 0 0;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--accent-highlight, #81c784);
+  cursor: pointer;
+
+  &:hover {
+    text-decoration: underline;
+  }
 }
 
 .notification-time {
-  font-size: 0.75rem;
+  font-size: 0.76rem;
   color: var(--text-dim, #6ba88b);
   margin-top: 6px;
+  overflow-wrap: break-word;
 }
 
 /* ---------- Action Buttons ---------- */
@@ -330,6 +383,58 @@
   .notification-icon {
     background: rgba(255, 202, 40, 0.12);
     border-color: rgba(255, 202, 40, 0.25);
+  }
+}
+
+/* Game result and tournament — gold */
+.type-game_outcome,
+.type-tournament {
+  &.unread {
+    border-left-color: #ffca28;
+  }
+
+  .notification-icon {
+    background: rgba(255, 202, 40, 0.12);
+    border-color: rgba(255, 202, 40, 0.25);
+  }
+}
+
+/* Chat, replies, mentions — soft blue, like comments */
+.type-game_chat,
+.type-reply,
+.type-mention {
+  &.unread {
+    border-left-color: #42a5f5;
+  }
+
+  .notification-icon {
+    background: rgba(66, 165, 245, 0.12);
+    border-color: rgba(66, 165, 245, 0.25);
+  }
+}
+
+/* Time running out, rejected — red */
+.type-corres_low_time,
+.type-moderation_rejected {
+  &.unread {
+    border-left-color: #ef5350;
+  }
+
+  .notification-icon {
+    background: rgba(239, 83, 80, 0.12);
+    border-color: rgba(239, 83, 80, 0.25);
+  }
+}
+
+/* Approved — theme accent */
+.type-moderation_approved {
+  &.unread {
+    border-left-color: var(--accent-highlight, #81c784);
+  }
+
+  .notification-icon {
+    background: color-mix(in srgb, var(--accent-primary, #4a9e5a) 15%, transparent);
+    border-color: color-mix(in srgb, var(--accent-primary, #4a9e5a) 30%, transparent);
   }
 }
 

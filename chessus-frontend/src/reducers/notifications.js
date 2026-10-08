@@ -15,7 +15,11 @@ export default function notificationsReducer(state = initialState, action) {
     case types.GET_NOTIFICATIONS_SUCCESS:
       return {
         ...state,
-        notifications: payload.page === 1 ? payload.notifications : [...state.notifications, ...payload.notifications],
+        // A later page can repeat rows: live notifications arriving in between
+        // shift the offset the next page is read from.
+        notifications: payload.page === 1
+          ? payload.notifications
+          : [...state.notifications, ...payload.notifications.filter((n) => !state.notifications.some((m) => m.id === n.id))],
         unreadCount: payload.unreadCount,
         page: payload.page,
         loading: false,
@@ -73,12 +77,25 @@ export default function notificationsReducer(state = initialState, action) {
       };
     }
 
-    case types.NEW_NOTIFICATION:
+    case types.NEW_NOTIFICATION: {
+      /*
+       * A pushed notification is either new or an unread one brought up to
+       * date (another move or chat line in the same game) - same id, so it
+       * replaces the old entry at the top rather than adding a second one, and
+       * is not counted twice. Without an id it cannot be shown properly (no
+       * key, nothing to mark read), so it only counts. The server sends the
+       * exact unread count straight after, which settles any guess here.
+       */
+      if (!payload) return state;
+      if (payload.id == null) return { ...state, unreadCount: state.unreadCount + 1 };
+      const previous = state.notifications.find((n) => n.id === payload.id);
+      const countsNow = !payload.is_read && (!previous || previous.is_read);
       return {
         ...state,
-        notifications: [payload, ...state.notifications],
-        unreadCount: state.unreadCount + 1,
+        notifications: [payload, ...state.notifications.filter((n) => n.id !== payload.id)],
+        unreadCount: state.unreadCount + (countsNow ? 1 : 0),
       };
+    }
 
     default:
       return state;
