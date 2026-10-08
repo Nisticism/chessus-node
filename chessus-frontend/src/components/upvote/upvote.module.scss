@@ -1,0 +1,61 @@
+/*
+ * The games' upvote look (gamelist / gametypeview .upvote-btn), shared by every
+ * list and page that upvotes something. "small" sits in a card; "large" sits
+ * among a page's header buttons.
+ */
+.upvote {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--text-dim);
+  background: rgba(var(--accent-rgb), 0.1);
+  font: inherit;
+  line-height: 1.2;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+
+  &:hover {
+    background: rgba(var(--accent-rgb), 0.25);
+  }
+
+  &.upvoted {
+    color: var(--accent-primary-text);
+    background: rgba(var(--accent-rgb), 0.2);
+    font-weight: 600;
+  }
+
+  /* The creator's own: the count, but nothing to press. */
+  &.own {
+    cursor: default;
+    opacity: 0.6;
+
+    &:hover {
+      background: rgba(var(--accent-rgb), 0.1);
+    }
+  }
+
+  .icon {
+    font-size: 1rem;
+  }
+}
+
+.small {
+  padding: 5px 10px;
+  font-size: 0.9rem;
+}
+
+.large {
+  padding: 8px 16px;
+  font-size: 15px;
+  font-weight: 600;
+  background: rgba(var(--accent-rgb), 0.15);
+  border-color: rgba(var(--accent-rgb), 0.3);
+
+  &.upvoted {
+    border-color: var(--border-bright);
+  }
+}

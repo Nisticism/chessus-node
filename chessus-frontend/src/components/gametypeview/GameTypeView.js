@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import UpvoteButton from "../upvote/UpvoteButton";
 import { useParams, useNavigate, Link, useLocation } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import axios from "../../services/axios-interceptor";
 import API_URL from "../../global/global";
 import authHeader from "../../services/auth-header";
-import { getGameById, deleteGame, duplicateGame, toggleUpvote, getUpvoteStatus, runUniquenessCheck } from "../../actions/games";
+import { getGameById, deleteGame, duplicateGame, runUniquenessCheck } from "../../actions/games";
 import { getPieceById } from "../../actions/pieces";
 import styles from "./gametypeview.module.scss";
 import UniqueBadge from "../puzzles/UniqueBadge";
@@ -399,8 +400,6 @@ const GameTypeView = () => {
   const [uniquenessCheckLoading, setUniquenessCheckLoading] = useState(false);
   const [uniquenessResult, setUniquenessResult] = useState(null);
   const [uniquenessError, setUniquenessError] = useState(null);
-  const [upvoteCount, setUpvoteCount] = useState(0);
-  const [hasUpvoted, setHasUpvoted] = useState(false);
   // On by default: the annotated board is what most people come here to read.
   const [showDetails, setShowDetails] = useState(true);
   // AI training analysis link (only shown when caller is allowed to view it).
@@ -653,15 +652,6 @@ const GameTypeView = () => {
 
         setLoading(false);
 
-        // Load upvote status
-        try {
-          const upvoteData = await getUpvoteStatus(gameId);
-          setUpvoteCount(upvoteData.upvote_count);
-          setHasUpvoted(upvoteData.upvoted);
-        } catch (e) {
-          // Upvote status non-critical
-        }
-
         // Check if the current user has already requested AI analysis for this game
         // so the button persists its "already requested" state across page loads.
         if (currentUser) {
@@ -704,17 +694,6 @@ const GameTypeView = () => {
       .catch(() => { if (!cancelled) setAiAnalysisAvailable(false); });
     return () => { cancelled = true; };
   }, [gameId, currentUser]);
-
-  const handleUpvote = async () => {
-    if (!currentUser) return;
-    try {
-      const result = await toggleUpvote(gameId);
-      setUpvoteCount(result.upvote_count);
-      setHasUpvoted(result.upvoted);
-    } catch (err) {
-      console.error("Error toggling upvote:", err);
-    }
-  };
 
   const handleRequestAnalysis = async () => {
     if (!currentUser || requestingAnalysis) return;
@@ -3160,13 +3139,8 @@ Delete the game and its puzzles anyway?`)) {
           ← Back to Games
         </button>
         <div className={styles["header-actions"]}>
-          <button
-            className={`${styles["upvote-btn"]} ${hasUpvoted ? styles["upvoted"] : ''}`}
-            onClick={handleUpvote}
-            title={currentUser ? (hasUpvoted ? "Remove upvote" : "Upvote this game") : "Log in to upvote"}
-          >
-            {hasUpvoted ? '▲' : '△'} {upvoteCount}
-          </button>
+          {/* The shared button (UpvoteButton): loads its own count, and the creator cannot press it. */}
+          <UpvoteButton kind="game" id={gameId} ownerId={game?.creator_id} size="large" />
           {/*
             * A game whose opening position is already decided cannot be
             * played, so the button says so instead of sending somebody to a

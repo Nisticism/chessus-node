@@ -403,6 +403,23 @@
   margin-top: auto;
 }
 
+.footer-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+
+  > .meta-item {
+    flex: 1;
+    min-width: 0;
+  }
+}
+
+/* At the right of the creator line, or on its own there. */
+.piece-upvote {
+  margin-left: auto;
+}
+
 .piece-actions {
   display: flex;
   gap: 10px;

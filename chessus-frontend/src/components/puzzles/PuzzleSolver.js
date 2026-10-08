@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import UpvoteButton from "../upvote/UpvoteButton";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { useSelector } from "react-redux";
 import axios from "../../services/axios-interceptor";
@@ -1289,6 +1290,7 @@ const PuzzleSolver = () => {
         {puzzle.game_name && <>in <Link to={`/games/${puzzle.game_type_id}`}>{puzzle.game_name}</Link></>}
         {puzzle.creator_username && <> · puzzle by {puzzle.creator_username}</>}
         {' '}<UniqueBadge status={puzzle.unique_status} method={puzzle.unique_method} />
+        {!puzzle.is_draft && <>{' '}<UpvoteButton kind="puzzle" id={puzzle.id} ownerId={puzzle.creator_id} /></>}
       </p>
 
       <div className={styles["layout"]}>

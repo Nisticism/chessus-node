@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Link, useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from "react-redux";
-import { getGames, deleteGame, toggleUpvote } from "../../actions/games";
+import { getGames, deleteGame } from "../../actions/games";
+import UpvoteButton from "../upvote/UpvoteButton";
 import Pagination from "../pagination/Pagination";
 import styles from "./gamelist.module.scss";
 import { PLATFORM_ACCOUNT_USERNAME } from "../../helpers/platform-account";
@@ -20,7 +21,6 @@ const GameList = () => {
   const [winConditionFilter, setWinConditionFilter] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [searchInput, setSearchInput] = useState("");
-  const [upvotedGames, setUpvotedGames] = useState({});
   const dispatch = useDispatch();
   const navigate = useNavigate();
 
@@ -100,15 +100,6 @@ const GameList = () => {
     ? allGames.gamesList.filter(game => game.id)
     : [];
 
-  // Sync upvote state from server data whenever the games list refreshes.
-  // This ensures the upvote highlight persists across page loads/refreshes.
-  useEffect(() => {
-    if (!currentUser || games.length === 0) return;
-    const serverState = {};
-    games.forEach(g => { serverState[g.id] = Boolean(g.upvoted_by_user); });
-    setUpvotedGames(serverState);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [games.map(g => g.id).join(','), currentUser?.id]);
 
   const pagination = allGames.pagination;
   const totalCount = pagination?.total || 0;
@@ -190,19 +181,6 @@ Delete the game and its puzzles anyway?`)) {
     return `${count} players`;
   };
 
-  const handleUpvote = async (e, gameId) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (!currentUser) return;
-    try {
-      const result = await toggleUpvote(gameId);
-      setUpvotedGames(prev => ({ ...prev, [gameId]: result.upvoted }));
-      // Update the count in the redux store games list
-      dispatch(getGames(...fetchArgs(currentPage)));
-    } catch (err) {
-      console.error("Error toggling upvote:", err);
-    }
-  };
 
   const formatBoardSize = (width, height) => {
     if (!width || !height) return "Standard";
@@ -284,14 +262,7 @@ Delete the game and its puzzles anyway?`)) {
                 {formatBoardSize(game.board_width, game.board_height)} board
               </span>
             </div>
-            <div
-              className={`${styles["upvote-btn"]} ${upvotedGames[game.id] ? styles["upvoted"] : ''}`}
-              onClick={(e) => handleUpvote(e, game.id)}
-              title={currentUser ? "Upvote this game" : "Log in to upvote"}
-            >
-              <span className={styles["upvote-icon"]}>{upvotedGames[game.id] ? '▲' : '△'}</span>
-              <span>{game.upvote_count || 0}</span>
-            </div>
+            <UpvoteButton kind="game" id={game.id} count={game.upvote_count} upvoted={game.upvoted_by_user} ownerId={game.creator_id} />
           </div>
           
           <div className={styles["game-content"]}>

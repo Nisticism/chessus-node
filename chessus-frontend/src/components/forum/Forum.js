@@ -29,7 +29,6 @@ const Forum = () => {
   
   const [loading, setLoading] = useState(true);
   const dispatch = useDispatch();
-  const [firstRender, setFirstRender] = useState(false);
   const currentForum = useSelector((state) => state.forums.forum);
   const [commentContent, setCommentContent] = useState(null);
   const [newCommentText, setNewCommentText] = useState("");
@@ -119,16 +118,12 @@ const Forum = () => {
     ready: true,
   } : { ready: false });
 
-  /* eslint-disable react-hooks/exhaustive-deps */
+  // Loaded again whenever the post changes. It loaded once per visit, so a
+  // link from one post to another went on showing the first one.
   useEffect(() => {
-    if (!firstRender) {
-      console.log(forumId)
-      setLoading(true);
-      dispatch(getForum(forumId)).finally(() => setLoading(false));
-      setFirstRender(true);
-    }
-  }, [firstRender]);
-  /* eslint-enable react-hooks/exhaustive-deps */
+    setLoading(true);
+    dispatch(getForum(forumId)).finally(() => setLoading(false));
+  }, [dispatch, forumId]);
 
   const handleDelete = (e, id) => {
     e.preventDefault();

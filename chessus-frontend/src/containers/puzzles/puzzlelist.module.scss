@@ -303,6 +303,11 @@
   border-top: 1px solid rgba(var(--panel-card-border-rgb), 0.5);
 }
 
+/* The upvote button sits at the end of the foot, at the right. */
+.card-upvote {
+  margin-left: auto;
+}
+
 .muted {
   font-size: 0.78rem;
   color: var(--text-dim);

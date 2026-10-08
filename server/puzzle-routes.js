@@ -19,6 +19,7 @@ const {
   goalMet, terminalOutcome, describeMoveOn, boardMoveKey, sameDrop,
   immediateWinsByChoice, sameFinish, promotionChoiceEquivalent,
 } = require('./puzzle-validation');
+const { upvoteColumns } = require('./upvotes');
 
 /*
  * A multi-tile piece's size, for a position sent to a board: without it the
@@ -396,6 +397,7 @@ function registerPuzzleRoutes(app, {
         newest: 'p.published_at DESC, p.id DESC',
         oldest: 'p.published_at ASC, p.id ASC',
         popular: 'p.attempt_count DESC, p.published_at DESC',
+        most_upvoted: 'upvote_count DESC, p.published_at DESC, p.id DESC',
         hardest: 'p.rating IS NULL, p.rating DESC, p.published_at DESC',
         easiest: 'p.rating IS NULL, p.rating ASC, p.published_at DESC',
       };
@@ -439,7 +441,8 @@ function registerPuzzleRoutes(app, {
                    * here would put the "Puzzle of the Day" badge on tomorrow's
                    * puzzle before it was anybody's today.
                    */
-                  WHERE d.puzzle_id = p.id AND d.puzzle_date <= ?) AS featured_on
+                  WHERE d.puzzle_id = p.id AND d.puzzle_date <= ?) AS featured_on,
+                ${upvoteColumns('puzzle', 'p')}
          FROM puzzles p
          LEFT JOIN users u ON u.id = p.creator_id
          LEFT JOIN game_types gt ON gt.id = p.game_type_id
@@ -447,8 +450,8 @@ function registerPuzzleRoutes(app, {
          ORDER BY ${order}
          LIMIT ? OFFSET ?`,
         // The featured_on subquery's placeholder comes first in the statement,
-        // so its value leads the parameter list.
-        [dailyPuzzle.todayKey(), ...params, limit, offset]
+        // then the upvote columns' (the viewer), so their values lead the list.
+        [dailyPuzzle.todayKey(), req.user?.id || 0, ...params, limit, offset]
       );
 
       const [[{ total }]] = await db_pool.query(

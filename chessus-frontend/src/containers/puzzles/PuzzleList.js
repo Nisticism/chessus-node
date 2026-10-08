@@ -7,6 +7,8 @@ import Pagination from "../../components/pagination/Pagination";
 import { formatDateLegacy } from "../../helpers/date-formatter";
 import styles from "./puzzlelist.module.scss";
 import UniqueBadge from "../../components/puzzles/UniqueBadge";
+import UpvoteButton from "../../components/upvote/UpvoteButton";
+import authHeader from "../../services/auth-header";
 
 /*
  * Every puzzle on the site, in one place.
@@ -26,6 +28,7 @@ const PER_PAGE = 24;
 const SORTS = [
   { value: 'newest', label: 'Newest' },
   { value: 'popular', label: 'Most played' },
+  { value: 'most_upvoted', label: 'Most upvoted' },
   { value: 'hardest', label: 'Hardest' },
   { value: 'easiest', label: 'Easiest' },
 ];
@@ -100,6 +103,8 @@ const PuzzleList = () => {
             gameTypeId: gameFilter || undefined,
             search: searchParam || undefined,
           },
+          // Signed in, each row says whether you have upvoted it.
+          headers: authHeader(),
         });
         if (cancelled) return;
         setPuzzles(data?.puzzles || []);
@@ -260,6 +265,9 @@ const PuzzleList = () => {
               {p.rating_public && p.rating != null && (
                 <span className={styles["muted"]}>Rating {Math.round(p.rating)}</span>
               )}
+              <span className={styles["card-upvote"]}>
+                <UpvoteButton kind="puzzle" id={p.id} count={p.upvote_count} upvoted={p.upvoted_by_user} ownerId={p.creator_id} />
+              </span>
             </div>
           </article>
         ))}

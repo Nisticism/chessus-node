@@ -352,6 +352,7 @@ app.use((req, res, next) => {
 const db_pool = require("../configs/db");
 const dbHelpers = require("./db-helpers");
 const { notifyUser, pushNotification } = require("./notification-push");
+const { registerUpvoteRoutes, upvoteColumns } = require("./upvotes");
 const { checkUsername, validateContent, checkProfessionalName, checkPiecePatterns, checkBoardPatterns } = require("./content-moderation");
 const imageModeration = require("./image-moderation");
 const initialStateValidator = require("./initial-state-validator");
@@ -2663,6 +2664,9 @@ app.get("/api/pieces", optionalAuthenticate, async (req, res) => {
     let selectExtra = '';
 
     switch (sort) {
+      case 'most_upvoted':
+        orderClause = 'ORDER BY upvote_count DESC, p.id DESC';
+        break;
       case 'most_used':
         joinClause = 'LEFT JOIN game_type_pieces gtp ON p.id = gtp.piece_id';
         selectExtra = ', COUNT(DISTINCT gtp.game_type_id) as game_count';
@@ -2699,8 +2703,9 @@ app.get("/api/pieces", optionalAuthenticate, async (req, res) => {
 
     // Get paginated pieces
     const groupBy = joinClause ? 'GROUP BY p.id' : '';
-    const dataQuery = `SELECT p.*${selectExtra}${creatorSelect} FROM pieces p ${joinClause} ${creatorJoin} ${whereClause} ${groupBy} ${orderClause} LIMIT ? OFFSET ?`;
-    const [pieces] = await db_pool.query(dataQuery, [...whereParams, limit, offset]);
+    // Upvotes on every row (upvotes.js): its one placeholder is the viewer, ahead of the WHERE's.
+    const dataQuery = `SELECT p.*${selectExtra}${creatorSelect}, ${upvoteColumns('piece', 'p')} FROM pieces p ${joinClause} ${creatorJoin} ${whereClause} ${groupBy} ${orderClause} LIMIT ? OFFSET ?`;
+    const [pieces] = await db_pool.query(dataQuery, [req.user?.id || 0, ...whereParams, limit, offset]);
 
     res.json({
       // p.* includes piece_password; swap the hash for a has_password flag.
@@ -3976,77 +3981,11 @@ app.get("/api/games/:gameId", optionalAuthenticate, async (req, res) => {
   }
 });
 
-// Toggle upvote on a game type
-app.post("/api/games/:gameId/upvote", authenticateToken, async (req, res) => {
-  try {
-    const gameTypeId = parseInt(req.params.gameId);
-    const userId = req.user.id;
-
-    // Check if already upvoted
-    const [existing] = await db_pool.query(
-      'SELECT id FROM game_type_upvotes WHERE game_type_id = ? AND user_id = ?',
-      [gameTypeId, userId]
-    );
-
-    if (existing.length > 0) {
-      // Remove upvote
-      await db_pool.query(
-        'DELETE FROM game_type_upvotes WHERE game_type_id = ? AND user_id = ?',
-        [gameTypeId, userId]
-      );
-    } else {
-      // Add upvote
-      await db_pool.query(
-        'INSERT INTO game_type_upvotes (game_type_id, user_id) VALUES (?, ?)',
-        [gameTypeId, userId]
-      );
-    }
-
-    // Return updated count
-    const [countResult] = await db_pool.query(
-      'SELECT COUNT(*) as count FROM game_type_upvotes WHERE game_type_id = ?',
-      [gameTypeId]
-    );
-
-    res.json({
-      upvoted: existing.length === 0,
-      upvote_count: countResult[0].count
-    });
-  } catch (err) {
-    console.error("Error in POST /api/games/:gameId/upvote:", err);
-    res.status(500).send({ err: err.message });
-  }
-});
-
-// Get upvote status for a game (requires auth to know if user upvoted)
-app.get("/api/games/:gameId/upvote", optionalAuthenticate, async (req, res) => {
-  try {
-    const gameTypeId = parseInt(req.params.gameId);
-    const userId = req.user?.id;
-
-    const [countResult] = await db_pool.query(
-      'SELECT COUNT(*) as count FROM game_type_upvotes WHERE game_type_id = ?',
-      [gameTypeId]
-    );
-
-    let upvoted = false;
-    if (userId) {
-      const [existing] = await db_pool.query(
-        'SELECT id FROM game_type_upvotes WHERE game_type_id = ? AND user_id = ?',
-        [gameTypeId, userId]
-      );
-      upvoted = existing.length > 0;
-    }
-
-    res.json({
-      upvoted,
-      upvote_count: countResult[0].count
-    });
-  } catch (err) {
-    console.error("Error in GET /api/games/:gameId/upvote:", err);
-    res.status(500).send({ err: err.message });
-  }
-});
+/*
+ * Upvotes on games, pieces and puzzles: POST toggles, GET reads the count and
+ * whether the viewer has voted (upvotes.js). Nobody can upvote their own.
+ */
+registerUpvoteRoutes(app, { db_pool, authenticateToken, optionalAuthenticate });
 
 // Duplicate a game type as a new draft owned by the requester (creator or moderator).
 app.post("/api/games/:gameId/duplicate", authenticateToken, async (req, res) => {
@@ -8682,9 +8621,23 @@ app.put("/api/comments/edit", authenticateToken, async (req, res) => {
 
 // ----------------------- Likes ----------------------------
 
-app.post("/api/likes/new", async (req, res) => {
+/*
+ * The old like/unlike pair. They took the user id from the request body and
+ * needed no sign-in, so anyone could add a like as anyone, or remove anyone's
+ * by its id. Now: signed in, as yourself, never on your own post. (The forum
+ * pages use /api/forums/:id/toggle-like.)
+ */
+app.post("/api/likes/new", authenticateToken, async (req, res) => {
   try {
-    const { user_id, article_id } = req.body;
+    const user_id = req.user.id;
+    const article_id = parseInt(req.body?.article_id, 10);
+    const [[article]] = await db_pool.query("SELECT author_id FROM articles WHERE id = ?", [article_id]);
+    if (!article) return res.status(404).send({ message: "Forum post not found" });
+    if (Number(article.author_id) === Number(user_id)) {
+      return res.status(403).send({ message: "You can't like your own post.", own: true });
+    }
+    const [[already]] = await db_pool.query("SELECT id FROM likes WHERE article_id = ? AND user_id = ? LIMIT 1", [article_id, user_id]);
+    if (already) return res.json({ result: { id: already.id, user_id, article_id, liked: true } });
     
     const like = await dbHelpers.createLike({ user_id, article_id });
     res.json({ result: like });
@@ -8694,12 +8647,12 @@ app.post("/api/likes/new", async (req, res) => {
   }
 });
 
-app.post("/api/likes/delete", async (req, res) => {
+app.post("/api/likes/delete", authenticateToken, async (req, res) => {
   try {
-    console.log("in delete likes route");
-    const id = req.body.id;
+    // Only your own like.
+    const id = parseInt(req.body?.id, 10);
     
-    await dbHelpers.deleteLike(id);
+    await db_pool.query("DELETE FROM likes WHERE id = ? AND user_id = ?", [id, req.user.id]);
     res.json({ message: "Like deleted" });
   } catch (err) {
     console.error("Error in /api/likes/delete:", err);
@@ -8716,9 +8669,13 @@ app.post("/api/forums/:id/toggle-like", authenticateToken, async (req, res) => {
     const userId = req.user.id;
 
     // Verify the article exists
-    const [[article]] = await db_pool.query("SELECT id FROM articles WHERE id = ?", [articleId]);
+    const [[article]] = await db_pool.query("SELECT id, author_id FROM articles WHERE id = ?", [articleId]);
     if (!article) {
       return res.status(404).send({ message: "Forum post not found" });
+    }
+    // Nobody likes their own post.
+    if (Number(article.author_id) === Number(userId)) {
+      return res.status(403).send({ message: "You can't like your own post.", own: true });
     }
 
     // Check existing like

@@ -619,6 +619,21 @@
   }
 }
 
+/* The author's own post: the count, but nothing to press. */
+.like-cell-own {
+  cursor: default;
+  opacity: 0.6;
+
+  &:hover {
+    background: transparent !important;
+  }
+
+  .like-icon {
+    transform: none !important;
+    color: var(--text-dim) !important;
+  }
+}
+
 .like-cell-active {
   .like-icon {
     color: #e05070;

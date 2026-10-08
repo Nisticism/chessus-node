@@ -666,6 +666,34 @@ tableMigrations.push(
     description: "Create puzzle_attempts table (solver history, separate from match history)"
   },
   {
+    table: 'puzzle_upvotes',
+    sql: `CREATE TABLE IF NOT EXISTS puzzle_upvotes (
+      id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      puzzle_id INT UNSIGNED NOT NULL,
+      user_id INT UNSIGNED NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (puzzle_id) REFERENCES puzzles(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      UNIQUE KEY unique_puzzle_upvote (puzzle_id, user_id),
+      INDEX idx_puzzle_upvotes_user (user_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+    description: "Create puzzle_upvotes table (upvotes on puzzles, one per player)"
+  },
+  {
+    table: 'piece_upvotes',
+    sql: `CREATE TABLE IF NOT EXISTS piece_upvotes (
+      id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      piece_id INT UNSIGNED NOT NULL,
+      user_id INT UNSIGNED NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (piece_id) REFERENCES pieces(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      UNIQUE KEY unique_piece_upvote (piece_id, user_id),
+      INDEX idx_piece_upvotes_user (user_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+    description: "Create piece_upvotes table (upvotes on pieces, one per player)"
+  },
+  {
     table: 'puzzle_feedback',
     sql: `CREATE TABLE IF NOT EXISTS puzzle_feedback (
       id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -4568,6 +4596,33 @@ const runMigrations = async () => {
     }
   } catch (err) {
     console.error('Error adding puzzles_rated to users:', err.message);
+  }
+
+  /*
+   * Nobody upvotes their own creation (upvotes.js, and the forum like routes,
+   * refuse it from 2026-10-08). The votes people already gave themselves are
+   * removed once: games, forum posts, and - for completeness, though they are
+   * new - pieces and puzzles. Through the ledger, like any change to user data.
+   */
+  try {
+    await runOnceDataMigration(
+      'remove-self-upvotes',
+      'Remove upvotes and likes people gave their own games, posts, pieces and puzzles',
+      async () => {
+        const [g] = await db_pool.query(
+          'DELETE u FROM game_type_upvotes u JOIN game_types t ON t.id = u.game_type_id WHERE t.creator_id = u.user_id');
+        const [l] = await db_pool.query(
+          'DELETE l FROM likes l JOIN articles a ON a.id = l.article_id WHERE a.author_id = l.user_id');
+        const [pc] = await db_pool.query(
+          'DELETE u FROM piece_upvotes u JOIN pieces p ON p.id = u.piece_id WHERE p.creator_id = u.user_id');
+        const [pz] = await db_pool.query(
+          'DELETE u FROM puzzle_upvotes u JOIN puzzles p ON p.id = u.puzzle_id WHERE p.creator_id = u.user_id');
+        console.log(`[DB] Self-upvotes removed: ${g.affectedRows} game, ${l.affectedRows} forum, ${pc.affectedRows} piece, ${pz.affectedRows} puzzle.`);
+        return g.affectedRows + l.affectedRows + pc.affectedRows + pz.affectedRows;
+      }
+    );
+  } catch (err) {
+    console.error('Error removing self-upvotes:', err.message);
   }
 
   /*

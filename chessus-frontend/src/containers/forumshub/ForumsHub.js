@@ -76,8 +76,12 @@ const ForumsHub = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [generalForums.map(f => f.id).join(','), gameForums.map(f => f.id).join(','), currentUser?.id]);
 
-  async function handleLike(e, forumId) {
+  // Nobody likes their own post; the server refuses it too.
+  const isOwnPost = (forum) => !!currentUser && forum.author_id != null && Number(forum.author_id) === Number(currentUser.id);
+
+  async function handleLike(e, forumId, ownPost = false) {
     e.stopPropagation();
+    if (ownPost) return;
     if (!currentUser) {
       navigate('/login', { state: { message: "Please log in to like forum posts." } });
       return;
@@ -176,10 +180,10 @@ const ForumsHub = () => {
         <div className={styles["forums-comment-likes"]}>{forum.comment_count}</div>
       </td>
       <td
-        className={`${styles["like-cell"]} ${likedForums[forum.id] ? styles["like-cell-active"] : ''}`}
+        className={`${styles["like-cell"]} ${likedForums[forum.id] ? styles["like-cell-active"] : ''} ${isOwnPost(forum) ? styles["like-cell-own"] : ''}`}
         data-like-cell="true"
-        onClick={(e) => handleLike(e, forum.id)}
-        title={currentUser ? (likedForums[forum.id] ? "Unlike" : "Like this post") : "Log in to like"}
+        onClick={(e) => handleLike(e, forum.id, isOwnPost(forum))}
+        title={isOwnPost(forum) ? "You can't like your own post" : currentUser ? (likedForums[forum.id] ? "Unlike" : "Like this post") : "Log in to like"}
       >
         <span className={styles["like-icon"]}>{likedForums[forum.id] ? '♥' : '♡'}</span>
         <span className={styles["like-count"]}>{likeCounts[forum.id] ?? forum.like_count ?? 0}</span>

@@ -17,6 +17,7 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { useSelector, useDispatch } from "react-redux";
+import UpvoteButton from "../upvote/UpvoteButton";
 import axios from "../../services/axios-interceptor";
 import { getPieceById, getGamesByPieceId, deletePiece, duplicatePiece, setPieceValueCache } from "../../actions/pieces";
 import { estimatePieceValue } from "../../utils/pieceValueEstimator";
@@ -816,6 +817,9 @@ const PieceView = () => {
           ← Back to Pieces
         </button>
         <div className={styles["header-actions"]}>
+          {pieceToDisplay && !pieceToDisplay.is_draft && (
+            <UpvoteButton kind="piece" id={pieceId} ownerId={pieceToDisplay.creator_id} size="large" />
+          )}
           <button 
             onClick={handleTryInSandbox} 
             className={styles["sandbox-button"]}

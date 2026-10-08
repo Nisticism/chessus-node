@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { Link, useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from "react-redux";
 import { getPieces, deletePiece } from "../../actions/pieces";
+import UpvoteButton from "../upvote/UpvoteButton";
 import Pagination from "../pagination/Pagination";
 import styles from "./piecelist.module.scss";
 import { PLATFORM_ACCOUNT_USERNAME } from "../../helpers/platform-account";
@@ -281,22 +282,31 @@ const PieceList = () => {
         </Link>
         
         <div className={styles["piece-footer"]}>
-          {piece.creator_username && (
-            <div className={styles["meta-item"]}>
-              <span className={styles["meta-label"]}>Creator:</span>
-              {piece.creator_username === 'Anonymous' ? (
-                <span className={styles["creator-link"]}>Anonymous</span>
-              ) : (
-                <Link 
-                  to={`/profile/${piece.creator_username}`} 
-                  className={styles["creator-link"]}
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  {piece.creator_username}
-                </Link>
-              )}
-            </div>
-          )}
+          {/* Who made it, and the upvote, on one line. */}
+          <div className={styles["footer-row"]}>
+            {piece.creator_username && (
+              <div className={styles["meta-item"]}>
+                <span className={styles["meta-label"]}>Creator:</span>
+                {piece.creator_username === 'Anonymous' ? (
+                  <span className={styles["creator-link"]}>Anonymous</span>
+                ) : (
+                  <Link 
+                    to={`/profile/${piece.creator_username}`} 
+                    className={styles["creator-link"]}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {piece.creator_username}
+                  </Link>
+                )}
+              </div>
+            )}
+
+            {!piece.is_draft && (
+              <span className={styles["piece-upvote"]}>
+                <UpvoteButton kind="piece" id={piece.id} count={piece.upvote_count} upvoted={piece.upvoted_by_user} ownerId={piece.creator_id} />
+              </span>
+            )}
+          </div>
 
           {showEditButton && canEditPiece(piece) && (
             <div className={styles["piece-actions"]}>
@@ -356,6 +366,7 @@ const PieceList = () => {
               <label className={styles["filter-label"]}>Sort by</label>
               <select className={styles["filter-select"]} value={sortBy} onChange={handleSortChange}>
                 <option value="newest">Newest</option>
+                <option value="most_upvoted">Most Upvoted</option>
                 <option value="most_used">Most Used in Games</option>
                 <option value="alphabetical">Alphabetical</option>
                 <option value="classic">Classic Pieces</option>
