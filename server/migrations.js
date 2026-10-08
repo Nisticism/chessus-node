@@ -4495,6 +4495,80 @@ const runMigrations = async () => {
     console.error('Error adding category column to articles:', err.message);
   }
 
+  /*
+   * Whether a player HAS a rating, as opposed to the number everybody starts
+   * on. elo starts at 1000 and puzzle_elo at 1200 for everyone, so the number
+   * alone cannot tell a player who has never played from one who has played
+   * and come back to the start - and sorting by it put the never-played among
+   * the rated. These count what moved the rating:
+   *   rated_games    games that changed their Elo (updateEloRatings)
+   *   puzzles_rated  first attempts at puzzles, the only ones that are rated
+   * Each backfill runs once, in the same step that adds its column, from the
+   * record those numbers came from.
+   */
+  try {
+    if (!(await columnExists('users', 'rated_games'))) {
+      await runMigration(
+        "ALTER TABLE users ADD COLUMN rated_games INT UNSIGNED NOT NULL DEFAULT 0",
+        "Add rated_games to users (games that changed their Elo)"
+      );
+      try {
+        // Every finished rated game keeps its eloChanges (winner and loser ids) in other_data.
+        await runMigration(
+          `UPDATE users u JOIN (
+             SELECT uid, COUNT(*) AS n FROM (
+               SELECT CAST(JSON_UNQUOTE(JSON_EXTRACT(other_data, '$.eloChanges.winner.id')) AS UNSIGNED) AS uid
+                 FROM games WHERE other_data LIKE '%eloChanges%' AND JSON_VALID(other_data)
+               UNION ALL
+               SELECT CAST(JSON_UNQUOTE(JSON_EXTRACT(other_data, '$.eloChanges.loser.id')) AS UNSIGNED) AS uid
+                 FROM games WHERE other_data LIKE '%eloChanges%' AND JSON_VALID(other_data)
+             ) t WHERE uid > 0 GROUP BY uid
+           ) c ON c.uid = u.id
+           SET u.rated_games = c.n`,
+          "Backfill rated_games from the Elo changes games recorded"
+        );
+        // A rating that has moved was played for, whether or not that game recorded it.
+        await runMigration(
+          "UPDATE users SET rated_games = 1 WHERE rated_games = 0 AND elo IS NOT NULL AND elo <> 1000",
+          "Backfill rated_games for ratings that moved without a recorded game"
+        );
+      } catch (backfillErr) {
+        console.error('Error backfilling rated_games:', backfillErr.message);
+      }
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding rated_games to users:', err.message);
+  }
+  try {
+    if (!(await columnExists('users', 'puzzles_rated'))) {
+      await runMigration(
+        "ALTER TABLE users ADD COLUMN puzzles_rated INT UNSIGNED NOT NULL DEFAULT 0",
+        "Add puzzles_rated to users (rated puzzle attempts)"
+      );
+      try {
+        await runMigration(
+          `UPDATE users u JOIN (
+             SELECT user_id, COUNT(*) AS n FROM puzzle_attempts WHERE rated_attempt = 1 GROUP BY user_id
+           ) c ON c.user_id = u.id
+           SET u.puzzles_rated = c.n`,
+          "Backfill puzzles_rated from rated puzzle attempts"
+        );
+        // Solves or a rating that moved with no attempt left on record (attempts
+        // can go with their puzzle) still mean the rating was played for.
+        await runMigration(
+          "UPDATE users SET puzzles_rated = GREATEST(puzzles_solved, 1) WHERE puzzles_rated = 0 AND (puzzles_solved > 0 OR puzzle_elo <> 1200)",
+          "Backfill puzzles_rated for ratings that moved without a recorded attempt"
+        );
+      } catch (backfillErr) {
+        console.error('Error backfilling puzzles_rated:', backfillErr.message);
+      }
+      migrationsRun++;
+    }
+  } catch (err) {
+    console.error('Error adding puzzles_rated to users:', err.message);
+  }
+
   // Widen notifications.content from VARCHAR(500) to TEXT so that full
   // announcement bodies (up to 5000 chars) can be stored without truncation.
   try {

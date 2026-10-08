@@ -2535,12 +2535,14 @@ async function updateEloRatings(winnerId, loserId, isDraw = false) {
     const loserNewElo = calculateNewElo(loserOldElo, loserExpected, loserActual);
 
     // Update both players' ELO in database
+    // rated_games: they now HAVE a rating, not just the starting number (a
+    // draw between equals can leave it at 1000).
     await db_pool.query(
-      "UPDATE users SET elo = ? WHERE id = ?",
+      "UPDATE users SET elo = ?, rated_games = rated_games + 1 WHERE id = ?",
       [winnerNewElo, winnerId]
     );
     await db_pool.query(
-      "UPDATE users SET elo = ? WHERE id = ?",
+      "UPDATE users SET elo = ?, rated_games = rated_games + 1 WHERE id = ?",
       [loserNewElo, loserId]
     );
 

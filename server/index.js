@@ -1680,7 +1680,7 @@ app.put("/api/tournaments/:tournamentId", authenticateToken, async (req, res) =>
  */
 const PROFILE_PUBLIC_FIELDS = [
   'id', 'username', 'role', 'admin_level', 'last_active_at', 'created_at', 'timezone', 'lang', 'country', 'bio',
-  'light_square_color', 'dark_square_color', 'elo', 'puzzle_elo', 'puzzles_solved', 'profile_picture',
+  'light_square_color', 'dark_square_color', 'elo', 'puzzle_elo', 'puzzles_solved', 'rated_games', 'puzzles_rated', 'profile_picture',
   'total_donations', 'hide_donation_badge', 'show_display_name', 'allow_non_friend_dms', 'disable_game_chat',
   'chat_public_for_spectators', 'show_computer_games_publicly', 'disallow_guest_opponents',
   'chess_com_username', 'lichess_username', 'twitch_channel', 'discord_username',
@@ -1777,6 +1777,8 @@ app.get("/api/users", async (req, res) => {
     const offset = (page - 1) * limit;
     const search = req.query.search || '';
     const friendsOf = parseInt(req.query.friendsOf) || 0;
+    // The leaderboard lists only players who have a rating to rank.
+    const ratedOnly = req.query.ratedOnly === '1' || req.query.ratedOnly === 'true';
 
     // Validate sort parameters
     /*
@@ -1796,6 +1798,7 @@ app.get("/api/users", async (req, res) => {
       whereClauses.push('u.username LIKE ?');
       whereParams.push(`%${search}%`);
     }
+    if (ratedOnly) whereClauses.push('u.rated_games > 0');
 
     // Friends filter: join with friends table
     let joinClause = '';
@@ -1815,7 +1818,14 @@ app.get("/api/users", async (req, res) => {
      * solves is not a rating, it is an initial value, and showing it as one
      * would put unrated players above rated ones who have simply had a bad week.
      */
-    const dataQuery = `SELECT u.id, u.username, u.role, u.profile_picture, u.elo, u.puzzle_elo, u.puzzles_solved, u.last_active_at FROM users u ${joinClause} ${whereSQL} ORDER BY u.${sortBy} ${sortOrder} LIMIT ? OFFSET ?`;
+    /*
+     * By a rating, the players who have one come first in EITHER direction;
+     * those still on the starting number follow, as if they had none. Then id,
+     * so a page boundary never falls between equal ratings differently twice.
+     */
+    const ratedFirst = sortBy === 'elo' ? '(u.rated_games > 0) DESC, '
+      : sortBy === 'puzzle_elo' ? '(u.puzzles_rated > 0) DESC, ' : '';
+    const dataQuery = `SELECT u.id, u.username, u.role, u.profile_picture, u.elo, u.puzzle_elo, u.puzzles_solved, u.rated_games, u.puzzles_rated, u.last_active_at FROM users u ${joinClause} ${whereSQL} ORDER BY ${ratedFirst}u.${sortBy} ${sortOrder}, u.id ASC LIMIT ? OFFSET ?`;
 
     // Get total count with filters and paginated data in parallel
     const [[countResult], [users]] = await Promise.all([

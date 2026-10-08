@@ -218,17 +218,20 @@ const PlayerList = () => {
               </div>
               
               <div className={styles["item-meta"]}>
-                {user.elo !== undefined && user.elo !== null && (
+                {/* A rating only once it has been played for: everybody starts
+                    on the same number, and these players sort after the rated
+                    ones (the server orders them so). */}
+                {user.rated_games > 0 && user.elo != null && (
                   <div className={styles["meta-row"]}>
                     <span className={styles["label"]}>Rating:</span>
                     <span style={{ fontWeight: '600', color: 'var(--accent-primary)' }}>{user.elo}</span>
                   </div>
                 )}
-                {/* Only once they have actually solved something. Everybody
-                    starts on the same number, and showing that as a rating
-                    would rank people who have never solved a puzzle alongside
-                    people who have. */}
-                {user.puzzles_solved > 0 && user.puzzle_elo != null && (
+                {/* Only once a puzzle has been rated - a first attempt, solved
+                    or not. Everybody starts on the same number, and showing
+                    that as a rating would rank people who have never tried a
+                    puzzle alongside people who have. */}
+                {user.puzzles_rated > 0 && user.puzzle_elo != null && (
                   <div className={styles["meta-row"]}>
                     <span className={styles["label"]}>Puzzle Rating:</span>
                     <span style={{ fontWeight: '600', color: 'var(--accent-primary)' }}>{user.puzzle_elo}</span>

@@ -674,18 +674,18 @@ const PlayerPage = (props) => {
                   * header empty. Under it, the name has the header's full width.
                   */}
                 <div className={styles["profile-stats"]}>
-                  <div className={styles["elo-display"]}>
-                    <div className={styles["elo-label"]}>ELO Rating</div>
-                    <div className={styles["elo-value"]}>
-                      {playerPageUser?.elo ?? currentUser?.elo ?? 1000}
+                  {/* Each rating only once it has been played for - a rated game,
+                      a first attempt at a puzzle. Everybody starts on the same
+                      number, and showing that as a rating would claim a standing
+                      nobody has earned yet. Kept separate because they measure
+                      different things - beating people, and reading positions. */}
+                  {playerPageUser?.rated_games > 0 && playerPageUser?.elo != null && (
+                    <div className={styles["elo-display"]}>
+                      <div className={styles["elo-label"]}>ELO Rating</div>
+                      <div className={styles["elo-value"]}>{playerPageUser.elo}</div>
                     </div>
-                  </div>
-                  {/* Only once they have solved something. Everybody starts on the
-                      same number, and showing that as a rating would claim a
-                      standing nobody has earned yet. Kept separate from ELO
-                      because they measure different things - beating people, and
-                      reading positions. */}
-                  {playerPageUser?.puzzles_solved > 0 && playerPageUser?.puzzle_elo != null && (
+                  )}
+                  {playerPageUser?.puzzles_rated > 0 && playerPageUser?.puzzle_elo != null && (
                     <div className={styles["elo-display"]}>
                       <div className={styles["elo-label"]}>Puzzle Rating</div>
                       <div className={styles["elo-value"]}>{playerPageUser.puzzle_elo}</div>

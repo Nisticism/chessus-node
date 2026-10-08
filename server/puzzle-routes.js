@@ -2648,8 +2648,9 @@ function registerPuzzleRoutes(app, {
              result.before, result.after, scorePct, terminal ? null : 'in_progress',
              source, discordId]
           );
+          // puzzles_rated: they now have a puzzle rating, solved or not.
           await db_pool.query(
-            'UPDATE users SET puzzle_elo = puzzle_elo + ? WHERE id = ?', [result.delta, userId]
+            'UPDATE users SET puzzle_elo = puzzle_elo + ?, puzzles_rated = puzzles_rated + 1 WHERE id = ?', [result.delta, userId]
           );
           ratingChange = {
             before: result.before, after: result.after, delta: result.delta,

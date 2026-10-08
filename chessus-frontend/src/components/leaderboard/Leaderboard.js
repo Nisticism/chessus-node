@@ -16,7 +16,8 @@ const Leaderboard = () => {
   const totalPages = pagination?.totalPages ?? Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   useEffect(() => {
-    dispatch(users(page, PAGE_SIZE, { sortBy: 'elo', sortOrder: 'desc' }));
+    // Only players with a rating to rank: one rated game at least.
+    dispatch(users(page, PAGE_SIZE, { sortBy: 'elo', sortOrder: 'desc', ratedOnly: 1 }));
   }, [page, dispatch]);
 
   const baseRank = (page - 1) * PAGE_SIZE;
@@ -64,11 +65,11 @@ const Leaderboard = () => {
       <div className={styles["leaderboard-stats"]}>
         <div className={styles["stat-card"]}>
           <div className={styles["stat-value"]}>{total}</div>
-          <div className={styles["stat-label"]}>Total Players</div>
+          <div className={styles["stat-label"]}>Rated Players</div>
         </div>
         <div className={styles["stat-card"]}>
           <div className={styles["stat-value"]}>
-            {page === 1 && sortedUsers.length > 0 ? (sortedUsers[0].elo || 1000) : '—'}
+            {page === 1 && sortedUsers.length > 0 ? sortedUsers[0].elo : '—'}
           </div>
           <div className={styles["stat-label"]}>Highest ELO</div>
         </div>
@@ -106,7 +107,7 @@ const Leaderboard = () => {
                       </Link>
                     </div>
                     <div className={styles["col-elo"]}>
-                      <span className={styles["elo-value"]}>{user.elo || 1000}</span>
+                      <span className={styles["elo-value"]}>{user.elo}</span>
                     </div>
                   </div>
                 );
